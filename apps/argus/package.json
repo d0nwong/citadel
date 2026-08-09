@@ -1,0 +1,10 @@
+{
+  "name": "ai-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Liam's personal AI Workspace",
+  "type": "module",
+  "scripts": {
+    "loop": "claude '/loop 30m /office-hours' --dangerously-skip-permissions"
+  }
+}
