@@ -233,11 +233,50 @@ Run this on any subsequent invocation against a repo that already has a manifest
 
 ---
 
+## Phase 5: Change Journal (the "why" layer)
+
+Docs are present-tense facts-from-code; the journal owns history and rationale — the
+things code can never say: who asked, which ticket, what the decision was. **Docs never
+become changelogs**, and journal entries never restate current behavior (the docs own
+that). They link; they don't merge.
+
+One file per change: `/journal/YYYY-MM-DD-<slug>.md`
+
+```markdown
+---
+date: 2026-08-23
+source: "Slack #alden-product — Sarah's request" # or meeting / customer / null
+ticket: ALD-123 # Trello/Linear key, if any
+features: [admin-invoicings, tasks] # manifest ids, FLOW style — greppable routing
+scope: product # product | architecture | both
+status: decided # decided | implemented | documented
+summary: Drafts become editable with an Approve-and-Send gate
+---
+
+What changes, before → after, and the reasoning/constraints from the discussion.
+Quote the request where it disambiguates intent.
+```
+
+Lifecycle — `status` is the only field that ever changes after creation:
+
+1. **decided** — the change is agreed but not in code. Docs are NOT touched (facts-only
+   rule): the entry is the sole record of intent.
+2. **implemented** — the code landed but docs haven't been re-verified yet.
+3. **documented** — a Phase 2 re-run consumed this entry: the doc agent received it as
+   context for the diff (the entry explains WHY the code changed), updated the docs from
+   code, and closed the entry.
+
+The Phase 4 refresh loop MUST collect a feature's non-`documented` entries and hand them
+to the doc subagent alongside the manifest entry — the diff says what changed, the
+journal says why. Close only entries whose change the agent actually confirmed in code.
+
+---
+
 ## Retrieval Contract (why the format is strict)
 
 A downstream agent answering questions MUST be able to:
 
-1. **Route by frontmatter alone** — grep `aliases` + `feature_name` across `/features/**/docs/*.md` frontmatter to pick the right file without opening bodies.
+1. **Route by frontmatter alone** — grep `aliases` + `feature_name` across `/features/**/docs/*.md` frontmatter to pick the right file without opening bodies; grep `features:` / `ticket:` across `/journal/*.md` to find a change's history the same way.
 2. **Answer "what" questions from one table row** — Business Rules table (product tier).
 3. **Answer "where/how" questions from one table row** — Component Map (architecture tier).
 4. **Trust freshness** — `last_verified` sha tells the agent whether to double-check against code.

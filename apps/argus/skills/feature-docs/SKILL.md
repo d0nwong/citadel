@@ -33,6 +33,12 @@ Non-empty diff → regenerate. Empty → do NOT rewrite or bump `last_verified` 
 Phase 4 rule). `"stale"` as the arg means: run this check across every feature whose
 `status` is `done` and regenerate the drifted ones.
 
+**2b. Collect the why.** Grep `alden/alden-portal/journal/*.md` for entries whose
+`features:` include this id and whose `status` is not `documented`. They explain the diff
+(source, ticket, intent) — include them verbatim in the subagent prompt below, and after
+a successful run flip each entry the agent CONFIRMED in code to `status: documented`
+(leave unconfirmed ones alone; audit will keep nagging, which is correct).
+
 **3. One subagent per feature** (protocol isolation rule — never batch features into one
 context). Prompt template — fill every `{…}`:
 
@@ -66,7 +72,12 @@ context). Prompt template — fill every `{…}`:
 > 4. Write your chosen aliases back to this feature's `aliases` array in the manifest
 >    (touch nothing else).
 >
-> Report back: rule count, workflow count, UNVERIFIED items, spec-vs-code drift found.
+> {If open journal entries exist:} Context for the diff — these journal entries explain
+> why the code changed; verify each against the code and say which you confirmed:
+> {entries verbatim}
+>
+> Report back: rule count, workflow count, UNVERIFIED items, spec-vs-code drift found,
+> and which journal entries you confirmed in code.
 
 `{fe_rev}` = the `last_verified` value in the current arch.md (branch@sha format).
 

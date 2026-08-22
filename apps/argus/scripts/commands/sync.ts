@@ -21,7 +21,7 @@ import { analyzeRepo } from "../lib/analyze.ts";
 import { buildIndex, ATTR_DEPTH, type AccioIndex } from "../lib/index-store.ts";
 import { renderArchDoc, readAliases, type DocMeta } from "../lib/docs.ts";
 import { loadManifest, saveManifest, expand, archDocPath, STATE, FEATURES_DIR, MANIFEST_PATH, ROOT } from "../lib/manifest.ts";
-import { auditDocs } from "./audit.ts";
+import { auditDocs, auditJournal } from "./audit.ts";
 
 const CACHE = join(STATE, "openapi.json");
 const FINGERPRINT = join(STATE, "openapi-fingerprint.json");
@@ -157,7 +157,7 @@ if (import.meta.main) {
 
   if (!ONLY) await Bun.write(REPORT, renderReport(diff, index, doc, prevMeta?.fetchedAt ?? null, fetchedAt));
 
-  const problems = await auditDocs(index);
+  const problems = [...await auditDocs(index), ...await auditJournal(index)];
   if (problems.length) {
     console.log(`\n⚠ audit — docs claim things the code or spec no longer backs:`);
     for (const p of problems.slice(0, 12)) console.log(`   ${p}`);

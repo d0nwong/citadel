@@ -141,6 +141,33 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     expect(out.exitCode).toBe(0);
   });
 
+  test("audit validates journal entries and catches a missed refresh", async () => {
+    const { auditJournal } = await import("./commands/audit.ts");
+    const index = await Bun.file(`${ROOT}/.state/accio-index.json`).json();
+    const dir = `${ROOT}/.state/test-audit-journal`;
+    await Bun.write(`${dir}/2026-08-20-good.md`, [
+      "---", "date: 2026-08-20", 'source: "meeting"', "ticket: ALD-42",
+      "features: [tasks]", "scope: product", "status: decided",
+      "summary: something agreed", "---", "Details.",
+    ].join("\n"));
+    await Bun.write(`${dir}/2026-08-21-bad.md`, [
+      "---", "date: 2026-08-21", "ticket: not a ticket",
+      "features: [no-such-feature]", "status: shipped", "summary: x", "---",
+    ].join("\n"));
+    // implemented BEFORE the feature's product doc was last re-verified → missed by refresh
+    await Bun.write(`${dir}/2026-08-01-missed.md`, [
+      "---", "date: 2026-08-01", "features: [admin-signals]", "scope: product",
+      "status: implemented", "summary: y", "---",
+    ].join("\n"));
+    const problems = await auditJournal(index, dir);
+    expect(problems.some(x => x.includes("good"))).toBe(false);
+    expect(problems.some(x => x.includes("bad") && x.includes("unknown feature"))).toBe(true);
+    expect(problems.some(x => x.includes("bad") && x.includes("status"))).toBe(true);
+    expect(problems.some(x => x.includes("bad") && x.includes("ticket"))).toBe(true);
+    expect(problems.some(x => x.includes("missed") && x.includes("refresh missed"))).toBe(true);
+    await Bun.$`rm -rf ${dir}`.quiet();
+  });
+
   test("audit catches prose drift: endpoints not in spec, or not called by the feature", async () => {
     const { auditDocs } = await import("./commands/audit.ts");
     const index = await Bun.file(`${ROOT}/.state/accio-index.json`).json();

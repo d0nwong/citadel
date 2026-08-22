@@ -15,6 +15,7 @@ export const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, ""
 export const APP_DIR = join(ROOT, "alden/alden-portal");
 export const MANIFEST_PATH = join(APP_DIR, ".doc-workspace/feature-manifest.json");
 export const FEATURES_DIR = join(APP_DIR, "features");
+export const JOURNAL_DIR = join(APP_DIR, "journal");
 export const STATE = join(ROOT, ".state");
 export const DEFAULT_FE_REPO = "~/git/alden/alden-portal-fe";
 export const expand = (p: string) => p.replace(/^~/, process.env.HOME ?? "~");

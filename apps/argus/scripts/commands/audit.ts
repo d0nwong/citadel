@@ -12,7 +12,7 @@
 
 import { join, relative } from "node:path";
 import { normPath } from "../lib/spec.ts";
-import { FEATURES_DIR, STATE, ROOT } from "../lib/manifest.ts";
+import { FEATURES_DIR, JOURNAL_DIR, STATE, ROOT } from "../lib/manifest.ts";
 import { ATTR_DEPTH, type AccioIndex } from "../lib/index-store.ts";
 
 const METHOD_RE = /\b(GET|POST|PUT|PATCH|DELETE)\s+(\/api\/\S+?)(?=[`") \n]|$)/g;
@@ -55,10 +55,56 @@ export async function auditDocs(index: AccioIndex, dir = FEATURES_DIR): Promise<
   return problems;
 }
 
+/**
+ * Journal checks (protocol Phase 5): entries route by frontmatter, so a typo'd feature id
+ * or a dead status silently orphans a change record — and an `implemented` entry whose
+ * feature has since been re-verified means the refresh loop missed it.
+ */
+export async function auditJournal(index: AccioIndex, dir = JOURNAL_DIR): Promise<string[]> {
+  const problems: string[] = [];
+  const ids = new Set(index.features.map(f => f.id));
+  const STATUSES = new Set(["decided", "implemented", "documented"]);
+  const TICKET = /^([A-Z][A-Z0-9]{1,9}-\d+|https:\/\/trello\.com\/\S+)$/;
+
+  // product docs move only on real re-verification (arch docs regen every sync)
+  const verifiedAt = new Map<string, string>();
+  for (const f of index.features) {
+    const t = await Bun.file(join(FEATURES_DIR, f.dir, "docs/product.md")).text().catch(() => null);
+    const d = t?.match(/^last_verified_date:\s*(\S+)/m)?.[1];
+    if (d) verifiedAt.set(f.id, d);
+  }
+
+  for await (const path of new Bun.Glob("*.md").scan({ cwd: dir, absolute: true })) {
+    const name = relative(dir, path);
+    const text = await Bun.file(path).text();
+    const field = (k: string) => text.match(new RegExp(`^${k}:\\s*(.+)$`, "m"))?.[1]?.trim();
+    const date = field("date"), status = field("status")?.split(/\s/)[0], ticket = field("ticket");
+    const feats = (text.match(/^features:\s*\[([^\]]*)\]/m)?.[1] ?? "")
+      .split(",").map(x => x.trim()).filter(Boolean);
+
+    if (!date || !/^\d{4}-\d{2}-\d{2}/.test(date)) problems.push(`journal/${name}: missing or malformed date`);
+    if (!status || !STATUSES.has(status)) problems.push(`journal/${name}: status must be decided|implemented|documented`);
+    if (!feats.length) problems.push(`journal/${name}: features: [] is empty — entry routes nowhere`);
+    for (const f of feats) if (!ids.has(f)) problems.push(`journal/${name}: unknown feature id \`${f}\``);
+    if (ticket && ticket !== "null" && !TICKET.test(ticket.replace(/^["']|["']$/g, "")))
+      problems.push(`journal/${name}: ticket \`${ticket}\` is neither a KEY-123 nor a trello.com link`);
+
+    // implemented + docs re-verified after the entry ⇒ the refresh ran but didn't close it
+    if (status === "implemented" && date)
+      for (const f of feats) {
+        const v = verifiedAt.get(f);
+        if (v && v >= date.slice(0, 10))
+          problems.push(`journal/${name}: implemented, but ${f} docs were re-verified ${v} — refresh missed this entry or it should be documented`);
+      }
+  }
+  return problems;
+}
+
 if (import.meta.main) {
   const f = Bun.file(join(STATE, "accio-index.json"));
   if (!(await f.exists())) { console.error("error: no index — run `accio sync` first"); process.exit(1); }
-  const problems = await auditDocs(await f.json());
+  const index = await f.json();
+  const problems = [...await auditDocs(index), ...await auditJournal(index)];
   if (!problems.length) { console.log("audit: clean"); process.exit(0); }
   console.log(`audit: ${problems.length} problem${problems.length === 1 ? "" : "s"}\n`);
   for (const p of problems) console.log(`  ${p}`);
