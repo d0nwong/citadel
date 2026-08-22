@@ -115,8 +115,13 @@ if (import.meta.main) {
   const feRoot = expand(m.fe_repo);
   if (!(await Bun.file(join(feRoot, "package.json")).exists())) fail(`frontend repo not found at ${feRoot}`);
   const idx = indexOps(doc, ops);
+  // The FE repo is a SHARED working tree — other sessions switch its branch. An analysis
+  // that straddles a switch is a silent mix of two revisions, so bracket it and refuse.
+  const revBefore = await repoRev(feRoot);
   const analysis = await analyzeRepo(feRoot, idx);
   const feRev = await repoRev(feRoot);
+  if (feRev !== revBefore)
+    fail(`frontend working tree changed mid-analysis (${revBefore} → ${feRev}) — another session is using the repo; re-run when it settles`);
   console.log(`frontend: ${analysis.fileCount} files analyzed · ${analysis.routes.length} routes · \`${feRev}\``);
 
   // aliases can be edited in either place — union doc frontmatter back into the manifest

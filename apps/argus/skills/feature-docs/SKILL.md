@@ -13,6 +13,13 @@ Paths:
 - docs: `alden/alden-portal/features/<dir>/docs/{product.md, arch.md}`
 - frontend repo: `~/git/alden/alden-portal-fe` (`core_files` paths are relative to it)
 
+**⚠ The FE repo is a SHARED working tree** — other sessions switch its branch without
+warning. Never trust `ls`/`cat` there. Pin the target sha up front (the arch doc's
+`last_verified` names it) and make subagents read EVERY file via
+`git show <sha>:<path>` and list dirs via `git ls-tree -r --name-only <sha> <dir>`,
+run from the FE repo dir. `accio sync` brackets its own analysis and aborts if the tree
+moves mid-run.
+
 ## Procedure
 
 **0. Resolve the target.** Look the feature id up in the manifest. No entry? Run
@@ -49,7 +56,10 @@ context). Prompt template — fill every `{…}`:
 >
 > Inputs:
 > - Manifest entry: id `{id}`, dir `{dir}`, entry_routes {routes}, core_files {core_files}
->   — paths relative to the FRONTEND REPO at `~/git/alden/alden-portal-fe`.
+>   — paths relative to the FRONTEND REPO at `~/git/alden/alden-portal-fe`. That repo is a
+>   SHARED working tree whose branch switches without warning: read every file via
+>   `git show {fe_sha}:<path>` (dir listings via `git ls-tree -r --name-only {fe_sha} <dir>`),
+>   never from the working tree.
 > - Generated arch doc: `{workspace}/alden/alden-portal/features/{dir}/docs/arch.md`. Its
 >   `## Interfaces & Contracts` region is endpoint ground truth — any endpoint named in
 >   prose MUST appear there (`accio audit` fails otherwise).
