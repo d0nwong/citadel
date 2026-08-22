@@ -10,5 +10,8 @@
   },
   "bin": {
     "accio": "./scripts/accio.ts"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
   }
 }
