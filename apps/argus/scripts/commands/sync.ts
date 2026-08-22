@@ -38,6 +38,23 @@ const SYMBOLS = join(STATE, "symbols.json");
 
 const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 
+/**
+ * Which revision of the frontend the call analysis was run against. Everything derived
+ * from the import graph is branch-dependent — a different checkout genuinely produces a
+ * different answer — so a doc that does not name its source revision cannot be trusted.
+ */
+async function repoRev(repo: string): Promise<string> {
+  try {
+    const at = (cmd: string[]) =>
+      new Response(Bun.spawn(cmd, { cwd: repo, stderr: "ignore" }).stdout).text();
+    const [branch, sha] = await Promise.all([
+      at(["git", "rev-parse", "--abbrev-ref", "HEAD"]),
+      at(["git", "rev-parse", "--short", "HEAD"]),
+    ]);
+    return `${branch.trim()}@${sha.trim()}`;
+  } catch { return "unknown"; }
+}
+
 /** User error — a message, not a stack trace. */
 const fail = (msg: string): never => { console.error(`error: ${msg}`); process.exit(1); };
 
@@ -282,7 +299,7 @@ function attribute(usage: Usage, comps: Component[]): ByComponent {
 /** Calls mode: the feature described component-first, APIs hanging off each component. */
 function renderCallsMd(
   p: Project, usage: Usage, byComp: ByComponent, opsByKey: Map<string, Op>,
-  selected: Op[], doc: any, fetchedAt: string,
+  selected: Op[], doc: any, fetchedAt: string, rev: string,
 ): string {
   const L: string[] = [];
   const called = new Set(usage.ops.keys());
@@ -294,6 +311,8 @@ function renderCallsMd(
   L.push("> never authoritative. Overview and architecture live in `base.md` — not here.");
   L.push("");
   L.push(`**Mode:** calls — resolved from the code, not guessed from tag names.`);
+  L.push(`**Frontend revision:** \`${rev}\` — this analysis is branch-dependent; a different`);
+  L.push(`checkout gives different answers. Regenerate after switching branches.`);
   L.push(`**Scanned:** ${usage.seeds} seed files → ${usage.filesScanned} files (import depth ${usage.maxDepthReached}) → **${called.size} operations**`);
   L.push("");
 
@@ -542,16 +561,18 @@ const opsByKey = new Map(ops.map(o => [o.key, o]));
 const idx = indexOps(doc);
 
 /** calls mode needs `sources:` AND a repo on disk; anything else falls back to tags. */
-type Hit = { p: Project; sel: Op[]; usage: Usage | null; byComp: ByComponent | null; note: string };
+type Hit = { p: Project; sel: Op[]; usage: Usage | null; byComp: ByComponent | null; note: string; rev: string };
 const symbols = new Map<string, Symbol & { projects: string[] }>();
 const hits: Hit[] = [];
 for (const p of targets) {
   const sel = p.api ? select(ops, p.api) : [];
   let usage: Usage | null = null, byComp: ByComponent | null = null, note = "tags";
+  let rev = "";
   const srcs = p.api?.sources ?? [];
   if (srcs.length) {
     const repo = expand(p.api?.repo ?? DEFAULT_REPO);
     if (await Bun.file(join(repo, "package.json")).exists()) {
+      rev = await repoRev(repo);
       usage = await collectUsage(repo, srcs, idx);
       byComp = attribute(usage, p.components);
       note = "calls";
@@ -567,7 +588,7 @@ for (const p of targets) {
       note = `tags (repo not found: ${repo})`;
     }
   }
-  hits.push({ p, sel, usage, byComp, note });
+  hits.push({ p, sel, usage, byComp, note, rev });
 }
 
 /**
@@ -606,10 +627,10 @@ if (fresh) {
   }, null, 2));
 }
 
-for (const { p, sel, usage, byComp } of hits) {
+for (const { p, sel, usage, byComp, rev } of hits) {
   if (!p.api) continue;
   await Bun.write(join(p.dir, "api.md"), usage && byComp
-    ? renderCallsMd(p, usage, byComp, opsByKey, sel, doc, fetchedAt)
+    ? renderCallsMd(p, usage, byComp, opsByKey, sel, doc, fetchedAt, rev)
     : renderApiMd(p, sel, doc, fetchedAt));
 }
 // A scoped run sees only one project — writing the report would clobber the full

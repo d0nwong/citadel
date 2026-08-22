@@ -7,8 +7,8 @@ description: "Answer fast, in-session: which backend API provides the data or fu
 
 Answer in the main thread. **Never delegate this to a subagent** — the whole job is one
 command, and a subagent's spawn cost and cold context make it slower than doing it here.
-(`api-surface` is the subagent skill; that one is for wrap-up todo reconciliation, a
-different and much heavier job. Do not confuse them.)
+(`tech-lead` is the heavier skill: architecture, specs, doc maintenance, and — in a fresh
+subagent — wrap-up todo reconciliation. Do not confuse them.)
 
 ## The command
 

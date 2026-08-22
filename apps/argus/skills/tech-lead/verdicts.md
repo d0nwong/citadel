@@ -1,9 +1,7 @@
----
-name: api-surface
-description: "Investigate which backend endpoints an alden-portal feature actually uses, and classify each of its backend-shaped todos as Exists / Partial / Missing. Designed to run in a subagent spawned by the project-manager skill: it returns a verdict as text for the parent agent to curate and apply. It never edits todos.md, project.yaml, or api.md. Not user-invoked — spawned by project-manager."
----
+# Verdicts — investigate and classify backend-shaped todos
 
-# API Surface — investigate and classify
+> Reference file for the `tech-lead` skill. **Not a routable skill and not user-invoked** —
+> it is handed to a freshly spawned subagent by tech-lead's §Verdicts step.
 
 You are investigating one alden-portal feature project against the backend API contract.
 Your output is **a verdict returned to the parent agent** — do NOT edit `todos.md`,
@@ -15,7 +13,13 @@ The backend is owned by another team. The question you exist to answer, for ever
 
 ## Inputs
 
-You are given a project name. Its folder is under
+You are given a project name, and — because you start cold and cannot see the session that
+spawned you — a line of **session decisions**. Treat those as authoritative over the code:
+a flow the user decided to delete this session is not "Exists" just because it is still
+checked in. If that line is missing, say so in your Confidence section rather than assuming
+"none".
+
+Its folder is under
 `alden/alden-portal/features/` (some are nested, e.g. `admin/signals`). Read:
 
 - `alden/alden-portal/features/COMPONENTS.md` — the routing table; grep it first when the
@@ -23,14 +27,18 @@ You are given a project name. Its folder is under
 - `project.yaml` — the `api:` block (selectors) and `repos:` (whether code exists)
 - `todos.md` — the todos you are classifying
 - `api.md` — the generated endpoint surface
+- `data-flow.md`, if present — the curated record of how each field is populated. It is
+  authoritative over anything you would infer from `api.md`, and a todo it already answers
+  needs no investigation, only a citation
 - `base.md` / the product spec — only the sections a todo actually touches
 
 ## Method
 
 1. **Regenerate first** so you are not reading a stale surface:
    `accio sync --project <name>` (add `--offline` to skip the fetch).
-2. **Read `api.md`'s `## Index` table** before the per-endpoint detail. Drop into the detail
-   only for endpoints a todo actually turns on.
+2. **Read `api.md` headings first** (`grep -E '^## |^\*\*Mode' <project>/api.md`), then only
+   the sections a todo actually turns on. Tags-mode files are endpoint tables; calls-mode
+   files are component sections — there is no `## Index` in calls mode.
 3. **For code-backed projects** (`repos:` non-empty, `api.sources` set), `api.md` lists the
    file that makes each call. Open two or three and confirm the attribution is real.
 4. **Verify every unmatched URL literal** by opening its file — see the traps below.
@@ -98,6 +106,13 @@ verdict rests on either.
 
 **Never conclude "missing" from a zero-result grep alone.** Check the tag group in `api.md`,
 then the full spec at `.state/openapi.json`, then say what you searched.
+
+## When the answer belongs in data-flow.md
+
+If settling a todo required reading code, that finding is worth keeping. Say so in your
+return: name the symbol, and give the `reads:`/`writes:` lines and prose a `data-flow.md`
+entry would carry. The parent decides whether to add it. Never restate the endpoint list
+`api.md` already generates — `reads:`/`writes:` exist so `accio sync` can audit the prose.
 
 ## What does not qualify
 

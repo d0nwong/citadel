@@ -34,7 +34,18 @@ A journal entry needs a judgment call with a "why" — something a future sessio
 
 ## Entry format
 
-`##` heading; components MUST come from the project's `project.yaml` vocabulary or a knowledge-domain slug (`knowledge/README.md`):
+`##` heading; components MUST come from the project's `project.yaml` vocabulary or a knowledge-domain slug (`knowledge/README.md`).
+
+`components:` accepts two shapes and both are valid vocabulary — a bare string, or an
+object whose `slug:` is the component name. Tag with the slug either way:
+
+```yaml
+components:
+  - feature-boundary            # bare slug
+  - slug: inline-saves          # tag with `inline-saves`, not the whole object
+    does: …
+    files: […]
+```
 
 ```markdown
 ## <YYYY-MM-DD> `<short-slug>` — <one-line title>

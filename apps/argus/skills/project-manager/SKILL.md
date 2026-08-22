@@ -1,6 +1,6 @@
 ---
 name: project-manager
-description: Only for use in the nemo workspace. Load, create, and save project context for structured working sessions. Use when starting a project session, wrapping up, saving in-flight state, or creating a new project. Triggered by phrases like "load context for X", "save context", "wrap up", "end of session", "new project", or via `nemo start`.
+description: Only for use in the nemo workspace. Owns the product record — context, todos, the decision journal, and the business-logic rules doc — plus the session lifecycle. Load, create, and save project context for structured working sessions. Use when starting a project session, wrapping up, saving in-flight state, or creating a new project. Triggered by phrases like "load context for X", "save context", "wrap up", "end of session", "new project", or via `nemo start`.
 ---
 
 # Project Manager
@@ -9,11 +9,21 @@ description: Only for use in the nemo workspace. Load, create, and save project 
 
 Manages per-project context files to maintain continuity across sessions. Each project lives in a folder at the workspace root and contains:
 
-- `base.md` — permanent technical context and design decisions (rarely changes)
+**This skill owns the product record and the session lifecycle:**
+
 - `context.md` — in-flight session state (updated each session)
 - `todos.md` or `todos/` — open tasks (single file or multiple named files)
+- `journal.md` — the append-only decision log
 - `tickets.md` — Linear ticket index (if applicable)
-- `api.md` — the backend endpoints this feature consumes (generated; see API Context below)
+- the product spec, where one exists
+- the **rules doc** — the business-logic record: what *should* happen, independent of how
+  it is built. It lives next to the code and is registered in `project.yaml`'s `rules:`
+  key; see [rules-template.md](./rules-template.md)
+
+**The `tech-lead` skill owns the technical record** — `base.md` (architecture), `api.md`
+(generated endpoint surface), `data-flow.md` (curated field flows), and `project.yaml`'s
+`api:` block. This skill calls into it at project creation and at wrap-up; it does not edit
+those files itself.
 
 ---
 
@@ -44,7 +54,18 @@ Manages per-project context files to maintain continuity across sessions. Each p
    ## References
    ```
 
-5. **Confirm** — tell the user the project was created and offer to load its context immediately (as per the Loading Context workflow below).
+5. **Point at the business logic** — ask whether a rules doc already exists in the repo
+   (features often have one: `FIELD-RULES.md`, `ARCHITECTURE.md`, a fields `README.md`).
+   - **It exists** → register its path in `project.yaml`'s `rules:` key. Do not copy it in.
+   - **It does not** → say so plainly and offer to start one from
+     [rules-template.md](./rules-template.md). Declining is fine; an unwritten rulebook is
+     better than a wrong one, and the gap is now recorded.
+
+6. **Wire up the API surface** — invoke the **`tech-lead`** skill and follow its
+   "Wiring up a new project's API surface" section. It decides between a code-backed
+   `sources:` block and a spec-only `tags:` block, and regenerates.
+
+7. **Confirm** — tell the user the project was created and offer to load its context immediately (as per the Loading Context workflow below).
 
 ---
 
@@ -57,11 +78,20 @@ Load the *diet*, not the whole folder — full docs are read on demand when the 
 2. **Read the compact set:**
    - `context.md` (current state — small)
    - `.state/last-sync-<project>.md` (changes since last session, if it exists)
-   - Active decisions: `pnpm nemo query --scope <project> --status active --type decision --json`
+   - Active decisions — **only if the `nemo` CLI is installed** (`which nemo`):
+     `pnpm nemo query --scope <project> --status active --type decision --json`.
+     It is not installed in this workspace today; skip this step rather than failing, and
+     read `journal.md` directly when you need past decisions.
    - `knowledge/README.md` (one line per domain — so you know what domains exist)
    - `todos.md` / `todos/` (if exists)
-   - `api.md` — **the `## Index` table only** (`sed -n '/## Index/,/^---/p' <project>/api.md`).
-     The per-endpoint detail below it is read on demand, not up front.
+   - `api.md` — **headings only**: `grep -E '^## |^\*\*Mode' <project>/api.md`.
+     Tags-mode files are endpoint tables; calls-mode files are component sections. Read
+     the detail under a heading only when the session's task touches it.
+   - `data-flow.md` — **`## ` headings only**, if the file exists. It is the curated
+     record of how each field is populated; read a section when a task touches that field.
+   - the **rules doc(s)** named in `project.yaml`'s `rules:` — **headings only**
+     (`grep -E '^#{1,3} ' <repo>/<path>`, ~90t). Paths are relative to `repos[0].path`.
+     This is the business logic; read a numbered section when the task touches that rule.
    - `.state/last-api-sync.md` (what the backend team changed since the last sync)
 
    Do **NOT** read `base.md`, the `api.md` endpoint detail, or other large docs up front.
@@ -86,6 +116,12 @@ Load the *diet*, not the whole folder — full docs are read on demand when the 
 
 ### In-Session Recall
 
+**API questions go to `api-lookup` / `accio`, not here.** This section is for decisions and
+tickets. For "where does X get its data", see the API Context section below.
+
+The `nemo` query below requires a CLI that is **not installed in this workspace** — check
+`which nemo` first, and fall back to reading `journal.md` when it is absent.
+
 When the user asks "which ticket covers X", "why did we choose X", "did we already decide
 this", or "is this related to <domain>" — query the index before re-reading files or guessing:
 
@@ -99,38 +135,18 @@ read it for the curated picture.
 
 ---
 
-### API Context (features whose backend another team owns)
+### API and Architecture Questions
 
-Several alden-portal features are frontend-only: the backend is built and owned by another
-team, and its OpenAPI spec at
-<https://dev-alden-portal.uc.r.appspot.com/api-docs/> is the only contract.
-
-`<project>/api.md` is **generated** from that spec by `accio sync`, driven by
-the `api:` block in the project's `project.yaml` (tag and/or path-glob selectors). Never
-hand-edit `api.md` — fix the selectors and regenerate.
-
-```
-accio sync               # fetch, diff, regenerate every api.md
-accio sync --offline     # use the cached spec (no network)
-accio sync --check       # report only; exits 1 if the spec moved
-accio sync --project tasks
-```
-
-**Use it to answer "is this a frontend task or a backend ask?"** — the question behind
-every vague "backend changes" todo. Reading `api.md` in full is expensive (up to ~9k tokens
-for `tasks`) and verifying a verdict means opening calling files, so that investigation is
-delegated to the **`api-surface`** skill in a subagent; see wrap-up step 6. It owns the
-Exists / Partial / Missing rubric and the traps that go with it.
-
-**Two skills, two jobs — don't swap them:**
+Route these out of this skill:
 
 | Question | Skill | Where it runs |
 | --- | --- | --- |
 | "where does the status select get its data?" | **`api-lookup`** | main thread, one command |
-| "is this backend todo still open?" | **`api-surface`** | subagent, wrap-up step 6 |
+| "how should this be structured?" / spec work | **`tech-lead`** | main thread |
+| "is this backend todo still open?" | **`tech-lead`** → verdicts | fresh subagent |
 
-In-session lookups go through `api-lookup` (`accio "<subject>"`). Never
-spawn a subagent for a lookup — it is slower than answering inline.
+Never spawn a subagent for a lookup — `accio "<subject>"` answers in about a second, and a
+subagent's cold context makes it slower.
 
 ---
 
@@ -198,25 +214,26 @@ spawn a subagent for a lookup — it is slower than answering inline.
 
 5. **Update todos** — if tasks were completed or added during the session, sync `todos.md` (or the relevant file in `todos/`).
 
-6. **Reconcile todos against the API spec** — only for projects with an `api:` block, and
-   only when the session touched backend-shaped todos or `.state/last-api-sync.md` shows
-   the spec moved. Investigation is delegated; the main agent's job is curating and asking.
+   **If a business rule changed this session, that is a product decision** — update the
+   rules doc named in `rules:`, and journal the *why* (step 3 covers the entry). A rule
+   changed silently is the drift the audit exists to catch; changing it here is cheaper
+   than finding it later. If the project has no rules doc, offer to start one.
 
-   1. **Spawn a subagent to investigate:** use the `Agent` tool with a prompt like:
-      *"Invoke the `api-surface` skill and follow it: return verdicts for `<project>`."*
-      Spawn it **fresh — not a fork.** Unlike `session-journal`, this work needs the
-      project's files, not the conversation; a fork would drag the session in for nothing.
-      The skill owns the rubric, the traps, and the return format, and never writes files.
+6. **Maintain the technical record** — for projects with an `api:` block. Invoke the
+   **`tech-lead`** skill and follow its "Maintaining the docs at wrap-up" section: it
+   regenerates (`accio sync`), reads the drift report, captures anything the session
+   learned into `data-flow.md`, and spawns the verdicts subagent when backend-shaped todos
+   were touched.
 
-   2. **Curate the verdicts as an editor.** Reject any that restate what `api.md` already
-      says, or that generalise one todo's answer into a convention the user never made.
-      Check that no "Missing" verdict rests on a path-name search alone.
+   **Two things this skill must supply**, because tech-lead cannot derive them:
+   - Which API questions this session had to answer *by reading code* — those are the
+     candidates for a new `data-flow.md` entry.
+   - Any decision made this session that changes whether a todo is still live. The verdicts
+     subagent starts cold; without this it will classify a flow you just decided to delete
+     as "Exists — close it".
 
-   3. **Propose the surviving rewrites to the user and apply them with their agreement.**
-      Never silently retitle a todo the user hasn't seen. Fold selector problems the
-      subagent reports into the same proposal — those are `project.yaml` edits.
-
-7. **Re-index and surface contradictions** — run `pnpm nemo index <project>`, then
+7. **Re-index and surface contradictions** — **skip entirely unless `which nemo` succeeds**;
+   the CLI is not installed in this workspace. When it is: run `pnpm nemo index <project>`, then
    `pnpm nemo query --pending-contradictions`. If any are pending, present the proposed
    base.md diffs for approval; after applying or dismissing one, run
    `pnpm nemo ignore <repo>#<n>` (dismiss; `unignore` restores).
@@ -251,11 +268,13 @@ Do **not** prompt after every response — only when a genuine session end is im
 
 - **`journal.md`** is append-only — the durable decision log. Supersede with a new entry; never rewrite history
 - **`context.md`** is always overwritten (not appended) — it reflects current state only; its Key Decisions live on in the journal
-- **`base.md`** is the curated design narrative — update only deliberately, never automatically; sync flags contradictions as proposed diffs for approval
-- **`api.md`** — GENERATED from the backend team's OpenAPI spec; never hand-edited. Wrong
-  contents mean wrong selectors — fix `project.yaml`'s `api:` block and regenerate
-- **`project.yaml`** — sync config, the component vocabulary journal entries must tag from,
-  and the `api:` selectors (`tags:` / `paths:` / `exclude:`) that decide what lands in `api.md`
+- **`base.md`**, **`api.md`**, **`data-flow.md`**, and `project.yaml`'s `api:` block are
+  the **`tech-lead`** skill's — see its File Conventions section. Do not edit them here
+- **the rules doc** (`project.yaml` `rules:`) — the business-logic record, kept next to
+  the code, never copied into the workspace. This skill owns its *content*; tech-lead
+  audits it against the code. Rules are cited by number, so number the sections
+- **`project.yaml`** — also the component vocabulary journal entries must tag from, and
+  the `rules:` paths
 - **`knowledge/<slug>.md`** — cross-project domain docs; "Related changes" section is machine-appended by sync, the rest is curated
 - **`todos.md`** uses `- [ ]` for open items and `- [x]` for completed ones
 - If a project has a `todos/` directory, prefer updating the most relevant file within it rather than creating a new one unless the topic is clearly distinct
