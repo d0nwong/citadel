@@ -5,8 +5,8 @@ description: Generate or refresh the dual-tier docs (product.md + arch.md) for o
 
 # feature-docs — run the doc protocol for one feature
 
-The protocol is `DOC-PROTOCOL.md` at the workspace root — read it first; this skill is only
-the operational glue for THIS repo. Machinery: `bun run accio` (see `skills/api-lookup`).
+The protocol is `DOC-PROTOCOL.md` in THIS skill's directory (`skills/feature-docs/`) —
+read it first; this SKILL.md is only the operational glue for this repo. Machinery: `bun run accio` (see `skills/api-lookup`).
 
 Paths:
 - manifest: `alden/alden-portal/.doc-workspace/feature-manifest.json` (feature ids, `dir`, `core_files`)
@@ -38,7 +38,7 @@ context). Prompt template — fill every `{…}`:
 
 > You are executing Phase 2 of the doc protocol for ONE feature of the alden-portal app:
 > **{name}** (manifest id: `{id}`).
-> First read `{workspace}/DOC-PROTOCOL.md` in full — you are producing the Phase 3A
+> First read `{workspace}/skills/feature-docs/DOC-PROTOCOL.md` in full — you are producing the Phase 3A
 > product doc (and small curated additions to the arch doc) for this single feature.
 >
 > Inputs:
