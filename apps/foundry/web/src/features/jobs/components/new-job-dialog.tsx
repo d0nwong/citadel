@@ -100,16 +100,16 @@ export function NewJobDialog() {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-xl gap-0 overflow-hidden border-hairline bg-iron-850 p-0 sm:max-w-xl">
+      <DialogContent className="flex max-h-[92vh] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden border-hairline bg-iron-850 p-0 sm:max-w-xl">
         <div className="h-px w-full bg-gradient-to-r from-ember via-ember-deep to-transparent" />
-        <DialogHeader className="space-y-1 px-6 pb-5 pt-5 text-left">
+        <DialogHeader className="space-y-1 px-5 pb-5 pt-5 text-left sm:px-6">
           <DialogTitle className="text-[17px] font-bold tracking-tight">Forge a job</DialogTitle>
           <DialogDescription className="text-[13px] text-txt-dim">
             Claude Code runs the task inside an isolated forge against a local repo.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 border-t border-hairline px-6 py-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto border-t border-hairline px-5 py-5 sm:px-6">
           <div>
             <FieldLabel>Repository</FieldLabel>
             <Popover open={repoOpen} onOpenChange={setRepoOpen}>
@@ -188,7 +188,7 @@ export function NewJobDialog() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <FieldLabel>Forge</FieldLabel>
               <Select value={forge} onValueChange={setForge}>
@@ -231,7 +231,7 @@ export function NewJobDialog() {
           </label>
         </div>
 
-        <DialogFooter className="gap-2 border-t border-hairline bg-iron-900/60 px-6 py-4">
+        <DialogFooter className="gap-2 border-t border-hairline bg-iron-900/60 px-5 py-4 sm:px-6">
           <Button variant="ghost" onClick={() => setOpen(false)} className="h-9 text-[13px] text-txt-dim hover:text-txt">
             Cancel
           </Button>

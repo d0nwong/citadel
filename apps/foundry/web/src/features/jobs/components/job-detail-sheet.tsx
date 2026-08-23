@@ -62,7 +62,7 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
         {job && (
           <>
             <div className="h-px w-full bg-gradient-to-r from-ember via-ember-deep to-transparent" />
-            <SheetHeader className="space-y-3 px-6 pb-5 pt-5 text-left">
+            <SheetHeader className="space-y-3 px-5 pb-5 pt-5 text-left sm:px-6">
               <div className="flex items-center gap-3 pr-8">
                 <JobStatusChip status={job.status} />
                 <span className="font-mono text-[11px] text-txt-faint">{job.id}</span>
@@ -72,16 +72,18 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
               <SheetDescription className="sr-only">Job detail and live log output</SheetDescription>
             </SheetHeader>
 
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-y border-hairline bg-iron-900/50 px-6 py-4">
+            <div className="grid grid-cols-2 gap-x-5 gap-y-4 border-y border-hairline bg-iron-900/50 px-5 py-4 sm:gap-x-6 sm:px-6">
               <Meta label="Repo">
                 <span className="block truncate">{repoLabel(job.repo)}</span>
                 <span className="mt-0.5 block text-[10px] text-txt-faint">{repoDestination(job.repo)}</span>
               </Meta>
               <Meta label="Forge">{job.forge}</Meta>
               <Meta label="Branch">
-                <span className="flex items-center gap-1.5">
-                  <GitBranch className="size-3 text-txt-faint" />
-                  {job.branch}
+                <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <GitBranch className="size-3 shrink-0 text-txt-faint" />
+                    <span className="truncate">{job.branch}</span>
+                  </span>
                   <span className="text-txt-faint">← {job.baseBranch}</span>
                 </span>
               </Meta>
@@ -97,7 +99,7 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
               </Meta>
             </div>
 
-            <div className="flex items-center justify-between px-6 py-3">
+            <div className="flex items-center justify-between px-5 py-3 sm:px-6">
               <div className="kicker">Output</div>
               {live && (
                 <Button
@@ -115,17 +117,17 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
 
             <div
               ref={logRef}
-              className="flex-1 overflow-y-auto border-t border-hairline bg-iron-950/60 px-6 py-4 font-mono text-[12px] leading-[1.7]"
+              className="flex-1 overflow-y-auto border-t border-hairline bg-iron-950/60 px-5 py-4 font-mono text-[11.5px] leading-[1.7] sm:px-6 sm:text-[12px]"
             >
               {job.logs.map((l, i) => (
                 <div key={i} className="flex gap-3">
-                  <span className="w-[62px] shrink-0 select-none text-txt-faint/60">{clockTime(l.t)}</span>
+                  <span className="hidden w-[62px] shrink-0 select-none text-txt-faint/60 sm:block">{clockTime(l.t)}</span>
                   <span className={cn('whitespace-pre-wrap break-words', STREAM_TONE[l.stream])}>{l.text}</span>
                 </div>
               ))}
               {job.status === 'running' && (
                 <div className="mt-1 flex gap-3">
-                  <span className="w-[62px] shrink-0" />
+                  <span className="hidden w-[62px] shrink-0 sm:block" />
                   <span className="inline-block h-3.5 w-2 animate-ember-pulse bg-ember" />
                 </div>
               )}

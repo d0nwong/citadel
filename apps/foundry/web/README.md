@@ -178,3 +178,8 @@ JetBrains Mono for every machine-generated value — ids, paths, branches, durat
 logs. Status has one vocabulary everywhere: an ember dot pulses only while a job runs.
 
 Palette and type tokens live at the top of `src/styles.css`.
+
+Responsive down to ~360px. The `lg` breakpoint is the switch: below it the rail becomes
+a drawer behind a top bar, and the ledger's fixed column grid becomes stacked bands.
+Both layouts share one DOM — the mobile wrappers are `lg:contents`, so at desktop they
+vanish and their children drop straight into the grid.

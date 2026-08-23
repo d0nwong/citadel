@@ -74,27 +74,28 @@ export function AddReposDialog() {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="flex max-h-[80vh] max-w-xl flex-col gap-0 overflow-hidden border-hairline bg-iron-850 p-0 sm:max-w-xl">
+      <DialogContent className="flex max-h-[85vh] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden border-hairline bg-iron-850 p-0 sm:max-w-xl">
         <div className="h-px w-full bg-gradient-to-r from-ember via-ember-deep to-transparent" />
-        <DialogHeader className="space-y-1 px-6 pb-4 pt-5 text-left">
+        <DialogHeader className="space-y-1 px-5 pb-4 pt-5 text-left sm:px-6">
           <DialogTitle className="text-[17px] font-bold tracking-tight">Add repos</DialogTitle>
           <DialogDescription className="text-[13px] text-txt-dim">
             Only the repos you add here can be targeted by a job.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 border-t border-hairline px-6 py-4">
+        <div className="space-y-3 border-t border-hairline px-5 py-4 sm:px-6">
           <div className="flex items-center gap-2 font-mono text-[11px] text-txt-faint">
             <FolderSearch className="size-3.5" />
             scanning {roots?.map(tilde).join(', ') ?? '…'}
           </div>
-          <div className="flex items-center gap-3">
-            <Input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter by name…"
-              className="h-9 border-iron-700 bg-iron-900 font-mono text-[13px] placeholder:text-txt-faint focus-visible:ring-ember-deep"
-            />
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter by name…"
+            className="h-9 border-iron-700 bg-iron-900 font-mono text-[13px] placeholder:text-txt-faint focus-visible:ring-ember-deep"
+          />
+          <div className="flex items-center justify-between font-mono text-[11px]">
+            <span className="text-txt-faint">{picked.size} selected</span>
             <button
               type="button"
               disabled={selectable.length === 0}
@@ -108,9 +109,9 @@ export function AddReposDialog() {
                   return next
                 })
               }
-              className="shrink-0 font-mono text-[11px] text-txt-dim transition-colors hover:text-ember disabled:opacity-40"
+              className="text-txt-dim transition-colors hover:text-ember disabled:opacity-40"
             >
-              {allPicked ? 'clear' : `all ${selectable.length}`}
+              {allPicked ? 'clear' : `select all ${selectable.length}`}
             </button>
           </div>
         </div>
@@ -118,7 +119,7 @@ export function AddReposDialog() {
         <div className="min-h-0 flex-1 overflow-y-auto border-t border-hairline">
           {isFetching && !discovered
             ? Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="border-b border-hairline px-6 py-3">
+                <div key={i} className="border-b border-hairline px-5 py-3 sm:px-6">
                   <Skeleton className="h-6 w-full bg-iron-800" />
                 </div>
               ))
@@ -128,7 +129,7 @@ export function AddReposDialog() {
                   <label
                     key={repo.path}
                     className={cn(
-                      'flex items-center gap-3 border-b border-hairline px-6 py-3 transition-colors',
+                      'flex items-center gap-3 border-b border-hairline px-5 py-3 transition-colors sm:px-6',
                       repo.tracked ? 'cursor-default opacity-50' : 'cursor-pointer hover:bg-iron-800/60',
                     )}
                   >
@@ -154,8 +155,7 @@ export function AddReposDialog() {
           )}
         </div>
 
-        <DialogFooter className="gap-2 border-t border-hairline bg-iron-900/60 px-6 py-4">
-          <span className="mr-auto font-mono text-[11px] text-txt-faint">{picked.size} selected</span>
+        <DialogFooter className="gap-2 border-t border-hairline bg-iron-900/60 px-5 py-4 sm:px-6">
           <Button variant="ghost" onClick={() => setOpen(false)} className="h-9 text-[13px] text-txt-dim hover:text-txt">
             Cancel
           </Button>

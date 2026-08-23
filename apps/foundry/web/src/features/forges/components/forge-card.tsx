@@ -4,12 +4,12 @@ import type { Forge } from '../types'
 
 export function ForgeCard({ forge, currentTask }: { forge: Forge; currentTask?: string }) {
   return (
-    <div className="bg-iron-900 p-5">
-      <div className="flex items-center gap-2.5">
+    <div className="bg-iron-900 p-4 sm:p-5">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <ForgeDot status={forge.status} />
         <span className="font-mono text-[14px] font-medium text-txt">{forge.name}</span>
         {forge.host && <span className="font-mono text-[11px] text-txt-faint">{forge.host}</span>}
-        <span className="ml-auto font-mono text-[11px] uppercase tracking-wider text-txt-faint">{forge.status}</span>
+        <span className="ml-auto shrink-0 font-mono text-[11px] uppercase tracking-wider text-txt-faint">{forge.status}</span>
       </div>
 
       {/* Runtime facts are adapter-scoped, so they are rendered as-is rather than
