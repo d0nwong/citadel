@@ -1,0 +1,231 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── Foundry: heat-control-panel palette ───────────────────────────────
+   Iron body, molten accent. Dark-only by design — this is a control
+   surface, not a content site. */
+:root {
+  --iron-950: #08080a;
+  --iron-900: #0b0b0d;
+  --iron-850: #0f0f12;
+  --iron-800: #141418;
+  --iron-750: #1a1a1f;
+  --iron-700: #232329;
+  --hairline: #212127;
+  --hairline-soft: #17171b;
+
+  --ember: #ff5c1a;
+  --ember-soft: #ff8a4c;
+  --ember-deep: #c23e0c;
+  --quench: #3fb68b;
+  --crack: #e5484d;
+  --steel: #7e93a8;
+  --slag: #f2b705;
+
+  --txt: #eceae7;
+  --txt-dim: #9a958e;
+  --txt-faint: #66625c;
+
+  --radius: 0.375rem;
+
+  /* shadcn surface tokens */
+  --background: var(--iron-900);
+  --foreground: var(--txt);
+  --card: var(--iron-850);
+  --card-foreground: var(--txt);
+  --popover: var(--iron-800);
+  --popover-foreground: var(--txt);
+  --primary: var(--ember);
+  --primary-foreground: #1a0a02;
+  --secondary: var(--iron-750);
+  --secondary-foreground: var(--txt);
+  --muted: var(--iron-800);
+  --muted-foreground: var(--txt-dim);
+  --accent: var(--iron-750);
+  --accent-foreground: var(--txt);
+  --destructive: var(--crack);
+  --destructive-foreground: #fff;
+  --border: var(--hairline);
+  --input: var(--iron-700);
+  --ring: var(--ember-deep);
+}
+
+@theme inline {
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-iron-950: var(--iron-950);
+  --color-iron-900: var(--iron-900);
+  --color-iron-850: var(--iron-850);
+  --color-iron-800: var(--iron-800);
+  --color-iron-750: var(--iron-750);
+  --color-iron-700: var(--iron-700);
+  --color-hairline: var(--hairline);
+  --color-hairline-soft: var(--hairline-soft);
+  --color-ember: var(--ember);
+  --color-ember-soft: var(--ember-soft);
+  --color-ember-deep: var(--ember-deep);
+  --color-quench: var(--quench);
+  --color-crack: var(--crack);
+  --color-steel: var(--steel);
+  --color-slag: var(--slag);
+  --color-txt: var(--txt);
+  --color-txt-dim: var(--txt-dim);
+  --color-txt-faint: var(--txt-faint);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html,
+  body,
+  #app {
+    min-height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--iron-900);
+    color: var(--txt);
+    font-family: var(--font-sans);
+    font-feature-settings: 'ss01', 'cv01';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* Forge glow bleeding in from the top-left, plus a fine grain overlay.
+     Fixed + behind everything so it never scrolls or intercepts clicks. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(900px 460px at 6% -8%, rgba(255, 92, 26, 0.14), transparent 62%),
+      radial-gradient(700px 420px at 96% 4%, rgba(126, 147, 168, 0.07), transparent 60%);
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+  }
+  ::selection {
+    background: rgba(255, 92, 26, 0.28);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--iron-700);
+    border: 3px solid var(--iron-900);
+    border-radius: 99px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #33333b;
+  }
+}
+
+@layer components {
+  /* Machine-stamped section labels */
+  .kicker {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--txt-faint);
+  }
+  /* Hairline grid behind the ledger — reads as engineering paper */
+  .grid-field {
+    background-image:
+      linear-gradient(to right, var(--hairline-soft) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--hairline-soft) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+  /* The heat rule: a molten hairline under the masthead */
+  .heat-rule {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      var(--ember) 0%,
+      rgba(255, 92, 26, 0.35) 18%,
+      var(--hairline) 46%,
+      var(--hairline) 100%
+    );
+  }
+}
+
+@keyframes ember-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(255, 92, 26, 0.55);
+  }
+  50% {
+    opacity: 0.72;
+    box-shadow: 0 0 0 4px rgba(255, 92, 26, 0);
+  }
+}
+@keyframes heat-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-ember-pulse {
+  animation: ember-pulse 1.9s ease-in-out infinite;
+}
+.animate-heat-sweep {
+  animation: heat-sweep 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.animate-rise-in {
+  animation: rise-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
