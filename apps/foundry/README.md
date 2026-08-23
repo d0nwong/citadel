@@ -104,17 +104,31 @@ printed by `bun run infra:url`. The app's tables live in the `foundry` schema, n
 
 ## Web UI
 
-`web/` holds a TanStack Start + shadcn frontend for this CLI — a job ledger and a
-"forge a job" flow. It runs on bun. Jobs and imported repos are real and persist in
-Postgres; forges are still mocked, and nothing executes a job yet.
+`web/` holds a TanStack Start + shadcn frontend — a job ledger and a "forge a job"
+flow, running on bun. **Igniting a job actually runs it**: the web server clones the
+repo to `~/.foundry/jobs/<id>/`, runs Claude Code in an ephemeral forge container
+against that clone, then commits, pushes and opens a PR (`gh` for GitHub origins,
+`bb` for Bitbucket) with your host credentials. Logs stream into the job detail
+sheet as the agent works.
 
 ```sh
 (cd web && bun install)
+foundry auth           # once — the forge container needs a Claude credential
 bun run db:migrate     # once, after infra:up
 bun run web:dev        # http://localhost:3777
 ```
 
-See `web/README.md` for the seam where the real orchestrator gets wired in.
+Two things worth knowing:
+
+- The dev server listens on `0.0.0.0` (not just loopback) so job containers can call
+  back via `host.docker.internal`. That makes it reachable from your LAN; the
+  callback endpoint is authenticated with a per-job token.
+- The forge container gets **no** GitHub/Bitbucket credentials and no database access
+  — it can only edit its own workspace and report progress. Push and PR happen on
+  the host afterwards. This is a narrower grant than `foundry new --github`.
+
+Job workspaces accumulate under `~/.foundry/jobs/`; `foundry jobs prune [--days 7]`
+clears old ones. See `web/README.md` for the full pipeline.
 
 ### Reaching it from your other devices
 

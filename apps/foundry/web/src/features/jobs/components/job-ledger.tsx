@@ -10,6 +10,7 @@ import { jobQueries } from '../queries'
 import { duration, relative } from '@/shared/lib/format'
 import { repoLabel } from '@/features/repos/types'
 import { cn } from '@/shared/lib/utils'
+import { shortId } from '../types'
 import type { Job, JobStatus } from '../types'
 
 const FILTERS = [
@@ -52,7 +53,7 @@ function JobRow({ job, onOpen, index }: { job: Job; onOpen: () => void; index: n
 
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13.5px] font-medium text-txt">{job.task}</span>
-          <span className="mt-0.5 hidden font-mono text-[11px] text-txt-faint lg:block">{job.id}</span>
+          <span className="mt-0.5 hidden font-mono text-[11px] text-txt-faint lg:block">{shortId(job.id)}</span>
         </span>
       </span>
 
@@ -120,7 +121,7 @@ export function JobLedger() {
         }
       >
         <span className="font-mono text-[11px] text-txt-faint">
-          {active > 0 ? <span className="text-ember">{active} forging</span> : <span>all forges cool</span>}
+          {active > 0 ? <span className="text-slag">{active} forging</span> : <span>all forges cool</span>}
           <span className="mx-2 text-hairline">│</span>
           {counts.all} total
         </span>

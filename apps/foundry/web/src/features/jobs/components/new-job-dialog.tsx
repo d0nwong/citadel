@@ -16,8 +16,6 @@ import {
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/shared/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover'
 import { Input } from '@/shared/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
-import { Switch } from '@/shared/ui/switch'
 import { Textarea } from '@/shared/ui/textarea'
 import { createJob } from '../api'
 import { jobQueries } from '../queries'
@@ -26,6 +24,7 @@ import { repoQueries } from '@/features/repos/queries'
 
 import { cn } from '@/shared/lib/utils'
 import { localRef, repoLabel } from '@/features/repos/types'
+import { shortId } from '../types'
 import type { NewJobInput } from '../types'
 import type { Repo } from '@/features/repos/types'
 
@@ -45,19 +44,14 @@ export function NewJobDialog() {
   const [repoOpen, setRepoOpen] = useState(false)
   const [repo, setRepo] = useState<Repo | null>(null)
   const [task, setTask] = useState('')
-  const [forge, setForge] = useState('auto')
   const [baseBranch, setBaseBranch] = useState('')
-  const [worktree, setWorktree] = useState(true)
 
   const { data: repos } = useQuery(repoQueries.list())
-  const { data: forges } = useQuery(forgeQueries.list())
 
   const reset = () => {
     setRepo(null)
     setTask('')
-    setForge('auto')
     setBaseBranch('')
-    setWorktree(true)
   }
 
   const mutation = useMutation({
@@ -65,13 +59,12 @@ export function NewJobDialog() {
     onSuccess: (job) => {
       qc.invalidateQueries({ queryKey: jobQueries.all })
       qc.invalidateQueries({ queryKey: forgeQueries.all })
-      toast.success(`Job ${job.id} queued`, { description: `${job.repo.name} → ${job.forge}` })
+      toast.success(`Job ${shortId(job.id)} queued`, { description: `${job.repo.name} → ${job.forge}` })
       setOpen(false)
       reset()
     },
   })
 
-  const idleForges = forges?.filter((f) => f.status !== 'stopped') ?? []
   const ready = repo !== null && task.trim().length > 3
 
   const submit = () => {
@@ -79,9 +72,10 @@ export function NewJobDialog() {
     mutation.mutate({
       task,
       repo: localRef(repo),
-      baseBranch: baseBranch.trim() || repo.branch,
-      forge: forge === 'auto' ? (idleForges.find((f) => f.status === 'idle')?.name ?? 'bellows') : forge,
-      worktree,
+      baseBranch: baseBranch.trim() || repo.defaultBranch,
+      // Jobs run in an ephemeral container per job — `forge` names the
+      // adapter, and the container itself lands on the job row (LIA-13).
+      forge: 'orbstack',
     })
   }
 
@@ -158,7 +152,7 @@ export function NewJobDialog() {
                           value={r.path}
                           onSelect={() => {
                             setRepo(r)
-                            setBaseBranch(r.branch)
+                            setBaseBranch(r.defaultBranch)
                             setRepoOpen(false)
                           }}
                           className="gap-2 font-mono text-[13px]"
@@ -191,22 +185,10 @@ export function NewJobDialog() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <FieldLabel>Forge</FieldLabel>
-              <Select value={forge} onValueChange={setForge}>
-                <SelectTrigger className="h-10 w-full border-iron-700 bg-iron-900 font-mono text-[13px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="border-hairline bg-iron-800">
-                  <SelectItem value="auto" className="font-mono text-[13px]">
-                    auto — first idle
-                  </SelectItem>
-                  {idleForges.map((f) => (
-                    <SelectItem key={f.name} value={f.name} className="font-mono text-[13px]">
-                      {f.name}
-                      <span className="ml-2 text-txt-faint">{f.runtimeSummary}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex h-10 items-center rounded-md border border-iron-700 bg-iron-900/60 px-3 font-mono text-[13px] text-txt-dim">
+                orbstack
+                <span className="ml-2 text-txt-faint">ephemeral, one per job</span>
+              </div>
             </div>
             <div>
               <FieldLabel htmlFor="base">Base branch</FieldLabel>
@@ -214,21 +196,21 @@ export function NewJobDialog() {
                 id="base"
                 value={baseBranch}
                 onChange={(e) => setBaseBranch(e.target.value)}
-                placeholder={repo?.branch ?? 'main'}
+                placeholder={repo?.defaultBranch ?? 'main'}
                 className="h-10 border-iron-700 bg-iron-900 font-mono text-[13px] placeholder:text-txt-faint focus-visible:ring-ember-deep"
               />
             </div>
           </div>
 
-          <label className="flex cursor-pointer items-center justify-between rounded-md border border-hairline bg-iron-900/60 px-3.5 py-3">
+          <div className="flex items-center justify-between rounded-md border border-hairline bg-iron-900/60 px-3.5 py-3">
             <span className="space-y-0.5">
-              <span className="block text-[13px] font-medium text-txt">Isolate in a git worktree</span>
+              <span className="block text-[13px] font-medium text-txt">Isolated workspace</span>
               <span className="block text-[11px] text-txt-faint">
-                Keeps your working tree untouched while the job runs.
+                Every job runs against its own clone — your working tree is never touched, and
+                uncommitted changes stay out of the job.
               </span>
             </span>
-            <Switch checked={worktree} onCheckedChange={setWorktree} className="data-[state=checked]:bg-ember" />
-          </label>
+          </div>
         </div>
 
         <DialogFooter className="gap-2 border-t border-hairline bg-iron-900/60 px-5 py-4 sm:px-6">

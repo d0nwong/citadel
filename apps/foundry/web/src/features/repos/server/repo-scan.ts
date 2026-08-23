@@ -77,15 +77,19 @@ export async function scanRepos(): Promise<Array<DiscoveredRepo>> {
   }
 
   const repos = await mapLimit(candidates, 12, async (dir) => {
-    const [branch, status, lastCommit] = await Promise.all([
+    const [branch, status, lastCommit, originHead] = await Promise.all([
       git(dir, ['rev-parse', '--abbrev-ref', 'HEAD']),
       git(dir, ['status', '--porcelain']),
       git(dir, ['log', '-1', '--format=%ct']),
+      // origin's default branch — what a job should base itself on unless told
+      // otherwise. Local-only, no network; unset in some clones, hence ''.
+      git(dir, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']),
     ])
     return {
       path: dir,
       name: path.basename(dir),
       branch: branch || 'HEAD',
+      defaultBranch: originHead.replace(/^origin\//, '') || 'main',
       dirty: status.length > 0,
       tracked: tracked.has(dir),
       lastCommit: lastCommit ? Number(lastCommit) * 1000 : 0,

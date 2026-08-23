@@ -7,7 +7,7 @@
  * for the extensions that infra/postgres/init/00-init.sql installs there.
  */
 import { sql } from 'drizzle-orm'
-import { bigserial, boolean, index, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { bigserial, index, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import type { RepoRef } from '../features/repos/types'
 
 export const foundry = pgSchema('foundry')
@@ -28,19 +28,15 @@ export const repos = foundry.table('repos', {
   importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
-/** Feeds job ids, so they stay short and readable rather than a uuid in the UI. */
-export const jobSeq = foundry.sequence('job_seq', { startWith: 1 })
-
 /**
  * One row per job. A job *is* the run in this domain — one job, one execution —
- * so there is no separate runs table to join through.
+ * so there is no separate runs table to join through. Ids are uuids; the UI
+ * renders the short prefix the way git renders short hashes.
  */
 export const jobs = foundry.table(
   'jobs',
   {
-    id: text('id')
-      .primaryKey()
-      .default(sql`'job_' || to_char(nextval('foundry.job_seq'), 'FM000000')`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     task: text('task').notNull(),
     /** Null once the repo is un-imported; `repo` below still says what it was. */
     repoId: uuid('repo_id').references(() => repos.id, { onDelete: 'set null' }),
@@ -50,7 +46,20 @@ export const jobs = foundry.table(
     branch: text('branch').notNull(),
     forge: text('forge').notNull(),
     status: jobStatus('status').notNull().default('queued'),
-    worktree: boolean('worktree').notNull().default(true),
+    /** Where the pipeline is: prepare | agent | commit | push | pr | done. */
+    step: text('step'),
+    /**
+     * Per-job callback secret. Handed to the job's own container as env and
+     * checked by /api/jobs/$id/events — never mapped into the Job domain type.
+     */
+    token: text('token')
+      .notNull()
+      .default(sql`encode(gen_random_bytes(24), 'hex')`),
+    /** The ephemeral container (foundry-job-*), so cancel can actually kill it. */
+    container: text('container'),
+    /** Host path of the job's clone, kept after the job for inspection. */
+    workspace: text('workspace'),
+    prUrl: text('pr_url'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
@@ -71,7 +80,7 @@ export const jobLogs = foundry.table(
   'job_logs',
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
-    jobId: text('job_id')
+    jobId: uuid('job_id')
       .notNull()
       .references(() => jobs.id, { onDelete: 'cascade' }),
     t: timestamp('t', { withTimezone: true }).notNull().defaultNow(),

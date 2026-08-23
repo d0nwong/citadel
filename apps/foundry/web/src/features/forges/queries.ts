@@ -6,12 +6,12 @@ export const forgeQueries = {
   list: () =>
     queryOptions({
       queryKey: [...forgeQueries.all],
-      queryFn: listForges,
+      queryFn: () => listForges(),
       refetchInterval: 2000,
     }),
   adapters: () =>
     queryOptions({
       queryKey: [...forgeQueries.all, 'adapters'],
-      queryFn: listAdapters,
+      queryFn: () => listAdapters(),
     }),
 }

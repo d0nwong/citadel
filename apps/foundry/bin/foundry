@@ -267,6 +267,26 @@ cmd_rm() {
   done
 }
 
+# Web-UI jobs leave their workspaces under ~/.foundry/jobs/<id>/ so a finished
+# job stays inspectable. This is the corresponding broom.
+cmd_jobs() {
+  case "${1:-}" in
+    prune)
+      shift
+      local days=7
+      [ "${1:-}" = "--days" ] && days="${2:?--days needs a number}"
+      local dir="$STATE/jobs"
+      [ -d "$dir" ] || { say "no job workspaces at $dir"; return 0; }
+      local n=0
+      while IFS= read -r d; do
+        rm -rf "$d"; n=$((n+1)); say "  ${c_dim}pruned ${d##*/}${c_0}"
+      done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d -mtime "+$days")
+      ok "$n workspace(s) older than ${days}d removed"
+      ;;
+    *) die "usage: foundry jobs prune [--days N]" ;;
+  esac
+}
+
 cmd_recreate() {
   local name="${1:?usage: foundry recreate <name>}"
   require_forge "$name"
@@ -304,6 +324,9 @@ foundry — Claude Code forges on OrbStack
     foundry run <name...|--all> -- <prompt>
                                       headless claude -p, parallel, logs to ~/.foundry/runs
     foundry logs <name>
+
+  web jobs
+    foundry jobs prune [--days N]     delete job workspaces older than N days (default 7)
 USAGE
 }
 
@@ -322,6 +345,7 @@ case "${1:-}" in
   stop)     shift; cmd_stop "$@" ;;
   rm|destroy) shift; cmd_rm "$@" ;;
   recreate) shift; cmd_recreate "$@" ;;
+  jobs)     shift; cmd_jobs "$@" ;;
   ""|-h|--help|help) usage ;;
   *) die "unknown command '$1' (foundry --help)" ;;
 esac

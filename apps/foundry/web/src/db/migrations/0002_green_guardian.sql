@@ -1,0 +1,1 @@
+ALTER TABLE "foundry"."jobs" DROP COLUMN "worktree";

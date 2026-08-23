@@ -1,0 +1,457 @@
+/**
+ * Node-only. The orchestrator: everything between "row inserted" and "row
+ * settled" that runs on the HOST.
+ *
+ * The split, deliberately: the host clones, brands the branch, launches the
+ * container, and afterwards pushes and opens the PR with the user's own
+ * credentials (`bb`/`gh` live here, and only here). The container gets the
+ * workspace, a Claude credential and a per-job callback token — nothing else.
+ * It reports progress to /api/jobs/$id/events; only this process touches
+ * Postgres.
+ */
+import { execFile, spawn } from 'node:child_process'
+import { mkdir, readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import path from 'node:path'
+import { promisify } from 'node:util'
+import { createPullRequest, originHost, prCliFor } from './forge-pr'
+import * as store from './job-store'
+import type { JobRow } from './job-store'
+
+const exec = promisify(execFile)
+
+const FOUNDRY_HOME = process.env.FOUNDRY_HOME ?? path.join(homedir(), '.foundry')
+const ENV_FILE = path.join(FOUNDRY_HOME, 'env')
+const JOBS_DIR = path.join(FOUNDRY_HOME, 'jobs')
+const IMAGE = process.env.FOUNDRY_IMAGE ?? 'foundry/forge:latest'
+const CALLBACK_BASE = process.env.FOUNDRY_CALLBACK_BASE ?? 'http://host.docker.internal:3777'
+const MAX_JOBS = Number(process.env.FOUNDRY_MAX_JOBS ?? 3)
+/** Seconds the agent may run before the container's `timeout` kills it. */
+const JOB_TIMEOUT = Number(process.env.FOUNDRY_TIMEOUT ?? 1800)
+/** Where forge-run.sh lives on the host — bind-mounted, so edits need no image rebuild. */
+const RUNNER_SCRIPT = path.resolve(process.cwd(), '..', 'image', 'forge-run.sh')
+
+const containerName = (jobId: string) => `foundry-${jobId}`
+const workspaceOf = (jobId: string) => path.join(JOBS_DIR, jobId, 'work')
+
+const sys = (id: string, text: string) => store.appendLogs(id, [{ stream: 'sys', text }])
+const err = (id: string, text: string) => store.appendLogs(id, [{ stream: 'err', text }])
+
+async function git(dir: string, args: Array<string>): Promise<string> {
+  const { stdout } = await exec('git', ['-C', dir, ...args], { timeout: 60_000 })
+  return stdout.trim()
+}
+
+/**
+ * Every docker call is pinned to the OrbStack context: the user's shell context
+ * drifts (Docker Desktop grabs it), and forges are an OrbStack feature — their
+ * image, labels and host.docker.internal wiring all live there.
+ */
+const DOCKER_CONTEXT = process.env.FOUNDRY_DOCKER_CONTEXT ?? 'orbstack'
+
+async function docker(args: Array<string>, timeout = 30_000): Promise<string> {
+  const { stdout } = await exec('docker', args, {
+    timeout,
+    env: { ...process.env, DOCKER_CONTEXT },
+  })
+  return stdout.trim()
+}
+
+/** `KEY=value` lines of ~/.foundry/env — the credential `foundry auth` stores. */
+async function readFoundryEnv(): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  try {
+    for (const line of (await readFile(ENV_FILE, 'utf8')).split('\n')) {
+      const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim())
+      if (m) out[m[1]] = m[2]
+    }
+  } catch {
+    /* no file — preflight reports it */
+  }
+  return out
+}
+
+/* ------------------------------------------------------------------ */
+/* Preflight                                                          */
+/* ------------------------------------------------------------------ */
+
+/** Everything that must hold before a container is worth starting. */
+async function preflight(job: JobRow): Promise<{ credEnv: Record<string, string>; originUrl: string }> {
+  if (job.repo.kind !== 'local') throw new Error(`only local repos run today — this job targets a ${job.repo.kind} ref`)
+  const repoPath = job.repo.path
+
+  const cred = await readFoundryEnv()
+  const credEnv: Record<string, string> = {}
+  if (cred.CLAUDE_CODE_OAUTH_TOKEN) credEnv.CLAUDE_CODE_OAUTH_TOKEN = cred.CLAUDE_CODE_OAUTH_TOKEN
+  else if (cred.ANTHROPIC_API_KEY) credEnv.ANTHROPIC_API_KEY = cred.ANTHROPIC_API_KEY
+  else throw new Error('no Claude credential for the forge — run: foundry auth')
+
+  try {
+    await docker(['info', '--format', '{{.OperatingSystem}}'])
+  } catch {
+    throw new Error('docker daemon unreachable — is OrbStack running? (docker context use orbstack)')
+  }
+  try {
+    await docker(['image', 'inspect', IMAGE, '--format', '{{.Id}}'])
+  } catch {
+    throw new Error(`image ${IMAGE} not built — run: foundry build`)
+  }
+
+  try {
+    await git(repoPath, ['rev-parse', '--git-dir'])
+  } catch {
+    throw new Error(`${repoPath} is not a git repository`)
+  }
+  let originUrl: string
+  try {
+    originUrl = await git(repoPath, ['remote', 'get-url', 'origin'])
+  } catch {
+    throw new Error(`${repoPath} has no 'origin' remote — nowhere to push`)
+  }
+  try {
+    await git(repoPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${job.baseBranch}`])
+  } catch {
+    throw new Error(`base branch '${job.baseBranch}' does not exist in ${repoPath}`)
+  }
+
+  // The PR CLI check is a preflight concern only for hosts we *can* serve:
+  // an exotic origin still gets its branch pushed, just no PR.
+  const cli = prCliFor(originHost(originUrl))
+  if (cli !== null) {
+    try {
+      await exec(cli, ['--version'], { timeout: 15_000 })
+    } catch {
+      throw new Error(`'${cli}' CLI not found on PATH — needed to open PRs on ${originHost(originUrl)}`)
+    }
+  }
+
+  return { credEnv, originUrl }
+}
+
+/* ------------------------------------------------------------------ */
+/* Workspace                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A per-job clone, not a `git worktree`: a worktree's `.git` is a pointer into
+ * the parent repo, which does not resolve inside the container without also
+ * mounting the user's real checkout into the sandbox. A local clone hardlinks
+ * objects (cheap) and its `.git` is self-contained. Uncommitted changes in the
+ * user's checkout are deliberately excluded.
+ */
+async function prepareWorkspace(job: JobRow, originUrl: string): Promise<{ branch: string }> {
+  const repoPath = job.repo.kind === 'local' ? job.repo.path : ''
+  const work = workspaceOf(job.id)
+  await mkdir(path.dirname(work), { recursive: true })
+
+  await exec('git', ['clone', '--branch', job.baseBranch, repoPath, work], { timeout: 300_000 })
+  await git(work, ['remote', 'set-url', 'origin', originUrl])
+
+  // Branch from origin's tip of the base, not the local checkout's — the local
+  // ref may be behind, and the PR diff should be against what the forge has.
+  let startPoint = 'HEAD'
+  try {
+    await git(work, ['fetch', 'origin', job.baseBranch])
+    startPoint = 'FETCH_HEAD'
+  } catch {
+    await sys(job.id, `base '${job.baseBranch}' not on origin — branching from the local checkout`)
+  }
+
+  // branchSlug isn't collision-checked at insert time; resolve here against
+  // the remote so `push -u` cannot land on someone's existing branch.
+  let branch = job.branch
+  try {
+    let n = 2
+    while ((await git(work, ['ls-remote', '--heads', 'origin', branch])) !== '') {
+      if (n > 20) throw new Error(`cannot find a free branch name near ${job.branch}`)
+      branch = `${job.branch}-${n}`
+      n++
+    }
+  } catch (e) {
+    // ls-remote failing (offline?) is not fatal — push will surface it.
+    if (e instanceof Error && e.message.includes('free branch name')) throw e
+  }
+  if (branch !== job.branch) await store.patchJob(job.id, { branch })
+
+  await git(work, ['checkout', '-B', branch, startPoint])
+  return { branch }
+}
+
+/* ------------------------------------------------------------------ */
+/* Container                                                          */
+/* ------------------------------------------------------------------ */
+
+async function hostGitIdentity(): Promise<Record<string, string>> {
+  const get = async (k: string) => {
+    try {
+      return (await exec('git', ['config', '--global', k])).stdout.trim()
+    } catch {
+      return ''
+    }
+  }
+  return {
+    GIT_AUTHOR_NAME: (await get('user.name')) || 'foundry',
+    GIT_AUTHOR_EMAIL: (await get('user.email')) || 'foundry@localhost',
+  }
+}
+
+async function launch(job: JobRow, credEnv: Record<string, string>): Promise<void> {
+  const name = containerName(job.id)
+  const env: Record<string, string> = {
+    ...credEnv,
+    ...(await hostGitIdentity()),
+    FOUNDRY_JOB_ID: job.id,
+    FOUNDRY_CALLBACK: CALLBACK_BASE,
+    FOUNDRY_TOKEN: job.token,
+    FOUNDRY_TASK: job.task,
+    FOUNDRY_TIMEOUT: String(JOB_TIMEOUT),
+  }
+  const args = [
+    'run',
+    '-d',
+    '--name',
+    name,
+    '--label',
+    `foundry.job=${job.id}`,
+    '-v',
+    `${workspaceOf(job.id)}:/work`,
+    '-v',
+    `${RUNNER_SCRIPT}:/usr/local/bin/forge-run:ro`,
+    ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
+    IMAGE,
+    'forge-run',
+  ]
+  await docker(args, 60_000)
+}
+
+/**
+ * `docker wait` as a safety net: if the container exits without ever reporting
+ * its commit step — runner crash, curl failure, kill — nothing else would move
+ * the row, and it would sit at `running` forever.
+ */
+function armWatcher(jobId: string): void {
+  const name = containerName(jobId)
+  const child = spawn('docker', ['wait', name], {
+    stdio: ['ignore', 'pipe', 'ignore'],
+    env: { ...process.env, DOCKER_CONTEXT },
+  })
+  let out = ''
+  child.stdout.on('data', (d: Buffer) => (out += d.toString()))
+  child.on('close', () => {
+    void (async () => {
+      const row = await store.getJobRow(jobId)
+      if (!row) return
+      // Once the commit callback lands, step moves to push/pr/done *before*
+      // the container exits (the runner's curl completes first) — so a still-
+      // 'agent' step here means it died mid-flight.
+      const settledByHost = row.step === 'push' || row.step === 'pr' || row.step === 'done'
+      if (settledByHost || (row.status !== 'running' && row.status !== 'queued')) return
+      const code = out.trim() || '?'
+      const wasSettled = await store.settleJob(jobId, { status: 'failed' })
+      if (wasSettled) await err(jobId, `container exited unexpectedly (exit ${code}) — job failed`)
+      await removeContainer(jobId)
+      void pumpQueue()
+    })()
+  })
+  child.unref()
+}
+
+async function removeContainer(jobId: string): Promise<void> {
+  try {
+    await docker(['rm', '-f', containerName(jobId)])
+  } catch {
+    /* already gone */
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Lifecycle                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Take a queued job all the way to a running container. Failures before the
+ * container exists settle the row directly — never launch a forge that cannot
+ * finish. Called fire-and-forget from createJob and from the queue pump.
+ */
+export async function startJob(id: string): Promise<void> {
+  await ensureReconciled()
+
+  const job = await store.getJobRow(id)
+  if (!job || job.status !== 'queued') return
+
+  // Concurrency cap: leave it queued; every settle pumps the queue.
+  const running = await store.countRunning()
+  if (running >= MAX_JOBS) {
+    await sys(id, `waiting — ${running} job(s) already running (cap ${MAX_JOBS})`)
+    return
+  }
+
+  if (!(await store.claimJob(id))) return
+
+  try {
+    const { credEnv, originUrl } = await preflight(job)
+    await sys(id, 'preflight ok — preparing workspace')
+
+    const work = workspaceOf(id)
+    await store.patchJob(id, { workspace: work, container: containerName(id) })
+    const { branch } = await prepareWorkspace(job, originUrl)
+    await sys(id, `cloned ${job.repo.name} @ ${job.baseBranch} → ${branch}`)
+
+    await store.patchJob(id, { step: 'agent' })
+    await launch({ ...job, branch }, credEnv)
+    armWatcher(id)
+    await sys(id, `forge lit — ${containerName(id)}`)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    await store.settleJob(id, { status: 'failed' })
+    await err(id, msg)
+    await removeContainer(id)
+    void pumpQueue()
+  }
+}
+
+/**
+ * The host's half of the pipeline, once the container reports its commit step.
+ * Push with the user's own git credentials, open the PR with the right CLI,
+ * measure the diff, settle.
+ */
+export async function finishJob(id: string, outcome: 'committed' | 'no-changes', exitCode: number): Promise<void> {
+  const job = await store.getJobRow(id)
+  if (!job) return
+  await removeContainer(id)
+
+  const agentFailed = exitCode !== 0
+  const work = job.workspace ?? workspaceOf(id)
+
+  if (outcome === 'no-changes') {
+    await sys(id, agentFailed ? `agent exited ${exitCode} with no changes` : 'agent made no changes — nothing to push')
+    await store.settleJob(id, { status: agentFailed ? 'failed' : 'succeeded', exitCode })
+    void pumpQueue()
+    return
+  }
+
+  try {
+    await store.patchJob(id, { step: 'push' })
+    await sys(id, `pushing ${job.branch}`)
+    await exec('git', ['-C', work, 'push', '-u', 'origin', job.branch], { timeout: 120_000 })
+
+    const diff = await diffStats(work, job.baseBranch)
+
+    await store.patchJob(id, { step: 'pr' })
+    const originUrl = await git(work, ['remote', 'get-url', 'origin'])
+    const pr = await createPullRequest(originUrl, {
+      workspace: work,
+      branch: job.branch,
+      baseBranch: job.baseBranch,
+      title: job.task,
+      body: `Created by foundry ${job.id}.\n\nTask:\n${job.task}`,
+    })
+    if (pr.url !== null) await sys(id, `PR opened: ${pr.url}`)
+    else await err(id, pr.reason)
+
+    // An agent that errored still gets its work pushed, but the job is failed:
+    // the outcome should not read clean when the run wasn't.
+    await store.settleJob(id, {
+      status: agentFailed ? 'failed' : 'succeeded',
+      exitCode,
+      diff,
+      prUrl: pr.url ?? undefined,
+    })
+    await sys(id, 'job settled')
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    await store.settleJob(id, { status: 'failed', exitCode })
+    await err(id, `push failed: ${msg} — the commit is intact in ${work}`)
+  }
+  void pumpQueue()
+}
+
+async function diffStats(work: string, baseBranch: string): Promise<{ files: number; additions: number; deletions: number }> {
+  let baseRef = `origin/${baseBranch}`
+  try {
+    await git(work, ['rev-parse', '--verify', '--quiet', baseRef])
+  } catch {
+    baseRef = baseBranch
+  }
+  const numstat = await git(work, ['diff', '--numstat', `${baseRef}...HEAD`])
+  let files = 0
+  let additions = 0
+  let deletions = 0
+  for (const line of numstat.split('\n')) {
+    const m = /^(\d+|-)\t(\d+|-)\t/.exec(line)
+    if (!m) continue
+    files++
+    if (m[1] !== '-') additions += Number(m[1])
+    if (m[2] !== '-') deletions += Number(m[2])
+  }
+  return { files, additions, deletions }
+}
+
+/**
+ * Settle first, kill second. The moment the container dies, its `docker wait`
+ * watcher fires — and if the row still reads running at that point, the
+ * watcher's `failed` wins the guarded transition instead of this cancel.
+ */
+export async function cancelJob(id: string): Promise<void> {
+  await store.cancelJob(id)
+  await removeContainer(id)
+  void pumpQueue()
+}
+
+/* ------------------------------------------------------------------ */
+/* Reconcile + queue                                                  */
+/* ------------------------------------------------------------------ */
+
+let reconciled: Promise<void> | undefined
+
+/**
+ * Once per server process (vite restarts included). Three cases per running
+ * job: the container is still alive — re-arm its watcher and leave it be (the
+ * callback route is stateless, so it is healthy); the job is at push/pr — the
+ * container is *supposed* to be gone there and the interrupted host-side
+ * finish is resumable from the workspace, so resume it; anything else with no
+ * container is genuinely orphaned and fails.
+ */
+export function ensureReconciled(): Promise<void> {
+  reconciled ??= (async () => {
+    const open = await store.listOpenJobs()
+    for (const job of open) {
+      if (job.status !== 'running') continue
+      let state = ''
+      try {
+        state = await docker(['inspect', '--format', '{{.State.Status}}', containerName(job.id)])
+      } catch {
+        /* container gone */
+      }
+      if (state === 'running' || state === 'created') {
+        armWatcher(job.id)
+      } else if (job.step === 'push' || job.step === 'pr') {
+        // Push is idempotent and the commit sits in the workspace — pick the
+        // finish back up rather than failing work that is already done.
+        await sys(job.id, `resuming ${job.step} after a server restart`)
+        void finishJob(job.id, 'committed', job.exitCode ?? 0)
+      } else {
+        const settled = await store.settleJob(job.id, { status: 'failed' })
+        if (settled) await err(job.id, `orphaned mid-${job.step ?? 'run'} by a server restart — job failed`)
+        await removeContainer(job.id)
+      }
+    }
+    void pumpQueue()
+  })().catch(() => {
+    // Postgres not up yet, most likely. Try again on the next entry point.
+    reconciled = undefined
+  })
+  return reconciled
+}
+
+/** Start the oldest queued job when a slot frees up. */
+async function pumpQueue(): Promise<void> {
+  try {
+    const running = await store.countRunning()
+    if (running >= MAX_JOBS) return
+    const next = (await store.listOpenJobs()).find((j) => j.status === 'queued')
+    if (next) void startJob(next.id)
+  } catch {
+    /* next settle will pump again */
+  }
+}
