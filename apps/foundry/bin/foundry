@@ -1,0 +1,327 @@
+#!/usr/bin/env bash
+# foundry — orchestration layer for Claude Code forges on OrbStack.
+set -euo pipefail
+
+IMAGE="${FOUNDRY_IMAGE:-foundry/forge:latest}"
+STATE="${FOUNDRY_HOME:-$HOME/.foundry}"
+ENVFILE="$STATE/env"
+RUNS="$STATE/runs"
+LABEL="foundry.forge"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+c_dim=$'\033[2m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_yel=$'\033[33m'; c_bld=$'\033[1m'; c_0=$'\033[0m'
+say()  { printf '%s\n' "$*" >&2; }
+info() { printf '%s==>%s %s\n' "$c_bld" "$c_0" "$*" >&2; }
+ok()   { printf '%s ok %s %s\n' "$c_grn" "$c_0" "$*" >&2; }
+warn() { printf '%s warn%s %s\n' "$c_yel" "$c_0" "$*" >&2; }
+die()  { printf '%sfoundry:%s %s\n' "$c_red" "$c_0" "$*" >&2; exit 1; }
+
+need() { command -v "$1" >/dev/null 2>&1 || die "'$1' not found on PATH"; }
+cname() { echo "foundry-$1"; }
+
+require_orbstack() {
+  need docker
+  docker info >/dev/null 2>&1 || die "docker daemon unreachable — is OrbStack running?"
+  docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi orbstack \
+    || warn "active docker context is not OrbStack (\`docker context use orbstack\`)"
+}
+
+exists() { docker container inspect "$(cname "$1")" >/dev/null 2>&1; }
+running() { [ "$(docker container inspect -f '{{.State.Running}}' "$(cname "$1")" 2>/dev/null || echo false)" = true ]; }
+require_forge() { exists "$1" || die "no forge named '$1' (see: foundry ls)"; }
+ensure_up() { running "$1" || { info "starting $1"; docker start "$(cname "$1")" >/dev/null; }; }
+
+load_env() {
+  CRED_ARGS=()
+  [ -f "$ENVFILE" ] || return 0
+  # shellcheck disable=SC1090
+  set -a; . "$ENVFILE"; set +a
+  [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && CRED_ARGS+=(-e "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
+  [ -n "${ANTHROPIC_API_KEY:-}"        ] && CRED_ARGS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
+  return 0
+}
+
+# ---------------------------------------------------------------- commands
+
+cmd_doctor() {
+  local fail=0
+  command -v docker >/dev/null 2>&1 && ok "docker cli: $(command -v docker)" || { say "  no docker cli"; fail=1; }
+  if docker info >/dev/null 2>&1; then
+    ok "docker daemon: $(docker info --format '{{.OperatingSystem}} {{.ServerVersion}} {{.Architecture}}')"
+  else say "  docker daemon unreachable — start OrbStack"; fail=1; fi
+  command -v orb >/dev/null 2>&1 && ok "orbstack: $(orb version 2>/dev/null | head -1)" || warn "orb cli not found"
+  if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    ok "image $IMAGE ($(docker image inspect -f '{{.Size}}' "$IMAGE" | awk '{printf "%.1f GB", $1/1e9}'))"
+  else warn "image $IMAGE not built yet — run: foundry build"; fi
+  if [ -f "$ENVFILE" ]; then
+    load_env
+    if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then ok "auth: CLAUDE_CODE_OAUTH_TOKEN in $ENVFILE"
+    elif [ -n "${ANTHROPIC_API_KEY:-}" ];   then ok "auth: ANTHROPIC_API_KEY in $ENVFILE"
+    else warn "$ENVFILE has no credential — run: foundry auth"; fi
+  else warn "no $ENVFILE — run: foundry auth"; fi
+  command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1 \
+    && ok "gh authed (available to forges created with --github)" || warn "gh not authed on host"
+  local n; n=$(docker ps -aq --filter "label=$LABEL" | wc -l | tr -d ' ')
+  ok "$n forge(s) defined"
+  return $fail
+}
+
+cmd_auth() {
+  mkdir -p "$STATE"; touch "$ENVFILE"; chmod 600 "$ENVFILE"
+  if [ "${1:-}" = "--api-key" ]; then
+    local key; read -rsp "ANTHROPIC_API_KEY: " key; echo >&2
+    [ -n "$key" ] || die "empty key"
+    write_env ANTHROPIC_API_KEY "$key"; ok "stored ANTHROPIC_API_KEY in $ENVFILE"; return
+  fi
+  need claude
+  info "running 'claude setup-token' — approve in the browser, then paste the token back here"
+  say "${c_dim}(your Mac keychain credential can't be read from Linux, so forges need a long-lived token)${c_0}"
+  local tok
+  if tok=$(claude setup-token 2>/dev/null | grep -oE 'sk-ant-oat[0-9A-Za-z_-]+' | tail -1) && [ -n "$tok" ]; then
+    :
+  else
+    read -rsp "paste token (sk-ant-oat...): " tok; echo >&2
+  fi
+  [ -n "$tok" ] || die "no token captured"
+  write_env CLAUDE_CODE_OAUTH_TOKEN "$tok"
+  ok "stored CLAUDE_CODE_OAUTH_TOKEN in $ENVFILE (chmod 600)"
+  say "${c_dim}existing forges need 'foundry recreate <name>' to pick it up${c_0}"
+}
+
+write_env() {
+  local k="$1" v="$2" tmp; tmp=$(mktemp)
+  [ -f "$ENVFILE" ] && grep -v "^$k=" "$ENVFILE" > "$tmp" || true
+  printf '%s=%s\n' "$k" "$v" >> "$tmp"
+  mv "$tmp" "$ENVFILE"; chmod 600 "$ENVFILE"
+}
+
+cmd_build() {
+  require_orbstack
+  info "building $IMAGE"
+  docker build "$@" -t "$IMAGE" "$ROOT/image"
+  ok "built $IMAGE"
+}
+
+cmd_new() {
+  require_orbstack
+  local name="" mount="" repo="" cpus="" mem="" image="$IMAGE" github=0
+  local -a extra_env=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --mount)  mount="$2"; shift 2 ;;
+      --repo)   repo="$2";  shift 2 ;;
+      --cpus)   cpus="$2";  shift 2 ;;
+      --memory) mem="$2";   shift 2 ;;
+      --image)  image="$2"; shift 2 ;;
+      --github) github=1;   shift ;;
+      -e)       extra_env+=(-e "$2"); shift 2 ;;
+      -*)       die "unknown flag: $1" ;;
+      *)        [ -z "$name" ] && name="$1" || die "unexpected arg: $1"; shift ;;
+    esac
+  done
+  [ -n "$name" ] || die "usage: foundry new <name> [--mount DIR | --repo URL] [--github]"
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "name must be lowercase alphanumeric/dashes"
+  exists "$name" && die "forge '$name' already exists"
+  docker image inspect "$image" >/dev/null 2>&1 || die "image $image missing — run: foundry build"
+
+  load_env
+  [ ${#CRED_ARGS[@]} -gt 0 ] || warn "no credential configured — claude cannot log in (foundry auth)"
+
+  local -a args=(
+    -d --name "$(cname "$name")"
+    --label "$LABEL=1" --label "foundry.name=$name"
+    --label "dev.orbstack.domains=$name.foundry.local"
+    --hostname "$name"
+    -v "foundry-$name-claude:/home/dev/.claude"
+    -v "foundry-$name-cfg:/home/dev/.config"
+    -e "FOUNDRY_FORGE=$name"
+    -e "GIT_AUTHOR_NAME=$(git config --global user.name || echo dev)"
+    -e "GIT_AUTHOR_EMAIL=$(git config --global user.email || echo dev@localhost)"
+  )
+  [ -n "$cpus" ] && args+=(--cpus "$cpus")
+  [ -n "$mem" ]  && args+=(--memory "$mem")
+  [ ${#CRED_ARGS[@]} -gt 0 ] && args+=("${CRED_ARGS[@]}")
+  [ ${#extra_env[@]} -gt 0 ] && args+=("${extra_env[@]}")
+
+  if [ "$github" = 1 ]; then
+    command -v gh >/dev/null 2>&1 || die "--github needs the gh cli on the host"
+    local ghtok; ghtok=$(gh auth token 2>/dev/null) || die "gh not authed — run: gh auth login"
+    args+=(-e "GH_TOKEN=$ghtok")
+    warn "injecting your GitHub token into forge '$name' — it can push anywhere you can"
+  fi
+
+  if [ -n "$mount" ]; then
+    mount="$(cd "$mount" && pwd)" || die "no such directory: $mount"
+    args+=(-v "$mount:/work")
+    info "bind-mounting $mount -> /work (edits land on your Mac)"
+  else
+    args+=(-v "foundry-$name-work:/work")
+  fi
+
+  docker run "${args[@]}" "$image" sleep infinity >/dev/null
+  ok "created forge $c_bld$name$c_0  ($name.foundry.local)"
+
+  if [ -n "$repo" ]; then
+    info "cloning $repo"
+    docker exec -u dev "$(cname "$name")" bash -lc \
+      "cd /work && git clone --depth=50 '$repo' . 2>&1 | tail -2" || die "clone failed"
+  fi
+  say ""
+  say "  foundry claude $name        ${c_dim}# start Claude Code in it${c_0}"
+  say "  foundry shell $name         ${c_dim}# drop into a shell${c_0}"
+}
+
+cmd_ls() {
+  require_orbstack
+  local ids; ids=$(docker ps -aq --filter "label=$LABEL")
+  [ -n "$ids" ] || { say "no forges yet — foundry new <name>"; return 0; }
+  printf "%-16s %-10s %-24s %s\n" NAME STATE WORKSPACE UPTIME
+  # shellcheck disable=SC2086
+  docker inspect $ids --format \
+    '{{index .Config.Labels "foundry.name"}}	{{.State.Status}}	{{range .Mounts}}{{if eq .Destination "/work"}}{{.Source}}{{end}}{{end}}	{{.State.StartedAt}}' \
+  | while IFS=$'\t' read -r n st src started; do
+      case "$src" in /Users/*) ws="${src/#$HOME/~}" ;; *) ws="(volume)" ;; esac
+      [ ${#ws} -gt 24 ] && ws="…${ws: -23}"
+      [ "$st" = running ] && up="since ${started:0:16}Z" || up="-"
+      printf "%-16s %-10s %-24s %s\n" "$n" "$st" "$ws" "$up"
+    done
+}
+
+cmd_shell() {
+  local name="${1:?usage: foundry shell <name>}"; shift || true
+  require_forge "$name"; ensure_up "$name"
+  docker exec -it -u dev -w /work "$(cname "$name")" bash -l "$@"
+}
+
+cmd_exec() {
+  local name="${1:?usage: foundry exec <name> -- <cmd...>}"; shift
+  [ "${1:-}" = "--" ] && shift
+  require_forge "$name"; ensure_up "$name"
+  docker exec -u dev -w /work "$(cname "$name")" bash -lc "$*"
+}
+
+cmd_claude() {
+  local name="${1:?usage: foundry claude <name> [-- claude args]}"; shift || true
+  [ "${1:-}" = "--" ] && shift
+  require_forge "$name"; ensure_up "$name"
+  local -a flags=(--dangerously-skip-permissions)
+  if [ "${1:-}" = "--safe" ]; then flags=(); shift; fi
+  docker exec -it -u dev -w /work "$(cname "$name")" claude "${flags[@]}" "$@"
+}
+
+# Fan a single prompt across one or many forges, in parallel, logging each run.
+cmd_run() {
+  local prompt="" all=0; local -a forges=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --all) all=1; shift ;;
+      -p|--prompt) prompt="$2"; shift 2 ;;
+      --) shift; prompt="$*"; break ;;
+      -*) die "unknown flag: $1" ;;
+      *) forges+=("$1"); shift ;;
+    esac
+  done
+  [ "$all" = 1 ] && mapfile -t forges < <(docker ps -aq --filter "label=$LABEL" \
+      | xargs -r docker inspect --format '{{index .Config.Labels "foundry.name"}}')
+  [ ${#forges[@]} -gt 0 ] || die "no target forges"
+  [ -n "$prompt" ] || die "usage: foundry run <forge...> -- <prompt>"
+
+  local stamp; stamp=$(date +%Y%m%d-%H%M%S); local dir="$RUNS/$stamp"
+  mkdir -p "$dir"; printf '%s\n' "$prompt" > "$dir/prompt.txt"
+  info "dispatching to ${#forges[@]} forge(s) -> $dir"
+  local pids=()
+  for b in "${forges[@]}"; do
+    require_forge "$b"; ensure_up "$b"
+    ( docker exec -u dev -w /work "$(cname "$b")" \
+        claude --dangerously-skip-permissions -p "$prompt" > "$dir/$b.log" 2>&1
+      echo "$?" > "$dir/$b.exit" ) &
+    pids+=($!)
+    say "  ${c_dim}-> $b${c_0}"
+  done
+  wait "${pids[@]}" 2>/dev/null || true
+  say ""
+  for b in "${forges[@]}"; do
+    local code; code=$(cat "$dir/$b.exit" 2>/dev/null || echo '?')
+    [ "$code" = 0 ] && ok "$b ($(wc -l < "$dir/$b.log" | tr -d ' ') lines)" || warn "$b exit=$code"
+  done
+  say "${c_dim}logs: $dir${c_0}"
+}
+
+cmd_logs() { require_forge "${1:?usage: foundry logs <name>}"; docker logs -f "$(cname "$1")"; }
+cmd_start(){ require_forge "${1:?name}"; docker start "$(cname "$1")" >/dev/null && ok "started $1"; }
+cmd_stop() { require_forge "${1:?name}"; docker stop "$(cname "$1")" >/dev/null && ok "stopped $1"; }
+
+cmd_rm() {
+  local purge=0; local -a names=()
+  for a in "$@"; do case "$a" in --purge) purge=1 ;; --all) mapfile -t names < <(docker ps -aq --filter "label=$LABEL" | xargs -r docker inspect --format '{{index .Config.Labels "foundry.name"}}') ;; *) names+=("$a") ;; esac; done
+  [ ${#names[@]} -gt 0 ] || die "usage: foundry rm <name...> [--purge] | foundry rm --all"
+  for n in "${names[@]}"; do
+    require_forge "$n"
+    docker rm -f "$(cname "$n")" >/dev/null
+    if [ "$purge" = 1 ]; then
+      docker volume rm "foundry-$n-claude" "foundry-$n-cfg" "foundry-$n-work" >/dev/null 2>&1 || true
+      ok "removed $n (+ volumes)"
+    else
+      ok "removed $n ${c_dim}(volumes kept; --purge to delete)${c_0}"
+    fi
+  done
+}
+
+cmd_recreate() {
+  local name="${1:?usage: foundry recreate <name>}"
+  require_forge "$name"
+  local src; src=$(docker inspect "$(cname "$name")" --format '{{range .Mounts}}{{if eq .Destination "/work"}}{{if eq .Type "bind"}}{{.Source}}{{end}}{{end}}{{end}}')
+  local gh=""; docker inspect "$(cname "$name")" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^GH_TOKEN=' && gh="--github"
+  docker rm -f "$(cname "$name")" >/dev/null
+  # shellcheck disable=SC2086
+  if [ -n "$src" ]; then cmd_new "$name" --mount "$src" $gh; else cmd_new "$name" $gh; fi
+}
+
+usage() {
+cat >&2 <<'USAGE'
+foundry — Claude Code forges on OrbStack
+
+  setup
+    foundry doctor                    check OrbStack, image, credentials
+    foundry auth [--api-key]          store a credential for all forges
+    foundry build [--no-cache]        build the forge image
+
+  forges
+    foundry new <name> [opts]         create a forge
+        --mount DIR    bind-mount a host dir at /work (edits land on your Mac)
+        --repo URL     git clone into a private volume at /work
+        --github       inject your gh token (can push wherever you can)
+        --cpus N  --memory 4g  --image IMG  -e KEY=VAL
+    foundry ls                        list forges
+    foundry recreate <name>           rebuild container, keep workspace + ~/.claude
+    foundry start|stop <name>
+    foundry rm <name...> [--purge]    --purge also deletes volumes; --all for every forge
+
+  work
+    foundry claude <name> [--safe]    interactive Claude Code (skips permissions unless --safe)
+    foundry shell <name>              bash in the forge
+    foundry exec <name> -- <cmd>      one-off command
+    foundry run <name...|--all> -- <prompt>
+                                      headless claude -p, parallel, logs to ~/.foundry/runs
+    foundry logs <name>
+USAGE
+}
+
+case "${1:-}" in
+  doctor)   shift; cmd_doctor "$@" ;;
+  auth)     shift; cmd_auth "$@" ;;
+  build)    shift; cmd_build "$@" ;;
+  new|create) shift; cmd_new "$@" ;;
+  ls|list)  shift; cmd_ls "$@" ;;
+  shell|sh) shift; cmd_shell "$@" ;;
+  exec)     shift; cmd_exec "$@" ;;
+  claude|cc) shift; cmd_claude "$@" ;;
+  run)      shift; cmd_run "$@" ;;
+  logs)     shift; cmd_logs "$@" ;;
+  start)    shift; cmd_start "$@" ;;
+  stop)     shift; cmd_stop "$@" ;;
+  rm|destroy) shift; cmd_rm "$@" ;;
+  recreate) shift; cmd_recreate "$@" ;;
+  ""|-h|--help|help) usage ;;
+  *) die "unknown command '$1' (foundry --help)" ;;
+esac
