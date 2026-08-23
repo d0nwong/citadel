@@ -19,7 +19,7 @@ function AdapterSection({
 
   return (
     <section>
-      <div className="flex items-center gap-3 border-b border-hairline bg-iron-900/60 px-6 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-hairline bg-iron-900/60 px-4 py-2.5 lg:px-6">
         <span className="kicker">{adapter.label}</span>
         <span className="font-mono text-[10px] text-txt-faint">{adapter.lifecycle}</span>
         <span className="ml-auto font-mono text-[10px] text-txt-faint">
@@ -32,7 +32,7 @@ function AdapterSection({
       {/* An ephemeral adapter provisions per job, so between jobs there is
           genuinely nothing to list — show capacity instead of empty cards. */}
       {forges.length === 0 ? (
-        <p className="px-6 py-5 font-mono text-[12px] text-txt-faint">
+        <p className="px-4 py-5 font-mono text-[12px] text-txt-faint lg:px-6">
           {adapter.lifecycle === 'ephemeral'
             ? 'nothing running — forges are provisioned per job'
             : 'no forges created yet'}

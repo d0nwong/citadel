@@ -31,7 +31,7 @@ function JobRow({ job, onOpen, index }: { job: Job; onOpen: () => void; index: n
       type="button"
       onClick={onOpen}
       style={{ animationDelay: `${Math.min(index, 12) * 26}ms` }}
-      className="group animate-rise-in relative grid w-full grid-cols-[128px_minmax(0,1fr)_240px_104px_84px_100px_24px] items-center gap-4 border-b border-hairline bg-iron-900 px-6 py-3.5 text-left transition-colors hover:bg-iron-850"
+      className="group animate-rise-in relative flex w-full flex-col gap-1.5 border-b border-hairline bg-iron-900 px-4 py-3 text-left transition-colors hover:bg-iron-850 lg:grid lg:grid-cols-[128px_minmax(0,1fr)_240px_104px_84px_100px_24px] lg:items-center lg:gap-4 lg:px-6 lg:py-3.5"
     >
       <span
         className={cn(
@@ -45,27 +45,34 @@ function JobRow({ job, onOpen, index }: { job: Job; onOpen: () => void; index: n
         </span>
       )}
 
-      <JobStatusChip status={job.status} />
+      {/* Two stacked bands on a phone. At lg the wrappers become `display: contents`
+          so their children drop straight into the ledger grid — one DOM, two layouts. */}
+      <span className="flex min-w-0 items-center gap-3 lg:contents">
+        <JobStatusChip status={job.status} />
 
-      <span className="min-w-0">
-        <span className="block truncate text-[13.5px] font-medium text-txt">{job.task}</span>
-        <span className="mt-0.5 block font-mono text-[11px] text-txt-faint">{job.id}</span>
-      </span>
-
-      <span className="min-w-0 font-mono text-[12px]">
-        <span className="block truncate text-txt-dim">{repoLabel(job.repo)}</span>
-        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-txt-faint">
-          <GitBranch className="size-3" />
-          <span className="truncate">{job.branch}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13.5px] font-medium text-txt">{job.task}</span>
+          <span className="mt-0.5 hidden font-mono text-[11px] text-txt-faint lg:block">{job.id}</span>
         </span>
       </span>
 
-      <span className="font-mono text-[12px] text-txt-dim">{job.forge}</span>
-      <span className="text-right font-mono text-[12px] tabular-nums text-txt-dim">
-        {job.status === 'queued' ? '—' : duration(elapsed)}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 lg:contents">
+        <span className="w-full min-w-0 font-mono text-[12px] lg:w-auto">
+          <span className="block truncate text-txt-dim">{repoLabel(job.repo)}</span>
+          <span className="mt-0.5 flex items-center gap-1 text-[11px] text-txt-faint">
+            <GitBranch className="size-3 shrink-0" />
+            <span className="truncate">{job.branch}</span>
+          </span>
+        </span>
+
+        <span className="font-mono text-[12px] text-txt-dim">{job.forge}</span>
+        <span className="font-mono text-[12px] tabular-nums text-txt-dim lg:text-right">
+          {job.status === 'queued' ? '—' : duration(elapsed)}
+        </span>
+        <span className="font-mono text-[11px] text-txt-faint lg:text-right">{relative(job.createdAt)}</span>
       </span>
-      <span className="text-right font-mono text-[11px] text-txt-faint">{relative(job.createdAt)}</span>
-      <ChevronRight className="size-4 text-txt-faint opacity-0 transition-opacity group-hover:opacity-100" />
+
+      <ChevronRight className="hidden size-4 text-txt-faint opacity-0 transition-opacity group-hover:opacity-100 lg:block" />
     </button>
   )
 }
@@ -94,7 +101,7 @@ export function JobLedger() {
       <PageHeader
         title="Jobs"
         below={
-          <div className="flex items-center gap-1 border-b border-hairline bg-iron-900/60 px-6 py-2">
+          <div className="flex items-center gap-1 overflow-x-auto border-b border-hairline bg-iron-900/60 px-4 py-2 lg:px-6">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
@@ -123,7 +130,7 @@ export function JobLedger() {
       <div className="flex-1">
         {isLoading &&
           Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="border-b border-hairline px-6 py-4">
+            <div key={i} className="border-b border-hairline px-4 py-4 lg:px-6">
               <Skeleton className="h-9 w-full bg-iron-800" />
             </div>
           ))}
