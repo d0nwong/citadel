@@ -22,6 +22,13 @@
       "when": 1787499872180,
       "tag": "0002_green_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787500662588,
+      "tag": "0003_regular_kabuki",
+      "breakpoints": true
     }
   ]
 }

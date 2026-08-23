@@ -28,19 +28,15 @@ export const repos = foundry.table('repos', {
   importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
-/** Feeds job ids, so they stay short and readable rather than a uuid in the UI. */
-export const jobSeq = foundry.sequence('job_seq', { startWith: 1 })
-
 /**
  * One row per job. A job *is* the run in this domain — one job, one execution —
- * so there is no separate runs table to join through.
+ * so there is no separate runs table to join through. Ids are uuids; the UI
+ * renders the short prefix the way git renders short hashes.
  */
 export const jobs = foundry.table(
   'jobs',
   {
-    id: text('id')
-      .primaryKey()
-      .default(sql`'job_' || to_char(nextval('foundry.job_seq'), 'FM000000')`),
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     task: text('task').notNull(),
     /** Null once the repo is un-imported; `repo` below still says what it was. */
     repoId: uuid('repo_id').references(() => repos.id, { onDelete: 'set null' }),
@@ -84,7 +80,7 @@ export const jobLogs = foundry.table(
   'job_logs',
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
-    jobId: text('job_id')
+    jobId: uuid('job_id')
       .notNull()
       .references(() => jobs.id, { onDelete: 'cascade' }),
     t: timestamp('t', { withTimezone: true }).notNull().defaultNow(),

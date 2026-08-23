@@ -40,6 +40,9 @@ export interface JobDetail extends Job {
   logs: Array<LogLine>
 }
 
+/** Display form of a job's uuid — the short prefix, the way git shows hashes. */
+export const shortId = (id: string) => id.slice(0, 8)
+
 export interface NewJobInput {
   task: string
   repo: RepoRef

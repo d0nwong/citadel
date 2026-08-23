@@ -24,6 +24,7 @@ import { repoQueries } from '@/features/repos/queries'
 
 import { cn } from '@/shared/lib/utils'
 import { localRef, repoLabel } from '@/features/repos/types'
+import { shortId } from '../types'
 import type { NewJobInput } from '../types'
 import type { Repo } from '@/features/repos/types'
 
@@ -58,7 +59,7 @@ export function NewJobDialog() {
     onSuccess: (job) => {
       qc.invalidateQueries({ queryKey: jobQueries.all })
       qc.invalidateQueries({ queryKey: forgeQueries.all })
-      toast.success(`Job ${job.id} queued`, { description: `${job.repo.name} → ${job.forge}` })
+      toast.success(`Job ${shortId(job.id)} queued`, { description: `${job.repo.name} → ${job.forge}` })
       setOpen(false)
       reset()
     },

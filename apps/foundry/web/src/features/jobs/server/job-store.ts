@@ -18,6 +18,12 @@ const OPEN: Array<JobStatus> = ['queued', 'running']
 
 const ms = (d: Date | null) => (d === null ? undefined : d.getTime())
 
+/**
+ * Ids come in from URLs and client payloads; a malformed one must read as
+ * "no such job", not as a postgres cast error surfacing as a 500.
+ */
+const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+
 // `token` is deliberately absent: it is the callback secret, and this mapping
 // is the only door out of the server. Add a field here only if the UI may see it.
 function toJob(row: JobRow): Job {
@@ -63,6 +69,7 @@ export async function listJobs(): Promise<Array<Job>> {
 }
 
 export async function getJob(id: string): Promise<JobDetail | undefined> {
+  if (!isUuid(id)) return undefined
   const [row] = await db.select().from(jobs).where(eq(jobs.id, id))
   if (!row) return undefined
   const lines = await db.select().from(jobLogs).where(eq(jobLogs.jobId, id)).orderBy(asc(jobLogs.id))
@@ -116,6 +123,7 @@ export async function cancelJob(id: string): Promise<void> {
 
 /** Full row, token included — for the runner and callback auth only. */
 export async function getJobRow(id: string): Promise<JobRow | undefined> {
+  if (!isUuid(id)) return undefined
   const [row] = await db.select().from(jobs).where(eq(jobs.id, id))
   return row
 }

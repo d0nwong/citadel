@@ -10,6 +10,7 @@ import { forgeQueries } from '@/features/forges/queries'
 import { clockTime, duration } from '@/shared/lib/format'
 import { repoDestination, repoLabel } from '@/features/repos/types'
 import { cn } from '@/shared/lib/utils'
+import { shortId } from '../types'
 import type { LogStream } from '../types'
 
 const STREAM_TONE: Record<LogStream, string> = {
@@ -68,7 +69,7 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
                 {job.status === 'running' && job.step && (
                   <span className="font-mono text-[11px] text-txt-dim">{job.step}</span>
                 )}
-                <span className="font-mono text-[11px] text-txt-faint">{job.id}</span>
+                <span className="font-mono text-[11px] text-txt-faint" title={job.id}>{shortId(job.id)}</span>
                 <span className="ml-auto font-mono text-[11px] text-txt-dim">{duration(elapsed)}</span>
               </div>
               <SheetTitle className="text-[16px] font-semibold leading-snug tracking-tight">{job.task}</SheetTitle>
