@@ -1,0 +1,47 @@
+# Local development stack for foundry. Brought up by `bun run infra:up`.
+name: foundry
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: foundry-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-foundry}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-foundry}
+      POSTGRES_DB: ${POSTGRES_DB:-foundry}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # postgres:18 keeps PGDATA at /var/lib/postgresql/18/docker, so mount the
+      # image's own VOLUME rather than the pre-18 /var/lib/postgresql/data path.
+      - pgdata:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-foundry} -d ${POSTGRES_DB:-foundry}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    labels:
+      dev.orbstack.domains: postgres.foundry.local
+
+  # Opt-in web SQL console: `bun run infra:up -- --tools` -> http://localhost:8081
+  adminer:
+    image: adminer:5
+    container_name: foundry-adminer
+    profiles: [tools]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "${ADMINER_PORT:-8081}:8080"
+    labels:
+      dev.orbstack.domains: adminer.foundry.local
+
+volumes:
+  pgdata:
+    name: foundry-pgdata
