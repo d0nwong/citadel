@@ -9,11 +9,29 @@ bun run dev      # http://localhost:3777
 bun run build
 ```
 
-## Status: UI only
+## Status: repos are real, the rest is mocked
 
-There is no backend yet. Every screen reads from `src/mocks/foundry-store.ts`, an
-in-memory store with a 1s ticker that walks jobs `queued → running → succeeded|failed`
-so the ledger has something moving in it. A full page reload resets it to seed state.
+**Real:** repo discovery. `features/repos/server/repo-scan.ts` scans `~/git` with
+`node:fs`, reads each repo's branch, dirty state and last-commit time via `git`, and
+persists your selection to `~/.foundry/repos.json` — the same state directory the CLI
+uses. Reached through `createServerFn`, so the node-only module never enters the client
+bundle.
+
+**Still mocked:** jobs and forges, from `src/mocks/foundry-store.ts`, with a ticker that
+walks jobs `queued → running → settled`. Seeded job history therefore references
+placeholder repo paths that will not match your real ones — that resolves when jobs
+become real. Mock state resets on a full page reload; the repo selection does not,
+because it is on disk.
+
+## Adding repos
+
+A job can only target a repo you have added. **Repos → Add repos** scans the configured
+roots and lists every git checkout it finds, newest commit first; tick the ones you
+want. Already-added repos show as disabled. `SCAN_ROOTS` in `server/repo-scan.ts` is the
+list of directories scanned — one entry, `~/git`, today.
+
+This is deliberately a curated set rather than "everything on disk": the job picker
+stays short, and nothing can be targeted by accident.
 
 ## Runtime model
 
@@ -59,19 +77,21 @@ src/
     jobs/
       components/             job-ledger, new-job-dialog, job-detail-sheet, job-status-chip
       queries.ts              queryOptions — what routes and components import
-      api.ts                  data access (mock today, fetch tomorrow)
+      api.ts                  data access (mocked; repos/api.ts is already real)
       types.ts
     forges/
       components/             forge-inventory, forge-card, forge-dot
       queries.ts  api.ts  types.ts
     repos/
+      components/             repo-inventory, add-repos-dialog
+      server/repo-scan.ts     node-only: fs + git, never a component import
       queries.ts  api.ts  types.ts
   shared/
     ui/                       shadcn primitives (generated — don't hand-edit)
     components/               app-shell, page-header, foundry-mark
     lib/                      format, utils
   mocks/
-    foundry-store.ts          ← temporary; the whole directory gets deleted
+    foundry-store.ts          ← jobs + forges only; deleted once they are real
 ```
 
 Cross-feature imports go through `queries.ts` — the jobs dialog reads `forgeQueries`
@@ -91,8 +111,10 @@ deleting `src/mocks/`.
 |---|---|
 | `features/jobs/api.ts` | `GET/POST /api/jobs`, `POST /api/jobs/:id/cancel` |
 | `features/forges/api.ts` | `GET /api/forges` → `foundry ls` |
-| `features/repos/api.ts` | `GET /api/repos` → scan `~/git` for git dirs |
 | `mocks/foundry-store.ts` | delete, simulator included |
+
+`features/repos/api.ts` is already real and is the worked example of the pattern: thin
+`createServerFn` wrappers whose handlers `await import()` a node-only module.
 
 Two Start-specific rules worth keeping:
 

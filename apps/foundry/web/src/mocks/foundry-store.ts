@@ -8,19 +8,8 @@
  */
 import type { Job, LogLine, NewJobInput } from '@/features/jobs/types'
 import type { AdapterInfo, Forge } from '@/features/forges/types'
-import type { Repo } from '@/features/repos/types'
 
 const HOME = '/Users/yickkiuliamleung'
-
-export const REPOS: Array<Repo> = [
-  { path: `${HOME}/git/foundry`, name: 'foundry', branch: 'main', dirty: true },
-  { path: `${HOME}/git/binery-core`, name: 'binery-core', branch: 'develop', dirty: false },
-  { path: `${HOME}/git/binery-frontend`, name: 'binery-frontend', branch: 'main', dirty: false },
-  { path: `${HOME}/git/binery-accounting-backend`, name: 'binery-accounting-backend', branch: 'main', dirty: true },
-  { path: `${HOME}/git/binery-acs`, name: 'binery-acs', branch: 'release/2.4', dirty: false },
-  { path: `${HOME}/git/ai-workspace`, name: 'ai-workspace', branch: 'main', dirty: false },
-  { path: `${HOME}/git/alden`, name: 'alden', branch: 'main', dirty: false },
-]
 
 export const ADAPTERS: Array<AdapterInfo> = [
   { id: 'orbstack', label: 'OrbStack — local containers', lifecycle: 'pooled' },
@@ -67,7 +56,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017kq2',
     task: 'Migrate the test runner from jest to vitest and get CI green',
-    repo: { kind: 'local', name: 'binery-core', path: `${HOME}/git/binery-core` },
+    repo: { kind: 'local', name: 'atlas-api', path: `${HOME}/git/atlas-api` },
     baseBranch: 'develop',
     branch: 'foundry/vitest-migration',
     forge: 'anvil',
@@ -92,7 +81,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017kp8',
     task: 'Add rate limiting to the public webhook endpoint',
-    repo: { kind: 'local', name: 'binery-accounting-backend', path: `${HOME}/git/binery-accounting-backend` },
+    repo: { kind: 'local', name: 'ledger-service', path: `${HOME}/git/ledger-service` },
     baseBranch: 'main',
     branch: 'foundry/webhook-ratelimit',
     forge: 'crucible',
@@ -111,7 +100,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017kn1',
     task: 'Upgrade to React 19 and fix the resulting type errors',
-    repo: { kind: 'local', name: 'binery-frontend', path: `${HOME}/git/binery-frontend` },
+    repo: { kind: 'local', name: 'atlas-web', path: `${HOME}/git/atlas-web` },
     baseBranch: 'main',
     branch: 'foundry/react-19',
     forge: 'bellows',
@@ -134,7 +123,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017km4',
     task: 'Write integration tests for the subscription proration logic',
-    repo: { kind: 'local', name: 'binery-core', path: `${HOME}/git/binery-core` },
+    repo: { kind: 'local', name: 'atlas-api', path: `${HOME}/git/atlas-api` },
     baseBranch: 'develop',
     branch: 'foundry/proration-tests',
     forge: 'tongs',
@@ -157,8 +146,8 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017kl9',
     task: 'Document every public endpoint in the OpenAPI spec',
-    repo: { kind: 'local', name: 'binery-acs', path: `${HOME}/git/binery-acs` },
-    baseBranch: 'release/2.4',
+    repo: { kind: 'local', name: 'ledger-service', path: `${HOME}/git/ledger-service` },
+    baseBranch: 'main',
     branch: 'foundry/openapi-docs',
     forge: 'bellows',
     status: 'queued',
@@ -169,7 +158,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017kj2',
     task: 'Strip dead feature flags from the checkout flow',
-    repo: { kind: 'local', name: 'binery-frontend', path: `${HOME}/git/binery-frontend` },
+    repo: { kind: 'local', name: 'atlas-web', path: `${HOME}/git/atlas-web` },
     baseBranch: 'main',
     branch: 'foundry/flag-cleanup',
     forge: 'quench',
