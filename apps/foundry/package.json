@@ -1,0 +1,14 @@
+{
+  "name": "foundry",
+  "private": true,
+  "scripts": {
+    "infra:up": "./infra/infra.sh up",
+    "infra:down": "./infra/infra.sh down",
+    "infra:reset": "./infra/infra.sh reset",
+    "infra:status": "./infra/infra.sh status",
+    "infra:logs": "./infra/infra.sh logs",
+    "infra:psql": "./infra/infra.sh psql",
+    "infra:url": "./infra/infra.sh url"
+  },
+  "packageManager": "bun@1.4.0"
+}

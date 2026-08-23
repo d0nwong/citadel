@@ -1,2 +1,5 @@
 .DS_Store
 *.log
+
+# local infra settings, copied from infra/.env.example
+infra/.env

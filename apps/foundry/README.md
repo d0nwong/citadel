@@ -86,6 +86,19 @@ So `foundry rm` then `foundry new` with the same name resumes where you left off
   network with restricted DNS and pass `--network` through `foundry new`.
 - Your SSH keys are never mounted.
 
+## Local infra
+
+Postgres for the web UI's job ledger, in a container, from the repo root:
+
+```sh
+bun run infra:up       # postgres on localhost:5432, waits until it's healthy
+bun run infra:psql     # a psql shell in it
+bun run infra:down     # stop (data survives; --purge to wipe)
+```
+
+Connection string: `postgresql://foundry:foundry@localhost:5432/foundry` — also
+printed by `bun run infra:url`. See `infra/README.md` for the rest.
+
 ## Web UI
 
 `web/` holds a TanStack Start + shadcn frontend for this CLI — a job ledger and a
