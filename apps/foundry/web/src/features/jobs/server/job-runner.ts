@@ -147,6 +147,18 @@ async function prepareWorkspace(job: JobRow, originUrl: string): Promise<{ branc
   await exec('git', ['clone', '--branch', job.baseBranch, repoPath, work], { timeout: 300_000 })
   await git(work, ['remote', 'set-url', 'origin', originUrl])
 
+  // Cloning from a local checkout sets the workspace's origin/HEAD to whatever
+  // branch that checkout happened to be on — and an agent asking the repo for
+  // its default branch faithfully gets that wrong answer. (PR #11's release
+  // workflow was written to trigger on a feature branch exactly this way.)
+  // Repoint it at the source repo's real default before the agent looks.
+  const defaultBranch =
+    (await git(repoPath, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).catch(() => '')).replace(
+      /^origin\//,
+      '',
+    ) || 'main'
+  await git(work, ['remote', 'set-head', 'origin', defaultBranch]).catch(() => undefined)
+
   // Branch from origin's tip of the base, not the local checkout's — the local
   // ref may be behind, and the PR diff should be against what the forge has.
   let startPoint = 'HEAD'
