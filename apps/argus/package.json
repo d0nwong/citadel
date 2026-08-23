@@ -5,6 +5,13 @@
   "description": "Liam's personal AI Workspace",
   "type": "module",
   "scripts": {
-    "loop": "claude '/loop 30m /office-hours' --dangerously-skip-permissions"
+    "loop": "claude '/loop 30m /office-hours' --dangerously-skip-permissions",
+    "accio": "bun scripts/accio.ts"
+  },
+  "bin": {
+    "accio": "./scripts/accio.ts"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
   }
 }

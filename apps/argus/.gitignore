@@ -32,3 +32,11 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# derived API spec cache (1.7MB) — rebuild with `accio sync`.
+# The fingerprint + meta ARE tracked, so diffs survive a fresh clone.
+.state/openapi.json
+# rebuilt from the frontend repo by `accio sync`; the fingerprint above is what
+# needs to survive a fresh clone so spec diffs still work.
+.state/accio-index.json
+.state/symbols.json
