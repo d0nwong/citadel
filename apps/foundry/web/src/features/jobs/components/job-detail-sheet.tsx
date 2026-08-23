@@ -7,7 +7,8 @@ import { JobStatusChip } from './job-status-chip'
 import { cancelJob } from '../api'
 import { jobQueries } from '../queries'
 import { forgeQueries } from '@/features/forges/queries'
-import { clockTime, duration, tildePath } from '@/shared/lib/format'
+import { clockTime, duration } from '@/shared/lib/format'
+import { repoDestination, repoLabel } from '@/features/repos/types'
 import { cn } from '@/shared/lib/utils'
 import type { LogStream } from '../types'
 
@@ -72,7 +73,10 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
             </SheetHeader>
 
             <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-y border-hairline bg-iron-900/50 px-6 py-4">
-              <Meta label="Repo">{tildePath(job.repoPath)}</Meta>
+              <Meta label="Repo">
+                <span className="block truncate">{repoLabel(job.repo)}</span>
+                <span className="mt-0.5 block text-[10px] text-txt-faint">{repoDestination(job.repo)}</span>
+              </Meta>
               <Meta label="Forge">{job.forge}</Meta>
               <Meta label="Branch">
                 <span className="flex items-center gap-1.5">

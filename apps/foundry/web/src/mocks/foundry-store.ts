@@ -7,7 +7,7 @@
  * wrappers change.
  */
 import type { Job, LogLine, NewJobInput } from '@/features/jobs/types'
-import type { Forge } from '@/features/forges/types'
+import type { AdapterInfo, Forge } from '@/features/forges/types'
 import type { Repo } from '@/features/repos/types'
 
 const HOME = '/Users/yickkiuliamleung'
@@ -22,12 +22,38 @@ export const REPOS: Array<Repo> = [
   { path: `${HOME}/git/alden`, name: 'alden', branch: 'main', dirty: false },
 ]
 
+export const ADAPTERS: Array<AdapterInfo> = [
+  { id: 'orbstack', label: 'OrbStack — local containers', lifecycle: 'pooled' },
+  { id: 'remote', label: 'Remote devboxes (illustrative)', lifecycle: 'ephemeral', concurrency: 8 },
+]
+
+const orbstack = (
+  name: string,
+  status: Forge['status'],
+  cpus: number,
+  memory: string,
+  createdAt: number,
+  jobsRun: number,
+  currentJobId?: string,
+): Forge => ({
+  name,
+  adapter: 'orbstack',
+  status,
+  lifecycle: 'pooled',
+  runtime: { image: 'foundry/forge:latest', cpus: String(cpus), memory },
+  runtimeSummary: `${cpus}c/${memory}`,
+  host: `${name}.foundry.local`,
+  createdAt,
+  jobsRun,
+  currentJobId,
+})
+
 export const FORGES: Array<Forge> = [
-  { name: 'anvil', status: 'busy', image: 'foundry/forge:latest', cpus: 4, memory: '8g', createdAt: Date.now() - 864e5 * 3, jobsRun: 12, currentJobId: 'job_017kq2' },
-  { name: 'bellows', status: 'idle', image: 'foundry/forge:latest', cpus: 2, memory: '4g', createdAt: Date.now() - 864e5 * 2, jobsRun: 7 },
-  { name: 'crucible', status: 'busy', image: 'foundry/forge:latest', cpus: 6, memory: '12g', createdAt: Date.now() - 36e5 * 9, jobsRun: 3, currentJobId: 'job_017kp8' },
-  { name: 'tongs', status: 'idle', image: 'foundry/forge:latest', cpus: 2, memory: '4g', createdAt: Date.now() - 36e5 * 4, jobsRun: 1 },
-  { name: 'quench', status: 'stopped', image: 'foundry/forge:latest', cpus: 4, memory: '8g', createdAt: Date.now() - 864e5 * 6, jobsRun: 21 },
+  orbstack('anvil', 'busy', 4, '8g', Date.now() - 864e5 * 3, 12, 'job_017kq2'),
+  orbstack('bellows', 'idle', 2, '4g', Date.now() - 864e5 * 2, 7),
+  orbstack('crucible', 'busy', 6, '12g', Date.now() - 36e5 * 9, 3, 'job_017kp8'),
+  orbstack('tongs', 'idle', 2, '4g', Date.now() - 36e5 * 4, 1),
+  orbstack('quench', 'stopped', 4, '8g', Date.now() - 864e5 * 6, 21),
 ]
 
 const line = (stream: LogLine['stream'], text: string, t: number): LogLine => ({ stream, text, t })
@@ -41,8 +67,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017kq2',
     task: 'Migrate the test runner from jest to vitest and get CI green',
-    repoPath: `${HOME}/git/binery-core`,
-    repoName: 'binery-core',
+    repo: { kind: 'local', name: 'binery-core', path: `${HOME}/git/binery-core` },
     baseBranch: 'develop',
     branch: 'foundry/vitest-migration',
     forge: 'anvil',
@@ -67,8 +92,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017kp8',
     task: 'Add rate limiting to the public webhook endpoint',
-    repoPath: `${HOME}/git/binery-accounting-backend`,
-    repoName: 'binery-accounting-backend',
+    repo: { kind: 'local', name: 'binery-accounting-backend', path: `${HOME}/git/binery-accounting-backend` },
     baseBranch: 'main',
     branch: 'foundry/webhook-ratelimit',
     forge: 'crucible',
@@ -87,8 +111,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017kn1',
     task: 'Upgrade to React 19 and fix the resulting type errors',
-    repoPath: `${HOME}/git/binery-frontend`,
-    repoName: 'binery-frontend',
+    repo: { kind: 'local', name: 'binery-frontend', path: `${HOME}/git/binery-frontend` },
     baseBranch: 'main',
     branch: 'foundry/react-19',
     forge: 'bellows',
@@ -111,8 +134,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017km4',
     task: 'Write integration tests for the subscription proration logic',
-    repoPath: `${HOME}/git/binery-core`,
-    repoName: 'binery-core',
+    repo: { kind: 'local', name: 'binery-core', path: `${HOME}/git/binery-core` },
     baseBranch: 'develop',
     branch: 'foundry/proration-tests',
     forge: 'tongs',
@@ -135,8 +157,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017kl9',
     task: 'Document every public endpoint in the OpenAPI spec',
-    repoPath: `${HOME}/git/binery-acs`,
-    repoName: 'binery-acs',
+    repo: { kind: 'local', name: 'binery-acs', path: `${HOME}/git/binery-acs` },
     baseBranch: 'release/2.4',
     branch: 'foundry/openapi-docs',
     forge: 'bellows',
@@ -148,8 +169,7 @@ export const JOBS: Array<Job> = [
   {
     id: 'job_017kj2',
     task: 'Strip dead feature flags from the checkout flow',
-    repoPath: `${HOME}/git/binery-frontend`,
-    repoName: 'binery-frontend',
+    repo: { kind: 'local', name: 'binery-frontend', path: `${HOME}/git/binery-frontend` },
     baseBranch: 'main',
     branch: 'foundry/flag-cleanup',
     forge: 'quench',
@@ -169,7 +189,6 @@ export const latency = (ms: number) => new Promise((r) => setTimeout(r, ms))
 export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
 
 export function addJob(input: NewJobInput): Job {
-  const repo = REPOS.find((r) => r.path === input.repoPath)
   const slug =
     input.task
       .toLowerCase()
@@ -182,8 +201,7 @@ export function addJob(input: NewJobInput): Job {
   const job: Job = {
     id: nextId(),
     task: input.task.trim(),
-    repoPath: input.repoPath,
-    repoName: repo?.name ?? input.repoPath.split('/').pop() ?? 'repo',
+    repo: input.repo,
     baseBranch: input.baseBranch,
     branch: `foundry/${slug}`,
     forge: input.forge,

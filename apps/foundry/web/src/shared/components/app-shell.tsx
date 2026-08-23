@@ -51,16 +51,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div key={f.name} className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5">
               <ForgeDot status={f.status} />
               <span className="font-mono text-[12px] text-txt-dim">{f.name}</span>
-              <span className="ml-auto font-mono text-[10px] text-txt-faint">
-                {f.cpus}c/{f.memory}
-              </span>
+              <span className="ml-auto font-mono text-[10px] text-txt-faint">{f.runtimeSummary}</span>
             </div>
           ))}
         </div>
 
         <div className="mt-auto border-t border-hairline px-5 py-3.5">
           <div className="font-mono text-[10px] leading-relaxed text-txt-faint">
-            orbstack · aarch64
+            adapter · orbstack
             <br />
             foundry/forge:latest
           </div>

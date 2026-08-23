@@ -1,7 +1,3 @@
-const HOME = '/Users/yickkiuliamleung'
-
-export const tildePath = (p: string) => (p.startsWith(HOME) ? `~${p.slice(HOME.length)}` : p)
-
 export function duration(ms: number): string {
   if (ms < 0) ms = 0
   const s = Math.floor(ms / 1000)
