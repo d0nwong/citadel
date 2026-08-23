@@ -15,6 +15,36 @@ There is no backend yet. Every screen reads from `src/mocks/foundry-store.ts`, a
 in-memory store with a 1s ticker that walks jobs `queued → running → succeeded|failed`
 so the ledger has something moving in it. A full page reload resets it to seed state.
 
+## Runtime model
+
+Foundry runs forges locally on OrbStack today, but that is one adapter, not the
+domain. Two unions keep the remote story expressible without building it yet.
+
+**Where a forge runs.** `Forge` carries `adapter`, a free-form `runtime` map and a
+`runtimeSummary`, instead of Docker's `image`/`cpus`/`memory`. The UI renders whatever
+the adapter reports — an OrbStack forge shows image and cores, a remote one would show
+region and size — and nothing in the UI knows what an image is.
+
+`lifecycle` separates **pooled** forges (named, long-lived, reused — the containers)
+from **ephemeral** ones (provisioned per job, nothing to list in between). The Forges
+page groups by adapter and renders capacity rather than empty cards for the ephemeral
+case.
+
+**Where the code lives.** `RepoRef` is a discriminated union:
+
+```ts
+| { kind: 'local'; name; path }        // bind-mounted — edits land on the user's disk
+| { kind: 'git'; name; url; ref }      // cloned — results come back as a pushed branch
+```
+
+This is the distinction that actually breaks across adapters. No remote forge can
+bind-mount your Mac, so "your working tree stays untouched" stops being true and the
+result arrives as a branch instead. The job detail sheet states which of the two
+applies per job rather than assuming the local case.
+
+The second adapter listed on the Forges page is illustrative mock data — it exercises
+the ephemeral rendering path. There is no remote adapter implementation.
+
 ## Layout
 
 Feature-based. `src/routes/` is URL shape only — every route file is a few lines that

@@ -22,12 +22,15 @@ import { createJob } from '../api'
 import { jobQueries } from '../queries'
 import { forgeQueries } from '@/features/forges/queries'
 import { repoQueries } from '@/features/repos/queries'
-import { tildePath } from '@/shared/lib/format'
+
 import { cn } from '@/shared/lib/utils'
+import { localRef, repoLabel } from '@/features/repos/types'
 import type { Repo } from '@/features/repos/types'
 
 // A plain <label>: shadcn's Label ships `text-sm`, which beats `.kicker` in the
 // utilities layer and blows the stamped label size out.
+const repoLabelOf = (repo: Repo) => repoLabel(localRef(repo))
+
 const FieldLabel = ({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) => (
   <label htmlFor={htmlFor} className="kicker mb-2 block">
     {children}
@@ -60,7 +63,7 @@ export function NewJobDialog() {
     onSuccess: (job) => {
       qc.invalidateQueries({ queryKey: jobQueries.all })
       qc.invalidateQueries({ queryKey: forgeQueries.all })
-      toast.success(`Job ${job.id} queued`, { description: `${job.repoName} → ${job.forge}` })
+      toast.success(`Job ${job.id} queued`, { description: `${job.repo.name} → ${job.forge}` })
       setOpen(false)
       reset()
     },
@@ -73,7 +76,7 @@ export function NewJobDialog() {
     if (!repo || !ready) return
     mutation.mutate({
       task,
-      repoPath: repo.path,
+      repo: localRef(repo),
       baseBranch: baseBranch.trim() || repo.branch,
       forge: forge === 'auto' ? (idleForges.find((f) => f.status === 'idle')?.name ?? 'bellows') : forge,
       worktree,
@@ -117,7 +120,7 @@ export function NewJobDialog() {
                 >
                   {repo ? (
                     <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-txt">{tildePath(repo.path)}</span>
+                      <span className="truncate text-txt">{repoLabelOf(repo)}</span>
                       <span className="flex shrink-0 items-center gap-1 text-txt-faint">
                         <GitBranch className="size-3" />
                         {repo.branch}
@@ -184,9 +187,7 @@ export function NewJobDialog() {
                   {idleForges.map((f) => (
                     <SelectItem key={f.name} value={f.name} className="font-mono text-[13px]">
                       {f.name}
-                      <span className="ml-2 text-txt-faint">
-                        {f.cpus}c/{f.memory}
-                      </span>
+                      <span className="ml-2 text-txt-faint">{f.runtimeSummary}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>

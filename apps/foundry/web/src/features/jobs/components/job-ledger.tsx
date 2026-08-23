@@ -7,7 +7,8 @@ import { JobStatusChip } from './job-status-chip'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { PageHeader } from '@/shared/components/page-header'
 import { jobQueries } from '../queries'
-import { duration, relative, tildePath } from '@/shared/lib/format'
+import { duration, relative } from '@/shared/lib/format'
+import { repoLabel } from '@/features/repos/types'
 import { cn } from '@/shared/lib/utils'
 import type { Job, JobStatus } from '../types'
 
@@ -52,7 +53,7 @@ function JobRow({ job, onOpen, index }: { job: Job; onOpen: () => void; index: n
       </span>
 
       <span className="min-w-0 font-mono text-[12px]">
-        <span className="block truncate text-txt-dim">{tildePath(job.repoPath)}</span>
+        <span className="block truncate text-txt-dim">{repoLabel(job.repo)}</span>
         <span className="mt-0.5 flex items-center gap-1 text-[11px] text-txt-faint">
           <GitBranch className="size-3" />
           <span className="truncate">{job.branch}</span>

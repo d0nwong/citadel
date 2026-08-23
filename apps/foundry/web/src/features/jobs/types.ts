@@ -1,3 +1,5 @@
+import type { RepoRef } from '@/features/repos/types'
+
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
 export type LogStream = 'sys' | 'out' | 'tool' | 'err'
@@ -11,8 +13,7 @@ export interface LogLine {
 export interface Job {
   id: string
   task: string
-  repoPath: string
-  repoName: string
+  repo: RepoRef
   baseBranch: string
   branch: string
   forge: string
@@ -28,7 +29,7 @@ export interface Job {
 
 export interface NewJobInput {
   task: string
-  repoPath: string
+  repo: RepoRef
   baseBranch: string
   forge: string
   worktree: boolean

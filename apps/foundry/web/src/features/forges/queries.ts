@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import { listForges } from './api'
+import { listAdapters, listForges } from './api'
 
 export const forgeQueries = {
   all: ['forges'] as const,
@@ -8,5 +8,10 @@ export const forgeQueries = {
       queryKey: [...forgeQueries.all],
       queryFn: listForges,
       refetchInterval: 2000,
+    }),
+  adapters: () =>
+    queryOptions({
+      queryKey: [...forgeQueries.all, 'adapters'],
+      queryFn: listAdapters,
     }),
 }
