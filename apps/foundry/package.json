@@ -1,5 +1,6 @@
 {
   "name": "foundry",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
     "infra:up": "./infra/infra.sh up",
