@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronsUpDown, Flame, GitBranch, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -133,6 +134,18 @@ export function NewJobDialog() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] border-hairline bg-iron-800 p-0" align="start">
+                {(repos ?? []).length === 0 ? (
+                  <div className="space-y-2 px-4 py-5 text-center">
+                    <p className="text-[13px] text-txt-dim">No repos added yet.</p>
+                    <Link
+                      to="/repos"
+                      onClick={() => setOpen(false)}
+                      className="inline-block font-mono text-[12px] text-ember hover:underline"
+                    >
+                      Add repos →
+                    </Link>
+                  </div>
+                ) : (
                 <Command className="bg-transparent">
                   <CommandInput placeholder="Search repos…" className="font-mono text-[13px]" />
                   <CommandList>
@@ -157,6 +170,7 @@ export function NewJobDialog() {
                     </CommandGroup>
                   </CommandList>
                 </Command>
+                )}
               </PopoverContent>
             </Popover>
           </div>

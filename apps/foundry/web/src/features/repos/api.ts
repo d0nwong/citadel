@@ -1,7 +1,39 @@
-import { REPOS, clone, latency } from '@/mocks/foundry-store'
-import type { Repo } from './types'
+import { createServerFn } from '@tanstack/react-start'
+import type { DiscoveredRepo, Repo } from './types'
 
-export async function listRepos(): Promise<Array<Repo>> {
-  await latency(30)
-  return clone(REPOS)
-}
+/**
+ * Real data — repos come from scanning the user's filesystem, and the chosen
+ * set persists to ~/.foundry/repos.json. The node-only scanner is imported
+ * inside each handler so it never reaches the client bundle.
+ */
+
+export const discoverRepos = createServerFn({ method: 'GET' }).handler(async (): Promise<Array<DiscoveredRepo>> => {
+  const { scanRepos } = await import('./server/repo-scan')
+  return scanRepos()
+})
+
+/** Repos the user has added — the only ones a job can target. */
+export const listRepos = createServerFn({ method: 'GET' }).handler(async (): Promise<Array<Repo>> => {
+  const { scanRepos } = await import('./server/repo-scan')
+  const repos = await scanRepos()
+  return repos.filter((r) => r.tracked).map(({ tracked: _t, lastCommit: _l, ...repo }) => repo)
+})
+
+export const listScanRoots = createServerFn({ method: 'GET' }).handler(async (): Promise<Array<string>> => {
+  const { SCAN_ROOTS } = await import('./server/repo-scan')
+  return SCAN_ROOTS
+})
+
+export const addRepos = createServerFn({ method: 'POST' })
+  .validator((paths: Array<string>) => paths)
+  .handler(async ({ data }) => {
+    const { trackRepos } = await import('./server/repo-scan')
+    await trackRepos(data)
+  })
+
+export const removeRepo = createServerFn({ method: 'POST' })
+  .validator((repoPath: string) => repoPath)
+  .handler(async ({ data }) => {
+    const { untrackRepo } = await import('./server/repo-scan')
+    await untrackRepo(data)
+  })

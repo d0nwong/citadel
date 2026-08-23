@@ -1,9 +1,15 @@
-/** A git checkout discovered on this machine — what the repo picker lists. */
+/** A git checkout the user has added to Foundry — what jobs can target. */
 export interface Repo {
   path: string
   name: string
   branch: string
   dirty: boolean
+}
+
+/** A candidate turned up by scanning a directory, plus whether it is already added. */
+export interface DiscoveredRepo extends Repo {
+  tracked: boolean
+  lastCommit: number
 }
 
 /**
@@ -20,11 +26,12 @@ export const localRef = (repo: Repo): RepoRef => ({ kind: 'local', name: repo.na
 
 const HOME = '/Users/yickkiuliamleung'
 
+/** Display form for a filesystem path. */
+export const tilde = (p: string) => (p.startsWith(HOME) ? `~${p.slice(HOME.length)}` : p)
+
 /** Display form. Pure, so it is safe for any feature to import. */
 export function repoLabel(repo: RepoRef): string {
-  if (repo.kind === 'local') {
-    return repo.path.startsWith(HOME) ? `~${repo.path.slice(HOME.length)}` : repo.path
-  }
+  if (repo.kind === 'local') return tilde(repo.path)
   return repo.url.replace(/^https?:\/\//, '').replace(/\.git$/, '')
 }
 

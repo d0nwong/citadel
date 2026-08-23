@@ -1,6 +1,6 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Boxes, ListTree } from 'lucide-react'
+import { Boxes, FolderGit2, ListTree } from 'lucide-react'
 import { FoundryMark } from './foundry-mark'
 import { ForgeDot } from '@/features/forges/components/forge-dot'
 import { forgeQueries } from '@/features/forges/queries'
@@ -9,6 +9,7 @@ import { cn } from '@/shared/lib/utils'
 const NAV = [
   { to: '/', label: 'Jobs', icon: ListTree },
   { to: '/forges', label: 'Forges', icon: Boxes },
+  { to: '/repos', label: 'Repos', icon: FolderGit2 },
 ] as const
 
 export function AppShell({ children }: { children: React.ReactNode }) {
