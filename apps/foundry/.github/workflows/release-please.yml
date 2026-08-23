@@ -3,7 +3,7 @@ name: release-please
 on:
   push:
     branches:
-      - yickkiuleung/lia-13-run-actual-dev-job-locally
+      - main
 
 permissions:
   contents: write
