@@ -7,7 +7,7 @@
  * for the extensions that infra/postgres/init/00-init.sql installs there.
  */
 import { sql } from 'drizzle-orm'
-import { bigserial, boolean, index, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { bigserial, index, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import type { RepoRef } from '../features/repos/types'
 
 export const foundry = pgSchema('foundry')
@@ -64,7 +64,6 @@ export const jobs = foundry.table(
     /** Host path of the job's clone, kept after the job for inspection. */
     workspace: text('workspace'),
     prUrl: text('pr_url'),
-    worktree: boolean('worktree').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),

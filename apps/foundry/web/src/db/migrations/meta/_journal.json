@@ -15,6 +15,13 @@
       "when": 1787497909161,
       "tag": "0001_flaky_wallop",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787499872180,
+      "tag": "0002_green_guardian",
+      "breakpoints": true
     }
   ]
 }

@@ -387,10 +387,14 @@ async function diffStats(work: string, baseBranch: string): Promise<{ files: num
   return { files, additions, deletions }
 }
 
-/** Kill the container, then let the store's guarded transition record it. */
+/**
+ * Settle first, kill second. The moment the container dies, its `docker wait`
+ * watcher fires — and if the row still reads running at that point, the
+ * watcher's `failed` wins the guarded transition instead of this cancel.
+ */
 export async function cancelJob(id: string): Promise<void> {
-  await removeContainer(id)
   await store.cancelJob(id)
+  await removeContainer(id)
   void pumpQueue()
 }
 
@@ -401,9 +405,12 @@ export async function cancelJob(id: string): Promise<void> {
 let reconciled: Promise<void> | undefined
 
 /**
- * Once per server process (vite restarts included): re-arm watchers for jobs
- * whose containers are still alive — the callback route is stateless, so those
- * jobs are healthy — and fail the ones whose container is gone.
+ * Once per server process (vite restarts included). Three cases per running
+ * job: the container is still alive — re-arm its watcher and leave it be (the
+ * callback route is stateless, so it is healthy); the job is at push/pr — the
+ * container is *supposed* to be gone there and the interrupted host-side
+ * finish is resumable from the workspace, so resume it; anything else with no
+ * container is genuinely orphaned and fails.
  */
 export function ensureReconciled(): Promise<void> {
   reconciled ??= (async () => {
@@ -418,6 +425,11 @@ export function ensureReconciled(): Promise<void> {
       }
       if (state === 'running' || state === 'created') {
         armWatcher(job.id)
+      } else if (job.step === 'push' || job.step === 'pr') {
+        // Push is idempotent and the commit sits in the workspace — pick the
+        // finish back up rather than failing work that is already done.
+        await sys(job.id, `resuming ${job.step} after a server restart`)
+        void finishJob(job.id, 'committed', job.exitCode ?? 0)
       } else {
         const settled = await store.settleJob(job.id, { status: 'failed' })
         if (settled) await err(job.id, `orphaned mid-${job.step ?? 'run'} by a server restart — job failed`)

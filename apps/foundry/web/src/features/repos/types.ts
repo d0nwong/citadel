@@ -2,7 +2,10 @@
 export interface Repo {
   path: string
   name: string
+  /** Currently checked out on disk — a fact about the working tree, not a default. */
   branch: string
+  /** Origin's default branch (origin/HEAD), `main` when unset — what jobs base on. */
+  defaultBranch: string
   dirty: boolean
 }
 

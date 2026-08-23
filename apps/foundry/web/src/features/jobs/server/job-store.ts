@@ -31,7 +31,6 @@ function toJob(row: JobRow): Job {
     status: row.status,
     step: (row.step as JobStep | null) ?? undefined,
     prUrl: row.prUrl ?? undefined,
-    worktree: row.worktree,
     createdAt: row.createdAt.getTime(),
     startedAt: ms(row.startedAt),
     finishedAt: ms(row.finishedAt),
@@ -90,7 +89,6 @@ export async function createJob(input: NewJobInput): Promise<Job> {
         baseBranch: input.baseBranch,
         branch: `foundry/${branchSlug(task)}`,
         forge: input.forge,
-        worktree: input.worktree,
       })
       .returning()
 
@@ -130,10 +128,14 @@ export async function appendLogs(
   await db.insert(jobLogs).values(lines.map((l) => ({ jobId, ...l })))
 }
 
-/** The mutable-during-run fields. Everything else is settled state or immutable. */
+/**
+ * The mutable-during-run fields. `exitCode` is written early — at the commit
+ * event, not just at settle — so a finish resumed after a server restart still
+ * knows how the agent did.
+ */
 export async function patchJob(
   id: string,
-  fields: Partial<Pick<JobRow, 'step' | 'container' | 'workspace' | 'branch' | 'startedAt'>>,
+  fields: Partial<Pick<JobRow, 'step' | 'container' | 'workspace' | 'branch' | 'startedAt' | 'exitCode'>>,
 ): Promise<void> {
   await db.update(jobs).set(fields).where(eq(jobs.id, id))
 }

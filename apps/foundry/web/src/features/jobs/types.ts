@@ -23,7 +23,6 @@ export interface Job {
   forge: string
   status: JobStatus
   step?: JobStep
-  worktree: boolean
   createdAt: number
   startedAt?: number
   finishedAt?: number
@@ -46,5 +45,4 @@ export interface NewJobInput {
   repo: RepoRef
   baseBranch: string
   forge: string
-  worktree: boolean
 }

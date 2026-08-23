@@ -3,7 +3,7 @@ import type { JobStatus } from '../types'
 
 const TONE: Record<JobStatus, { dot: string; text: string; label: string }> = {
   queued: { dot: 'bg-steel', text: 'text-steel', label: 'queued' },
-  running: { dot: 'bg-ember animate-ember-pulse', text: 'text-ember', label: 'forging' },
+  running: { dot: 'bg-slag animate-ember-pulse', text: 'text-slag', label: 'forging' },
   succeeded: { dot: 'bg-quench', text: 'text-quench', label: 'succeeded' },
   failed: { dot: 'bg-crack', text: 'text-crack', label: 'failed' },
   cancelled: { dot: 'bg-txt-faint', text: 'text-txt-faint', label: 'cancelled' },

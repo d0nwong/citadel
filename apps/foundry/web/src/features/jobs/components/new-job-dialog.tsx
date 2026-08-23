@@ -71,11 +71,10 @@ export function NewJobDialog() {
     mutation.mutate({
       task,
       repo: localRef(repo),
-      baseBranch: baseBranch.trim() || repo.branch,
+      baseBranch: baseBranch.trim() || repo.defaultBranch,
       // Jobs run in an ephemeral container per job — `forge` names the
       // adapter, and the container itself lands on the job row (LIA-13).
       forge: 'orbstack',
-      worktree: true,
     })
   }
 
@@ -152,7 +151,7 @@ export function NewJobDialog() {
                           value={r.path}
                           onSelect={() => {
                             setRepo(r)
-                            setBaseBranch(r.branch)
+                            setBaseBranch(r.defaultBranch)
                             setRepoOpen(false)
                           }}
                           className="gap-2 font-mono text-[13px]"
@@ -196,7 +195,7 @@ export function NewJobDialog() {
                 id="base"
                 value={baseBranch}
                 onChange={(e) => setBaseBranch(e.target.value)}
-                placeholder={repo?.branch ?? 'main'}
+                placeholder={repo?.defaultBranch ?? 'main'}
                 className="h-10 border-iron-700 bg-iron-900 font-mono text-[13px] placeholder:text-txt-faint focus-visible:ring-ember-deep"
               />
             </div>

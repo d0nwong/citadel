@@ -54,8 +54,12 @@ export async function handleJobEvent(jobId: string, request: Request): Promise<R
     // Move step *before* answering: the runner's curl returns only after this
     // write, and the container exits after curl — so the `docker wait` watcher
     // can never observe an exited container still marked step=agent unless the
-    // report genuinely never arrived.
-    await store.patchJob(jobId, { step: payload.outcome === 'committed' ? 'push' : 'done' })
+    // report genuinely never arrived. exitCode lands now too, so a finish
+    // resumed after a restart (see reconcile) knows how the agent did.
+    await store.patchJob(jobId, {
+      step: payload.outcome === 'committed' ? 'push' : 'done',
+      exitCode: payload.exitCode ?? 0,
+    })
     const { finishJob } = await import('./job-runner')
     void finishJob(jobId, payload.outcome, payload.exitCode ?? 0)
   }
