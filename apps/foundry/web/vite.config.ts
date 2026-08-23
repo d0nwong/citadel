@@ -10,10 +10,10 @@ const config = defineConfig({
   resolve: { tsconfigPaths: true },
   server: {
     // Vite rejects unrecognised Host headers as DNS-rebinding protection.
-    // `tailscale serve` reaches the dev server under a MagicDNS name, so allow
-    // that suffix — a leading dot matches any host under it. Scoped to .ts.net
-    // rather than `true` so the protection still holds for everything else.
-    allowedHosts: ['.ts.net'],
+    // `tailscale serve` reaches the dev server under a MagicDNS name, and a
+    // forge container calls back via host.docker.internal — allow exactly
+    // those rather than `true`, so the protection holds for everything else.
+    allowedHosts: ['.ts.net', 'host.docker.internal'],
   },
   plugins: [devtools(), tailwindcss(), tanstackStart(), viteReact()],
 })

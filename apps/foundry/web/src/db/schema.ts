@@ -50,6 +50,20 @@ export const jobs = foundry.table(
     branch: text('branch').notNull(),
     forge: text('forge').notNull(),
     status: jobStatus('status').notNull().default('queued'),
+    /** Where the pipeline is: prepare | agent | commit | push | pr | done. */
+    step: text('step'),
+    /**
+     * Per-job callback secret. Handed to the job's own container as env and
+     * checked by /api/jobs/$id/events — never mapped into the Job domain type.
+     */
+    token: text('token')
+      .notNull()
+      .default(sql`encode(gen_random_bytes(24), 'hex')`),
+    /** The ephemeral container (foundry-job-*), so cancel can actually kill it. */
+    container: text('container'),
+    /** Host path of the job's clone, kept after the job for inspection. */
+    workspace: text('workspace'),
+    prUrl: text('pr_url'),
     worktree: boolean('worktree').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp('started_at', { withTimezone: true }),

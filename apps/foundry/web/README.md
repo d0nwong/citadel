@@ -11,25 +11,59 @@ bun run dev        # http://localhost:3777
 bun run build
 ```
 
-## Status: jobs and repos are real, forges are mocked
+## Status: everything is real
 
-**Real:** jobs and repos, both in Postgres (`bun run infra:up` from the repo root).
-Everything that touches the database goes through `createServerFn`, so the node-only
+Nothing in the app is mocked any more. Jobs and repos live in Postgres, forges are
+read live from docker labels, and **igniting a job actually runs it**: Claude Code in
+an ephemeral container, a commit, a push, and a PR on the repo's forge. Everything
+that touches the database or a CLI goes through `createServerFn`, so the node-only
 modules never enter the client bundle.
 
-- `features/jobs/server/job-store.ts` — the ledger. Creating a job writes a row; it
-  survives a reload, which is the whole point.
+- `features/jobs/server/job-store.ts` — the ledger's queries, plus the write paths
+  the runner uses (`appendLogs`, `patchJob`, guarded `settleJob`).
+- `features/jobs/server/job-runner.ts` — the orchestrator (see below).
 - `features/repos/server/repo-scan.ts` — scans `~/git` with `node:fs`, reads each repo's
   branch, dirty state and last-commit time via `git`, and keeps the *imported* set in
   the `repos` table. Branch and dirty state are deliberately not stored: they are facts
   about the working tree right now.
+- `features/forges/server/forge-scan.ts` — the forge inventory from docker labels:
+  `foundry.forge` containers are pooled (`foundry new`), `foundry.job` ones are the
+  ephemeral per-job forges.
 
-**Still mocked:** forges, from `src/mocks/foundry-store.ts`. Their real source is
-`foundry ls` / docker labels.
+## Running a job
 
-**Nothing runs yet.** A job is created `queued` and stays there — executing it is
-LIA-13. The ledger no longer animates, because the ticker that used to fake that has
-been deleted along with the jobs mock.
+One job = one throwaway container. The host (this dev server) does everything that
+needs the user's credentials; the container gets none of them.
+
+```
+Ignite ─► insert row (queued, with a per-job callback token)
+       ─► preflight: docker, image, ~/.foundry/env credential, repo, base, origin
+       ─► clone the repo to ~/.foundry/jobs/<id>/work, branch from origin/<base>
+       ─► docker run foundry/forge:latest forge-run   (image/forge-run.sh, bind-mounted)
+              container: claude -p <task> --output-format stream-json
+              container: git add -A && git commit
+              container ─POST─► /api/jobs/$id/events   (Bearer <token>)
+       ─► host: git push, `bb`/`gh` pr create, diff stats, settle the row
+```
+
+- The **container** holds a Claude credential (`foundry auth`), the workspace, and a
+  token that authorises callbacks for its own job id. No `GH_TOKEN`, no Bitbucket app
+  password, no `DATABASE_URL` — the agent runs with permissions skipped, so it gets
+  nothing it could misuse.
+- The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the only server
+  route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
+  (`server/job-events.ts`) and hands the pipeline back to the host on commit.
+- The **PR CLI** is picked by origin host in `server/forge-pr.ts`: `bb` for
+  bitbucket.org, `gh` for github.com, anything else pushes the branch and says so.
+- `vite dev` runs with `--host` so containers can reach the server at
+  `host.docker.internal:3777` — which also means it listens on your LAN; the token
+  auth on the callback route is what makes that acceptable.
+- A `docker wait` watcher and lazy reconciliation (first `listJobs` per process)
+  cover the crash cases: a container that dies silently fails its job, a dev-server
+  restart re-adopts jobs whose containers are still running.
+- Knobs: `FOUNDRY_MAX_JOBS` (default 3), `FOUNDRY_TIMEOUT` (seconds, default 1800),
+  `FOUNDRY_CALLBACK_BASE`, `FOUNDRY_BB_REVIEWERS=1` to add Bitbucket default
+  reviewers. Old workspaces: `foundry jobs prune [--days 7]`.
 
 ## The database
 
@@ -98,8 +132,9 @@ bind-mount your Mac, so "your working tree stays untouched" stops being true and
 result arrives as a branch instead. The job detail sheet states which of the two
 applies per job rather than assuming the local case.
 
-The second adapter listed on the Forges page is illustrative mock data — it exercises
-the ephemeral rendering path. There is no remote adapter implementation.
+Today the one adapter is `orbstack`, running ephemeral containers — one per job,
+listed on the Forges page only while they exist. Pooled forges created with
+`foundry new` show up beside them. There is no remote adapter implementation.
 
 ## Layout
 
@@ -110,6 +145,7 @@ render a component from a feature.
 src/
   routes/                     thin adapters, URL-shaped (generated route tree)
     __root.tsx                document shell, AppShell, toaster
+    api/jobs.$id.events.ts    the forge container's callback (the one server route)
     index.tsx  forges.tsx
   features/
     jobs/
@@ -117,9 +153,13 @@ src/
       queries.ts              queryOptions — what routes and components import
       api.ts                  createServerFn wrappers
       server/job-store.ts     node-only: the postgres queries
+      server/job-runner.ts    node-only: preflight, clone, docker run, push, settle
+      server/job-events.ts    node-only: callback auth + stream-json -> job_logs
+      server/forge-pr.ts      node-only: bb / gh pr create, by origin host
       types.ts
     forges/
       components/             forge-inventory, forge-card, forge-dot
+      server/forge-scan.ts    node-only: docker labels -> the inventory
       queries.ts  api.ts  types.ts
     repos/
       components/             repo-inventory, add-repos-dialog
@@ -134,8 +174,6 @@ src/
     client.ts                 node-only: the pool
     migrate.ts                bun run db:migrate
     migrations/               generated SQL, committed
-  mocks/
-    foundry-store.ts          ← forges only; deleted once they are real
 ```
 
 Cross-feature imports go through `queries.ts` — the jobs dialog reads `forgeQueries`
@@ -145,20 +183,11 @@ and `repoQueries`, never another feature's internals. There are deliberately no 
 `components.json` aliases point at `#/shared/*`, so `bunx shadcn@latest add <x>` lands
 in `src/shared/ui` without further edits.
 
-## Wiring it to the real orchestrator
+## Conventions for server code
 
-`src/mocks/` is the only place left that knows any data is fake, and it is down to
-forges. `features/forges/api.ts` wraps that slice, so it becomes real by changing that
-wrapper and deleting `src/mocks/`.
-
-| feature module | becomes |
-|---|---|
-| `features/forges/api.ts` | `foundry ls` / docker labels, via a `server/` module |
-| `mocks/foundry-store.ts` | delete |
-
-`features/jobs/api.ts` and `features/repos/api.ts` are the worked examples of the
-pattern: thin `createServerFn` wrappers whose handlers `await import()` a node-only
-module.
+`src/mocks/` is gone — every feature's `api.ts` is now the same shape: thin
+`createServerFn` wrappers whose handlers `await import()` a node-only module from
+`features/<name>/server/`.
 
 Two Start-specific rules worth keeping:
 

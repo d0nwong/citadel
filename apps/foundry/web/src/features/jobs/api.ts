@@ -8,6 +8,10 @@ import type { Job, JobDetail, NewJobInput } from './types'
 
 export const listJobs = createServerFn({ method: 'GET' }).handler(async (): Promise<Array<Job>> => {
   const store = await import('./server/job-store')
+  const runner = await import('./server/job-runner')
+  // Lazy reconciliation: the ledger polls every second, so a restarted server
+  // re-adopts (or fails over) in-flight jobs on its first breath.
+  void runner.ensureReconciled()
   return store.listJobs()
 })
 
@@ -22,12 +26,19 @@ export const createJob = createServerFn({ method: 'POST' })
   .validator((input: NewJobInput) => input)
   .handler(async ({ data }): Promise<Job> => {
     const store = await import('./server/job-store')
-    return store.createJob(data)
+    const runner = await import('./server/job-runner')
+    const job = await store.createJob(data)
+    // Fire and forget: Ignite returns as soon as the row exists, and the
+    // ledger's 1s poll watches the pipeline advance from there.
+    void runner.startJob(job.id)
+    return job
   })
 
 export const cancelJob = createServerFn({ method: 'POST' })
   .validator((id: string) => id)
   .handler(async ({ data }) => {
-    const store = await import('./server/job-store')
-    await store.cancelJob(data)
+    // The runner kills the container first, then the store's guarded
+    // transition records the cancel.
+    const runner = await import('./server/job-runner')
+    await runner.cancelJob(data)
   })

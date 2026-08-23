@@ -1,12 +1,18 @@
-import { ADAPTERS, FORGES, clone, latency } from '@/mocks/foundry-store'
+import { createServerFn } from '@tanstack/react-start'
 import type { AdapterInfo, Forge } from './types'
 
-export async function listForges(): Promise<Array<Forge>> {
-  await latency(30)
-  return clone(FORGES)
-}
+/**
+ * Real data — the forge inventory comes from docker labels. The node-only
+ * scanner is imported inside each handler so it never reaches the client
+ * bundle, same as jobs and repos.
+ */
 
-export async function listAdapters(): Promise<Array<AdapterInfo>> {
-  await latency(20)
-  return clone(ADAPTERS)
-}
+export const listForges = createServerFn({ method: 'GET' }).handler(async (): Promise<Array<Forge>> => {
+  const { listForges: scan } = await import('./server/forge-scan')
+  return scan()
+})
+
+export const listAdapters = createServerFn({ method: 'GET' }).handler(async (): Promise<Array<AdapterInfo>> => {
+  const { listAdapters: scan } = await import('./server/forge-scan')
+  return scan()
+})

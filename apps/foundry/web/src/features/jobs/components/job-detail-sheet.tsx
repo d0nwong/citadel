@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, GitBranch } from 'lucide-react'
+import { Ban, ExternalLink, GitBranch } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/shared/ui/sheet'
 import { JobStatusChip } from './job-status-chip'
@@ -65,6 +65,9 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
             <SheetHeader className="space-y-3 px-5 pb-5 pt-5 text-left sm:px-6">
               <div className="flex items-center gap-3 pr-8">
                 <JobStatusChip status={job.status} />
+                {job.status === 'running' && job.step && (
+                  <span className="font-mono text-[11px] text-txt-dim">{job.step}</span>
+                )}
                 <span className="font-mono text-[11px] text-txt-faint">{job.id}</span>
                 <span className="ml-auto font-mono text-[11px] text-txt-dim">{duration(elapsed)}</span>
               </div>
@@ -97,6 +100,21 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
                   <span className="text-txt-faint">—</span>
                 )}
               </Meta>
+              {job.prUrl && (
+                <div className="col-span-2">
+                  <Meta label="Pull request">
+                    <a
+                      href={job.prUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex min-w-0 items-center gap-1.5 text-ember hover:underline"
+                    >
+                      <ExternalLink className="size-3 shrink-0" />
+                      <span className="truncate">{job.prUrl.replace(/^https:\/\//, '')}</span>
+                    </a>
+                  </Meta>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between px-5 py-3 sm:px-6">

@@ -2,6 +2,9 @@ import type { RepoRef } from '@/features/repos/types'
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
+/** Where the pipeline is. The container owns agent+commit; the host owns the rest. */
+export type JobStep = 'prepare' | 'agent' | 'commit' | 'push' | 'pr' | 'done'
+
 export type LogStream = 'sys' | 'out' | 'tool' | 'err'
 
 export interface LogLine {
@@ -19,12 +22,14 @@ export interface Job {
   branch: string
   forge: string
   status: JobStatus
+  step?: JobStep
   worktree: boolean
   createdAt: number
   startedAt?: number
   finishedAt?: number
   diff?: { files: number; additions: number; deletions: number }
   exitCode?: number
+  prUrl?: string
 }
 
 /**

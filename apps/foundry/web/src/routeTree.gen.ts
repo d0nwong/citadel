@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ForgesRouteImport } from './routes/forges'
 import { Route as ReposRouteImport } from './routes/repos'
+import { Route as ApiJobsIdEventsRouteImport } from './routes/api/jobs.$id.events'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,44 @@ const ReposRoute = ReposRouteImport.update({
   path: '/repos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiJobsIdEventsRoute = ApiJobsIdEventsRouteImport.update({
+  id: '/api/jobs/$id/events',
+  path: '/api/jobs/$id/events',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
+  '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
+  '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
+  '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/forges' | '/repos'
+  fullPaths: '/' | '/forges' | '/repos' | '/api/jobs/$id/events'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/forges' | '/repos'
-  id: '__root__' | '/' | '/forges' | '/repos'
+  to: '/' | '/forges' | '/repos' | '/api/jobs/$id/events'
+  id: '__root__' | '/' | '/forges' | '/repos' | '/api/jobs/$id/events'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ForgesRoute: typeof ForgesRoute
   ReposRoute: typeof ReposRoute
+  ApiJobsIdEventsRoute: typeof ApiJobsIdEventsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReposRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/jobs/$id/events': {
+      id: '/api/jobs/$id/events'
+      path: '/api/jobs/$id/events'
+      fullPath: '/api/jobs/$id/events'
+      preLoaderRoute: typeof ApiJobsIdEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ForgesRoute: ForgesRoute,
   ReposRoute: ReposRoute,
+  ApiJobsIdEventsRoute: ApiJobsIdEventsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
