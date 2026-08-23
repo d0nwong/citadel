@@ -8,7 +8,15 @@
     "infra:status": "./infra/infra.sh status",
     "infra:logs": "./infra/infra.sh logs",
     "infra:psql": "./infra/infra.sh psql",
-    "infra:url": "./infra/infra.sh url"
+    "infra:url": "./infra/infra.sh url",
+    "db:generate": "cd web && bun run db:generate",
+    "db:migrate": "cd web && bun run db:migrate",
+    "db:studio": "cd web && bun run db:studio",
+    "web:dev": "cd web && bun run dev",
+    "web:serve": "./web/serve.sh up",
+    "web:unserve": "./web/serve.sh down",
+    "web:serve:status": "./web/serve.sh status",
+    "web:serve:url": "./web/serve.sh url"
   },
   "packageManager": "bun@1.4.0"
 }

@@ -3,10 +3,13 @@
  * from a module a client component pulls in.
  */
 import { execFile } from 'node:child_process'
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import { eq } from 'drizzle-orm'
+import { db } from '@/db/client'
+import { repos as reposTable } from '@/db/schema'
 import type { DiscoveredRepo } from '../types'
 
 const exec = promisify(execFile)
@@ -14,22 +17,13 @@ const exec = promisify(execFile)
 export const HOME = homedir()
 export const SCAN_ROOTS = [path.join(HOME, 'git')]
 
-const STATE_DIR = path.join(HOME, '.foundry')
-const STATE_FILE = path.join(STATE_DIR, 'repos.json')
-
+/**
+ * The imported set lives in Postgres. It used to be ~/.foundry/repos.json;
+ * `bun run db:migrate` adopts that file once and then leaves it alone.
+ */
 async function readTracked(): Promise<Set<string>> {
-  try {
-    const raw = await readFile(STATE_FILE, 'utf8')
-    const parsed = JSON.parse(raw) as { tracked?: Array<string> }
-    return new Set(parsed.tracked ?? [])
-  } catch {
-    return new Set()
-  }
-}
-
-async function writeTracked(tracked: Set<string>) {
-  await mkdir(STATE_DIR, { recursive: true })
-  await writeFile(STATE_FILE, `${JSON.stringify({ tracked: [...tracked].sort() }, null, 2)}\n`)
+  const rows = await db.select({ path: reposTable.path }).from(reposTable)
+  return new Set(rows.map((r) => r.path))
 }
 
 async function isGitRepo(dir: string) {
@@ -102,13 +96,12 @@ export async function scanRepos(): Promise<Array<DiscoveredRepo>> {
 }
 
 export async function trackRepos(paths: Array<string>) {
-  const tracked = await readTracked()
-  for (const p of paths) tracked.add(p)
-  await writeTracked(tracked)
+  if (paths.length === 0) return
+  const rows = paths.map((p) => ({ path: p, name: path.basename(p) }))
+  await db.insert(reposTable).values(rows).onConflictDoNothing({ target: reposTable.path })
 }
 
+/** Jobs that targeted it keep their `repo` snapshot; only the link goes null. */
 export async function untrackRepo(repoPath: string) {
-  const tracked = await readTracked()
-  tracked.delete(repoPath)
-  await writeTracked(tracked)
+  await db.delete(reposTable).where(eq(reposTable.path, repoPath))
 }

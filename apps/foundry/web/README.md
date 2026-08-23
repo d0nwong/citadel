@@ -5,23 +5,61 @@ routing) + **shadcn/ui** + **Tailwind v4**, running on **bun**.
 
 ```sh
 bun install
-bun run dev      # http://localhost:3777
+bun run infra:up   # from the repo root — postgres
+bun run db:migrate # apply the schema
+bun run dev        # http://localhost:3777
 bun run build
 ```
 
-## Status: repos are real, the rest is mocked
+## Status: jobs and repos are real, forges are mocked
 
-**Real:** repo discovery. `features/repos/server/repo-scan.ts` scans `~/git` with
-`node:fs`, reads each repo's branch, dirty state and last-commit time via `git`, and
-persists your selection to `~/.foundry/repos.json` — the same state directory the CLI
-uses. Reached through `createServerFn`, so the node-only module never enters the client
-bundle.
+**Real:** jobs and repos, both in Postgres (`bun run infra:up` from the repo root).
+Everything that touches the database goes through `createServerFn`, so the node-only
+modules never enter the client bundle.
 
-**Still mocked:** jobs and forges, from `src/mocks/foundry-store.ts`, with a ticker that
-walks jobs `queued → running → settled`. Seeded job history therefore references
-placeholder repo paths that will not match your real ones — that resolves when jobs
-become real. Mock state resets on a full page reload; the repo selection does not,
-because it is on disk.
+- `features/jobs/server/job-store.ts` — the ledger. Creating a job writes a row; it
+  survives a reload, which is the whole point.
+- `features/repos/server/repo-scan.ts` — scans `~/git` with `node:fs`, reads each repo's
+  branch, dirty state and last-commit time via `git`, and keeps the *imported* set in
+  the `repos` table. Branch and dirty state are deliberately not stored: they are facts
+  about the working tree right now.
+
+**Still mocked:** forges, from `src/mocks/foundry-store.ts`. Their real source is
+`foundry ls` / docker labels.
+
+**Nothing runs yet.** A job is created `queued` and stays there — executing it is
+LIA-13. The ledger no longer animates, because the ticker that used to fake that has
+been deleted along with the jobs mock.
+
+## The database
+
+Schema in `src/db/schema.ts`, migrations generated from it into `src/db/migrations/`
+and committed. Everything lives in the **`foundry`** schema — `public` is left to the
+extensions `infra/postgres/init/00-init.sql` installs.
+
+```sh
+bun run db:generate   # schema.ts -> a new migration; commit it
+bun run db:migrate    # apply
+bun run db:studio     # drizzle studio
+```
+
+`db:migrate` also does a one-time adoption of `~/.foundry/repos.json`, which is where
+the imported set used to live. It leaves the file alone — `~/.foundry` is the CLI's
+state directory.
+
+`DATABASE_URL` comes from `web/.env` (copy `.env.example`; bun loads it automatically),
+and falls back to the local stack's URL so a fresh clone needs no configuration.
+`bun run infra:url` from the repo root prints it.
+
+| table | holds |
+|---|---|
+| `repos` | the imported set — what a job may target |
+| `jobs` | one row per job; a job *is* the run here, so there is no separate runs table |
+| `job_logs` | one row per log line, append-only, streamed in as a job runs |
+
+`jobs.repo_id` links to the repo when there is one, and `jobs.repo` keeps an immutable
+`RepoRef` snapshot beside it — a job can target a git URL that was never imported, and
+un-importing a repo must not blank out the history of jobs that ran against it.
 
 ## Adding repos
 
@@ -77,7 +115,8 @@ src/
     jobs/
       components/             job-ledger, new-job-dialog, job-detail-sheet, job-status-chip
       queries.ts              queryOptions — what routes and components import
-      api.ts                  data access (mocked; repos/api.ts is already real)
+      api.ts                  createServerFn wrappers
+      server/job-store.ts     node-only: the postgres queries
       types.ts
     forges/
       components/             forge-inventory, forge-card, forge-dot
@@ -90,8 +129,13 @@ src/
     ui/                       shadcn primitives (generated — don't hand-edit)
     components/               app-shell, page-header, foundry-mark
     lib/                      format, utils
+  db/
+    schema.ts                 drizzle schema (the `foundry` postgres schema)
+    client.ts                 node-only: the pool
+    migrate.ts                bun run db:migrate
+    migrations/               generated SQL, committed
   mocks/
-    foundry-store.ts          ← jobs + forges only; deleted once they are real
+    foundry-store.ts          ← forges only; deleted once they are real
 ```
 
 Cross-feature imports go through `queries.ts` — the jobs dialog reads `forgeQueries`
@@ -103,18 +147,18 @@ in `src/shared/ui` without further edits.
 
 ## Wiring it to the real orchestrator
 
-`src/mocks/` is the only place that knows the data is fake. Each feature owns a thin
-`api.ts` wrapping it, so swapping in real endpoints means changing those wrappers and
-deleting `src/mocks/`.
+`src/mocks/` is the only place left that knows any data is fake, and it is down to
+forges. `features/forges/api.ts` wraps that slice, so it becomes real by changing that
+wrapper and deleting `src/mocks/`.
 
 | feature module | becomes |
 |---|---|
-| `features/jobs/api.ts` | `GET/POST /api/jobs`, `POST /api/jobs/:id/cancel` |
-| `features/forges/api.ts` | `GET /api/forges` → `foundry ls` |
-| `mocks/foundry-store.ts` | delete, simulator included |
+| `features/forges/api.ts` | `foundry ls` / docker labels, via a `server/` module |
+| `mocks/foundry-store.ts` | delete |
 
-`features/repos/api.ts` is already real and is the worked example of the pattern: thin
-`createServerFn` wrappers whose handlers `await import()` a node-only module.
+`features/jobs/api.ts` and `features/repos/api.ts` are the worked examples of the
+pattern: thin `createServerFn` wrappers whose handlers `await import()` a node-only
+module.
 
 Two Start-specific rules worth keeping:
 

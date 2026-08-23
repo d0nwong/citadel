@@ -6,13 +6,13 @@ export const jobQueries = {
   list: () =>
     queryOptions({
       queryKey: [...jobQueries.all],
-      queryFn: listJobs,
+      queryFn: () => listJobs(),
       refetchInterval: 1000,
     }),
   detail: (id: string) =>
     queryOptions({
       queryKey: [...jobQueries.all, id],
-      queryFn: () => getJob(id),
+      queryFn: () => getJob({ data: id }),
       refetchInterval: 1000,
     }),
 }

@@ -38,7 +38,7 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
   })
 
   const cancel = useMutation({
-    mutationFn: cancelJob,
+    mutationFn: (id: string) => cancelJob({ data: id }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: jobQueries.all })
       qc.invalidateQueries({ queryKey: forgeQueries.all })
