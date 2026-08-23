@@ -54,4 +54,5 @@ volume `foundry-pgdata` is mounted at `/var/lib/postgresql` (the image's own
 
 `postgres/init/*.sql` runs **once**, when that volume is first created — it is for
 cluster-level setup (extensions), not for schema. Application schema belongs in
-the app's migrations.
+the app's migrations: `web/src/db/`, applied with `bun run db:migrate`, into the
+`foundry` schema rather than `public`.

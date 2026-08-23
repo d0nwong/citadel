@@ -10,6 +10,7 @@ export interface LogLine {
   text: string
 }
 
+/** Timestamps are epoch milliseconds everywhere, as the rest of the app expects. */
 export interface Job {
   id: string
   task: string
@@ -22,9 +23,17 @@ export interface Job {
   createdAt: number
   startedAt?: number
   finishedAt?: number
-  logs: Array<LogLine>
   diff?: { files: number; additions: number; deletions: number }
   exitCode?: number
+}
+
+/**
+ * A job with its logs. Only the detail sheet needs these, and hauling every
+ * line of every job for the ledger would be pointless — so the list returns
+ * `Job` and the single fetch returns this.
+ */
+export interface JobDetail extends Job {
+  logs: Array<LogLine>
 }
 
 export interface NewJobInput {

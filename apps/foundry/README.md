@@ -94,19 +94,35 @@ Postgres for the web UI's job ledger, in a container, from the repo root:
 bun run infra:up       # postgres on localhost:5432, waits until it's healthy
 bun run infra:psql     # a psql shell in it
 bun run infra:down     # stop (data survives; --purge to wipe)
+
+bun run db:migrate     # apply the app schema (web/src/db/migrations)
 ```
 
 Connection string: `postgresql://foundry:foundry@localhost:5432/foundry` — also
-printed by `bun run infra:url`. See `infra/README.md` for the rest.
+printed by `bun run infra:url`. The app's tables live in the `foundry` schema, not
+`public`. See `infra/README.md` and `web/README.md` for the rest.
 
 ## Web UI
 
 `web/` holds a TanStack Start + shadcn frontend for this CLI — a job ledger and a
-"forge a job" flow. It runs on bun and is currently **UI only**, backed by an
-in-memory mock:
+"forge a job" flow. It runs on bun. Jobs and imported repos are real and persist in
+Postgres; forges are still mocked, and nothing executes a job yet.
 
 ```sh
-cd web && bun install && bun run dev   # http://localhost:3777
+(cd web && bun install)
+bun run db:migrate     # once, after infra:up
+bun run web:dev        # http://localhost:3777
 ```
 
 See `web/README.md` for the seam where the real orchestrator gets wired in.
+
+### Reaching it from your other devices
+
+```sh
+bun run web:serve          # https://<this-node>.ts.net -> localhost:3777
+bun run web:serve:status
+bun run web:unserve
+```
+
+Tailnet only, over `tailscale serve` — the dev server never becomes public. Exposing
+it to the internet is `tailscale funnel`, deliberately by hand.

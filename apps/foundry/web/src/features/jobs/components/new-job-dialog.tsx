@@ -26,6 +26,7 @@ import { repoQueries } from '@/features/repos/queries'
 
 import { cn } from '@/shared/lib/utils'
 import { localRef, repoLabel } from '@/features/repos/types'
+import type { NewJobInput } from '../types'
 import type { Repo } from '@/features/repos/types'
 
 // A plain <label>: shadcn's Label ships `text-sm`, which beats `.kicker` in the
@@ -60,7 +61,7 @@ export function NewJobDialog() {
   }
 
   const mutation = useMutation({
-    mutationFn: createJob,
+    mutationFn: (input: NewJobInput) => createJob({ data: input }),
     onSuccess: (job) => {
       qc.invalidateQueries({ queryKey: jobQueries.all })
       qc.invalidateQueries({ queryKey: forgeQueries.all })

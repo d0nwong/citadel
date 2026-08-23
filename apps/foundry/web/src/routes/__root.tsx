@@ -1,10 +1,8 @@
-import { useEffect } from 'react'
 import { HeadContent, Scripts, createRootRouteWithContext } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import { Toaster } from '@/shared/ui/sonner'
 import { AppShell } from '@/shared/components/app-shell'
-import { startSimulator } from '@/mocks/foundry-store'
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
 import appCss from '../styles.css?url'
 import type { QueryClient } from '@tanstack/react-query'
@@ -35,9 +33,6 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-  // The POC has no backend yet; this ticks mock jobs forward so the ledger moves.
-  useEffect(() => startSimulator(), [])
-
   return (
     <html lang="en">
       <head>
