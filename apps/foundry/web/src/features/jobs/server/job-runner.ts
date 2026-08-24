@@ -25,6 +25,8 @@ const ENV_FILE = path.join(FOUNDRY_HOME, 'env')
 const JOBS_DIR = path.join(FOUNDRY_HOME, 'jobs')
 const IMAGE = process.env.FOUNDRY_IMAGE ?? 'foundry/forge:latest'
 const CALLBACK_BASE = process.env.FOUNDRY_CALLBACK_BASE ?? 'http://host.docker.internal:3777'
+/** The MCP gateway (infra/ `mcp` service) as the container sees it — host port from infra/.env's MCP_PORT. */
+const MCP_URL = process.env.FOUNDRY_MCP_URL ?? 'http://host.docker.internal:9090'
 const MAX_JOBS = Number(process.env.FOUNDRY_MAX_JOBS ?? 3)
 /** Seconds the agent may run before the container's `timeout` kills it. */
 const JOB_TIMEOUT = Number(process.env.FOUNDRY_TIMEOUT ?? 1800)
@@ -85,6 +87,11 @@ async function preflight(job: JobRow): Promise<{ credEnv: Record<string, string>
   if (cred.CLAUDE_CODE_OAUTH_TOKEN) credEnv.CLAUDE_CODE_OAUTH_TOKEN = cred.CLAUDE_CODE_OAUTH_TOKEN
   else if (cred.ANTHROPIC_API_KEY) credEnv.ANTHROPIC_API_KEY = cred.ANTHROPIC_API_KEY
   else throw new Error('no Claude credential for the forge — run: foundry auth')
+  // Gateway token only — the Linear key stays on the host, behind the gateway.
+  if (cred.FOUNDRY_MCP_TOKEN) {
+    credEnv.FOUNDRY_MCP_TOKEN = cred.FOUNDRY_MCP_TOKEN
+    credEnv.FOUNDRY_MCP_URL = MCP_URL
+  }
 
   try {
     await docker(['info', '--format', '{{.OperatingSystem}}'])

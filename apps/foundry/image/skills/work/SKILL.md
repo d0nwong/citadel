@@ -13,9 +13,11 @@ or reorder steps.
 The argument is a Linear ticket URL or ID (e.g. `LIA-24`).
 
 - If Linear MCP tools are available, fetch the issue: title, description,
-  labels, and the suggested git branch name.
-- If not (common inside a forge), ask the user to paste the ticket's title and
-  description before doing anything else.
+  labels, and the suggested git branch name. Inside a forge they arrive as the
+  `linear` server, proxied through foundry's MCP gateway on the host.
+- If not, ask the user to paste the ticket's title and description before
+  doing anything else — and tell them the fix: on the host, `foundry auth
+  --linear`, `bun run infra:up`, then `foundry recreate <forge>`.
 
 The ticket text is the requirement. If it is ambiguous or contradicts what you
 find in the code, ask — do not fill the gap with a guess.
