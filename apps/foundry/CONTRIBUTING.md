@@ -2,6 +2,9 @@
 
 ## Running the local stack
 
+First time on a clone: `foundry setup` (see the README's "Setup" section) does
+credential, forge image, web deps, infra and schema in one idempotent pass.
+
 From the repo root:
 
 ```sh
