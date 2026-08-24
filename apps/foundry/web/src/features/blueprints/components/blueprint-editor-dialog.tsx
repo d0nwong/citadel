@@ -183,7 +183,7 @@ export function BlueprintEditorDialog({ blueprint, trigger }: { blueprint?: Blue
                   value={step.prompt}
                   onChange={(e) => patchStep(i, { prompt: e.target.value })}
                   rows={3}
-                  placeholder={`${TASK_PLACEHOLDER} — explore the code and write a plan to ~/plan.md. Do not edit /work yet.`}
+                  placeholder={`${TASK_PLACEHOLDER} — follow the /work skill's planning phase: explore the code and write a plan to ~/plan.md. Do not edit /work yet.`}
                   className="resize-none border-iron-700 bg-iron-900 text-[13px] leading-relaxed placeholder:text-txt-faint focus-visible:ring-ember-deep"
                 />
               </div>
