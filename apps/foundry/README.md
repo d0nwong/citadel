@@ -80,6 +80,11 @@ foundry ls
 Inside a forge, `foundry claude` passes `--dangerously-skip-permissions` by default —
 that's the whole point of a sandbox. Pass `--safe` to get normal prompting back.
 
+Forges ship a `/work` skill (`image/skills/work/SKILL.md`): give it a Linear ticket
+and it reads the requirement, plans first, branches from main, verifies against the
+existing code, and finishes with a PR. Skills are re-synced into `~/.claude/skills`
+on every container start, so `foundry recreate` picks up new versions.
+
 ## Fan-out
 
 Run one prompt across many forges in parallel, headless:
