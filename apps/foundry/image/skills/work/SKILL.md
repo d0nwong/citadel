@@ -8,6 +8,20 @@ description: Work a Linear ticket end to end — read the requirement, plan befo
 Drive one ticket from requirement to pull request, in this order. Do not skip
 or reorder steps.
 
+## Running as blueprint steps
+
+A headless job may split this workflow across blueprint steps, each running
+`claude -p` on its own model but resuming one shared session. When the step
+prompt names a phase, do that phase and stop:
+
+- **A planning step** covers steps 1–2 only: read the requirement, explore the
+  code, write the plan to `~/plan.md`, review it yourself. Do not edit `/work`.
+- **An implementing step** covers steps 3–5: start by reading `~/plan.md` and
+  follow it — do not re-plan or second-guess it beyond what the code forces.
+
+`~/plan.md` is the handoff between the two. A prompt that names no phase means
+the whole workflow, start to finish.
+
 ## 1. Read the requirement
 
 The argument is a Linear ticket URL or ID (e.g. `LIA-24`).
