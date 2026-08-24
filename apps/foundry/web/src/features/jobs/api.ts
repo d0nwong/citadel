@@ -34,6 +34,17 @@ export const createJob = createServerFn({ method: 'POST' })
     return job
   })
 
+export const rerunJob = createServerFn({ method: 'POST' })
+  .validator((id: string) => id)
+  .handler(async ({ data }): Promise<Job> => {
+    const store = await import('./server/job-store')
+    const runner = await import('./server/job-runner')
+    const job = await store.rerunJob(data)
+    // Same fire-and-forget as createJob — the ledger's poll picks it up.
+    void runner.startJob(job.id)
+    return job
+  })
+
 export const cancelJob = createServerFn({ method: 'POST' })
   .validator((id: string) => id)
   .handler(async ({ data }) => {

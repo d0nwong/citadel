@@ -114,6 +114,42 @@ export async function createJob(input: NewJobInput): Promise<Job> {
   })
 }
 
+/**
+ * Copies a job's inputs into a brand-new queued row — same task, repo,
+ * base branch, forge, and blueprint *snapshot* (not a re-resolve of
+ * `blueprintId`, which may now point at an edited or deleted blueprint).
+ * `branchSlug` is re-derived; `prepareWorkspace` already uniquifies it
+ * against origin if the original branch is still around.
+ */
+export async function rerunJob(sourceId: string): Promise<Job> {
+  const src = await getJobRow(sourceId)
+  if (!src) throw new Error('that job no longer exists')
+
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(jobs)
+      .values({
+        task: src.task,
+        repo: src.repo,
+        repoId: src.repoId,
+        baseBranch: src.baseBranch,
+        branch: `foundry/${branchSlug(src.task)}`,
+        forge: src.forge,
+        blueprintId: src.blueprintId,
+        blueprint: src.blueprint,
+      })
+      .returning()
+
+    const via = src.blueprint ? ` via blueprint "${src.blueprint.name}" (${src.blueprint.steps.length} steps)` : ''
+    await tx.insert(jobLogs).values({
+      jobId: row.id,
+      stream: 'sys',
+      text: `queued on ${row.forge}${via} — rerun of ${src.id.slice(0, 8)}`,
+    })
+    return toJob(row)
+  })
+}
+
 /** No-op unless the job is still open — a settled job keeps its outcome. */
 export async function cancelJob(id: string): Promise<void> {
   await db.transaction(async (tx) => {
