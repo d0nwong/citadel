@@ -42,3 +42,9 @@ export const cancelJob = createServerFn({ method: 'POST' })
     const runner = await import('./server/job-runner')
     await runner.cancelJob(data)
   })
+
+export const purgeJobs = createServerFn({ method: 'POST' }).handler(async (): Promise<{ count: number }> => {
+  const store = await import('./server/job-store')
+  const count = await store.purgeJobs()
+  return { count }
+})

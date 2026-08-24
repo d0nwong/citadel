@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, GitBranch } from 'lucide-react'
 import { NewJobDialog } from './new-job-dialog'
+import { PurgeJobsDialog } from './purge-jobs-dialog'
 import { JobDetailSheet } from './job-detail-sheet'
 import { JobStatusChip } from './job-status-chip'
 import { Skeleton } from '@/shared/ui/skeleton'
@@ -96,6 +97,8 @@ export function JobLedger() {
   )
 
   const active = counts.running ?? 0
+  // Mirrors the store's OPEN set: everything not queued/running is purgeable.
+  const purgeable = counts.all - active - (counts.queued ?? 0)
 
   return (
     <>
@@ -125,6 +128,7 @@ export function JobLedger() {
           <span className="mx-2 text-hairline">│</span>
           {counts.all} total
         </span>
+        <PurgeJobsDialog purgeable={purgeable} />
         <NewJobDialog />
       </PageHeader>
 

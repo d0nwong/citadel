@@ -5,7 +5,7 @@
  * Row -> domain mapping lives here so the rest of the app keeps seeing epoch
  * milliseconds and optional fields rather than nullable timestamptz columns.
  */
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobLogs, jobs, repos } from '@/db/schema'
 import type { Job, JobDetail, JobStatus, JobStep, LogLine, LogStream, NewJobInput } from '../types'
@@ -115,6 +115,16 @@ export async function cancelJob(id: string): Promise<void> {
     if (!row) return
     await tx.insert(jobLogs).values({ jobId: id, stream: 'sys', text: 'cancelled by user' })
   })
+}
+
+/**
+ * Deletes every settled job (never one that is still queued or running, so an
+ * active container's row can't vanish from under it). `job_logs` cascades on
+ * the FK, so logs go with their job. Returns how many rows were removed.
+ */
+export async function purgeJobs(): Promise<number> {
+  const rows = await db.delete(jobs).where(notInArray(jobs.status, OPEN)).returning({ id: jobs.id })
+  return rows.length
 }
 
 /* ------------------------------------------------------------------ */
