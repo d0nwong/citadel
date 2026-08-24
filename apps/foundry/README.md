@@ -6,6 +6,40 @@ Each forge is a Linux container with `claude`, `git`, `gh`, `node`, `python3`, a
 usual CLI tooling. Forges are cheap (<1s to start), isolated from your Mac, and
 addressable at `<name>.foundry.local`.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph host["macOS host"]
+        cli["foundry CLI<br/>(bin/)"]
+        web["Web UI<br/>(web/, bun · :3777)"]
+        pg[("Postgres<br/>(infra/, :5432)")]
+        auth["~/.foundry/env<br/>CLAUDE_CODE_OAUTH_TOKEN"]
+        jobs["~/.foundry/jobs/&lt;id&gt;/<br/>workspace clones"]
+    end
+
+    subgraph orb["OrbStack containers"]
+        forge["forge<br/>&lt;name&gt;.foundry.local<br/>claude · git · gh · node · python3"]
+        vols[("named volumes<br/>/work · ~/.claude · ~/.config")]
+        jobforge["ephemeral job forge<br/>(no git creds, no DB)"]
+    end
+
+    remote["GitHub / Bitbucket"]
+
+    cli -- "new · claude · shell · exec · run" --> forge
+    auth -- "injected" --> forge
+    auth -- "injected" --> jobforge
+    forge --- vols
+    forge -- "--github (opt-in token)" --> remote
+
+    web -- "job ledger" --> pg
+    web -- "clone repo" --> jobs
+    web -- "ignite job" --> jobforge
+    jobforge -- "edits" --> jobs
+    jobforge -. "progress callback<br/>host.docker.internal + per-job token" .-> web
+    web -- "commit · push · PR<br/>(gh / bb, host creds)" --> remote
+```
+
 ## Why containers, not `orb` machines
 
 OrbStack Linux machines share your host `$HOME` — that's convenient but defeats the
