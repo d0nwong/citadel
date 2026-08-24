@@ -37,6 +37,10 @@ RUN usermod -l "$USER" -d "/home/$USER" -m node \
 COPY box-init.sh /usr/local/bin/box-init
 RUN chmod +x /usr/local/bin/box-init
 
+# Foundry-managed Claude Code skills; box-init syncs them into ~/.claude/skills
+# on every start (the ~/.claude named volume shadows anything baked in there).
+COPY --chown=$USER:$USER skills /opt/foundry/skills
+
 USER $USER
 WORKDIR /work
 ENV SHELL=/bin/bash \

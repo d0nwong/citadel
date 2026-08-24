@@ -17,4 +17,11 @@ fi
 
 mkdir -p "$HOME/.claude"
 
+# Refresh foundry-managed skills on every start so recreate picks up new
+# versions; skills the user added themselves are left alone.
+if [ -d /opt/foundry/skills ]; then
+  mkdir -p "$HOME/.claude/skills"
+  cp -R /opt/foundry/skills/. "$HOME/.claude/skills/"
+fi
+
 exec "$@"
