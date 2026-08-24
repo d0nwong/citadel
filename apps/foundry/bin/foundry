@@ -55,6 +55,13 @@ mcp_port() {
 
 # ---------------------------------------------------------------- commands
 
+cmd_version() {
+  local v
+  v=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/package.json" | head -1)
+  [ -n "$v" ] || die "could not read version from $ROOT/package.json"
+  printf 'foundry %s\n' "$v"
+}
+
 cmd_doctor() {
   local fail=0
   command -v docker >/dev/null 2>&1 && ok "docker cli: $(command -v docker)" || { say "  no docker cli"; fail=1; }
@@ -333,6 +340,7 @@ cat >&2 <<'USAGE'
 foundry — Claude Code forges on OrbStack
 
   setup
+    foundry version                   print the foundry version
     foundry doctor                    check OrbStack, image, credentials
     foundry auth [--api-key]          store a Claude credential for all forges
     foundry auth --linear             store a Linear API key behind the MCP gateway
@@ -363,6 +371,7 @@ USAGE
 }
 
 case "${1:-}" in
+  version|--version|-v) shift; cmd_version "$@" ;;
   doctor)   shift; cmd_doctor "$@" ;;
   auth)     shift; cmd_auth "$@" ;;
   build)    shift; cmd_build "$@" ;;
