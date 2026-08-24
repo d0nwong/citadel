@@ -24,7 +24,19 @@ find in the code, ask — do not fill the gap with a guess.
 
 ## 2. Always plan first
 
-Enter plan mode before any edit. While planning:
+Plan before any edit. How the plan gets approved depends on who is there:
+
+- **Interactive session** (a person is typing): enter plan mode and wait for
+  their approval.
+- **Headless run** (`claude -p`, e.g. a web-UI job — no one can answer):
+  do not use plan mode; it needs a human to approve and will block. Write the
+  plan into `.foundry/plan.md` in the workspace, then review it yourself as a
+  sceptical reviewer would — does every claim point at code you read, is
+  there a simpler reuse, what could break — and fix the plan before moving
+  on. Questions you would have asked the user become explicit assumptions,
+  stated in the plan and again in the PR body.
+
+While planning:
 
 - Explore the code the ticket touches. Every claim in the plan must be backed
   by something you actually read — never by an assumption about how the code
@@ -34,7 +46,8 @@ Enter plan mode before any edit. While planning:
 - Where there is a genuine fork in approach, present the options with one
   marked **recommended**, and proceed with the recommended one on approval.
 
-Only start editing after the plan is approved.
+Only start editing after the plan is approved — by the user, or by your own
+review when headless.
 
 ## 3. Branch from main
 
