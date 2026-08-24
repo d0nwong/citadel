@@ -140,6 +140,81 @@ cmd_build() {
   ok "built $IMAGE"
 }
 
+# One-time bootstrap: prerequisites, Claude credential, optional Linear/MCP,
+# forge image, web deps, local infra, schema — each phase is a no-op on rerun.
+cmd_setup() {
+  local linear=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --linear)    linear=1; shift ;;
+      --no-linear) linear=0; shift ;;
+      *) die "unknown flag: $1 (usage: foundry setup [--linear|--no-linear])" ;;
+    esac
+  done
+
+  info "1/8 prerequisites"
+  require_orbstack
+  ok "docker + OrbStack"
+  need bun; ok "bun: $(command -v bun)"
+  if command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
+    ok "gh authed"
+  else warn "gh not authed — only needed for 'foundry new --github' and job PRs"; fi
+
+  info "2/8 claude credential"
+  load_env
+  if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then
+    ok "credential already in $ENVFILE"
+  else
+    cmd_auth
+  fi
+
+  info "3/8 linear / mcp gateway"
+  load_env
+  if [ -n "${LINEAR_API_KEY:-}" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
+    ok "Linear already configured"
+  elif [ "$linear" = 0 ]; then
+    say "  ${c_dim}skipped (--no-linear)${c_0}"
+  elif [ "$linear" = 1 ]; then
+    cmd_auth --linear
+  elif [ -t 0 ]; then
+    local ans; read -rp "  set up Linear MCP access? [y/N] " ans
+    case "$ans" in [yY]*) cmd_auth --linear ;; *) say "  ${c_dim}skipped${c_0}" ;; esac
+  else
+    say "  ${c_dim}skipped (non-interactive; rerun with --linear to enable)${c_0}"
+  fi
+
+  info "4/8 forge image"
+  require_orbstack
+  if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    ok "$IMAGE already built"
+  else
+    cmd_build
+  fi
+
+  info "5/8 web dependencies"
+  (cd "$ROOT/web" && bun install)
+  ok "web deps installed"
+
+  info "6/8 local infra (postgres + mcp gateway)"
+  "$ROOT/infra/infra.sh" up
+
+  info "7/8 database schema"
+  (cd "$ROOT/web" && bun run db:migrate)
+  ok "schema migrated"
+
+  info "8/8 summary"
+  cmd_doctor || true
+  case ":$PATH:" in
+    *":$ROOT/bin:"*) ;;
+    *) warn "bin/ is not on PATH — export PATH=\"$ROOT/bin:\$PATH\" (or symlink bin/foundry)" ;;
+  esac
+  say ""
+  ok "setup complete"
+  say "  bun run web:dev                        ${c_dim}# http://localhost:3777${c_0}"
+  say "  foundry new <name> --repo <url>        ${c_dim}# create a forge${c_0}"
+  say "  foundry claude <name>                  ${c_dim}# interactive Claude Code in it${c_0}"
+}
+
 cmd_new() {
   require_orbstack
   local name="" mount="" repo="" cpus="" mem="" image="$IMAGE" github=0
@@ -340,6 +415,8 @@ cat >&2 <<'USAGE'
 foundry — Claude Code forges on OrbStack
 
   setup
+    foundry setup [--linear|--no-linear]
+                                       one-time bootstrap: auth, image, web deps, infra, db
     foundry version                   print the foundry version
     foundry doctor                    check OrbStack, image, credentials
     foundry auth [--api-key]          store a Claude credential for all forges
@@ -372,6 +449,7 @@ USAGE
 
 case "${1:-}" in
   version|--version|-v) shift; cmd_version "$@" ;;
+  setup)    shift; cmd_setup "$@" ;;
   doctor)   shift; cmd_doctor "$@" ;;
   auth)     shift; cmd_auth "$@" ;;
   build)    shift; cmd_build "$@" ;;

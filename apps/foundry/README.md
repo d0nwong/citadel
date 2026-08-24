@@ -55,6 +55,16 @@ point of a sandbox, and they boot far slower. Containers are reproducible from
 
 ```sh
 export PATH="$PWD/bin:$PATH"   # or: ln -s "$PWD/bin/foundry" /usr/local/bin/foundry
+foundry setup                  # one-time: credential, forge image, web deps, local infra, db
+```
+
+`foundry setup` chains everything below — `foundry auth`, `foundry auth --linear`
+(prompted), `foundry build`, `bun install` in `web/`, `bun run infra:up`, and
+`bun run db:migrate` — skipping any step that's already done, so it's safe to rerun.
+Pass `--linear`/`--no-linear` to preselect the Linear/MCP prompt non-interactively.
+The steps below are the same thing run by hand, for when you want more control:
+
+```sh
 foundry doctor                 # check OrbStack + prerequisites
 foundry auth                   # one-time credential (see below)
 foundry auth --linear          # optional: let forges read/write Linear via the MCP gateway
@@ -180,10 +190,8 @@ against that clone, then commits, pushes and opens a PR (`gh` for GitHub origins
 sheet as the agent works.
 
 ```sh
-(cd web && bun install)
-foundry auth           # once — the forge container needs a Claude credential
-bun run db:migrate     # once, after infra:up
-bun run web:dev        # http://localhost:3777
+foundry setup           # once — credential, web deps, infra, schema (see Setup above)
+bun run web:dev         # http://localhost:3777
 ```
 
 Two things worth knowing:
