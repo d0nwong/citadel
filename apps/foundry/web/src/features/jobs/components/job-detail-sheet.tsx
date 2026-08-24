@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, ChevronRight, ExternalLink, GitBranch } from 'lucide-react'
+import { Ban, ChevronRight, ExternalLink, GitBranch, RotateCcw } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/shared/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/shared/ui/sheet'
 import { JobStatusChip } from './job-status-chip'
-import { cancelJob } from '../api'
+import { cancelJob, rerunJob } from '../api'
 import { jobQueries } from '../queries'
 import { forgeQueries } from '@/features/forges/queries'
 import { clockTime, duration } from '@/shared/lib/format'
@@ -57,7 +58,15 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
   )
 }
 
-export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClose: () => void }) {
+export function JobDetailSheet({
+  jobId,
+  onClose,
+  onRerun,
+}: {
+  jobId: string | null
+  onClose: () => void
+  onRerun?: (newJobId: string) => void
+}) {
   const qc = useQueryClient()
   const logRef = useRef<HTMLDivElement>(null)
 
@@ -71,6 +80,18 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: jobQueries.all })
       qc.invalidateQueries({ queryKey: forgeQueries.all })
+    },
+  })
+
+  const rerun = useMutation({
+    mutationFn: (id: string) => rerunJob({ data: id }),
+    onSuccess: (newJob, sourceId) => {
+      qc.invalidateQueries({ queryKey: jobQueries.all })
+      qc.invalidateQueries({ queryKey: forgeQueries.all })
+      toast.success(`Job ${shortId(newJob.id)} queued`, {
+        description: `rerun of ${shortId(sourceId)}`,
+      })
+      onRerun?.(newJob.id)
     },
   })
 
@@ -163,7 +184,7 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
 
             <div className="flex items-center justify-between px-5 py-3 sm:px-6">
               <div className="kicker">Output</div>
-              {live && (
+              {live ? (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -173,6 +194,17 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
                 >
                   <Ban className="size-3" />
                   Cancel job
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => rerun.mutate(job.id)}
+                  disabled={rerun.isPending}
+                  className="h-7 gap-1.5 text-[12px] text-txt-dim hover:bg-ember/10 hover:text-ember"
+                >
+                  <RotateCcw className="size-3" />
+                  Rerun as new job
                 </Button>
               )}
             </div>

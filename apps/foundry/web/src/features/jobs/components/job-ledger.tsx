@@ -155,7 +155,7 @@ export function JobLedger() {
         ))}
       </div>
 
-      <JobDetailSheet jobId={selected} onClose={() => setSelected(null)} />
+      <JobDetailSheet jobId={selected} onClose={() => setSelected(null)} onRerun={setSelected} />
     </>
   )
 }
