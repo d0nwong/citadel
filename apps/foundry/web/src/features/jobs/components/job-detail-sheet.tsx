@@ -8,6 +8,7 @@ import { cancelJob } from '../api'
 import { jobQueries } from '../queries'
 import { forgeQueries } from '@/features/forges/queries'
 import { clockTime, duration } from '@/shared/lib/format'
+import { stepsSummary } from '@/features/blueprints/types'
 import { repoDestination, repoLabel } from '@/features/repos/types'
 import { cn } from '@/shared/lib/utils'
 import { shortId } from '../types'
@@ -81,7 +82,14 @@ export function JobDetailSheet({ jobId, onClose }: { jobId: string | null; onClo
                 <span className="block truncate">{repoLabel(job.repo)}</span>
                 <span className="mt-0.5 block text-[10px] text-txt-faint">{repoDestination(job.repo)}</span>
               </Meta>
-              <Meta label="Forge">{job.forge}</Meta>
+              <Meta label="Forge">
+                {job.forge}
+                {job.blueprint && (
+                  <span className="mt-0.5 block truncate text-[10px] text-txt-faint" title={stepsSummary(job.blueprint.steps)}>
+                    {job.blueprint.name} · {job.blueprint.steps.length} steps
+                  </span>
+                )}
+              </Meta>
               <Meta label="Branch">
                 <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
                   <span className="flex min-w-0 items-center gap-1.5">

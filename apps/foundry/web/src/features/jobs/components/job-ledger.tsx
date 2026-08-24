@@ -67,7 +67,10 @@ function JobRow({ job, onOpen, index }: { job: Job; onOpen: () => void; index: n
           </span>
         </span>
 
-        <span className="font-mono text-[12px] text-txt-dim">{job.forge}</span>
+        <span className="min-w-0 font-mono text-[12px] text-txt-dim">
+          <span className="block truncate">{job.forge}</span>
+          {job.blueprint && <span className="block truncate text-[11px] text-ember-soft">{job.blueprint.name}</span>}
+        </span>
         <span className="font-mono text-[12px] tabular-nums text-txt-dim lg:text-right">
           {job.status === 'queued' ? '—' : duration(elapsed)}
         </span>

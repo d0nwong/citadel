@@ -11,7 +11,11 @@ import * as store from './job-store'
 import type { LogStream } from '../types'
 
 interface EventPayload {
-  step?: 'agent' | 'commit'
+  /**
+   * 'commit' hands the pipeline back to the host. The object form labels a
+   * blueprint step's lines (LIA-25) — a plain job never sends it.
+   */
+  step?: 'agent' | 'commit' | { index: number; name: string }
   /** Raw stream-json lines from `claude -p --output-format stream-json`. */
   ndjson?: Array<string>
   stderr?: Array<string>
@@ -48,7 +52,10 @@ export async function handleJobEvent(jobId: string, request: Request): Promise<R
   for (const s of payload.sys ?? []) lines.push({ stream: 'sys', text: s })
   for (const s of payload.stderr ?? []) lines.push({ stream: 'err', text: trim(s, 2000) })
   for (const raw of payload.ndjson ?? []) lines.push(...mapClaudeEvent(raw))
-  await store.appendLogs(jobId, lines)
+  // A step label is a prefix on the text, not a column: job_logs stays the
+  // same shape, and the sheet reads `[plan] …` the way it reads anything else.
+  const label = typeof payload.step === 'object' ? `[${payload.step.name}] ` : ''
+  await store.appendLogs(jobId, label ? lines.map((l) => ({ ...l, text: label + l.text })) : lines)
 
   if (payload.step === 'commit' && payload.outcome) {
     // Move step *before* answering: the runner's curl returns only after this

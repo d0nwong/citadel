@@ -8,6 +8,7 @@
 import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobLogs, jobs, repos } from '@/db/schema'
+import { getBlueprintRow, toSnapshot } from '@/features/blueprints/server/blueprint-store'
 import type { Job, JobDetail, JobStatus, JobStep, LogLine, LogStream, NewJobInput } from '../types'
 
 export type JobRow = typeof jobs.$inferSelect
@@ -34,6 +35,7 @@ function toJob(row: JobRow): Job {
     baseBranch: row.baseBranch,
     branch: row.branch,
     forge: row.forge,
+    blueprint: row.blueprint ?? undefined,
     status: row.status,
     step: (row.step as JobStep | null) ?? undefined,
     prUrl: row.prUrl ?? undefined,
@@ -86,6 +88,11 @@ export async function createJob(input: NewJobInput): Promise<Job> {
       ? ((await db.select({ id: repos.id }).from(repos).where(eq(repos.path, input.repo.path)))[0]?.id ?? null)
       : null
 
+  // Snapshot the blueprint now: the job must run (and later read) exactly the
+  // steps the user picked, however the blueprint is edited afterwards.
+  const bp = input.blueprintId ? await getBlueprintRow(input.blueprintId) : undefined
+  if (input.blueprintId && !bp) throw new Error('that blueprint no longer exists')
+
   return db.transaction(async (tx) => {
     const [row] = await tx
       .insert(jobs)
@@ -96,10 +103,13 @@ export async function createJob(input: NewJobInput): Promise<Job> {
         baseBranch: input.baseBranch,
         branch: `foundry/${branchSlug(task)}`,
         forge: input.forge,
+        blueprintId: bp?.id ?? null,
+        blueprint: bp ? toSnapshot(bp) : null,
       })
       .returning()
 
-    await tx.insert(jobLogs).values({ jobId: row.id, stream: 'sys', text: `queued on ${row.forge}` })
+    const via = bp ? ` via blueprint "${bp.name}" (${bp.steps.length} steps)` : ''
+    await tx.insert(jobLogs).values({ jobId: row.id, stream: 'sys', text: `queued on ${row.forge}${via}` })
     return toJob(row)
   })
 }

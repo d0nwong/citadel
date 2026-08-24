@@ -8,6 +8,7 @@
  */
 import { sql } from 'drizzle-orm'
 import { bigserial, index, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import type { BlueprintSnapshot, BlueprintStep } from '../features/blueprints/types'
 import type { RepoRef } from '../features/repos/types'
 
 export const foundry = pgSchema('foundry')
@@ -29,6 +30,20 @@ export const repos = foundry.table('repos', {
 })
 
 /**
+ * Reusable multi-step recipes (LIA-25): an ordered list of `{name, model,
+ * effort?, prompt}`. Kept as one jsonb column rather than a steps table —
+ * a blueprint is edited and consumed whole, and a job snapshots it anyway.
+ */
+export const blueprints = foundry.table('blueprints', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  name: text('name').notNull().unique(),
+  description: text('description'),
+  steps: jsonb('steps').$type<Array<BlueprintStep>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/**
  * One row per job. A job *is* the run in this domain — one job, one execution —
  * so there is no separate runs table to join through. Ids are uuids; the UI
  * renders the short prefix the way git renders short hashes.
@@ -45,6 +60,10 @@ export const jobs = foundry.table(
     baseBranch: text('base_branch').notNull(),
     branch: text('branch').notNull(),
     forge: text('forge').notNull(),
+    /** Null once the blueprint is deleted; `blueprint` below still says what ran. */
+    blueprintId: uuid('blueprint_id').references(() => blueprints.id, { onDelete: 'set null' }),
+    /** Snapshot of the steps that ran — null for a plain single-step job. */
+    blueprint: jsonb('blueprint').$type<BlueprintSnapshot>(),
     status: jobStatus('status').notNull().default('queued'),
     /** Where the pipeline is: prepare | agent | commit | push | pr | done. */
     step: text('step'),

@@ -40,7 +40,8 @@ Ignite ─► insert row (queued, with a per-job callback token)
        ─► preflight: docker, image, ~/.foundry/env credential, repo, base, origin
        ─► clone the repo to ~/.foundry/jobs/<id>/work, branch from origin/<base>
        ─► docker run foundry/forge:latest forge-run   (image/forge-run.sh, bind-mounted)
-              container: claude -p <task> --output-format stream-json
+              container: for each blueprint step (or the one bare task):
+                           claude -p <prompt> --model <m> --session-id|--resume <sid>
               container: git add -A && git commit
               container ─POST─► /api/jobs/$id/events   (Bearer <token>)
        ─► host: git push, `bb`/`gh` pr create, diff stats, settle the row
@@ -53,6 +54,13 @@ Ignite ─► insert row (queued, with a per-job callback token)
   `FOUNDRY_MCP_URL`/`FOUNDRY_MCP_TOKEN`, so the agent can reach Linear through the
   infra stack's MCP gateway (`host.docker.internal:9090`, override with the
   `FOUNDRY_MCP_URL` env of this server) — a gateway token, never the Linear key.
+- A **blueprint** (`features/blueprints/`) turns the agent phase into N steps, each
+  `{name, model, effort?, prompt}`; `{{task}}` in a prompt is the job's task text.
+  The runner gets them as `FOUNDRY_STEPS` JSON, runs every step against one Claude
+  session, labels each step's log lines `[name] …`, and stops at the first
+  non-zero exit (remaining steps are reported as skipped). `FOUNDRY_TIMEOUT` is the
+  whole job's budget. No blueprint means one unlabelled step on the default model —
+  the same loop, so there is exactly one launch path.
 - The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the only server
   route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
   (`server/job-events.ts`) and hands the pipeline back to the host on commit.
@@ -91,12 +99,14 @@ and falls back to the local stack's URL so a fresh clone needs no configuration.
 | table | holds |
 |---|---|
 | `repos` | the imported set — what a job may target |
+| `blueprints` | reusable step lists; `steps` is one jsonb column, edited and consumed whole |
 | `jobs` | one row per job; a job *is* the run here, so there is no separate runs table |
 | `job_logs` | one row per log line, append-only, streamed in as a job runs |
 
 `jobs.repo_id` links to the repo when there is one, and `jobs.repo` keeps an immutable
 `RepoRef` snapshot beside it — a job can target a git URL that was never imported, and
 un-importing a repo must not blank out the history of jobs that ran against it.
+`jobs.blueprint_id` / `jobs.blueprint` follow the same pattern for the steps a job ran.
 
 ## Adding repos
 
@@ -149,7 +159,7 @@ src/
   routes/                     thin adapters, URL-shaped (generated route tree)
     __root.tsx                document shell, AppShell, toaster
     api/jobs.$id.events.ts    the forge container's callback (the one server route)
-    index.tsx  forges.tsx
+    index.tsx  forges.tsx  repos.tsx  blueprints.tsx
   features/
     jobs/
       components/             job-ledger, new-job-dialog, job-detail-sheet, job-status-chip
@@ -160,6 +170,10 @@ src/
       server/job-events.ts    node-only: callback auth + stream-json -> job_logs
       server/forge-pr.ts      node-only: bb / gh pr create, by origin host
       types.ts
+    blueprints/
+      components/             blueprint-inventory, blueprint-editor-dialog
+      server/blueprint-store.ts  node-only: CRUD + hand-rolled step validation
+      queries.ts  api.ts  types.ts
     forges/
       components/             forge-inventory, forge-card, forge-dot
       server/forge-scan.ts    node-only: docker labels -> the inventory

@@ -197,6 +197,15 @@ Two things worth knowing:
 Job workspaces accumulate under `~/.foundry/jobs/`; `foundry jobs prune [--days 7]`
 clears old ones. See `web/README.md` for the full pipeline.
 
+### Blueprints
+
+A **blueprint** is a reusable sequence of agent steps, each on a model of its own —
+*plan with Fable, execute with Sonnet*. Pick one in the "Forge a job" dialog and the
+job's forge runs `claude -p` once per step, all in one session (`--session-id` then
+`--resume`), so the executor sees the planner's exploration. Define them on the
+**Blueprints** page; `db:migrate` seeds a "Plan → Execute" one. A job snapshots the
+steps it ran, so editing or deleting a blueprint never rewrites history.
+
 ### Reaching it from your other devices
 
 ```sh
