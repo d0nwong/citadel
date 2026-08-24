@@ -54,8 +54,7 @@ point of a sandbox, and they boot far slower. Containers are reproducible from
 ## Setup
 
 ```sh
-export PATH="$PWD/bin:$PATH"   # or: ln -s "$PWD/bin/foundry" /usr/local/bin/foundry
-foundry setup                  # one-time: credential, forge image, web deps, local infra, db
+./bin/foundry setup            # one-time: credential, forge image, web deps, local infra, db
 ```
 
 `foundry setup` chains everything below — `foundry auth`, `foundry auth --linear`
@@ -65,11 +64,15 @@ Pass `--linear`/`--no-linear` to preselect the Linear/MCP prompt non-interactive
 The steps below are the same thing run by hand, for when you want more control:
 
 ```sh
-foundry doctor                 # check OrbStack + prerequisites
-foundry auth                   # one-time credential (see below)
-foundry auth --linear          # optional: let forges read/write Linear via the MCP gateway
-foundry build                  # build the forge image (~5 min first time)
+./bin/foundry doctor           # check OrbStack + prerequisites
+./bin/foundry auth             # one-time credential (see below)
+./bin/foundry auth --linear    # optional: let forges read/write Linear via the MCP gateway
+./bin/foundry build            # build the forge image (~5 min first time)
 ```
+
+Everything below writes a bare `foundry` for brevity. To get that, symlink it onto
+your PATH — `ln -s "$PWD/bin/foundry" ~/.local/bin/foundry` (no sudo, unlike
+`/usr/local/bin`). Otherwise run `./bin/foundry` from the repo root.
 
 ### Auth
 
