@@ -130,6 +130,7 @@ Each run writes `~/.foundry/runs/<timestamp>/<forge>.log` plus the prompt and ex
 | `foundry rm <name>` | delete the container, keep volumes |
 | `foundry rm <name> --purge` | delete volumes too |
 | `foundry rm --all` | every forge |
+| `foundry version` | print the CLI version |
 
 ## What persists
 
