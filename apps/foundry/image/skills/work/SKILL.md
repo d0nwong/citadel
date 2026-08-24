@@ -73,8 +73,13 @@ review when headless.
 
 ## 5. Finish with a PR
 
-- Push the branch and open a PR against the default branch — `gh pr create`
-  for GitHub origins, `bb` for Bitbucket.
+- **Headless job forge** (`FOUNDRY_JOB_ID` is set): the branch already exists
+  and the host pushes it and opens the PR once you finish — with your commit
+  message as its title. Commit with a Conventional Commit subject, put the
+  `Closes <ticket-id>` line and your assumptions in the commit body, and stop.
+  Do not push, open a PR, or work around missing `gh`/`bb` credentials.
+- Otherwise, push the branch and open a PR against the default branch —
+  `gh pr create` for GitHub origins, `bb` for Bitbucket.
 - Title: a Conventional Commit. Body: follow the repo's PR template if it has
   one; always include a `Closes <ticket-id>` line linking the Linear ticket,
   a summary, and how you verified the change.

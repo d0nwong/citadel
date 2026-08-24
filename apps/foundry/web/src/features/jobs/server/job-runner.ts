@@ -362,7 +362,7 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
       workspace: work,
       branch: job.branch,
       baseBranch: job.baseBranch,
-      title: job.task,
+      title: await prTitle(work, job.task),
       body: `Created by foundry ${job.id}.\n\nTask:\n${job.task}`,
     })
     if (pr.url !== null) await sys(id, `PR opened: ${pr.url}`)
@@ -383,6 +383,16 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
     await err(id, `push failed: ${msg} — the commit is intact in ${work}`)
   }
   void pumpQueue()
+}
+
+/**
+ * CI lints PR titles as Conventional Commits and release-please reads them, so
+ * prefer the agent's own commit subject when it wrote one in that shape (the
+ * /work skill asks it to); the raw task text is the fallback.
+ */
+async function prTitle(work: string, task: string): Promise<string> {
+  const subject = await git(work, ['log', '-1', '--format=%s']).catch(() => '')
+  return /^[a-z]+(\([^)]+\))?!?: \S/.test(subject) ? subject : task
 }
 
 async function diffStats(work: string, baseBranch: string): Promise<{ files: number; additions: number; deletions: number }> {
