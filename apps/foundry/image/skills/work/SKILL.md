@@ -82,6 +82,14 @@ review when headless.
   message as its title. Commit with a Conventional Commit subject, put the
   `Closes <ticket-id>` line and your assumptions in the commit body, and stop.
   Do not push, open a PR, or work around missing `gh`/`bb` credentials.
+  Before stopping, also write the PR description the host should use to
+  `.git/PR_BODY.md` (inside `.git/` on purpose — anything there is invisible
+  to the commit sweep, so it can never leak into the diff). Follow the repo's
+  PR template (`.github/PULL_REQUEST_TEMPLATE.md`) if it has one: fill each
+  section for real and delete the HTML comment blocks and any optional
+  section you don't need. Always include a `Closes <ticket-id>` line, a
+  summary, and how you verified the change — same content as the commit body,
+  written for a PR reader instead of `git log`.
 - Otherwise, push the branch and open a PR against the default branch —
   `gh pr create` for GitHub origins, `bb` for Bitbucket.
 - Title: a Conventional Commit. Body: follow the repo's PR template if it has
