@@ -54,6 +54,10 @@ review when headless.
 
 ## 3. Branch from main
 
+- **Headless job forge** (`FOUNDRY_JOB_ID` is set): skip this step. The host
+  already cloned the repo, branched from the base, and checked the branch
+  out; it holds the git credentials, so `git fetch`/`push` will fail here —
+  do not try. Work on the current branch.
 - `git fetch origin` first; branch from up-to-date `origin/main` (or the
   repo's actual default branch).
 - Use Linear's suggested branch name (`<username>/<ticket-id>-<slug>`); fall
