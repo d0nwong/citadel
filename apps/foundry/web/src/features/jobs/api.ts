@@ -1,19 +1,40 @@
 import { createServerFn } from '@tanstack/react-start'
-import type { Job, JobDetail, NewJobInput } from './types'
+import type { Job, JobCursor, JobDetail, JobPage, JobStatus, NewJobInput } from './types'
 
 /**
  * Real data — jobs live in Postgres (see src/db). The node-only store is
  * imported inside each handler so it never reaches the client bundle.
  */
 
-export const listJobs = createServerFn({ method: 'GET' }).handler(async (): Promise<Array<Job>> => {
-  const store = await import('./server/job-store')
-  const runner = await import('./server/job-runner')
-  // Lazy reconciliation: the ledger polls every second, so a restarted server
-  // re-adopts (or fails over) in-flight jobs on its first breath.
-  void runner.ensureReconciled()
-  return store.listJobs()
-})
+const MAX_PAGE_SIZE = 100
+
+interface ListJobsInput {
+  cursor?: JobCursor
+  limit?: number
+  status?: JobStatus
+}
+
+export const listJobs = createServerFn({ method: 'GET' })
+  .validator((input: ListJobsInput = {}) => input)
+  .handler(async ({ data }): Promise<JobPage> => {
+    const store = await import('./server/job-store')
+    const runner = await import('./server/job-runner')
+    // Lazy reconciliation: the ledger polls every second, so a restarted server
+    // re-adopts (or fails over) in-flight jobs on its first breath.
+    void runner.ensureReconciled()
+    return store.listJobs({
+      cursor: data.cursor,
+      limit: Math.min(data.limit ?? 50, MAX_PAGE_SIZE),
+      status: data.status,
+    })
+  })
+
+export const countJobs = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<Record<JobStatus, number>> => {
+    const store = await import('./server/job-store')
+    return store.countJobsByStatus()
+  },
+)
 
 export const getJob = createServerFn({ method: 'GET' })
   .validator((id: string) => id)

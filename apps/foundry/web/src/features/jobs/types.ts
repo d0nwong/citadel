@@ -46,6 +46,17 @@ export interface JobDetail extends Job {
 /** Display form of a job's uuid — the short prefix, the way git shows hashes. */
 export const shortId = (id: string) => id.slice(0, 8)
 
+/** Keyset cursor for `listJobs` pagination — the last row's sort key. */
+export interface JobCursor {
+  createdAt: number
+  id: string
+}
+
+export interface JobPage {
+  jobs: Array<Job>
+  nextCursor: JobCursor | null
+}
+
 export interface NewJobInput {
   task: string
   repo: RepoRef

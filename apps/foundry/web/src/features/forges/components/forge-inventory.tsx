@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { ForgeCard } from './forge-card'
 import { forgeQueries } from '../queries'
 import { jobQueries } from '@/features/jobs/queries'
@@ -55,7 +55,10 @@ function AdapterSection({
 export function ForgeInventory() {
   const { data: adapters } = useQuery(forgeQueries.adapters())
   const { data: forges } = useQuery(forgeQueries.list())
-  const { data: jobs } = useQuery(jobQueries.list())
+  // Only need currently-running jobs (to label a busy forge's card) — the
+  // running count is capped by FOUNDRY_MAX_JOBS, so page one always has all of them.
+  const { data: runningJobs } = useInfiniteQuery(jobQueries.list('running'))
+  const jobs = runningJobs?.pages.flatMap((p) => p.jobs)
 
   return (
     <>

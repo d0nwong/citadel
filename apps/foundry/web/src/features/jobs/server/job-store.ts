@@ -6,12 +6,12 @@
  * milliseconds and optional fields rather than nullable timestamptz columns.
  */
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, lt, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobLogs, jobs, repos } from '@/db/schema'
 import { getBlueprintRow, toSnapshot } from '@/features/blueprints/server/blueprint-store'
 import { shortId } from '../types'
-import type { Job, JobDetail, JobStatus, JobStep, LogLine, LogStream, NewJobInput } from '../types'
+import type { Job, JobCursor, JobDetail, JobPage, JobStatus, JobStep, LogLine, LogStream, NewJobInput } from '../types'
 
 export type JobRow = typeof jobs.$inferSelect
 type LogRow = typeof jobLogs.$inferSelect
@@ -67,9 +67,53 @@ function branchSlug(task: string): string {
   return slug || 'task'
 }
 
-export async function listJobs(): Promise<Array<Job>> {
-  const rows = await db.select().from(jobs).orderBy(desc(jobs.createdAt))
-  return rows.map(toJob)
+/**
+ * Keyset-paginated, newest first. Offset pagination would skip or duplicate
+ * rows as new jobs land at the top between polls, so the cursor is the last
+ * row's `(createdAt, id)` — `id` tie-breaks same-millisecond inserts.
+ */
+export async function listJobs(opts: {
+  cursor?: JobCursor
+  limit: number
+  status?: JobStatus
+}): Promise<JobPage> {
+  const { cursor, limit, status } = opts
+  const cursorDate = cursor ? new Date(cursor.createdAt) : undefined
+
+  const where = and(
+    status ? eq(jobs.status, status) : undefined,
+    cursorDate
+      ? or(lt(jobs.createdAt, cursorDate), and(eq(jobs.createdAt, cursorDate), lt(jobs.id, cursor!.id)))
+      : undefined,
+  )
+
+  const rows = await db
+    .select()
+    .from(jobs)
+    .where(where)
+    .orderBy(desc(jobs.createdAt), desc(jobs.id))
+    .limit(limit + 1)
+
+  const hasMore = rows.length > limit
+  const page = hasMore ? rows.slice(0, limit) : rows
+  const last = page[page.length - 1]
+
+  return {
+    jobs: page.map(toJob),
+    nextCursor: hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null,
+  }
+}
+
+/** Group counts for the filter tabs and the purge dialog — cheaper than hauling every row. */
+export async function countJobsByStatus(): Promise<Record<JobStatus, number>> {
+  const rows = await db
+    .select({ status: jobs.status, n: sql<number>`count(*)::int` })
+    .from(jobs)
+    .groupBy(jobs.status)
+
+  const counts: Record<JobStatus, number> = { queued: 0, running: 0, succeeded: 0, failed: 0, cancelled: 0 }
+  for (const row of rows) counts[row.status] = row.n
+  return counts
 }
 
 export async function getJob(id: string): Promise<JobDetail | undefined> {
