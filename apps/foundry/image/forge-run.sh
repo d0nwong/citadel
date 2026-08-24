@@ -34,8 +34,14 @@ post_line sys "agent starting (timeout ${TIMEOUT}s)"
 # stdout is stream-json NDJSON, shipped raw one line per POST — the server owns
 # the parsing. stderr is buffered and shipped after; it is rarely interesting
 # unless the run failed.
+# Nobody is on the other end of this run: a turn that ends on "shall I
+# proceed?" ends the job with no changes. Say so at the system level, so it
+# holds regardless of what a skill or the task text suggests.
+UNATTENDED='This is an unattended, headless run inside a sandbox: no human can read or answer you until it is over. Never ask a question, request approval, or enter plan mode — nothing will reply and the run simply ends. Decide for yourself, write any assumptions into your final message, and carry the task through to completed edits in /work.'
+
 errfile=$(mktemp)
 timeout "$TIMEOUT" claude --dangerously-skip-permissions -p "$FOUNDRY_TASK" \
+    --append-system-prompt "$UNATTENDED" \
     --output-format stream-json --verbose 2>"$errfile" \
   | while IFS= read -r line; do
       [ -n "$line" ] && post_line ndjson "$line"

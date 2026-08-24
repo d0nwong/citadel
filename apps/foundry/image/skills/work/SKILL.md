@@ -34,7 +34,9 @@ Plan before any edit. How the plan gets approved depends on who is there:
   sceptical reviewer would — does every claim point at code you read, is
   there a simpler reuse, what could break — and fix the plan before moving
   on. Questions you would have asked the user become explicit assumptions,
-  stated in the plan and again in the PR body.
+  stated in the plan and again in the PR body. Never end a headless turn on
+  a question such as "shall I proceed?" — nobody answers, the run ends and
+  nothing is pushed.
 
 While planning:
 
