@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { ChevronRight, GitBranch } from 'lucide-react'
 import { NewJobDialog } from './new-job-dialog'
 import { PurgeJobsDialog } from './purge-jobs-dialog'
@@ -85,23 +86,45 @@ function JobRow({ job, onOpen, index }: { job: Job; onOpen: () => void; index: n
 export function JobLedger() {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [selected, setSelected] = useState<string | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
-  const { data: jobs, isLoading } = useQuery(jobQueries.list())
-
+  const { data: statusCounts } = useQuery(jobQueries.counts())
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: jobs?.length ?? 0 }
-    for (const j of jobs ?? []) c[j.status] = (c[j.status] ?? 0) + 1
+    const c: Record<string, number> = { all: 0, ...statusCounts }
+    for (const n of Object.values(statusCounts ?? {})) c.all += n
     return c
-  }, [jobs])
-
-  const visible = useMemo(
-    () => (filter === 'all' ? (jobs ?? []) : (jobs ?? []).filter((j) => j.status === (filter as JobStatus))),
-    [jobs, filter],
-  )
+  }, [statusCounts])
 
   const active = counts.running ?? 0
   // Mirrors the store's OPEN set: everything not queued/running is purgeable.
   const purgeable = counts.all - active - (counts.queued ?? 0)
+
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery(jobQueries.list(filter === 'all' ? undefined : (filter as JobStatus)))
+
+  const jobs = useMemo(() => data?.pages.flatMap((p) => p.jobs) ?? [], [data])
+
+  const rowCount = hasNextPage ? jobs.length + 1 : jobs.length
+  const virtualizer = useWindowVirtualizer({
+    count: rowCount,
+    estimateSize: () => 62,
+    overscan: 8,
+    scrollMargin: listRef.current?.offsetTop ?? 0,
+  })
+  const virtualItems = virtualizer.getVirtualItems()
+
+  useEffect(() => {
+    const last = virtualItems[virtualItems.length - 1]
+    if (!last) return
+    if (last.index >= jobs.length - 1 && hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage()
+    }
+  }, [virtualItems, jobs.length, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   return (
     <>
@@ -143,16 +166,39 @@ export function JobLedger() {
             </div>
           ))}
 
-        {!isLoading && visible.length === 0 && (
+        {!isLoading && jobs.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-24">
             <p className="text-[14px] text-txt-dim">Nothing in the fire.</p>
             <p className="font-mono text-[12px] text-txt-faint">No jobs match this filter.</p>
           </div>
         )}
 
-        {visible.map((job, i) => (
-          <JobRow key={job.id} job={job} index={i} onOpen={() => setSelected(job.id)} />
-        ))}
+        {!isLoading && jobs.length > 0 && (
+          <div ref={listRef} className="relative" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualItems.map((item) => {
+              const isLoaderRow = item.index > jobs.length - 1
+              const job = jobs[item.index]
+
+              return (
+                <div
+                  key={item.key}
+                  ref={virtualizer.measureElement}
+                  data-index={item.index}
+                  className="absolute left-0 top-0 w-full"
+                  style={{ transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)` }}
+                >
+                  {isLoaderRow || !job ? (
+                    <div className="border-b border-hairline px-4 py-4 lg:px-6">
+                      <Skeleton className="h-9 w-full bg-iron-800" />
+                    </div>
+                  ) : (
+                    <JobRow job={job} index={item.index} onOpen={() => setSelected(job.id)} />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <JobDetailSheet jobId={selected} onClose={() => setSelected(null)} onRerun={setSelected} />
