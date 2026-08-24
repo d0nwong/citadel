@@ -24,4 +24,17 @@ if [ -d /opt/foundry/skills ]; then
   cp -R /opt/foundry/skills/. "$HOME/.claude/skills/"
 fi
 
+# MCP through the host gateway (infra/ `mcp` service). The forge holds a
+# gateway token, never the upstream (Linear) credential. Registered at user
+# scope so interactive sessions, `foundry run` and headless job runs all see
+# it; ~/.claude.json lives in the container layer, so redo it on every start.
+if [ -n "${FOUNDRY_MCP_URL:-}" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
+  claude mcp remove -s user linear >/dev/null 2>&1 || true
+  claude mcp add-json -s user linear "$(jq -cn \
+      --arg url "${FOUNDRY_MCP_URL%/}/linear/mcp" \
+      --arg auth "Bearer $FOUNDRY_MCP_TOKEN" \
+      '{type: "http", url: $url, headers: {Authorization: $auth}}')" >/dev/null \
+    || echo "box-init: failed to register the linear MCP server" >&2
+fi
+
 exec "$@"

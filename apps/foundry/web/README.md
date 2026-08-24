@@ -49,7 +49,10 @@ Ignite ─► insert row (queued, with a per-job callback token)
 - The **container** holds a Claude credential (`foundry auth`), the workspace, and a
   token that authorises callbacks for its own job id. No `GH_TOKEN`, no Bitbucket app
   password, no `DATABASE_URL` — the agent runs with permissions skipped, so it gets
-  nothing it could misuse.
+  nothing it could misuse. If `foundry auth --linear` has been run it also gets
+  `FOUNDRY_MCP_URL`/`FOUNDRY_MCP_TOKEN`, so the agent can reach Linear through the
+  infra stack's MCP gateway (`host.docker.internal:9090`, override with the
+  `FOUNDRY_MCP_URL` env of this server) — a gateway token, never the Linear key.
 - The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the only server
   route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
   (`server/job-events.ts`) and hands the pipeline back to the host on commit.

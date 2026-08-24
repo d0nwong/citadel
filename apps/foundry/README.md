@@ -2,7 +2,7 @@
 
 Orchestration layer for disposable **Claude Code forges** running on OrbStack.
 
-Each forge is a Linux container with `claude`, `git`, `gh`, `node`, `python3`, and the
+Each forge is a Linux container with `claude`, `git`, `gh`, `node`, `bun`, `python3`, and the
 usual CLI tooling. Forges are cheap (<1s to start), isolated from your Mac, and
 addressable at `<name>.foundry.local`.
 
@@ -14,23 +14,28 @@ flowchart LR
         cli["foundry CLI<br/>(bin/)"]
         web["Web UI<br/>(web/, bun · :3777)"]
         pg[("Postgres<br/>(infra/, :5432)")]
+        mcp["MCP gateway<br/>(infra/, mcp-proxy · :9090)"]
         auth["~/.foundry/env<br/>CLAUDE_CODE_OAUTH_TOKEN"]
         jobs["~/.foundry/jobs/&lt;id&gt;/<br/>workspace clones"]
     end
 
     subgraph orb["OrbStack containers"]
-        forge["forge<br/>&lt;name&gt;.foundry.local<br/>claude · git · gh · node · python3"]
+        forge["forge<br/>&lt;name&gt;.foundry.local<br/>claude · git · gh · node · bun · python3"]
         vols[("named volumes<br/>/work · ~/.claude · ~/.config")]
         jobforge["ephemeral job forge<br/>(no git creds, no DB)"]
     end
 
     remote["GitHub / Bitbucket"]
+    linear["Linear MCP<br/>mcp.linear.app"]
 
     cli -- "new · claude · shell · exec · run" --> forge
     auth -- "injected" --> forge
     auth -- "injected" --> jobforge
     forge --- vols
     forge -- "--github (opt-in token)" --> remote
+    forge -. "gateway token" .-> mcp
+    jobforge -. "gateway token" .-> mcp
+    mcp -- "LINEAR_API_KEY (host only)" --> linear
 
     web -- "job ledger" --> pg
     web -- "clone repo" --> jobs
@@ -52,6 +57,7 @@ point of a sandbox, and they boot far slower. Containers are reproducible from
 export PATH="$PWD/bin:$PATH"   # or: ln -s "$PWD/bin/foundry" /usr/local/bin/foundry
 foundry doctor                 # check OrbStack + prerequisites
 foundry auth                   # one-time credential (see below)
+foundry auth --linear          # optional: let forges read/write Linear via the MCP gateway
 foundry build                  # build the forge image (~5 min first time)
 ```
 
@@ -61,6 +67,24 @@ Claude Code on macOS keeps its credential in the **Keychain**, which Linux conta
 can't read. So `foundry auth` runs `claude setup-token` and stores the long-lived
 token in `~/.foundry/env` (chmod 600), injected into every forge as
 `CLAUDE_CODE_OAUTH_TOKEN`. Use `foundry auth --api-key` for a plain API key instead.
+
+### MCP gateway (Linear)
+
+Forges never hold third-party credentials. Instead the infra stack runs an MCP
+gateway ([mcp-proxy](https://github.com/tbxark/mcp-proxy), `infra/mcp/config.json`)
+that holds your Linear API key on the host and re-exposes Linear's MCP server at
+`host.docker.internal:9090/linear/mcp`, behind a per-install gateway token.
+
+```sh
+foundry auth --linear          # stores LINEAR_API_KEY + a generated FOUNDRY_MCP_TOKEN in ~/.foundry/env
+bun run infra:up               # now also starts foundry-mcp (mcp.foundry.local)
+foundry recreate <name>        # existing forges pick the gateway up on next start
+```
+
+Every forge — interactive, `foundry run`, or a web-UI job — then has a `linear`
+MCP server registered (`box-init` does it on each start), so `/work LIA-12` can
+fetch the ticket itself. Adding another upstream is one more `mcpServers` entry in
+`infra/mcp/config.json` plus its secret in `~/.foundry/env`; see `infra/README.md`.
 
 ## Daily use
 
@@ -124,6 +148,10 @@ So `foundry rm` then `foundry new` with the same name resumes where you left off
 - Forges get full outbound network access. If you want egress rules, add a docker
   network with restricted DNS and pass `--network` through `foundry new`.
 - Your SSH keys are never mounted.
+- Forges talk to Linear only through the MCP gateway, presenting `FOUNDRY_MCP_TOKEN`;
+  the Linear API key itself never enters a container. To cut every forge off,
+  change the token in `~/.foundry/env` and `bun run infra:up`. The gateway port
+  (9090) listens on the Mac like the web UI does, which is what the token is for.
 
 ## Local infra
 

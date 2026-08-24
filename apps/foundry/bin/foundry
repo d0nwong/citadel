@@ -38,7 +38,19 @@ load_env() {
   set -a; . "$ENVFILE"; set +a
   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && CRED_ARGS+=(-e "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
   [ -n "${ANTHROPIC_API_KEY:-}"        ] && CRED_ARGS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
+  # The MCP gateway (infra/, `foundry auth --linear`): forges get its URL and a
+  # gateway token only — the Linear key itself never leaves the host.
+  if [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
+    CRED_ARGS+=(-e "FOUNDRY_MCP_TOKEN=$FOUNDRY_MCP_TOKEN" -e "FOUNDRY_MCP_URL=http://host.docker.internal:$(mcp_port)")
+  fi
   return 0
+}
+
+# Host port of the gateway, from infra/.env (the compose default otherwise).
+mcp_port() {
+  local p=""
+  [ -f "$ROOT/infra/.env" ] && p=$(grep -E '^MCP_PORT=' "$ROOT/infra/.env" | tail -1 | cut -d= -f2- || true)
+  printf '%s' "${p:-9090}"
 }
 
 # ---------------------------------------------------------------- commands
@@ -61,6 +73,11 @@ cmd_doctor() {
   else warn "no $ENVFILE — run: foundry auth"; fi
   command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1 \
     && ok "gh authed (available to forges created with --github)" || warn "gh not authed on host"
+  if [ -n "${LINEAR_API_KEY:-}" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
+    if curl -fsS -m 3 "http://localhost:$(mcp_port)/_readyz" >/dev/null 2>&1; then
+      ok "mcp gateway ready on :$(mcp_port) (linear)"
+    else warn "linear configured but the mcp gateway is not up — run: bun run infra:up"; fi
+  else warn "no LINEAR_API_KEY — forges cannot reach Linear (foundry auth --linear)"; fi
   local n; n=$(docker ps -aq --filter "label=$LABEL" | wc -l | tr -d ' ')
   ok "$n forge(s) defined"
   return $fail
@@ -72,6 +89,20 @@ cmd_auth() {
     local key; read -rsp "ANTHROPIC_API_KEY: " key; echo >&2
     [ -n "$key" ] || die "empty key"
     write_env ANTHROPIC_API_KEY "$key"; ok "stored ANTHROPIC_API_KEY in $ENVFILE"; return
+  fi
+  if [ "${1:-}" = "--linear" ]; then
+    say "${c_dim}personal API key from https://linear.app/settings/account/security — it stays on the host, behind the MCP gateway${c_0}"
+    local key; read -rsp "LINEAR_API_KEY (lin_api_...): " key; echo >&2
+    [ -n "$key" ] || die "empty key"
+    write_env LINEAR_API_KEY "$key"; ok "stored LINEAR_API_KEY in $ENVFILE"
+    load_env
+    if [ -z "${FOUNDRY_MCP_TOKEN:-}" ]; then
+      need openssl
+      write_env FOUNDRY_MCP_TOKEN "$(openssl rand -hex 24)"
+      ok "generated FOUNDRY_MCP_TOKEN (what forges present to the gateway)"
+    fi
+    say "${c_dim}next: 'bun run infra:up' starts the gateway; existing forges need 'foundry recreate <name>'${c_0}"
+    return
   fi
   need claude
   info "running 'claude setup-token' — approve in the browser, then paste the token back here"
@@ -125,7 +156,7 @@ cmd_new() {
   docker image inspect "$image" >/dev/null 2>&1 || die "image $image missing — run: foundry build"
 
   load_env
-  [ ${#CRED_ARGS[@]} -gt 0 ] || warn "no credential configured — claude cannot log in (foundry auth)"
+  [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ] || warn "no credential configured — claude cannot log in (foundry auth)"
 
   local -a args=(
     -d --name "$(cname "$name")"
@@ -303,7 +334,8 @@ foundry — Claude Code forges on OrbStack
 
   setup
     foundry doctor                    check OrbStack, image, credentials
-    foundry auth [--api-key]          store a credential for all forges
+    foundry auth [--api-key]          store a Claude credential for all forges
+    foundry auth --linear             store a Linear API key behind the MCP gateway
     foundry build [--no-cache]        build the forge image
 
   forges

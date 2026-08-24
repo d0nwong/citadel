@@ -1,0 +1,26 @@
+{
+  "mcpProxy": {
+    "baseURL": "http://host.docker.internal:9090",
+    "addr": ":9090",
+    "name": "foundry-mcp",
+    "version": "1.0.0",
+    "type": "streamable-http",
+    "options": {
+      "panicIfInvalid": false,
+      "logEnabled": true,
+      "authTokens": ["${FOUNDRY_MCP_TOKEN}"]
+    }
+  },
+  "mcpServers": {
+    "linear": {
+      "url": "https://mcp.linear.app/mcp",
+      "transportType": "streamable-http",
+      "headers": {
+        "Authorization": "Bearer ${LINEAR_API_KEY}"
+      },
+      "options": {
+        "panicIfInvalid": true
+      }
+    }
+  }
+}

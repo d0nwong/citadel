@@ -1,7 +1,7 @@
 # infra
 
-The local development stack. Today that is one service — postgres — but the shape
-is meant to grow (a queue, an MCP server, whatever LIA-12/13 need).
+The local development stack: postgres for the web UI's job ledger, and the MCP
+gateway that gives forges Linear access. The shape is meant to keep growing.
 
 ```sh
 bun run infra:up      # from the repo root
@@ -13,12 +13,11 @@ forwards to `infra/infra.sh`. Run `./infra/infra.sh --help` for the full list.
 | command | |
 |---|---|
 | `bun run infra:up` | start, and block until postgres reports healthy |
-| `bun run infra:up -- --tools` | also start Adminer on <http://localhost:8081> |
 | `bun run infra:down` | stop; the data volume survives |
 | `bun run infra:down -- --purge` | stop and delete the data volume |
 | `bun run infra:reset` | purge + up — a clean database |
 | `bun run infra:status` | what is running, plus the connection string |
-| `bun run infra:logs` | tail postgres |
+| `bun run infra:logs [-- mcp]` | tail postgres (or the gateway) |
 | `bun run infra:psql` | a psql shell inside the container |
 | `bun run infra:url` | print `DATABASE_URL`, for scripts and `.env` files |
 
@@ -35,6 +34,34 @@ of the way. On OrbStack the container is also reachable at
 
 Nothing in here is a secret — it is a throwaway local database with a throwaway
 password. Real environments get real credentials elsewhere.
+
+## MCP gateway
+
+`mcp` is [mcp-proxy](https://github.com/tbxark/mcp-proxy) (`ghcr.io/tbxark/mcp-proxy`)
+configured by `mcp/config.json`. It connects upstream to Linear's hosted MCP server
+with the host's `LINEAR_API_KEY`, and serves it to forges as streamable HTTP at
+`http://localhost:9090/linear/mcp` (`host.docker.internal:9090` from a container,
+`mcp.foundry.local` on OrbStack), requiring `Authorization: Bearer $FOUNDRY_MCP_TOKEN`.
+
+The service sits behind the `mcp` compose profile, which `infra.sh` switches on by
+itself when `~/.foundry/env` carries both variables — `foundry auth --linear` writes
+them. `infra/.env` never holds these secrets; `infra.sh` exports `~/.foundry/env` into
+compose's environment and mcp-proxy expands the `${…}` references in the config.
+
+```sh
+curl localhost:9090/_readyz                     # {"status":"ok",...} once linear is mounted
+curl -X POST localhost:9090/linear/mcp \
+  -H "Authorization: Bearer $FOUNDRY_MCP_TOKEN" -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+```
+
+To add another upstream, add an entry under `mcpServers` in `mcp/config.json`
+(remote: `url` + `transportType` + `headers`; local: `command` + `args`), reference
+its secret as `${SOME_KEY}`, put `SOME_KEY=…` in `~/.foundry/env`, and add
+`SOME_KEY: ${SOME_KEY:-}` to the service's `environment` in `compose.yaml`. Forges
+then need the matching `claude mcp add-json` line in `image/box-init.sh`. Change
+`MCP_PORT` in `infra/.env` if 9090 is taken.
 
 ## Settings
 

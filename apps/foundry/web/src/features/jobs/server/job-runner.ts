@@ -25,6 +25,8 @@ const ENV_FILE = path.join(FOUNDRY_HOME, 'env')
 const JOBS_DIR = path.join(FOUNDRY_HOME, 'jobs')
 const IMAGE = process.env.FOUNDRY_IMAGE ?? 'foundry/forge:latest'
 const CALLBACK_BASE = process.env.FOUNDRY_CALLBACK_BASE ?? 'http://host.docker.internal:3777'
+/** The MCP gateway (infra/ `mcp` service) as the container sees it — host port from infra/.env's MCP_PORT. */
+const MCP_URL = process.env.FOUNDRY_MCP_URL ?? 'http://host.docker.internal:9090'
 const MAX_JOBS = Number(process.env.FOUNDRY_MAX_JOBS ?? 3)
 /** Seconds the agent may run before the container's `timeout` kills it. */
 const JOB_TIMEOUT = Number(process.env.FOUNDRY_TIMEOUT ?? 1800)
@@ -85,6 +87,11 @@ async function preflight(job: JobRow): Promise<{ credEnv: Record<string, string>
   if (cred.CLAUDE_CODE_OAUTH_TOKEN) credEnv.CLAUDE_CODE_OAUTH_TOKEN = cred.CLAUDE_CODE_OAUTH_TOKEN
   else if (cred.ANTHROPIC_API_KEY) credEnv.ANTHROPIC_API_KEY = cred.ANTHROPIC_API_KEY
   else throw new Error('no Claude credential for the forge — run: foundry auth')
+  // Gateway token only — the Linear key stays on the host, behind the gateway.
+  if (cred.FOUNDRY_MCP_TOKEN) {
+    credEnv.FOUNDRY_MCP_TOKEN = cred.FOUNDRY_MCP_TOKEN
+    credEnv.FOUNDRY_MCP_URL = MCP_URL
+  }
 
   try {
     await docker(['info', '--format', '{{.OperatingSystem}}'])
@@ -355,7 +362,7 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
       workspace: work,
       branch: job.branch,
       baseBranch: job.baseBranch,
-      title: job.task,
+      title: await prTitle(work, job.task),
       body: `Created by foundry ${job.id}.\n\nTask:\n${job.task}`,
     })
     if (pr.url !== null) await sys(id, `PR opened: ${pr.url}`)
@@ -376,6 +383,16 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
     await err(id, `push failed: ${msg} — the commit is intact in ${work}`)
   }
   void pumpQueue()
+}
+
+/**
+ * CI lints PR titles as Conventional Commits and release-please reads them, so
+ * prefer the agent's own commit subject when it wrote one in that shape (the
+ * /work skill asks it to); the raw task text is the fallback.
+ */
+async function prTitle(work: string, task: string): Promise<string> {
+  const subject = await git(work, ['log', '-1', '--format=%s']).catch(() => '')
+  return /^[a-z]+(\([^)]+\))?!?: \S/.test(subject) ? subject : task
 }
 
 async function diffStats(work: string, baseBranch: string): Promise<{ files: number; additions: number; deletions: number }> {
