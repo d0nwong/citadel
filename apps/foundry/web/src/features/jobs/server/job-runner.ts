@@ -368,7 +368,7 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
       branch: job.branch,
       baseBranch: job.baseBranch,
       title: await prTitle(work, job.task),
-      body: `Created by foundry ${job.id}.\n\nTask:\n${job.task}`,
+      body: await prBody(work, job),
     })
     if (pr.url !== null) await sys(id, `PR opened: ${pr.url}`)
     else await err(id, pr.reason)
@@ -398,6 +398,25 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
 async function prTitle(work: string, task: string): Promise<string> {
   const subject = await git(work, ['log', '-1', '--format=%s']).catch(() => '')
   return /^[a-z]+(\([^)]+\))?!?: \S/.test(subject) ? subject : task
+}
+
+/**
+ * The /work skill writes a template-filled description to `.git/PR_BODY.md`
+ * before stopping — inside `.git/` on purpose, so the commit sweep in
+ * forge-run.sh can never pick it up. Only the agent knows what it did and how
+ * it verified it, so the body is authored in the container and merely read
+ * here; a job that never ran the skill (or wrote nothing) falls back to a
+ * template-shaped body built from the task and commit trailer instead.
+ */
+async function prBody(work: string, job: JobRow): Promise<string> {
+  const authored = (await readFile(path.join(work, '.git', 'PR_BODY.md'), 'utf8').catch(() => '')).trim()
+  if (authored && authored.length <= 60_000) return `${authored}\n\n---\nCreated by foundry ${job.id}.`
+
+  const trailer = await git(work, ['log', '-1', '--format=%b']).catch(() => '')
+  const closes = /Closes [A-Z]+-\d+/.exec(trailer)?.[0]
+  return [...(closes ? [closes, ''] : []), '## Summary', '', job.task, '', '---', `Created by foundry ${job.id}.`].join(
+    '\n',
+  )
 }
 
 async function diffStats(work: string, baseBranch: string): Promise<{ files: number; additions: number; deletions: number }> {
