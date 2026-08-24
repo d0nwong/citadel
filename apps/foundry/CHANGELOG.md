@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.1.0](https://github.com/d0nwong/foundry/compare/foundry-v1.0.0...foundry-v1.1.0) (2026-08-24)
+
+
+### Features
+
+* **image:** add bun to the forge image ([ffdf31f](https://github.com/d0nwong/foundry/commit/ffdf31fe8c3129f3eb4bbf5e6f9525565deb9f67))
+* **image:** ship a /work skill into every forge ([04f9f19](https://github.com/d0nwong/foundry/commit/04f9f19d3a5ddce8139aec6375302d32bf75c164))
+* **image:** ship a /work skill into every forge ([6ff4c6e](https://github.com/d0nwong/foundry/commit/6ff4c6ea29ee8fb0e51403162f34fadbae33e1d2))
+* **infra:** add mcp-proxy gateway service ([671e5f3](https://github.com/d0nwong/foundry/commit/671e5f370bff6efc8a0e26c82c5b988218550b5f))
+* **infra:** mcp gateway so forges can reach linear ([ecb8aef](https://github.com/d0nwong/foundry/commit/ecb8aeff5144f4227f95c910d5acc78cb41531f9))
+* route forges to the MCP gateway ([8d9961f](https://github.com/d0nwong/foundry/commit/8d9961f23131dd0901f3e3365c40066c42f61e8c))
+* **web:** add purge jobs button with confirmation dialog ([7801864](https://github.com/d0nwong/foundry/commit/780186472d5982b106e0f23859fb662a85e81f66))
+* **web:** add purge jobs button with confirmation dialog ([0e096ed](https://github.com/d0nwong/foundry/commit/0e096edc2484f9ef3bfa1e1651453870ab3c2fa2))
+
+
+### Bug Fixes
+
+* **image:** /work skips branching inside a job forge ([d2d6d23](https://github.com/d0nwong/foundry/commit/d2d6d2355f628265882aa6c3ebcd6cafe5bbede2))
+* **image:** count agent-made commits as job output ([e668f10](https://github.com/d0nwong/foundry/commit/e668f1037b3f1940ce11daba1775e4f71cde9177))
+* **image:** let /work plan without plan mode when headless ([282bbda](https://github.com/d0nwong/foundry/commit/282bbda82e8ea42edb60425cf69c132187c641e1))
+* **image:** tell headless job runs they are unattended ([a8c4345](https://github.com/d0nwong/foundry/commit/a8c4345b8e6458f861f9a73206fcc45e23afcaa5))
+
 ## [1.0.0](https://github.com/d0nwong/foundry/compare/foundry-v0.1.0...foundry-v1.0.0) (2026-08-23)
 
 
