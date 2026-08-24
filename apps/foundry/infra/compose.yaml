@@ -26,22 +26,6 @@ services:
     labels:
       dev.orbstack.domains: postgres.foundry.local
 
-  # Opt-in web SQL console: `bun run infra:up -- --tools` -> http://localhost:8081
-  adminer:
-    image: adminer:5
-    container_name: foundry-adminer
-    profiles: [tools]
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
-    ports:
-      - "${ADMINER_PORT:-8081}:8080"
-    labels:
-      dev.orbstack.domains: adminer.foundry.local
-
   # MCP gateway. Holds the real third-party credentials (Linear today) so forges
   # only ever see a gateway token. Profile `mcp` is switched on by infra.sh when
   # ~/.foundry/env carries LINEAR_API_KEY (`foundry auth --linear`); the config

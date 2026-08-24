@@ -60,27 +60,14 @@ pg_url()  { printf 'postgresql://%s:%s@localhost:%s/%s' \
 # paths in compose.yaml and the .env pickup both behave.
 dc() { (cd "$HERE" && docker compose "$@"); }
 # Every profile, for the commands that must see the whole stack (down, ps, logs).
-dc_all() { dc --profile tools --profile mcp "$@"; }
+dc_all() { dc --profile mcp "$@"; }
 
 cmd_up() {
-  local -a pass=()
-  for a in "$@"; do
-    case "$a" in
-      --tools) export COMPOSE_PROFILES=tools ;;
-      *) pass+=("$a") ;;
-    esac
-  done
   require_docker; ensure_env; load_foundry_env
-  if mcp_enabled; then
-    export COMPOSE_PROFILES="${COMPOSE_PROFILES:+$COMPOSE_PROFILES,}mcp"
-  fi
+  mcp_enabled && export COMPOSE_PROFILES="${COMPOSE_PROFILES:+$COMPOSE_PROFILES,}mcp"
   info "starting the foundry stack"
-  # bash 3.2 (macOS) errors on an empty array under `set -u`.
-  dc up -d --wait --wait-timeout 90 ${pass[@]+"${pass[@]}"}
+  dc up -d --wait --wait-timeout 90 "$@"
   ok "postgres ready on port $(pg_port)  ${c_dim}(postgres.foundry.local)${c_0}"
-  case ",${COMPOSE_PROFILES:-}," in
-    *,tools,*) ok "adminer on http://localhost:$(env_get ADMINER_PORT 8081)" ;;
-  esac
   if mcp_enabled; then
     ok "mcp gateway on http://localhost:$(mcp_port)  ${c_dim}(mcp.foundry.local; forges use host.docker.internal:$(mcp_port))${c_0}"
   else
@@ -136,7 +123,7 @@ usage() {
 cat >&2 <<'USAGE'
 infra — foundry's local development stack
 
-  bun run infra:up [-- --tools]   start it (waits until postgres is healthy)
+  bun run infra:up                start it (waits until postgres is healthy)
   bun run infra:down [-- --purge] stop it; --purge also deletes the data volume
   bun run infra:reset             wipe the database and start clean
   bun run infra:status            what is running, and the connection string

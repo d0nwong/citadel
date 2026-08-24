@@ -13,7 +13,6 @@ forwards to `infra/infra.sh`. Run `./infra/infra.sh --help` for the full list.
 | command | |
 |---|---|
 | `bun run infra:up` | start, and block until postgres reports healthy |
-| `bun run infra:up -- --tools` | also start Adminer on <http://localhost:8081> |
 | `bun run infra:down` | stop; the data volume survives |
 | `bun run infra:down -- --purge` | stop and delete the data volume |
 | `bun run infra:reset` | purge + up — a clean database |
