@@ -7,7 +7,19 @@ STATE="${FOUNDRY_HOME:-$HOME/.foundry}"
 ENVFILE="$STATE/env"
 RUNS="$STATE/runs"
 LABEL="foundry.forge"
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Resolve symlinks before deriving the repo root. $BASH_SOURCE is the path used
+# to invoke this script, so when it is reached through a symlink on PATH — the
+# README suggests exactly that — plain dirname puts ROOT at the *link's* parent
+# (/usr/local, ~/.local) instead of the checkout, and `foundry build` then tries
+# to build /usr/local/image. macOS ships BSD readlink with no -f, hence the loop.
+_src="${BASH_SOURCE[0]}"
+while [ -L "$_src" ]; do
+  _dir="$(cd -P "$(dirname "$_src")" && pwd)"
+  _src="$(readlink "$_src")"
+  [ "${_src#/}" = "$_src" ] && _src="$_dir/$_src"
+done
+ROOT="$(cd -P "$(dirname "$_src")/.." && pwd)"
+unset _src _dir
 
 c_dim=$'\033[2m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_yel=$'\033[33m'; c_bld=$'\033[1m'; c_0=$'\033[0m'
 say()  { printf '%s\n' "$*" >&2; }
