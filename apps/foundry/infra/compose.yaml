@@ -42,6 +42,33 @@ services:
     labels:
       dev.orbstack.domains: adminer.foundry.local
 
+  # MCP gateway. Holds the real third-party credentials (Linear today) so forges
+  # only ever see a gateway token. Profile `mcp` is switched on by infra.sh when
+  # ~/.foundry/env carries LINEAR_API_KEY (`foundry auth --linear`); the config
+  # is committed and secret-free — mcp-proxy expands ${VARS} from this env.
+  mcp:
+    image: ghcr.io/tbxark/mcp-proxy:latest
+    container_name: foundry-mcp
+    profiles: [mcp]
+    restart: unless-stopped
+    environment:
+      LINEAR_API_KEY: ${LINEAR_API_KEY:-}
+      FOUNDRY_MCP_TOKEN: ${FOUNDRY_MCP_TOKEN:-}
+    volumes:
+      - ./mcp/config.json:/config/config.json:ro
+    ports:
+      - "${MCP_PORT:-9090}:9090"
+    healthcheck:
+      # The image is python-slim without curl; /_readyz is 503 until every
+      # upstream is mounted, and urlopen raises on non-2xx.
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/_readyz', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    labels:
+      dev.orbstack.domains: mcp.foundry.local
+
 volumes:
   pgdata:
     name: foundry-pgdata
