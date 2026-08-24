@@ -1,3 +1,4 @@
+import type { BlueprintSnapshot } from '@/features/blueprints/types'
 import type { RepoRef } from '@/features/repos/types'
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
@@ -21,6 +22,8 @@ export interface Job {
   baseBranch: string
   branch: string
   forge: string
+  /** The blueprint that ran, snapshotted — absent for a plain single-step job. */
+  blueprint?: BlueprintSnapshot
   status: JobStatus
   step?: JobStep
   createdAt: number
@@ -48,4 +51,6 @@ export interface NewJobInput {
   repo: RepoRef
   baseBranch: string
   forge: string
+  /** Run the task through a blueprint's steps instead of one bare `claude -p`. */
+  blueprintId?: string
 }

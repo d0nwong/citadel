@@ -16,13 +16,16 @@ import {
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/shared/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover'
 import { Input } from '@/shared/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { Textarea } from '@/shared/ui/textarea'
 import { createJob } from '../api'
 import { jobQueries } from '../queries'
+import { blueprintQueries } from '@/features/blueprints/queries'
 import { forgeQueries } from '@/features/forges/queries'
 import { repoQueries } from '@/features/repos/queries'
 
 import { cn } from '@/shared/lib/utils'
+import { stepsSummary } from '@/features/blueprints/types'
 import { localRef, repoLabel } from '@/features/repos/types'
 import { shortId } from '../types'
 import type { NewJobInput } from '../types'
@@ -31,6 +34,9 @@ import type { Repo } from '@/features/repos/types'
 // A plain <label>: shadcn's Label ships `text-sm`, which beats `.kicker` in the
 // utilities layer and blows the stamped label size out.
 const repoLabelOf = (repo: Repo) => repoLabel(localRef(repo))
+
+/** The Select's "no blueprint" row — radix rejects an empty-string value. */
+const NO_BLUEPRINT = 'none'
 
 const FieldLabel = ({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) => (
   <label htmlFor={htmlFor} className="kicker mb-2 block">
@@ -45,13 +51,17 @@ export function NewJobDialog() {
   const [repo, setRepo] = useState<Repo | null>(null)
   const [task, setTask] = useState('')
   const [baseBranch, setBaseBranch] = useState('')
+  const [blueprintId, setBlueprintId] = useState(NO_BLUEPRINT)
 
   const { data: repos } = useQuery(repoQueries.list())
+  const { data: blueprints } = useQuery(blueprintQueries.list())
+  const blueprint = blueprints?.find((b) => b.id === blueprintId)
 
   const reset = () => {
     setRepo(null)
     setTask('')
     setBaseBranch('')
+    setBlueprintId(NO_BLUEPRINT)
   }
 
   const mutation = useMutation({
@@ -59,7 +69,9 @@ export function NewJobDialog() {
     onSuccess: (job) => {
       qc.invalidateQueries({ queryKey: jobQueries.all })
       qc.invalidateQueries({ queryKey: forgeQueries.all })
-      toast.success(`Job ${shortId(job.id)} queued`, { description: `${job.repo.name} → ${job.forge}` })
+      toast.success(`Job ${shortId(job.id)} queued`, {
+        description: `${job.repo.name} → ${job.forge}${job.blueprint ? ` · ${job.blueprint.name}` : ''}`,
+      })
       setOpen(false)
       reset()
     },
@@ -76,6 +88,7 @@ export function NewJobDialog() {
       // Jobs run in an ephemeral container per job — `forge` names the
       // adapter, and the container itself lands on the job row (LIA-13).
       forge: 'orbstack',
+      blueprintId: blueprintId === NO_BLUEPRINT ? undefined : blueprintId,
     })
   }
 
@@ -180,6 +193,34 @@ export function NewJobDialog() {
               placeholder="Migrate the test runner from jest to vitest and get CI green"
               className="resize-none border-iron-700 bg-iron-900 text-[13px] leading-relaxed placeholder:text-txt-faint focus-visible:ring-ember-deep"
             />
+          </div>
+
+          <div>
+            <FieldLabel>Blueprint</FieldLabel>
+            <Select value={blueprintId} onValueChange={setBlueprintId}>
+              <SelectTrigger className="h-10 w-full border-iron-700 bg-iron-900 font-mono text-[13px] focus-visible:ring-ember-deep">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="border-hairline bg-iron-800 font-mono text-[13px]">
+                <SelectItem value={NO_BLUEPRINT}>none — one step, default model</SelectItem>
+                {blueprints?.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1.5 truncate font-mono text-[11px] text-txt-faint">
+              {blueprint ? stepsSummary(blueprint.steps) : (
+                <>
+                  Define multi-step runs on the{' '}
+                  <Link to="/blueprints" onClick={() => setOpen(false)} className="text-ember hover:underline">
+                    Blueprints
+                  </Link>{' '}
+                  page.
+                </>
+              )}
+            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

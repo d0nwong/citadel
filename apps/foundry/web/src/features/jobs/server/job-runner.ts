@@ -224,6 +224,8 @@ async function launch(job: JobRow, credEnv: Record<string, string>): Promise<voi
     FOUNDRY_TOKEN: job.token,
     FOUNDRY_TASK: job.task,
     FOUNDRY_TIMEOUT: String(JOB_TIMEOUT),
+    // Empty for a plain job — the runner then synthesises one bare step.
+    FOUNDRY_STEPS: JSON.stringify(job.blueprint?.steps ?? []),
   }
   const args = [
     'run',

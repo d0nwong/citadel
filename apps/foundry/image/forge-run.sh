@@ -8,6 +8,8 @@
 #
 # Env (set by web/src/features/jobs/server/job-runner.ts):
 #   FOUNDRY_JOB_ID FOUNDRY_CALLBACK FOUNDRY_TOKEN FOUNDRY_TASK FOUNDRY_TIMEOUT
+#   FOUNDRY_STEPS  — JSON array [{name, model, effort?, prompt}] from a
+#                    blueprint (LIA-25); empty/absent means one bare step.
 set -uo pipefail   # deliberately no -e: every failure path must still report
 
 : "${FOUNDRY_JOB_ID:?}" "${FOUNDRY_CALLBACK:?}" "${FOUNDRY_TOKEN:?}" "${FOUNDRY_TASK:?}"
@@ -22,15 +24,29 @@ post() {
     --data-binary @- >/dev/null 2>&1 || true
 }
 
-post_line() { # post_line <field> <text>  — jq handles the JSON escaping
-  jq -cn --arg s "$2" "{\"$1\": [\$s]}" | post
+# post_line <field> <text> — jq handles the JSON escaping. While a blueprint
+# step runs, STEP_LABEL carries `{index,name}` so the server can prefix lines.
+STEP_LABEL=null
+post_line() {
+  jq -cn --arg s "$2" --argjson step "$STEP_LABEL" \
+    "{\"$1\": [\$s]} + (if \$step == null then {} else {step: \$step} end)" | post
 }
 
 cd /work || { post_line sys "workspace /work is missing"; exit 1; }
 start_rev=$(git rev-parse HEAD 2>/dev/null || echo none)
 
-# ---------------------------------------------------------------- agent
-post_line sys "agent starting (timeout ${TIMEOUT}s)"
+# ---------------------------------------------------------------- steps
+# A plain job is a blueprint of one step on the default model — same loop,
+# so there is exactly one way an agent gets launched here.
+steps="${FOUNDRY_STEPS:-[]}"
+if [ "$(printf '%s' "$steps" | jq 'length')" = 0 ]; then
+  steps=$(jq -cn --arg p "$FOUNDRY_TASK" '[{name: "agent", model: "", prompt: $p}]')
+fi
+n=$(printf '%s' "$steps" | jq 'length')
+# One session across every step: the executor resumes the planner's context.
+SID=$(cat /proc/sys/kernel/random/uuid)
+
+post_line sys "agent starting — $n step(s), timeout ${TIMEOUT}s"
 
 # stdout is stream-json NDJSON, shipped raw one line per POST — the server owns
 # the parsing. stderr is buffered and shipped after; it is rarely interesting
@@ -40,19 +56,59 @@ post_line sys "agent starting (timeout ${TIMEOUT}s)"
 # holds regardless of what a skill or the task text suggests.
 UNATTENDED='This is an unattended, headless run inside a sandbox: no human can read or answer you until it is over. Never ask a question, request approval, or enter plan mode — nothing will reply and the run simply ends. Decide for yourself, write any assumptions into your final message, and carry the task through to completed edits in /work. Committing is optional and pushing is impossible here: the host pushes your commits and opens the PR after you finish, so do not try to push, open a PR, or work around missing git credentials.'
 
-errfile=$(mktemp)
-timeout "$TIMEOUT" claude --dangerously-skip-permissions -p "$FOUNDRY_TASK" \
-    --append-system-prompt "$UNATTENDED" \
-    --output-format stream-json --verbose 2>"$errfile" \
-  | while IFS= read -r line; do
-      [ -n "$line" ] && post_line ndjson "$line"
-    done
-agent_exit=${PIPESTATUS[0]}
+agent_exit=0
+started=$(date +%s)
+i=0
+while [ "$i" -lt "$n" ]; do
+  step=$(printf '%s' "$steps" | jq -c ".[$i]")
+  i=$((i + 1))
+  name=$(printf '%s' "$step" | jq -r '.name')
+  model=$(printf '%s' "$step" | jq -r '.model // ""')
+  effort=$(printf '%s' "$step" | jq -r '.effort // ""')
+  # {{task}} in a step prompt is the job's task text; jq's replace keeps the
+  # substitution out of bash quoting.
+  prompt=$(printf '%s' "$step" | jq -r --arg t "$FOUNDRY_TASK" '.prompt | gsub("\\{\\{task\\}\\}"; $t)')
+  STEP_LABEL=$(jq -cn --argjson i "$i" --arg name "$name" '{index: $i, name: $name}')
+  [ "$n" = 1 ] && [ "$name" = agent ] && STEP_LABEL=null
 
-[ "$agent_exit" = 124 ] && post_line sys "agent timed out after ${TIMEOUT}s"
-while IFS= read -r line; do
-  [ -n "$line" ] && post_line stderr "$line"
-done < <(tail -40 "$errfile")
+  # The timeout is the whole job's budget, shrunk by what earlier steps used.
+  remaining=$((TIMEOUT - ($(date +%s) - started)))
+  if [ "$remaining" -le 0 ]; then
+    post_line sys "step $i/$n \"$name\" skipped — job timeout already spent"
+    agent_exit=124
+    break
+  fi
+
+  [ "$STEP_LABEL" != null ] && post_line sys "step $i/$n starting (${model:-default model}${effort:+, effort $effort})"
+
+  session_flag=--resume
+  [ "$i" = 1 ] && session_flag=--session-id
+
+  errfile=$(mktemp)
+  timeout "$remaining" claude --dangerously-skip-permissions -p "$prompt" \
+      ${model:+--model "$model"} ${effort:+--effort "$effort"} \
+      "$session_flag" "$SID" \
+      --append-system-prompt "$UNATTENDED" \
+      --output-format stream-json --verbose 2>"$errfile" \
+    | while IFS= read -r line; do
+        [ -n "$line" ] && post_line ndjson "$line"
+      done
+  agent_exit=${PIPESTATUS[0]}
+
+  [ "$agent_exit" = 124 ] && post_line sys "step $i/$n timed out — ${TIMEOUT}s job budget exhausted"
+  while IFS= read -r line; do
+    [ -n "$line" ] && post_line stderr "$line"
+  done < <(tail -40 "$errfile")
+
+  if [ "$agent_exit" != 0 ]; then
+    # Later steps build on this one; running them on a failed base would
+    # only produce confident nonsense. Stop, and say what was skipped.
+    STEP_LABEL=null
+    [ "$i" -lt "$n" ] && post_line sys "step $i/$n exited $agent_exit — skipping $((n - i)) remaining step(s)"
+    break
+  fi
+done
+STEP_LABEL=null
 
 # ---------------------------------------------------------------- commit
 # The agent may commit on its own or just leave edits behind; sweep up
