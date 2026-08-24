@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/d0nwong/foundry/compare/foundry-v1.2.0...foundry-v1.3.0) (2026-08-24)
+
+
+### Features
+
+* add foundry setup one-time bootstrap command ([2a500e7](https://github.com/d0nwong/foundry/commit/2a500e7efaefe1c71464104b5fb062c07617aafd))
+* add foundry setup one-time bootstrap command ([3e0652a](https://github.com/d0nwong/foundry/commit/3e0652a4ae2a2eb8b5c65482857ff1fdfd6b9e06))
+
 ## [1.2.0](https://github.com/d0nwong/foundry/compare/foundry-v1.1.0...foundry-v1.2.0) (2026-08-24)
 
 
