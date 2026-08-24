@@ -39,6 +39,7 @@ needs the user's credentials; the container gets none of them.
 Ignite ─► insert row (queued, with a per-job callback token)
        ─► preflight: docker, image, ~/.foundry/env credential, repo, base, origin
        ─► clone the repo to ~/.foundry/jobs/<id>/work, branch from origin/<base>
+              branch name: foundry/<first 3 words of the task>-<job short id>
        ─► docker run foundry/forge:latest forge-run   (image/forge-run.sh, bind-mounted)
               container: for each blueprint step (or the one bare task):
                            claude -p <prompt> --model <m> --session-id|--resume <sid>
@@ -65,6 +66,11 @@ Ignite ─► insert row (queued, with a per-job callback token)
 - The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the only server
   route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
   (`server/job-events.ts`) and hands the pipeline back to the host on commit.
+- **Branch names carry the job's short id.** `branchSlug` keeps only the first
+  three words of the task, so two jobs on one repo often derive the same slug —
+  and the runner's `ls-remote` check cannot separate concurrent ones, since
+  neither has pushed when both look. The id suffix makes the name unique by
+  construction (`FOUNDRY_MAX_JOBS` allows 3 at once) and reads back to the row.
 - The **PR CLI** is picked by origin host in `server/forge-pr.ts`: `bb` for
   bitbucket.org, `gh` for github.com, anything else pushes the branch and says so.
 - `vite dev` runs with `--host` so containers can reach the server at
