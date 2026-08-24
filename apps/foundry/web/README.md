@@ -57,7 +57,8 @@ Ignite ─► insert row (queued, with a per-job callback token)
 - A **blueprint** (`features/blueprints/`) turns the agent phase into N steps, each
   `{name, model, effort?, prompt}`; `{{task}}` in a prompt is the job's task text.
   The runner gets them as `FOUNDRY_STEPS` JSON, runs every step against one Claude
-  session, labels each step's log lines `[name] …`, and stops at the first
+  session, labels each step's log lines `[name] …` (the detail sheet folds those
+  into one collapsible section per step), and stops at the first
   non-zero exit (remaining steps are reported as skipped). `FOUNDRY_TIMEOUT` is the
   whole job's budget. No blueprint means one unlabelled step on the default model —
   the same loop, so there is exactly one launch path.
