@@ -176,8 +176,11 @@ async function prepareWorkspace(job: JobRow, originUrl: string): Promise<{ branc
     await sys(job.id, `base '${job.baseBranch}' not on origin — branching from the local checkout`)
   }
 
-  // branchSlug isn't collision-checked at insert time; resolve here against
-  // the remote so `push -u` cannot land on someone's existing branch.
+  // Branch names carry the job's short id, so two concurrent jobs cannot claim
+  // the same one. This still resolves against the remote for the case it was
+  // written for — a branch of that exact name already being there, e.g. a
+  // re-run of a job whose workspace was rebuilt — so `push -u` cannot land on
+  // someone's existing branch.
   let branch = job.branch
   try {
     let n = 2

@@ -5,10 +5,12 @@
  * Row -> domain mapping lives here so the rest of the app keeps seeing epoch
  * milliseconds and optional fields rather than nullable timestamptz columns.
  */
+import { randomUUID } from 'node:crypto'
 import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobLogs, jobs, repos } from '@/db/schema'
 import { getBlueprintRow, toSnapshot } from '@/features/blueprints/server/blueprint-store'
+import { shortId } from '../types'
 import type { Job, JobDetail, JobStatus, JobStep, LogLine, LogStream, NewJobInput } from '../types'
 
 export type JobRow = typeof jobs.$inferSelect
@@ -93,15 +95,24 @@ export async function createJob(input: NewJobInput): Promise<Job> {
   const bp = input.blueprintId ? await getBlueprintRow(input.blueprintId) : undefined
   if (input.blueprintId && !bp) throw new Error('that blueprint no longer exists')
 
+  // The id is generated here rather than by the column default, because the
+  // branch name is built from it: `branchSlug` keeps only the first three words
+  // of the task, so two jobs on one repo routinely derive the same slug, and
+  // the runner's `ls-remote` check cannot separate them — neither has pushed
+  // yet when both look. Suffixing the job's own short id makes the branch unique
+  // by construction, and readable back to the row in the ledger.
+  const id = randomUUID()
+
   return db.transaction(async (tx) => {
     const [row] = await tx
       .insert(jobs)
       .values({
+        id,
         task,
         repo: input.repo,
         repoId,
         baseBranch: input.baseBranch,
-        branch: `foundry/${branchSlug(task)}`,
+        branch: `foundry/${branchSlug(task)}-${shortId(id)}`,
         forge: input.forge,
         blueprintId: bp?.id ?? null,
         blueprint: bp ? toSnapshot(bp) : null,
