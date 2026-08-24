@@ -30,7 +30,8 @@ Plan before any edit. How the plan gets approved depends on who is there:
   their approval.
 - **Headless run** (`claude -p`, e.g. a web-UI job — no one can answer):
   do not use plan mode; it needs a human to approve and will block. Write the
-  plan into `.foundry/plan.md` in the workspace, then review it yourself as a
+  plan to `~/plan.md` (not into the workspace — everything there gets
+  committed), then review it yourself as a
   sceptical reviewer would — does every claim point at code you read, is
   there a simpler reuse, what could break — and fix the plan before moving
   on. Questions you would have asked the user become explicit assumptions,

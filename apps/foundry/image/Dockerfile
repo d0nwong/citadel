@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+FROM oven/bun:1-debian AS bun
 FROM node:22-bookworm
 
 ARG CLAUDE_VERSION=latest
@@ -21,6 +22,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       > /etc/apt/sources.list.d/github-cli.list \
  && apt-get update && apt-get install -y --no-install-recommends gh \
  && rm -rf /var/lib/apt/lists/*
+
+# bun — the web/ package manager and script runner (bun run typecheck, …).
+# Copied from the official image rather than curl|bash'd, so it is pinned and
+# on PATH for every user.
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
 
 # Claude Code
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
