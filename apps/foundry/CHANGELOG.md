@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.0](https://github.com/d0nwong/foundry/compare/foundry-v1.1.0...foundry-v1.2.0) (2026-08-24)
+
+
+### Features
+
+* **cli:** add foundry version subcommand ([2039d41](https://github.com/d0nwong/foundry/commit/2039d41a6d67854a728573e03e953d34b83207de))
+* **cli:** add foundry version subcommand ([e105e19](https://github.com/d0nwong/foundry/commit/e105e195fc5f49875948d935dab116224b78e65d))
+* **web:** blueprints — multi-step jobs with a model per step ([da58dc7](https://github.com/d0nwong/foundry/commit/da58dc70dbcc6dc518bfb508bb85da038918f955))
+* **web:** blueprints — multi-step jobs with a model per step ([fd54021](https://github.com/d0nwong/foundry/commit/fd5402173e8c22be6d6b618adce026e7f1c087aa))
+* **web:** fold blueprint step logs into collapsible sections ([a4f13f9](https://github.com/d0nwong/foundry/commit/a4f13f90102c98ac41515d7a8bd70e0924da03d3))
+
 ## [1.1.0](https://github.com/d0nwong/foundry/compare/foundry-v1.0.0...foundry-v1.1.0) (2026-08-24)
 
 
