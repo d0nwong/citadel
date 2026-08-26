@@ -133,7 +133,7 @@ export function NewJobDialog() {
             Ignite
           </DialogTitle>
           <DialogDescription className="text-[13px] text-txt-dim">
-            Claude Code runs the task inside an isolated forge against a local
+            Claude Code runs the task inside an isolated Forge against a local
             repo.
           </DialogDescription>
         </DialogHeader>
