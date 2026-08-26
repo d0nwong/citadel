@@ -53,8 +53,10 @@ post_line sys "agent starting — $n step(s), timeout ${TIMEOUT}s"
 # unless the run failed.
 # Nobody is on the other end of this run: a turn that ends on "shall I
 # proceed?" ends the job with no changes. Say so at the system level, so it
-# holds regardless of what a skill or the task text suggests.
-UNATTENDED='This is an unattended, headless run inside a sandbox: no human can read or answer you until it is over. Never ask a question, request approval, or enter plan mode — nothing will reply and the run simply ends. Decide for yourself, write any assumptions into your final message, and carry the task through to completed edits in /work. Committing is optional and pushing is impossible here: the host pushes your commits and opens the PR after you finish, so do not try to push, open a PR, or work around missing git credentials.'
+# holds regardless of what a skill or the task text suggests — including a
+# repo-shipped .claude/skills workflow that shadows the baked /work skill
+# with interactive steps (approval gates, branching, pushing its own PR).
+UNATTENDED='This is an unattended, headless run inside a sandbox: no human can read or answer you until it is over. Never ask a question, request approval, or enter plan mode — nothing will reply and the run simply ends. Decide for yourself, write any assumptions into your final message, and carry the task through to completed edits in /work. Committing is optional and pushing is impossible here: the host pushes your commits and opens the PR after you finish, so do not try to push, open a PR, or work around missing git credentials. The repo may ship its own workflow skill written for an interactive session; its repo-specific content rules still bind you — required changelog or changeset files, commit style, PR templates, checklists — but skip every step of it that creates a branch, pushes, opens a PR, or waits for approval: the host already branched from the base and handles push and PR itself. If you commit, give it a clear one-line subject in the style the repo uses — it becomes the PR title. Before finishing, write the PR description the host should use to .git/PR_BODY.md (under .git/ on purpose, so it can never enter a commit): follow the repo PR template if one exists, fill its sections for real, and always include a summary, your stated assumptions, and how you verified the change.'
 
 agent_exit=0
 started=$(date +%s)
