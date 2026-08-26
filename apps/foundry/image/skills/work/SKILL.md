@@ -55,6 +55,10 @@ Plan before any edit. How the plan gets approved depends on who is there:
 
 While planning:
 
+- Honour the repo notes if the system prompt carries any — they are the repo
+  owner's standing preferences (package manager, what to verify with, what to
+  reuse), and the plan should already reflect them rather than discover them
+  halfway through.
 - Explore the code the ticket touches. Every claim in the plan must be backed
   by something you actually read — never by an assumption about how the code
   "probably" works.

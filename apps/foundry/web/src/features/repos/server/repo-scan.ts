@@ -10,6 +10,7 @@ import { promisify } from 'node:util'
 import { eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { repos as reposTable } from '@/db/schema'
+import { lastBaseBranchByRepo } from '@/features/jobs/server/job-store'
 import type { DiscoveredRepo } from '../types'
 
 const exec = promisify(execFile)
@@ -17,13 +18,26 @@ const exec = promisify(execFile)
 export const HOME = homedir()
 export const SCAN_ROOTS = [path.join(HOME, 'git')]
 
+/** What the database knows about an imported repo, over and above the checkout. */
+interface TrackedRepo {
+  notes: string
+  lastBaseBranch?: string
+}
+
 /**
  * The imported set lives in Postgres. It used to be ~/.foundry/repos.json;
  * `bun run db:migrate` adopts that file once and then leaves it alone.
+ *
+ * Keyed by path, since that is what the scan walks. The last base branch comes
+ * from the job ledger — no separate store, and it is the same answer on every
+ * device you open the UI from.
  */
-async function readTracked(): Promise<Set<string>> {
-  const rows = await db.select({ path: reposTable.path }).from(reposTable)
-  return new Set(rows.map((r) => r.path))
+async function readTracked(): Promise<Map<string, TrackedRepo>> {
+  const [rows, lastBase] = await Promise.all([
+    db.select({ id: reposTable.id, path: reposTable.path, notes: reposTable.notes }).from(reposTable),
+    lastBaseBranchByRepo(),
+  ])
+  return new Map(rows.map((r) => [r.path, { notes: r.notes ?? '', lastBaseBranch: lastBase.get(r.id) }]))
 }
 
 async function isGitRepo(dir: string) {
@@ -91,6 +105,8 @@ export async function scanRepos(): Promise<Array<DiscoveredRepo>> {
       branch: branch || 'HEAD',
       defaultBranch: originHead.replace(/^origin\//, '') || 'main',
       dirty: status.length > 0,
+      notes: tracked.get(dir)?.notes ?? '',
+      lastBaseBranch: tracked.get(dir)?.lastBaseBranch,
       tracked: tracked.has(dir),
       lastCommit: lastCommit ? Number(lastCommit) * 1000 : 0,
     } satisfies DiscoveredRepo
@@ -103,6 +119,24 @@ export async function trackRepos(paths: Array<string>) {
   if (paths.length === 0) return
   const rows = paths.map((p) => ({ path: p, name: path.basename(p) }))
   await db.insert(reposTable).values(rows).onConflictDoNothing({ target: reposTable.path })
+}
+
+/**
+ * Standing instructions for one repo. Blank clears them back to NULL, so
+ * "no notes" is one state in the database rather than two.
+ */
+export async function saveRepoNotes(repoPath: string, notes: string) {
+  const trimmed = notes.trim()
+  await db
+    .update(reposTable)
+    .set({ notes: trimmed === '' ? null : trimmed })
+    .where(eq(reposTable.path, repoPath))
+}
+
+/** What a job hands its agent. '' when the repo is gone or has no notes. */
+export async function repoNotes(repoPath: string): Promise<string> {
+  const [row] = await db.select({ notes: reposTable.notes }).from(reposTable).where(eq(reposTable.path, repoPath))
+  return row?.notes ?? ''
 }
 
 /** Jobs that targeted it keep their `repo` snapshot; only the link goes null. */

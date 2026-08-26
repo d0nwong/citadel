@@ -124,6 +124,21 @@ export async function getJob(id: string): Promise<JobDetail | undefined> {
   return { ...toJob(row), logs: lines.map(toLogLine) }
 }
 
+/**
+ * The base branch each repo was last ignited on — `repo_id` -> branch. The
+ * ledger already records every job's base, so "what did I branch from last
+ * time" needs no separate store: `distinct on` takes the newest row per repo.
+ */
+export async function lastBaseBranchByRepo(): Promise<Map<string, string>> {
+  const rows = await db.execute<{ repo_id: string; base_branch: string }>(sql`
+    select distinct on (${jobs.repoId}) ${jobs.repoId} as repo_id, ${jobs.baseBranch} as base_branch
+    from ${jobs}
+    where ${jobs.repoId} is not null
+    order by ${jobs.repoId}, ${jobs.createdAt} desc
+  `)
+  return new Map(rows.map((r) => [r.repo_id, r.base_branch]))
+}
+
 export async function createJob(input: NewJobInput): Promise<Job> {
   const task = input.task.trim()
 

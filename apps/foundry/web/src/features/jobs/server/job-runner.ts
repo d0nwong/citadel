@@ -14,6 +14,7 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import { repoNotes } from '@/features/repos/server/repo-scan'
 import { createPullRequest, originHost, prCliFor } from './forge-pr'
 import * as store from './job-store'
 import type { JobRow } from './job-store'
@@ -78,7 +79,7 @@ async function readFoundryEnv(): Promise<Record<string, string>> {
 /* ------------------------------------------------------------------ */
 
 /** Everything that must hold before a container is worth starting. */
-async function preflight(job: JobRow): Promise<{ credEnv: Record<string, string>; originUrl: string }> {
+async function preflight(job: JobRow): Promise<{ credEnv: Record<string, string>; originUrl: string; notes: string }> {
   if (job.repo.kind !== 'local') throw new Error(`only local repos run today — this job targets a ${job.repo.kind} ref`)
   const repoPath = job.repo.path
 
@@ -132,7 +133,11 @@ async function preflight(job: JobRow): Promise<{ credEnv: Record<string, string>
     }
   }
 
-  return { credEnv, originUrl }
+  // Read now rather than at insert time: the notes that apply are the ones
+  // standing when the forge lights, not when the job was queued.
+  const notes = await repoNotes(repoPath)
+
+  return { credEnv, originUrl, notes }
 }
 
 /* ------------------------------------------------------------------ */
@@ -217,7 +222,7 @@ async function hostGitIdentity(): Promise<Record<string, string>> {
   }
 }
 
-async function launch(job: JobRow, credEnv: Record<string, string>): Promise<void> {
+async function launch(job: JobRow, credEnv: Record<string, string>, notes: string): Promise<void> {
   const name = containerName(job.id)
   const env: Record<string, string> = {
     ...credEnv,
@@ -227,6 +232,9 @@ async function launch(job: JobRow, credEnv: Record<string, string>): Promise<voi
     FOUNDRY_TOKEN: job.token,
     FOUNDRY_TASK: job.task,
     FOUNDRY_TIMEOUT: String(JOB_TIMEOUT),
+    // The repo's standing instructions (Repos page). Empty for a repo with
+    // none — forge-run then leaves the system prompt alone.
+    FOUNDRY_REPO_NOTES: notes,
     // Empty for a plain job — the runner then synthesises one bare step.
     FOUNDRY_STEPS: JSON.stringify(job.blueprint?.steps ?? []),
   }
@@ -313,7 +321,7 @@ export async function startJob(id: string): Promise<void> {
   if (!(await store.claimJob(id))) return
 
   try {
-    const { credEnv, originUrl } = await preflight(job)
+    const { credEnv, originUrl, notes } = await preflight(job)
     await sys(id, 'preflight ok — preparing workspace')
 
     const work = workspaceOf(id)
@@ -321,8 +329,10 @@ export async function startJob(id: string): Promise<void> {
     const { branch } = await prepareWorkspace(job, originUrl)
     await sys(id, `cloned ${job.repo.name} @ ${job.baseBranch} → ${branch}`)
 
+    if (notes !== '') await sys(id, `repo notes applied (${notes.length} chars) — see the Repos page`)
+
     await store.patchJob(id, { step: 'agent' })
-    await launch({ ...job, branch }, credEnv)
+    await launch({ ...job, branch }, credEnv, notes)
     armWatcher(id)
     await sys(id, `forge lit — ${containerName(id)}`)
   } catch (e) {

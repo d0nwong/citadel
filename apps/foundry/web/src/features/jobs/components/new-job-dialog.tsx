@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronsUpDown, Flame, GitBranch, Loader2 } from "lucide-react";
+import {
+  Check,
+  ChevronsUpDown,
+  Flame,
+  GitBranch,
+  Loader2,
+  NotebookPen,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import {
@@ -70,6 +77,8 @@ export function NewJobDialog() {
   const [repo, setRepo] = useState<Repo | null>(null);
   const [task, setTask] = useState("");
   const [baseBranch, setBaseBranch] = useState("");
+  /** Whether the field holds the repo's last-ignited base rather than origin's default. */
+  const [baseRemembered, setBaseRemembered] = useState(false);
   const [blueprintId, setBlueprintId] = useState(NO_BLUEPRINT);
 
   const { data: repos } = useQuery(repoQueries.list());
@@ -80,6 +89,7 @@ export function NewJobDialog() {
     setRepo(null);
     setTask("");
     setBaseBranch("");
+    setBaseRemembered(false);
     setBlueprintId(NO_BLUEPRINT);
   };
 
@@ -88,6 +98,9 @@ export function NewJobDialog() {
     onSuccess: (job) => {
       qc.invalidateQueries({ queryKey: jobQueries.all });
       qc.invalidateQueries({ queryKey: forgeQueries.all });
+      // This job is now the repo's last one — refetch so the next ignite
+      // starts from the base it just used.
+      qc.invalidateQueries({ queryKey: repoQueries.all });
       toast.success(`Job ${shortId(job.id)} queued`, {
         description: `${job.repo.name} → ${job.forge}${job.blueprint ? ` · ${job.blueprint.name}` : ""}`,
       });
@@ -100,10 +113,11 @@ export function NewJobDialog() {
 
   const submit = () => {
     if (!repo || !ready) return;
+    const base = baseBranch.trim() || repo.defaultBranch;
     mutation.mutate({
       task,
       repo: localRef(repo),
-      baseBranch: baseBranch.trim() || repo.defaultBranch,
+      baseBranch: base,
       // Jobs run in an ephemeral container per job — `forge` names the
       // adapter, and the container itself lands on the job row (LIA-13).
       forge: "orbstack",
@@ -199,7 +213,15 @@ export function NewJobDialog() {
                             value={r.path}
                             onSelect={() => {
                               setRepo(r);
-                              setBaseBranch(r.defaultBranch);
+                              // What you last ignited on this repo beats
+                              // origin's default — jobs on one repo tend to
+                              // start from the same branch every time.
+                              setBaseBranch(
+                                r.lastBaseBranch ?? r.defaultBranch,
+                              );
+                              setBaseRemembered(
+                                r.lastBaseBranch !== undefined,
+                              );
                               setRepoOpen(false);
                             }}
                             className="gap-2 font-mono text-[13px]"
@@ -226,6 +248,14 @@ export function NewJobDialog() {
                 )}
               </PopoverContent>
             </Popover>
+            {repo && repo.notes.trim() !== "" && (
+              <p className="mt-1.5 flex items-start gap-1.5 font-mono text-[11px] text-txt-faint">
+                <NotebookPen className="mt-px size-3 shrink-0 text-ember" />
+                <span className="truncate">
+                  Repo notes apply — {repo.notes.trim().split("\n")[0]}
+                </span>
+              </p>
+            )}
           </div>
 
           <div>
@@ -291,10 +321,20 @@ export function NewJobDialog() {
               <Input
                 id="base"
                 value={baseBranch}
-                onChange={(e) => setBaseBranch(e.target.value)}
+                onChange={(e) => {
+                  setBaseBranch(e.target.value);
+                  setBaseRemembered(false);
+                }}
                 placeholder={repo?.defaultBranch ?? "main"}
                 className="h-10 border-iron-700 bg-iron-900 font-mono text-[13px] placeholder:text-txt-faint focus-visible:ring-ember-deep"
               />
+              {repo && (
+                <p className="mt-1.5 truncate font-mono text-[11px] text-txt-faint">
+                  {baseRemembered
+                    ? `last job's base · default ${repo.defaultBranch}`
+                    : `origin default: ${repo.defaultBranch}`}
+                </p>
+              )}
             </div>
           </div>
 

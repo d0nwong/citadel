@@ -7,6 +7,18 @@ export interface Repo {
   /** Origin's default branch (origin/HEAD), `main` when unset — what jobs base on. */
   defaultBranch: string
   dirty: boolean
+  /**
+   * Standing instructions handed to every job on this repo — '' when unset.
+   * Stored in Postgres, not in the checkout, so it survives a clean clone and
+   * never lands in a commit.
+   */
+  notes: string
+  /**
+   * Base branch of the most recent job on this repo — what the ignite dialog
+   * starts from, in place of origin's default. Read from the ledger rather
+   * than remembered per browser, so it holds from any device.
+   */
+  lastBaseBranch?: string
 }
 
 /** A candidate turned up by scanning a directory, plus whether it is already added. */
