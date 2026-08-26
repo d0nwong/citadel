@@ -15,7 +15,6 @@ export const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, ""
 export const APP_DIR = join(ROOT, "alden/alden-portal");
 export const MANIFEST_PATH = join(APP_DIR, ".doc-workspace/feature-manifest.json");
 export const FEATURES_DIR = join(APP_DIR, "features");
-export const JOURNAL_DIR = join(APP_DIR, "journal");
 export const STATE = join(ROOT, ".state");
 export const DEFAULT_FE_REPO = "~/git/alden/alden-portal-fe";
 export const expand = (p: string) => p.replace(/^~/, process.env.HOME ?? "~");
@@ -78,6 +77,13 @@ export function merge(existing: Manifest | null, derived: Manifest): Manifest {
 /** where a feature's docs live under features/ — curated `dir` wins, else derived from id */
 export const featureDir = (f: Feature) =>
   f.dir ?? (f.type === "shared" ? `shared/${f.id.replace(/^shared-/, "")}` : f.id.replace(/^admin-/, "admin/"));
+/**
+ * Where a feature's change-journal entries live (protocol Phase 5) — one folder per
+ * feature, beside its docs, so a feature's history is in the folder you already opened.
+ * A change touching several features is still ONE entry: it is filed under the feature it
+ * is mostly about and names the rest in `features:`, which stays the routing key.
+ */
+export const journalDir = (f: Feature) => join(FEATURES_DIR, featureDir(f), "journal");
 export const archDocPath = (f: Feature) => join(FEATURES_DIR, featureDir(f), "docs/arch.md");
 export const productDocPath = (f: Feature) => join(FEATURES_DIR, featureDir(f), "docs/product.md");
 

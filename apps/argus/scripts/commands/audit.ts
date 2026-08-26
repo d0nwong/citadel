@@ -12,7 +12,7 @@
 
 import { join, relative } from "node:path";
 import { normPath } from "../lib/spec.ts";
-import { FEATURES_DIR, JOURNAL_DIR, STATE, ROOT } from "../lib/manifest.ts";
+import { FEATURES_DIR, STATE, ROOT } from "../lib/manifest.ts";
 import { ATTR_DEPTH, type AccioIndex } from "../lib/index-store.ts";
 
 const METHOD_RE = /\b(GET|POST|PUT|PATCH|DELETE)\s+(\/api\/\S+?)(?=[`") \n]|$)/g;
@@ -60,7 +60,7 @@ export async function auditDocs(index: AccioIndex, dir = FEATURES_DIR): Promise<
  * or a dead status silently orphans a change record — and an `implemented` entry whose
  * feature has since been re-verified means the refresh loop missed it.
  */
-export async function auditJournal(index: AccioIndex, dir = JOURNAL_DIR): Promise<string[]> {
+export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promise<string[]> {
   const problems: string[] = [];
   const ids = new Set(index.features.map(f => f.id));
   const STATUSES = new Set(["decided", "implemented", "documented"]);
@@ -74,27 +74,36 @@ export async function auditJournal(index: AccioIndex, dir = JOURNAL_DIR): Promis
     if (d) verifiedAt.set(f.id, d);
   }
 
-  for await (const path of new Bun.Glob("*.md").scan({ cwd: dir, absolute: true })) {
+  const idByDir = new Map(index.features.map(f => [f.dir, f.id]));
+
+  for await (const path of new Bun.Glob("**/journal/*.md").scan({ cwd: dir, absolute: true })) {
     const name = relative(dir, path);
+    const owner = idByDir.get(name.replace(/\/journal\/[^/]+$/, ""));
     const text = await Bun.file(path).text();
     const field = (k: string) => text.match(new RegExp(`^${k}:\\s*(.+)$`, "m"))?.[1]?.trim();
     const date = field("date"), status = field("status")?.split(/\s/)[0], ticket = field("ticket");
     const feats = (text.match(/^features:\s*\[([^\]]*)\]/m)?.[1] ?? "")
       .split(",").map(x => x.trim()).filter(Boolean);
 
-    if (!date || !/^\d{4}-\d{2}-\d{2}/.test(date)) problems.push(`journal/${name}: missing or malformed date`);
-    if (!status || !STATUSES.has(status)) problems.push(`journal/${name}: status must be decided|implemented|documented`);
-    if (!feats.length) problems.push(`journal/${name}: features: [] is empty — entry routes nowhere`);
-    for (const f of feats) if (!ids.has(f)) problems.push(`journal/${name}: unknown feature id \`${f}\``);
+    if (!date || !/^\d{4}-\d{2}-\d{2}/.test(date)) problems.push(`${name}: missing or malformed date`);
+    if (!status || !STATUSES.has(status)) problems.push(`${name}: status must be decided|implemented|documented`);
+    if (!feats.length) problems.push(`${name}: features: [] is empty — entry routes nowhere`);
+    for (const f of feats) if (!ids.has(f)) problems.push(`${name}: unknown feature id \`${f}\``);
+    // the folder is where a human looks; `features:` is what routes the refresh. If the
+    // folder's own feature is missing from the list, the entry is invisible to the very
+    // feature it was filed under.
+    if (!owner) problems.push(`${name}: journal folder matches no feature dir in the manifest`);
+    else if (feats.length && !feats.includes(owner))
+      problems.push(`${name}: filed under \`${owner}\` but features: [${feats.join(", ")}] does not name it`);
     if (ticket && ticket !== "null" && !TICKET.test(ticket.replace(/^["']|["']$/g, "")))
-      problems.push(`journal/${name}: ticket \`${ticket}\` is neither a KEY-123 nor a trello.com link`);
+      problems.push(`${name}: ticket \`${ticket}\` is neither a KEY-123 nor a trello.com link`);
 
     // implemented + docs re-verified after the entry ⇒ the refresh ran but didn't close it
     if (status === "implemented" && date)
       for (const f of feats) {
         const v = verifiedAt.get(f);
         if (v && v >= date.slice(0, 10))
-          problems.push(`journal/${name}: implemented, but ${f} docs were re-verified ${v} — refresh missed this entry or it should be documented`);
+          problems.push(`${name}: implemented, but ${f} docs were re-verified ${v} — refresh missed this entry or it should be documented`);
       }
   }
   return problems;

@@ -10,7 +10,9 @@ docs stay present-tense facts-from-code; entries own history, rationale, source,
 **Never write a change's history into the docs, and never restate current behavior in an
 entry** — they link, they don't merge.
 
-Entries: `alden/alden-portal/journal/YYYY-MM-DD-<slug>.md`, format per Phase 5.
+Entries live with the feature they are about:
+`alden/alden-portal/features/<dir>/journal/YYYY-MM-DD-<slug>.md`, format per Phase 5.
+`<dir>` is the feature's folder under `features/` — the same one holding its `docs/`.
 
 ## Procedure
 
@@ -39,6 +41,10 @@ feature ids, ticket format, and flags implemented entries the refresh loop misse
 
 - **One change per entry.** A ticket that touches three features is still ONE entry with
   three ids in `features:` — never three copies.
+- **The folder is where it lives; `features:` is what routes it.** File a multi-feature
+  entry under the feature it is mostly about, and name every affected feature in
+  `features:` — including the folder's own id, or audit flags it. The other features find
+  it by that list, not by the path.
 - `features:` uses FLOW style (`[a, b]`) — block style breaks grep routing.
 - After creation, only `status` may change. Corrections get a new entry that references
   the old one.
