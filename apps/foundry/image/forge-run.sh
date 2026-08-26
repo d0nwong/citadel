@@ -57,7 +57,7 @@ post_line sys "agent starting — $n step(s), timeout ${TIMEOUT}s"
 # holds regardless of what a skill or the task text suggests — including a
 # repo-shipped .claude/skills workflow that shadows the baked /work skill
 # with interactive steps (approval gates, branching, pushing its own PR).
-UNATTENDED='This is an unattended, headless run inside a sandbox: no human can read or answer you until it is over. Never ask a question, request approval, or enter plan mode — nothing will reply and the run simply ends. Decide for yourself, write any assumptions into your final message, and carry the task through to completed edits in /work. Committing is optional and pushing is impossible here: the host pushes your commits and opens the PR after you finish, so do not try to push, open a PR, or work around missing git credentials. The repo may ship its own workflow skill written for an interactive session; its repo-specific content rules still bind you — required changelog or changeset files, commit style, PR templates, checklists — but skip every step of it that creates a branch, pushes, opens a PR, or waits for approval: the host already branched from the base and handles push and PR itself. If you commit, give it a clear one-line subject in the style the repo uses — it becomes the PR title. Before finishing, write the PR description the host should use to .git/PR_BODY.md (under .git/ on purpose, so it can never enter a commit): follow the repo PR template if one exists, fill its sections for real, and always include a summary, your stated assumptions, and how you verified the change.'
+UNATTENDED='This is an unattended, headless run inside a sandbox: no human can read or answer you until it is over. Never ask a question, request approval, or enter plan mode — nothing will reply and the run simply ends. Decide for yourself, write any assumptions into your final message, and carry the task through to completed edits in /work. Committing is optional and pushing is impossible here: the host pushes your commits and opens the PR after you finish, so do not try to push, open a PR, or work around missing git credentials. The repo may ship its own workflow skill written for an interactive session; its repo-specific content rules still bind you — required changelog or changeset files, commit style, PR templates, checklists — but skip every step of it that creates a branch, pushes, opens a PR, or waits for approval: the host already branched from the base and handles push and PR itself. If you commit, give it a clear one-line subject in the style the repo uses — it becomes the PR title. Before finishing, write the PR description the host should use to .git/PR_BODY.md (under .git/ on purpose, so it can never enter a commit): follow the repo PR template if one exists, otherwise the foundry template at /usr/local/share/foundry/pr-template.md; fill its sections for real, and always include a summary, your stated assumptions, and how you verified the change.'
 
 # The repo's standing preferences, set on foundry's Repos page. They ride in
 # the system prompt rather than the task text so they hold for every step of a
@@ -125,6 +125,38 @@ while [ "$i" -lt "$n" ]; do
   fi
 done
 STEP_LABEL=null
+
+# ---------------------------------------------------------------- pr body
+# The PR description must not hinge on one sentence of system prompt (LIA-39):
+# when the run produced work but never wrote .git/PR_BODY.md, spend one short
+# resumed turn on nothing but that file. Failing here is fine — the host still
+# composes a fallback body — so this never touches agent_exit.
+if [ ! -s /work/.git/PR_BODY.md ] \
+    && { [ -n "$(git status --porcelain 2>/dev/null)" ] \
+         || [ "$(git rev-parse HEAD 2>/dev/null || echo none)" != "$start_rev" ]; }; then
+  remaining=$((TIMEOUT - ($(date +%s) - started)))
+  [ "$remaining" -gt 240 ] && remaining=240
+  # Under ~30s a turn cannot finish; and remaining<=0 also means no step ever
+  # ran, so there would be no session to resume anyway.
+  if [ "$remaining" -gt 30 ]; then
+    STEP_LABEL=$(jq -cn --argjson i "$((n + 1))" '{index: $i, name: "pr-body"}')
+    post_line sys "run left no .git/PR_BODY.md — asking the agent for the PR description"
+    errfile=$(mktemp)
+    timeout "$remaining" claude --dangerously-skip-permissions \
+        -p 'Write the PR description for the work you just completed to /work/.git/PR_BODY.md — create that one file and change nothing else. Follow the repo PR template if one exists, otherwise the foundry template at /usr/local/share/foundry/pr-template.md. Fill its sections for real: what changed and why, your assumptions, and how you verified it.' \
+        --resume "$SID" \
+        --append-system-prompt "$SYSTEM_PROMPT" \
+        --output-format stream-json --verbose 2>"$errfile" \
+      | while IFS= read -r line; do
+          [ -n "$line" ] && post_line ndjson "$line"
+        done
+    while IFS= read -r line; do
+      [ -n "$line" ] && post_line stderr "$line"
+    done < <(tail -20 "$errfile")
+    STEP_LABEL=null
+    [ -s /work/.git/PR_BODY.md ] || post_line sys "still no PR body — the host will compose one from the commit"
+  fi
+fi
 
 # ---------------------------------------------------------------- commit
 # The agent may commit on its own or just leave edits behind; sweep up
