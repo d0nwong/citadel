@@ -26,6 +26,14 @@ export const repos = foundry.table('repos', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   path: text('path').notNull().unique(),
   name: text('name').notNull(),
+  /**
+   * Free-text standing instructions for this repo — conventions, the package
+   * manager, what to verify with, anything a job should know before it plans.
+   * Handed to the agent as system prompt at launch, never committed anywhere:
+   * this is the place for preferences that do not belong in the repo's own
+   * CLAUDE.md (which the agent already reads from the checkout).
+   */
+  notes: text('notes'),
   importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

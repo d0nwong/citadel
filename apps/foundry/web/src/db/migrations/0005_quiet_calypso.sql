@@ -1,0 +1,1 @@
+ALTER TABLE "foundry"."repos" ADD COLUMN "notes" text;

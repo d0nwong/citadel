@@ -209,6 +209,25 @@ Two things worth knowing:
 Job workspaces accumulate under `~/.foundry/jobs/`; `foundry jobs prune [--days 7]`
 clears old ones. See `web/README.md` for the full pipeline.
 
+### Repo notes
+
+Each repo on the **Repos** page carries free-text **notes** — standing instructions
+every job against it inherits: the package manager, what to verify with, which base
+branch to prefer, which shared components to reuse. They ride in as system prompt
+(`FOUNDRY_REPO_NOTES` -> `--append-system-prompt`), so they hold for every step of a
+blueprint, planning included, and are read fresh when the forge lights rather than
+when the job was queued.
+
+The Repos page shows the first lines of each repo's notes inline, and the ignite
+dialog says which notes are about to apply. The **base branch** field starts from the
+base of that repo's most recent job — read straight from the ledger, so it is the
+same answer on every device — falling back to origin's default for a repo with no
+jobs yet.
+
+They live in foundry's database, never in the checkout: this is where preferences go
+that don't belong in a repo's committed `CLAUDE.md` — which the agent still reads
+from the workspace as usual.
+
 ### Blueprints
 
 A **blueprint** is a reusable sequence of agent steps, each on a model of its own —

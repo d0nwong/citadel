@@ -10,6 +10,7 @@
 #   FOUNDRY_JOB_ID FOUNDRY_CALLBACK FOUNDRY_TOKEN FOUNDRY_TASK FOUNDRY_TIMEOUT
 #   FOUNDRY_STEPS  — JSON array [{name, model, effort?, prompt}] from a
 #                    blueprint (LIA-25); empty/absent means one bare step.
+#   FOUNDRY_REPO_NOTES — the target repo's standing instructions, if any.
 set -uo pipefail   # deliberately no -e: every failure path must still report
 
 : "${FOUNDRY_JOB_ID:?}" "${FOUNDRY_CALLBACK:?}" "${FOUNDRY_TOKEN:?}" "${FOUNDRY_TASK:?}"
@@ -58,6 +59,19 @@ post_line sys "agent starting — $n step(s), timeout ${TIMEOUT}s"
 # with interactive steps (approval gates, branching, pushing its own PR).
 UNATTENDED='This is an unattended, headless run inside a sandbox: no human can read or answer you until it is over. Never ask a question, request approval, or enter plan mode — nothing will reply and the run simply ends. Decide for yourself, write any assumptions into your final message, and carry the task through to completed edits in /work. Committing is optional and pushing is impossible here: the host pushes your commits and opens the PR after you finish, so do not try to push, open a PR, or work around missing git credentials. The repo may ship its own workflow skill written for an interactive session; its repo-specific content rules still bind you — required changelog or changeset files, commit style, PR templates, checklists — but skip every step of it that creates a branch, pushes, opens a PR, or waits for approval: the host already branched from the base and handles push and PR itself. If you commit, give it a clear one-line subject in the style the repo uses — it becomes the PR title. Before finishing, write the PR description the host should use to .git/PR_BODY.md (under .git/ on purpose, so it can never enter a commit): follow the repo PR template if one exists, fill its sections for real, and always include a summary, your stated assumptions, and how you verified the change.'
 
+# The repo's standing preferences, set on foundry's Repos page. They ride in
+# the system prompt rather than the task text so they hold for every step of a
+# blueprint — including the planning step, which is what they are mostly for —
+# and cannot be mistaken for part of what was asked.
+SYSTEM_PROMPT="$UNATTENDED"
+if [ -n "${FOUNDRY_REPO_NOTES:-}" ]; then
+  SYSTEM_PROMPT="$UNATTENDED
+
+Repo notes — standing instructions from the owner of this repository, which apply to every job run against it. Follow them while planning and while editing, exactly as if the task text had said them. They do not replace the task, and the repo's own CLAUDE.md still applies; where a note and the code genuinely conflict, follow the code and say so in your final message.
+
+$FOUNDRY_REPO_NOTES"
+fi
+
 agent_exit=0
 started=$(date +%s)
 i=0
@@ -90,7 +104,7 @@ while [ "$i" -lt "$n" ]; do
   timeout "$remaining" claude --dangerously-skip-permissions -p "$prompt" \
       ${model:+--model "$model"} ${effort:+--effort "$effort"} \
       "$session_flag" "$SID" \
-      --append-system-prompt "$UNATTENDED" \
+      --append-system-prompt "$SYSTEM_PROMPT" \
       --output-format stream-json --verbose 2>"$errfile" \
     | while IFS= read -r line; do
         [ -n "$line" ] && post_line ndjson "$line"

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { GitBranch, Trash2 } from "lucide-react";
+import { GitBranch, NotebookPen, Trash2 } from "lucide-react";
 import { AddReposDialog } from "./add-repos-dialog";
+import { RepoNotesDialog } from "./repo-notes-dialog";
 import { removeRepo } from "../api";
 import { repoQueries } from "../queries";
 import { localRef, repoLabel } from "../types";
@@ -36,7 +37,7 @@ export function RepoInventory() {
       {repos?.map((repo) => (
         <div
           key={repo.path}
-          className="group relative flex flex-col gap-1.5 border-b border-hairline bg-iron-900 px-4 py-3 lg:grid lg:grid-cols-[minmax(0,1fr)_200px_110px_40px] lg:items-center lg:gap-4 lg:px-6 lg:py-3.5"
+          className="group relative flex flex-col gap-1.5 border-b border-hairline bg-iron-900 px-4 py-3 lg:grid lg:grid-cols-[minmax(0,1fr)_200px_110px_60px] lg:items-center lg:gap-4 lg:px-6 lg:py-3.5"
         >
           <span className="min-w-0">
             <span className="block truncate pr-8 text-[13.5px] font-medium text-txt lg:pr-0">
@@ -45,6 +46,15 @@ export function RepoInventory() {
             <span className="mt-0.5 block truncate font-mono text-[11px] text-txt-faint">
               {repoLabel(localRef(repo))}
             </span>
+            {repo.notes.trim() !== "" && (
+              <span className="mt-1.5 flex items-start gap-1.5 pr-8 text-[11.5px] leading-snug text-txt-dim lg:pr-4">
+                <NotebookPen className="mt-0.5 size-3 shrink-0 text-ember" />
+                {/* First two lines only — notes can run long, and the row is a summary. */}
+                <span className="line-clamp-2 whitespace-pre-line">
+                  {repo.notes.trim()}
+                </span>
+              </span>
+            )}
           </span>
           <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 lg:contents">
             <span className="flex min-w-0 items-center gap-1.5 font-mono text-[12px] text-txt-dim lg:w-auto">
@@ -59,14 +69,17 @@ export function RepoInventory() {
               )}
             </span>
           </span>
-          <button
-            type="button"
-            onClick={() => remove.mutate(repo.path)}
-            title={`Remove ${repo.name}`}
-            className="absolute right-4 top-3 text-txt-faint transition-all hover:text-crack lg:static lg:justify-self-end lg:opacity-0 lg:group-hover:opacity-100"
-          >
-            <Trash2 className="size-3.5" />
-          </button>
+          <span className="absolute right-4 top-3 flex items-center gap-3 lg:static lg:justify-self-end">
+            <RepoNotesDialog repo={repo} />
+            <button
+              type="button"
+              onClick={() => remove.mutate(repo.path)}
+              title={`Remove ${repo.name}`}
+              className="text-txt-faint transition-all hover:text-crack lg:opacity-0 lg:group-hover:opacity-100"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </span>
         </div>
       ))}
     </>

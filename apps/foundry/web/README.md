@@ -25,7 +25,10 @@ modules never enter the client bundle.
 - `features/repos/server/repo-scan.ts` — scans `~/git` with `node:fs`, reads each repo's
   branch, dirty state and last-commit time via `git`, and keeps the *imported* set in
   the `repos` table. Branch and dirty state are deliberately not stored: they are facts
-  about the working tree right now.
+  about the working tree right now. It also carries each repo's notes and its
+  `lastBaseBranch` — the base of its most recent job (`job-store.lastBaseBranchByRepo`,
+  a `distinct on` over the ledger), which is what the ignite dialog starts from. No
+  separate store and no per-browser state: the same answer from any device.
 - `features/forges/server/forge-scan.ts` — the forge inventory from docker labels:
   `foundry.forge` containers are pooled (`foundry new`), `foundry.job` ones are the
   ephemeral per-job forges.
@@ -55,6 +58,12 @@ Ignite ─► insert row (queued, with a per-job callback token)
   `FOUNDRY_MCP_URL`/`FOUNDRY_MCP_TOKEN`, so the agent can reach Linear through the
   infra stack's MCP gateway (`host.docker.internal:9090`, override with the
   `FOUNDRY_MCP_URL` env of this server) — a gateway token, never the Linear key.
+- **Repo notes** (`features/repos/`) are the target repo's standing instructions,
+  edited on the Repos page and stored on its `repos` row. Preflight reads them at
+  launch — not at insert, so the notes standing when the forge lights are the ones
+  that apply — and passes them as `FOUNDRY_REPO_NOTES`; `forge-run.sh` appends them
+  to the unattended system prompt, so they hold for every blueprint step, planning
+  included. A repo with none changes nothing.
 - A **blueprint** (`features/blueprints/`) turns the agent phase into N steps, each
   `{name, model, effort?, prompt}`; `{{task}}` in a prompt is the job's task text.
   The runner gets them as `FOUNDRY_STEPS` JSON, runs every step against one Claude
