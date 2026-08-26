@@ -40,8 +40,10 @@ Non-empty diff → regenerate. Empty → do NOT rewrite or bump `last_verified` 
 Phase 4 rule). `"stale"` as the arg means: run this check across every feature whose
 `status` is `done` and regenerate the drifted ones.
 
-**2b. Collect the why.** Grep `alden/alden-portal/journal/*.md` for entries whose
-`features:` include this id and whose `status` is not `documented`. They explain the diff
+**2b. Collect the why.** Grep `alden/alden-portal/features/**/journal/*.md` for entries whose
+`features:` include this id and whose `status` is not `documented` — the feature's own
+folder is the first place to look, but an entry filed under another feature can name this
+one too, so grep them all. They explain the diff
 (source, ticket, intent) — include them verbatim in the subagent prompt below, and after
 a successful run flip each entry the agent CONFIRMED in code to `status: documented`
 (leave unconfirmed ones alone; audit will keep nagging, which is correct).

@@ -240,7 +240,11 @@ things code can never say: who asked, which ticket, what the decision was. **Doc
 become changelogs**, and journal entries never restate current behavior (the docs own
 that). They link; they don't merge.
 
-One file per change: `/journal/YYYY-MM-DD-<slug>.md`
+One file per change, in the folder of the feature it is mostly about:
+`/features/<dir>/journal/YYYY-MM-DD-<slug>.md` — beside that feature's `docs/`, so a
+feature's history is in the folder you already opened. A change touching several
+features is still ONE file: `features:` stays the routing key and must name the
+folder's own feature as well as the rest.
 
 ```markdown
 ---
@@ -276,7 +280,7 @@ journal says why. Close only entries whose change the agent actually confirmed i
 
 A downstream agent answering questions MUST be able to:
 
-1. **Route by frontmatter alone** — grep `aliases` + `feature_name` across `/features/**/docs/*.md` frontmatter to pick the right file without opening bodies; grep `features:` / `ticket:` across `/journal/*.md` to find a change's history the same way.
+1. **Route by frontmatter alone** — grep `aliases` + `feature_name` across `/features/**/docs/*.md` frontmatter to pick the right file without opening bodies; grep `features:` / `ticket:` across `/features/**/journal/*.md` to find a change's history the same way.
 2. **Answer "what" questions from one table row** — Business Rules table (product tier).
 3. **Answer "where/how" questions from one table row** — Component Map (architecture tier).
 4. **Trust freshness** — `last_verified` sha tells the agent whether to double-check against code.
