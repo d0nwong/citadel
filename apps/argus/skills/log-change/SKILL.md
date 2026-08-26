@@ -25,9 +25,11 @@ Entries live with the feature they are about:
 - `scope` — product | architecture | both
 
 **2. Determine status** (this decides everything downstream):
-- change NOT in FE code yet → `status: decided`. Write the entry. STOP — docs are not
-  touched (facts-only rule). The entry is the record of intent until code lands.
-- change already in FE code → `status: implemented`, write the entry, continue to step 3.
+- change NOT in code yet (FE or BE) → `status: decided`. Write the entry. STOP — docs are
+  not touched (facts-only rule). The entry is the record of intent until code lands.
+- change already in code (FE or BE) → `status: implemented`, write the entry, continue to
+  step 3. A backend-only change counts: the `stale` check diffs FE code only, so this
+  entry is what flags the feature for a re-run with backend verification.
 
 **3. Update docs when code has landed:** run the `/feature-docs` procedure for each
 affected feature, passing this entry (and any other open entries for the feature) to the

@@ -1,6 +1,6 @@
 ---
 name: feature-docs
-description: Generate or refresh the dual-tier docs (product.md + arch.md) for one or more alden-portal features, per DOC-PROTOCOL.md. Use when asked to document a feature, redo/refresh its docs, add the product tier for a feature that only has an arch doc, or bring docs up to date after FE code changed. Args = feature id(s) from the manifest, or "stale" to refresh whatever drifted.
+description: Generate or refresh the dual-tier docs (product.md + arch.md) for one or more alden-portal features, per DOC-PROTOCOL.md. Docs are verified against BOTH repos — FE code and the backend handlers behind each endpoint. Use when asked to document a feature, redo/refresh its docs, add the product tier for a feature that only has an arch doc, or bring docs up to date after FE or BE code changed. Args = feature id(s) from the manifest, or "stale" to refresh whatever drifted.
 ---
 
 # feature-docs — run the doc protocol for one feature
@@ -11,14 +11,16 @@ read it first; this SKILL.md is only the operational glue for this repo. Machine
 Paths:
 - manifest: `alden/alden-portal/.doc-workspace/feature-manifest.json` (feature ids, `dir`, `core_files`)
 - docs: `alden/alden-portal/features/<dir>/docs/{product.md, arch.md}`
-- frontend repo: `~/git/alden/alden-portal-fe` (`core_files` paths are relative to it)
+- frontend repo: `~/git/alden-portal-fe` (`core_files` paths are relative to it)
+- backend repo: `~/git/alden-connect-portal-be`, pinned to `origin/dev` (`dev@<shortsha>`)
 
 **⚠ The FE repo is a SHARED working tree** — other sessions switch its branch without
 warning. Never trust `ls`/`cat` there. Pin the target sha up front (the arch doc's
 `last_verified` names it) and make subagents read EVERY file via
 `git show <sha>:<path>` and list dirs via `git ls-tree -r --name-only <sha> <dir>`,
 run from the FE repo dir. `accio sync` brackets its own analysis and aborts if the tree
-moves mid-run.
+moves mid-run. The BE repo gets the SAME discipline: its local checkout is routinely
+behind the remote, so never read its working tree either — fetch, pin, `git show`.
 
 ## Procedure
 
@@ -29,11 +31,17 @@ route/code — like `academy` — cannot get a facts-from-code doc yet; say so a
 **1. Preflight.** `bun run accio sync --offline` so the arch doc + index are current.
 Add `--check` first if the backend spec may have moved (then run online).
 
+Also pin the backend: `cd ~/git/alden-connect-portal-be && git fetch origin dev &&
+git rev-parse --short origin/dev` → `{be_sha}` (pin format `dev@{be_sha}`). The local
+checkout is routinely behind the remote — NEVER read its working tree; every BE read is
+`git show "{be_sha}:<path>"` (quote the whole argument — zsh mangles bare `sha:path`),
+listings via `git ls-tree -r --name-only {be_sha} <dir>`.
+
 **2. Detect staleness** (skip for first-time generation). A product doc is stale when the
 FE code it was verified against moved:
 
 ```bash
-cd ~/git/alden/alden-portal-fe && git diff --name-only <sha-from-last_verified>..HEAD -- <core_files...>
+cd ~/git/alden-portal-fe && git diff --name-only <sha-from-last_verified>..HEAD -- <core_files...>
 ```
 
 Non-empty diff → regenerate. Empty → do NOT rewrite or bump `last_verified` (protocol
@@ -58,10 +66,16 @@ context). Prompt template — fill every `{…}`:
 >
 > Inputs:
 > - Manifest entry: id `{id}`, dir `{dir}`, entry_routes {routes}, core_files {core_files}
->   — paths relative to the FRONTEND REPO at `~/git/alden/alden-portal-fe`. That repo is a
+>   — paths relative to the FRONTEND REPO at `~/git/alden-portal-fe`. That repo is a
 >   SHARED working tree whose branch switches without warning: read every file via
 >   `git show {fe_sha}:<path>` (dir listings via `git ls-tree -r --name-only {fe_sha} <dir>`),
 >   never from the working tree.
+> - Backend repo: `~/git/alden-connect-portal-be` at pinned sha `{be_sha}` (`dev@{be_sha}`).
+>   Same shared-tree rule: read ONLY via `git show "{be_sha}:<path>"` (quote the whole
+>   argument). To find an endpoint's handler: `git grep -n "<path-suffix>" {be_sha} -- src/routers/v1`
+>   → controller method in `src/controllers/v1/` → the use-case/service functions it
+>   imports (`src/use-cases/<domain>/`, `src/services/`), ONE hop, stop (protocol Phase 2
+>   step 3 budget).
 > - Generated arch doc: `{workspace}/alden/alden-portal/features/{dir}/docs/arch.md`. Its
 >   `## Interfaces & Contracts` region is endpoint ground truth — any endpoint named in
 >   prose MUST appear there (`accio audit` fails otherwise).
@@ -73,15 +87,23 @@ context). Prompt template — fill every `{…}`:
 > Task:
 > 1. Read the feature's code under its core_files, following imports one level deep where
 >    a business rule lives in a helper (role gates often in `src/lib/roles.ts`).
-> 2. Write `features/{dir}/docs/product.md` using the 3A template EXACTLY (headings
+> 2. Backend verification (bounded, protocol Phase 2 step 3): for every Business Rule
+>    and every `UNVERIFIED:` line in the previous product.md, check the backend handler
+>    chain behind the feature's Interfaces & Contracts endpoints. Verified server-side
+>    rules get `be:`-prefixed Sources; resolved UNVERIFIED lines convert to verified
+>    rows; genuine divergences become `## FE/BE Mismatches` rows in arch.md (statuses
+>    per template 3B) — never silently pick a side.
+> 3. Write `features/{dir}/docs/product.md` using the 3A template EXACTLY (headings
 >    verbatim). Frontmatter: `id: {id}`, `tier: product`, `status: active` (or `beta` if
 >    the code shows a partial surface), `arch_doc: ./arch.md`, generous `aliases`,
->    `last_verified: {fe_rev}`, `last_verified_date: {today}`. Business Rules rows come
->    from code (role gates, validation, state transitions); Source = the actual file;
->    escape `|` as `\|`.
-> 3. In arch.md replace ONLY the TL;DR placeholder; optionally append curated sections
->    after the regions. NEVER edit inside `<!-- accio:begin/end -->` markers.
-> 4. Write your chosen aliases back to this feature's `aliases` array in the manifest
+>    `last_verified: {fe_rev}`, `last_verified_date: {today}`, and — since you read the
+>    backend — `last_verified_be: dev@{be_sha}`, `last_verified_be_date: {today}`.
+>    Business Rules rows come from code (role gates, validation, state transitions);
+>    Source = the actual file (`be:` prefix for backend files); escape `|` as `\|`.
+> 4. In arch.md replace ONLY the TL;DR placeholder; optionally append curated sections
+>    (including `## FE/BE Mismatches`) after the regions. NEVER edit inside
+>    `<!-- accio:begin/end -->` markers.
+> 5. Write your chosen aliases back to this feature's `aliases` array in the manifest
 >    (touch nothing else).
 >
 > {If open journal entries exist:} Context for the diff — these journal entries explain
@@ -89,18 +111,23 @@ context). Prompt template — fill every `{…}`:
 > {entries verbatim}
 >
 > Report back: rule count, workflow count, UNVERIFIED items, spec-vs-code drift found,
-> and which journal entries you confirmed in code.
+> BE rules verified/refuted, FE/BE mismatches found (with proposed status), and which
+> journal entries you confirmed in code.
 
 `{fe_rev}` = the `last_verified` value in the current arch.md (branch@sha format).
+`{be_sha}` = the short sha of `origin/dev` pinned in step 1.
 
 **4. Verify.** After the subagent(s) return:
 - `bun run accio audit` — must be clean (catches prose endpoints code doesn't back)
 - `bun test scripts/accio.test.ts` — recall guard still green
 - spot-read the Business Rules table: every row quotable standalone, every Source real
+- every `be:` Source resolves: `git cat-file -e "{be_sha}:<path>"` in the BE repo
 
 **5. Close out.** In the manifest set the feature's `status: "done"` and
 `docs_sha: "<fe short sha>"`. Re-run `bun run accio sync --offline` (folds new aliases
-into the index). Commit docs separately from code changes.
+into the index). For each `needs-clarification` row in `## FE/BE Mismatches`, offer to
+file a Linear ticket via the `linear-ticket` skill (one per genuine mismatch) and write
+the ticket key into the row. Commit docs separately from code changes.
 
 ## Judgment calls that recur
 

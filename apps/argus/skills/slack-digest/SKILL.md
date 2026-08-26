@@ -49,7 +49,10 @@ no new replies for 48h. A thread that reaches a conclusion ("let's do X", "agree
 **4. Triage.** Skip join/leave events, bot noise, CI chatter, pure banter (count them,
 don't list them). Classify the rest:
 - **Decisions & conclusions** — anything settled: agreed behavior, chosen approach,
-  scope changes, "we'll do X". These are the doc-staleness risk.
+  scope changes, "we'll do X". These are the doc-staleness risk. A message announcing
+  a **backend change** (new/changed endpoint, server-side rule change, BE deploy to
+  `dev`) counts here too — the docs verify against BE code (`last_verified_be`), so a
+  BE-side change is a doc-staleness signal even with no FE work attached.
 - **Needs you** — mentions of `U09R2MYP6A0`, questions addressed to the user,
   anything blocking on them.
 - **Action items (yours)** — work the user now owns: they explicitly accepted
@@ -60,8 +63,10 @@ don't list them). Classify the rest:
 
 **5. Tag doc impact.** For each decision, guess the affected feature(s) from the
 folder names under `alden/alden-portal/features/` (e.g. `tasks`, `admin`, `meetings`).
-Tag inline as `[tasks]`. If none fits, tag `[unmapped]`. This is a hint for the
-end-of-day pass, not a commitment.
+For a backend change that names an endpoint, match the path against the features'
+arch.md `## Interfaces & Contracts` sections (or manifest aliases) to find the owning
+feature — folder names alone won't map a BE-only change. Tag inline as `[tasks]`. If
+none fits, tag `[unmapped]`. This is a hint for the end-of-day pass, not a commitment.
 
 **6. File action items in Linear.** For each **new** action item of the user's:
 - Dedupe first: skip if its thread ts is already in state's `action_items`; then
@@ -101,7 +106,7 @@ _Last updated: HH:MM. N messages scanned today, M skipped as noise._
 - **HH:MM · <author>** Summary. [message](permalink)
 
 ## End of day → docs
-_Filled by the evening pass: for each 🔴 item, run `/log-change` (journal + doc update) or note "no doc impact"._
+_Filled by the evening pass: for each 🔴 item, run `/log-change` (journal + doc update) or note "no doc impact". BE-side changes go through `/log-change` like FE ones — the journal entry is what flags the feature for regeneration (the automatic `stale` check diffs FE code only); regeneration then re-verifies against fresh `origin/dev` and bumps `last_verified_be`._
 ```
 
 Permalinks: `https://alden-studios.slack.com/archives/C07KG06L601/p<ts-with-dot-removed>`
