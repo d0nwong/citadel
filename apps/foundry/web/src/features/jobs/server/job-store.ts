@@ -38,6 +38,7 @@ function toJob(row: JobRow): Job {
     branch: row.branch,
     forge: row.forge,
     blueprint: row.blueprint ?? undefined,
+    sourceJobId: row.sourceJobId ?? undefined,
     status: row.status,
     step: (row.step as JobStep | null) ?? undefined,
     prUrl: row.prUrl ?? undefined,
@@ -189,7 +190,10 @@ export async function createJob(input: NewJobInput): Promise<Job> {
  * base branch, forge, and blueprint *snapshot* (not a re-resolve of
  * `blueprintId`, which may now point at an edited or deleted blueprint).
  * `branchSlug` is re-derived; `prepareWorkspace` already uniquifies it
- * against origin if the original branch is still around.
+ * against origin if the original branch is still around. A follow-up job
+ * (LIA-40) is the exception: rerunning one must stay a follow-up — same
+ * branch, same PR — or it would mint a fresh branch with no comments to
+ * address.
  */
 export async function rerunJob(sourceId: string): Promise<Job> {
   const src = await getJobRow(sourceId)
@@ -203,10 +207,12 @@ export async function rerunJob(sourceId: string): Promise<Job> {
         repo: src.repo,
         repoId: src.repoId,
         baseBranch: src.baseBranch,
-        branch: `foundry/${branchSlug(src.task)}`,
+        branch: src.sourceJobId ? src.branch : `foundry/${branchSlug(src.task)}`,
         forge: src.forge,
         blueprintId: src.blueprintId,
         blueprint: src.blueprint,
+        sourceJobId: src.sourceJobId,
+        prUrl: src.sourceJobId ? src.prUrl : null,
       })
       .returning()
 
@@ -215,6 +221,45 @@ export async function rerunJob(sourceId: string): Promise<Job> {
       jobId: row.id,
       stream: 'sys',
       text: `queued on ${row.forge}${via} — rerun of ${src.id.slice(0, 8)}`,
+    })
+    return toJob(row)
+  })
+}
+
+/**
+ * Queue a follow-up that addresses review comments on a settled job's PR
+ * (LIA-40). The row copies the source's branch *exactly* — updating a PR means
+ * pushing to the branch it was opened from — and its `prUrl`, so the follow-up
+ * stays runnable after the source is purged. The comments themselves are not
+ * stored: the runner fetches them fresh at launch, the way repo notes are read.
+ * No blueprint — addressing feedback is a single bare step.
+ */
+export async function followUpJob(sourceId: string): Promise<Job> {
+  const src = await getJobRow(sourceId)
+  if (!src) throw new Error('that job no longer exists')
+  if (OPEN.includes(src.status)) throw new Error('that job is still running — wait for its PR first')
+  if (!src.prUrl) throw new Error('that job has no pull request to address comments on')
+
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(jobs)
+      .values({
+        // Following up on a follow-up keeps its label — no stacked prefixes.
+        task: src.sourceJobId ? src.task : `Address PR comments — ${src.task}`,
+        repo: src.repo,
+        repoId: src.repoId,
+        baseBranch: src.baseBranch,
+        branch: src.branch,
+        forge: src.forge,
+        sourceJobId: src.sourceJobId ?? src.id,
+        prUrl: src.prUrl,
+      })
+      .returning()
+
+    await tx.insert(jobLogs).values({
+      jobId: row.id,
+      stream: 'sys',
+      text: `queued on ${row.forge} — addressing PR comments of ${src.id.slice(0, 8)}`,
     })
     return toJob(row)
   })
@@ -311,7 +356,9 @@ export async function settleJob(
       diffFiles: outcome.diff?.files ?? null,
       diffAdditions: outcome.diff?.additions ?? null,
       diffDeletions: outcome.diff?.deletions ?? null,
-      prUrl: outcome.prUrl ?? null,
+      // Written only when the caller has one: a follow-up job carries its PR
+      // link from insert, and a settle without a URL must not erase it.
+      ...(outcome.prUrl !== undefined ? { prUrl: outcome.prUrl } : {}),
     })
     .where(and(eq(jobs.id, id), inArray(jobs.status, OPEN)))
     .returning({ id: jobs.id })

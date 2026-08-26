@@ -247,3 +247,12 @@ bun run web:unserve
 
 Tailnet only, over `tailscale serve` — the dev server never becomes public. Exposing
 it to the internet is `tailscale funnel`, deliberately by hand.
+
+### Addressing PR comments
+
+Review feedback flows back into a forge. A settled job with a PR carries an
+**Address PR comments** action in its detail sheet: it queues a follow-up job on the
+*same branch*, the host fetches the PR's unresolved review threads and general
+comments with your own `gh`/`bb` credentials, and a fresh forge gets them as its
+task. Its push updates the existing PR — no new PR, no credentials in the container,
+and the comments are read fresh when the forge lights, like repo notes.

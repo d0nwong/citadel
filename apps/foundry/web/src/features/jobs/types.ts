@@ -24,6 +24,8 @@ export interface Job {
   forge: string
   /** The blueprint that ran, snapshotted — absent for a plain single-step job. */
   blueprint?: BlueprintSnapshot
+  /** Set when this job addresses review comments on the source job's PR. */
+  sourceJobId?: string
   status: JobStatus
   step?: JobStep
   createdAt: number

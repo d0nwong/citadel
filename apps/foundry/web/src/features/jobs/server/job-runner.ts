@@ -15,7 +15,7 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { repoNotes } from '@/features/repos/server/repo-scan'
-import { createPullRequest, originHost, prCliFor } from './forge-pr'
+import { createPullRequest, fetchPrComments, originHost, prCliFor } from './forge-pr'
 import * as store from './job-store'
 import type { JobRow } from './job-store'
 
@@ -79,7 +79,9 @@ async function readFoundryEnv(): Promise<Record<string, string>> {
 /* ------------------------------------------------------------------ */
 
 /** Everything that must hold before a container is worth starting. */
-async function preflight(job: JobRow): Promise<{ credEnv: Record<string, string>; originUrl: string; notes: string }> {
+async function preflight(
+  job: JobRow,
+): Promise<{ credEnv: Record<string, string>; originUrl: string; notes: string; comments?: string }> {
   if (job.repo.kind !== 'local') throw new Error(`only local repos run today — this job targets a ${job.repo.kind} ref`)
   const repoPath = job.repo.path
 
@@ -137,7 +139,22 @@ async function preflight(job: JobRow): Promise<{ credEnv: Record<string, string>
   // standing when the forge lights, not when the job was queued.
   const notes = await repoNotes(repoPath)
 
-  return { credEnv, originUrl, notes }
+  // A follow-up job (LIA-40) exists to address review comments on its PR, so
+  // the host reads them here — fresh at launch, like the notes above, and with
+  // the user's own CLI credentials, which the container never holds. No
+  // comments to address means no forge worth lighting. The user's checkout
+  // stands in as cwd for `bb`: same origin as the PR, and the job's own clone
+  // does not exist yet.
+  let comments: string | undefined
+  if (job.sourceJobId !== null) {
+    if (!job.prUrl) throw new Error('follow-up job has no PR URL to read comments from')
+    const fetched = await fetchPrComments(originUrl, { workspace: repoPath, prUrl: job.prUrl })
+    if (fetched.text === null) throw new Error(fetched.reason)
+    if (fetched.empty) throw new Error(`no unresolved comments on ${job.prUrl} — nothing to address`)
+    comments = fetched.text
+  }
+
+  return { credEnv, originUrl, notes, comments }
 }
 
 /* ------------------------------------------------------------------ */
@@ -170,6 +187,19 @@ async function prepareWorkspace(job: JobRow, originUrl: string): Promise<{ branc
       '',
     ) || 'main'
   await git(work, ['remote', 'set-head', 'origin', defaultBranch]).catch(() => undefined)
+
+  // A follow-up job continues an existing PR, and updating a PR means pushing
+  // to the branch it was opened from: check out origin's tip of that exact
+  // branch — never a fresh one, never uniquified.
+  if (job.sourceJobId !== null) {
+    try {
+      await git(work, ['fetch', 'origin', job.branch])
+    } catch {
+      throw new Error(`PR branch '${job.branch}' is not on origin — was the PR merged and the branch deleted?`)
+    }
+    await git(work, ['checkout', '-B', job.branch, 'FETCH_HEAD'])
+    return { branch: job.branch }
+  }
 
   // Branch from origin's tip of the base, not the local checkout's — the local
   // ref may be behind, and the PR diff should be against what the forge has.
@@ -222,7 +252,27 @@ async function hostGitIdentity(): Promise<Record<string, string>> {
   }
 }
 
-async function launch(job: JobRow, credEnv: Record<string, string>, notes: string): Promise<void> {
+/**
+ * What a follow-up forge is actually asked to do: the fetched comments, framed.
+ * Composed at launch and never stored — the row's `task` stays the readable
+ * ledger label, and the comments are read fresh each run. The first line is
+ * deliberately short: forge-run.sh's commit sweep uses `head -1` of the task
+ * as the commit subject when the agent leaves uncommitted work behind.
+ */
+function followUpTask(job: JobRow, comments: string): string {
+  return [
+    'Address PR review comments',
+    '',
+    `You previously opened pull request ${job.prUrl} from branch ${job.branch} of this repository; ` +
+      `the current checkout is that branch, exactly as the PR stands. Reviewers left the comments below. ` +
+      `Address them with code changes on this branch — build on it as it is, do not start over or rebase. ` +
+      `Where a comment is a question, or you disagree with it, answer in your final message rather than guessing an edit.`,
+    '',
+    comments,
+  ].join('\n')
+}
+
+async function launch(job: JobRow, credEnv: Record<string, string>, notes: string, comments?: string): Promise<void> {
   const name = containerName(job.id)
   const env: Record<string, string> = {
     ...credEnv,
@@ -230,7 +280,7 @@ async function launch(job: JobRow, credEnv: Record<string, string>, notes: strin
     FOUNDRY_JOB_ID: job.id,
     FOUNDRY_CALLBACK: CALLBACK_BASE,
     FOUNDRY_TOKEN: job.token,
-    FOUNDRY_TASK: job.task,
+    FOUNDRY_TASK: comments === undefined ? job.task : followUpTask(job, comments),
     FOUNDRY_TIMEOUT: String(JOB_TIMEOUT),
     // The repo's standing instructions (Repos page). Empty for a repo with
     // none — forge-run then leaves the system prompt alone.
@@ -321,18 +371,24 @@ export async function startJob(id: string): Promise<void> {
   if (!(await store.claimJob(id))) return
 
   try {
-    const { credEnv, originUrl, notes } = await preflight(job)
+    const { credEnv, originUrl, notes, comments } = await preflight(job)
     await sys(id, 'preflight ok — preparing workspace')
+    if (comments !== undefined) await sys(id, `PR comments fetched (${comments.length} chars) — ${job.prUrl}`)
 
     const work = workspaceOf(id)
     await store.patchJob(id, { workspace: work, container: containerName(id) })
     const { branch } = await prepareWorkspace(job, originUrl)
-    await sys(id, `cloned ${job.repo.name} @ ${job.baseBranch} → ${branch}`)
+    await sys(
+      id,
+      comments === undefined
+        ? `cloned ${job.repo.name} @ ${job.baseBranch} → ${branch}`
+        : `cloned ${job.repo.name} — continuing PR branch ${branch}`,
+    )
 
     if (notes !== '') await sys(id, `repo notes applied (${notes.length} chars) — see the Repos page`)
 
     await store.patchJob(id, { step: 'agent' })
-    await launch({ ...job, branch }, credEnv, notes)
+    await launch({ ...job, branch }, credEnv, notes, comments)
     armWatcher(id)
     await sys(id, `forge lit — ${containerName(id)}`)
   } catch (e) {
@@ -372,16 +428,25 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
     const diff = await diffStats(work, job.baseBranch)
 
     await store.patchJob(id, { step: 'pr' })
-    const originUrl = await git(work, ['remote', 'get-url', 'origin'])
-    const pr = await createPullRequest(originUrl, {
-      workspace: work,
-      branch: job.branch,
-      baseBranch: job.baseBranch,
-      title: await prTitle(work, job.task),
-      body: await prBody(work, job),
-    })
-    if (pr.url !== null) await sys(id, `PR opened: ${pr.url}`)
-    else await err(id, pr.reason)
+    let prUrl: string | undefined
+    if (job.sourceJobId !== null) {
+      // A follow-up pushes to the branch its PR was opened from — the push
+      // above *is* the update, so there is nothing to create here.
+      prUrl = job.prUrl ?? undefined
+      await sys(id, `PR updated: ${job.prUrl}`)
+    } else {
+      const originUrl = await git(work, ['remote', 'get-url', 'origin'])
+      const pr = await createPullRequest(originUrl, {
+        workspace: work,
+        branch: job.branch,
+        baseBranch: job.baseBranch,
+        title: await prTitle(work, job.task),
+        body: await prBody(work, job),
+      })
+      if (pr.url !== null) await sys(id, `PR opened: ${pr.url}`)
+      else await err(id, pr.reason)
+      prUrl = pr.url ?? undefined
+    }
 
     // An agent that errored still gets its work pushed, but the job is failed:
     // the outcome should not read clean when the run wasn't.
@@ -389,7 +454,7 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
       status: agentFailed ? 'failed' : 'succeeded',
       exitCode,
       diff,
-      prUrl: pr.url ?? undefined,
+      prUrl,
     })
     await sys(id, 'job settled')
   } catch (e) {

@@ -66,6 +66,18 @@ export const rerunJob = createServerFn({ method: 'POST' })
     return job
   })
 
+export const followUpJob = createServerFn({ method: 'POST' })
+  .validator((id: string) => id)
+  .handler(async ({ data }): Promise<Job> => {
+    const store = await import('./server/job-store')
+    const runner = await import('./server/job-runner')
+    // Same branch, same PR: the runner fetches the PR's comments at launch and
+    // the push updates the existing PR instead of opening a new one.
+    const job = await store.followUpJob(data)
+    void runner.startJob(job.id)
+    return job
+  })
+
 export const cancelJob = createServerFn({ method: 'POST' })
   .validator((id: string) => id)
   .handler(async ({ data }) => {
