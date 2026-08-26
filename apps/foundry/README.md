@@ -185,7 +185,7 @@ printed by `bun run infra:url`. The app's tables live in the `foundry` schema, n
 
 ## Web UI
 
-`web/` holds a TanStack Start + shadcn frontend — a job ledger and a "forge a job"
+`web/` holds a TanStack Start + shadcn frontend — a job ledger and an "ignite a job"
 flow, running on bun. **Igniting a job actually runs it**: the web server clones the
 repo to `~/.foundry/jobs/<id>/`, runs Claude Code in an ephemeral forge container
 against that clone, then commits, pushes and opens a PR (`gh` for GitHub origins,
@@ -212,7 +212,7 @@ clears old ones. See `web/README.md` for the full pipeline.
 ### Blueprints
 
 A **blueprint** is a reusable sequence of agent steps, each on a model of its own —
-*plan with Fable, execute with Sonnet*. Pick one in the "Forge a job" dialog and the
+*plan with Fable, execute with Sonnet*. Pick one in the "Ignite a job" dialog and the
 job's forge runs `claude -p` once per step, all in one session (`--session-id` then
 `--resume`), so the executor sees the planner's exploration. Define them on the
 **Blueprints** page; `db:migrate` seeds a "Plan → Execute" one. A job snapshots the
