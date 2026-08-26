@@ -60,6 +60,12 @@ While planning:
   "probably" works.
 - Reuse existing functions, utilities, and patterns you find; do not propose
   new code where a suitable implementation exists.
+- For a frontend/UI task: check the repo's `package.json` for a `ui:list`
+  script and, if it exists, run it (with the repo's package manager, e.g.
+  `bun run ui:list` or `npm run ui:list`) to list the shared UI components.
+  Build the plan around reusing those components instead of writing new
+  one-off UI, so the change stays visually consistent with the rest of the
+  application. If the script is absent or fails, continue without it.
 - Where there is a genuine fork in approach, present the options with one
   marked **recommended**, and proceed with the recommended one on approval.
 
