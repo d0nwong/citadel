@@ -62,6 +62,10 @@ touches. These are the docs `skills/feature-docs` produces per `DOC-PROTOCOL.md`
   `"<sha>:<path>"` argument — zsh reads a bare `$SHA:src/…` as a parameter modifier and
   mangles it). Record nothing you read from an unpinned working tree, and name the sha you
   pinned at the bottom of the ticket.
+- BE code lives in `~/git/alden-connect-portal-be` — same discipline: `git fetch origin dev`,
+  pin `origin/dev` (`dev@<shortsha>`), read via quoted `git show "<sha>:<path>"` (routers in
+  `src/routers/v1/`, controllers in `src/controllers/v1/`, logic in `src/use-cases/` +
+  `src/services/`). If BE code informed the ticket, name the BE sha at the bottom too.
 - Anything you could not verify becomes an explicit open question in Technical Notes
   ("confirm with backend whether …"), never a confident claim.
 

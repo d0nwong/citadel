@@ -14,7 +14,7 @@ import { flatten, indexOps } from "../lib/spec.ts";
 import { analyzeRepo, type Analysis } from "../lib/analyze.ts";
 import {
   loadManifest, saveManifest, merge, humanize, expand,
-  MANIFEST_PATH, STATE, DEFAULT_FE_REPO, type Manifest, type Feature,
+  MANIFEST_PATH, STATE, DEFAULT_FE_REPO, DEFAULT_BE_REPO, type Manifest, type Feature,
 } from "../lib/manifest.ts";
 import { join, relative } from "node:path";
 
@@ -123,6 +123,7 @@ if (import.meta.main) {
   const idx = indexOps(doc, flatten(doc));
   const a = await analyzeRepo(expand(feRepo), idx);
   const derived = await deriveManifest(a, feRepo);
+  derived.be_repo = existing?.be_repo ?? DEFAULT_BE_REPO;
   const merged = merge(existing, derived);
 
   const oldIds = new Set(existing?.features.map(f => f.id) ?? []);

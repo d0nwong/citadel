@@ -57,11 +57,22 @@ For each entry with `status: "pending"` (or `"stale"`, see Phase 4):
 
 1. Set `status` to `"in_progress"` in the manifest.
 2. Read ONLY the files listed under that entry's `core_files` (follow imports one level deep if a business rule lives in a helper).
-3. Generate output using the EXACT templates in Phase 3. Do not deviate from the section names, order, or table columns — downstream agents locate information by these exact headings.
+3. **Backend verification (bounded).** When the run supplies a backend repo and pinned
+   sha: for each endpoint in the arch doc's `## Interfaces & Contracts` region, locate
+   its server handler — route declaration (`src/routers/v1/*.ts`) → controller method →
+   the use-case/service functions the controller imports for that handler, ONE hop, stop
+   there. Read only those files. Skip ORM/schema internals unless a business rule visibly
+   lives in a schema constraint. The goal is verification, not mapping: confirm or refute
+   FE-derived rules, resolve `UNVERIFIED:` claims, and capture server-only rules the FE
+   cannot show (server-side validation, role enforcement, computed values). A fact whose
+   evidence is backend code carries a `be:`-prefixed Source (e.g. `be:src/services/x.ts`).
+   Where the tiers genuinely disagree, add a row to the arch doc's `## FE/BE Mismatches`
+   section (template 3B) — do not silently pick a side.
+4. Generate output using the EXACT templates in Phase 3. Do not deviate from the section names, order, or table columns — downstream agents locate information by these exact headings.
    - `type: "feature"` → BOTH tiers: `/features/<dir>/docs/product.md` and `/features/<dir>/docs/arch.md`.
    - `type: "shared"` → architecture tier only: `/features/shared/<id>/docs/arch.md` (template 3B; omit `product_doc` from frontmatter).
-4. Set the entry's manifest `status` to `"done"` and record `docs_sha` (the current git HEAD sha).
-5. Return to the orchestrator; the next entry starts in a fresh context.
+5. Set the entry's manifest `status` to `"done"` and record `docs_sha` (the current git HEAD sha).
+6. Return to the orchestrator; the next entry starts in a fresh context.
 
 Hard rules for BOTH tiers:
 
@@ -69,6 +80,11 @@ Hard rules for BOTH tiers:
 - **Tables over prose. Bullets over paragraphs.** A retrieval agent should be able to answer a question from a single table row.
 - **Stable heading names.** Headings are an API. Use the template headings verbatim, every file, every feature.
 - **One fact, one place.** Product tier owns the "why/what"; architecture tier owns the "how/where". Cross-reference instead of duplicating. (Exception: `aliases` and `feature_name` are deliberately duplicated in both tiers' frontmatter — they are routing keys, not facts.)
+- **Two-repo sourcing.** Frontend paths are bare; backend paths carry the `be:` prefix in
+  every Source cell. Never mix a claim's evidence across repos in one row.
+- **BE-verified freshness.** A product doc verified against backend code records
+  `last_verified_be: <branch>@<shortsha>` and `last_verified_be_date` in frontmatter
+  (product tier only — the arch tier's frontmatter is machine-owned).
 - **Escape literal `|` inside table cells as `\|`.** A broken table is a protocol violation — it defeats row-level retrieval.
 
 ---
@@ -89,6 +105,8 @@ related_features: [order-management, user-authentication]
 arch_doc: ./arch.md
 last_verified: <git sha>
 last_verified_date: 2026-08-22
+last_verified_be: dev@c9c52464b # backend sha the rules were checked against; omit if BE not read
+last_verified_be_date: 2026-08-26
 ---
 
 # Checkout & Payments
@@ -122,6 +140,10 @@ last_verified_date: 2026-08-22
 | Double-click on Pay | Single charge                       | Idempotency key on intent creation |
 
 ## Out of Scope / Known Gaps
+
+<!-- An `UNVERIFIED:` line that backend verification resolves is DELETED here and reborn
+     as a verified Business Rules / Edge Cases row with a `be:` Source. If the answer is
+     a divergence, it goes to the arch doc's `## FE/BE Mismatches` instead. -->
 
 - Refunds are handled in [order-management](../../order-management/docs/product.md).
 - UNVERIFIED: behavior when Stripe webhook is delayed > 24h.
@@ -217,6 +239,21 @@ sequenceDiagram
 ## Gaps / Tech Debt
 
 - Orphaned intents are never reconciled (no cleanup job found in code).
+
+## FE/BE Mismatches
+
+<!-- Optional — present only when backend verification found real divergences.
+     Verified against backend <branch>@<shortsha>. One row per mismatch; Surface uses the
+     exact endpoint key from Interfaces & Contracts (BE-only routes: write the path
+     WITHOUT a method prefix so `accio audit` does not treat it as an FE claim). -->
+
+| #    | Surface                    | FE behavior (file)                   | BE behavior (file)                           | Impact                            | Status              |
+| ---- | -------------------------- | ------------------------------------ | -------------------------------------------- | --------------------------------- | ------------------- |
+| MM-1 | `POST /api/payments/intent` | Blocks status X for role Y (`src/…`) | Accepts any status for any role (`be:src/…`) | Guard is FE-only; API unprotected | needs-clarification |
+
+Statuses: `needs-clarification` (file a ticket, record its key in the row) \| `intended`
+(a human confirmed the divergence — name who/where) \| `resolved` (code changed; promote
+the fact to Business Rules and delete the row).
 ````
 
 ---
@@ -283,6 +320,7 @@ A downstream agent answering questions MUST be able to:
 1. **Route by frontmatter alone** — grep `aliases` + `feature_name` across `/features/**/docs/*.md` frontmatter to pick the right file without opening bodies; grep `features:` / `ticket:` across `/features/**/journal/*.md` to find a change's history the same way.
 2. **Answer "what" questions from one table row** — Business Rules table (product tier).
 3. **Answer "where/how" questions from one table row** — Component Map (architecture tier).
-4. **Trust freshness** — `last_verified` sha tells the agent whether to double-check against code.
+4. **Answer "does the server enforce this?" from one table row** — a Business Rules row with a `be:` Source, or an FE/BE Mismatches row (architecture tier).
+5. **Trust freshness** — `last_verified` (frontend) and `last_verified_be` (backend) shas tell the agent whether to double-check against code.
 
-Any output that a grep for the standard headings (`## Business Rules`, `## Component Map`, `## Interfaces & Contracts`) would not find is a protocol violation.
+Any output that a grep for the standard headings (`## Business Rules`, `## Component Map`, `## Interfaces & Contracts`, `## FE/BE Mismatches`) would not find is a protocol violation.
