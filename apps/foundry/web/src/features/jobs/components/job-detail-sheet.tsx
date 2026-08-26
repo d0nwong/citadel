@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, ChevronRight, ExternalLink, GitBranch, RotateCcw } from 'lucide-react'
+import { Ban, ChevronRight, ExternalLink, GitBranch, MessageSquare, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/shared/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/shared/ui/sheet'
 import { JobStatusChip } from './job-status-chip'
-import { cancelJob, rerunJob } from '../api'
+import { cancelJob, followUpJob, rerunJob } from '../api'
 import { jobQueries } from '../queries'
 import { forgeQueries } from '@/features/forges/queries'
 import { clockTime, duration } from '@/shared/lib/format'
@@ -95,6 +95,18 @@ export function JobDetailSheet({
     },
   })
 
+  const followUp = useMutation({
+    mutationFn: (id: string) => followUpJob({ data: id }),
+    onSuccess: (newJob, sourceId) => {
+      qc.invalidateQueries({ queryKey: jobQueries.all })
+      qc.invalidateQueries({ queryKey: forgeQueries.all })
+      toast.success(`Job ${shortId(newJob.id)} queued`, {
+        description: `addressing PR comments of ${shortId(sourceId)}`,
+      })
+      onRerun?.(newJob.id)
+    },
+  })
+
   const lineCount = job?.logs.length ?? 0
   const groups = useMemo(() => (job ? groupLogs(job.logs, job.blueprint?.steps) : []), [job])
   const stepCount = job?.blueprint?.steps.length ?? 0
@@ -127,6 +139,11 @@ export function JobDetailSheet({
                   <span className="font-mono text-[11px] text-txt-dim">{job.step}</span>
                 )}
                 <span className="font-mono text-[11px] text-txt-faint" title={job.id}>{shortId(job.id)}</span>
+                {job.sourceJobId && (
+                  <span className="font-mono text-[11px] text-txt-faint" title={job.sourceJobId}>
+                    follow-up of {shortId(job.sourceJobId)}
+                  </span>
+                )}
                 <span className="ml-auto font-mono text-[11px] text-txt-dim">{duration(elapsed)}</span>
               </div>
               <SheetTitle className="text-[16px] font-semibold leading-snug tracking-tight">{job.task}</SheetTitle>
@@ -196,16 +213,30 @@ export function JobDetailSheet({
                   Cancel job
                 </Button>
               ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => rerun.mutate(job.id)}
-                  disabled={rerun.isPending}
-                  className="h-7 gap-1.5 text-[12px] text-txt-dim hover:bg-ember/10 hover:text-ember"
-                >
-                  <RotateCcw className="size-3" />
-                  Rerun as new job
-                </Button>
+                <div className="flex items-center gap-1">
+                  {job.prUrl && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => followUp.mutate(job.id)}
+                      disabled={followUp.isPending}
+                      className="h-7 gap-1.5 text-[12px] text-txt-dim hover:bg-ember/10 hover:text-ember"
+                    >
+                      <MessageSquare className="size-3" />
+                      Address PR comments
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => rerun.mutate(job.id)}
+                    disabled={rerun.isPending}
+                    className="h-7 gap-1.5 text-[12px] text-txt-dim hover:bg-ember/10 hover:text-ember"
+                  >
+                    <RotateCcw className="size-3" />
+                    Rerun as new job
+                  </Button>
+                </div>
               )}
             </div>
 

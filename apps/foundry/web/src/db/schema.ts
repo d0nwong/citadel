@@ -72,6 +72,13 @@ export const jobs = foundry.table(
     blueprintId: uuid('blueprint_id').references(() => blueprints.id, { onDelete: 'set null' }),
     /** Snapshot of the steps that ran — null for a plain single-step job. */
     blueprint: jsonb('blueprint').$type<BlueprintSnapshot>(),
+    /**
+     * Set when this job is a follow-up addressing review comments on the source
+     * job's PR (LIA-40) — it then reuses that job's `branch` and `prUrl`, copied
+     * at insert. Deliberately no FK: `purgeJobs` may delete the source, and the
+     * follow-up must stay self-sufficient, like the `repo` snapshot.
+     */
+    sourceJobId: uuid('source_job_id'),
     status: jobStatus('status').notNull().default('queued'),
     /** Where the pipeline is: prepare | agent | commit | push | pr | done. */
     step: text('step'),

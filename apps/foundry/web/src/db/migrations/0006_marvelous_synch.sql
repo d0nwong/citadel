@@ -1,0 +1,1 @@
+ALTER TABLE "foundry"."jobs" ADD COLUMN "source_job_id" uuid;

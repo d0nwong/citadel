@@ -72,6 +72,15 @@ Ignite ─► insert row (queued, with a per-job callback token)
   non-zero exit (remaining steps are reported as skipped). `FOUNDRY_TIMEOUT` is the
   whole job's budget. No blueprint means one unlabelled step on the default model —
   the same loop, so there is exactly one launch path.
+- A settled job with a PR can spawn a **follow-up job** that addresses the PR's review
+  comments (LIA-40) — the "Address PR comments" action in the detail sheet. The row
+  copies the source's branch and PR URL (`source_job_id` marks it; deliberately no FK,
+  so purging the source never strands it). Preflight fetches the PR's unresolved
+  review threads and general comments with the host's own CLI (`gh api graphql` /
+  `bb pr show <id> true` — `server/forge-pr.ts`), fresh at launch like repo notes,
+  and hands them to the forge as its task; the workspace checks out origin's tip of
+  the PR branch, and the finishing push updates the existing PR instead of opening a
+  new one. The container still holds no credentials.
 - The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the only server
   route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
   (`server/job-events.ts`) and hands the pipeline back to the host on commit.
