@@ -33,6 +33,8 @@ const MAX_JOBS = Number(process.env.FOUNDRY_MAX_JOBS ?? 3)
 const JOB_TIMEOUT = Number(process.env.FOUNDRY_TIMEOUT ?? 1800)
 /** Where forge-run.sh lives on the host — bind-mounted, so edits need no image rebuild. */
 const RUNNER_SCRIPT = path.resolve(process.cwd(), '..', 'image', 'forge-run.sh')
+/** foundry's canonical PR template, bind-mounted for the same reason. Bitbucket has no repo template convention, so this keeps PR bodies one shape on every forge. */
+const PR_TEMPLATE = path.resolve(process.cwd(), '..', 'image', 'pr-template.md')
 
 const containerName = (jobId: string) => `foundry-${jobId}`
 const workspaceOf = (jobId: string) => path.join(JOBS_DIR, jobId, 'work')
@@ -299,6 +301,8 @@ async function launch(job: JobRow, credEnv: Record<string, string>, notes: strin
     `${workspaceOf(job.id)}:/work`,
     '-v',
     `${RUNNER_SCRIPT}:/usr/local/bin/forge-run:ro`,
+    '-v',
+    `${PR_TEMPLATE}:/usr/local/share/foundry/pr-template.md:ro`,
     ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
     IMAGE,
     'forge-run',
@@ -476,31 +480,63 @@ async function prTitle(work: string, task: string): Promise<string> {
 }
 
 /**
- * The /work skill writes a template-filled description to `.git/PR_BODY.md`
- * before stopping — inside `.git/` on purpose, so the commit sweep in
- * forge-run.sh can never pick it up. Only the agent knows what it did and how
- * it verified it, so the body is authored in the container and merely read
- * here; a job that never ran the skill (or wrote nothing) falls back to a
- * template-shaped body built from the task and commit trailer instead.
+ * The agent authors the PR description in the container — the UNATTENDED
+ * prompt (with a backstop turn in forge-run.sh, LIA-39) has it fill the repo's
+ * PR template, or foundry's image/pr-template.md, into `.git/PR_BODY.md`,
+ * inside `.git/` on purpose so the commit sweep can never pick it up. Only the
+ * agent knows what it did and how it verified it, so the file is merely read
+ * here. When it is missing anyway, the newest substantive commit body is the
+ * next best thing — the skill and blueprints both ask for a summary plus
+ * assumptions there — and the raw task text is the last resort.
  */
 async function prBody(work: string, job: JobRow): Promise<string> {
   const authored = (await readFile(path.join(work, '.git', 'PR_BODY.md'), 'utf8').catch(() => '')).trim()
   if (authored && authored.length <= 60_000) return `${authored}\n\n---\nCreated by foundry ${job.id}.`
 
-  const trailer = await git(work, ['log', '-1', '--format=%b']).catch(() => '')
-  const closes = /Closes [A-Z]+-\d+/.exec(trailer)?.[0]
-  return [...(closes ? [closes, ''] : []), '## Summary', '', job.task, '', '---', `Created by foundry ${job.id}.`].join(
+  const commitBody = await newestCommitBody(work, job)
+  const closes = /Closes [A-Z]+-\d+/.exec(`${commitBody}\n${job.task}`)?.[0]
+  const summary = (commitBody || job.task)
+    .split('\n')
+    .filter((line) => line.trim() !== closes)
+    .join('\n')
+    .trim()
+  return [...(closes ? [closes, ''] : []), '## Summary', '', summary, '', '---', `Created by foundry ${job.id}.`].join(
     '\n',
   )
 }
 
-async function diffStats(work: string, baseBranch: string): Promise<{ files: number; additions: number; deletions: number }> {
-  let baseRef = `origin/${baseBranch}`
+/**
+ * Newest commit between the base and HEAD whose body actually says something:
+ * the sweep commit forge-run.sh makes (body `foundry <job-id>`) and bodies
+ * that are only Co-Authored-By-style trailers don't count.
+ */
+async function newestCommitBody(work: string, job: JobRow): Promise<string> {
+  const baseRef = await resolveBaseRef(work, job.baseBranch)
+  const raw = await git(work, ['log', `${baseRef}..HEAD`, '--format=%x1e%b']).catch(() => '')
+  for (const body of raw.split('\x1e')) {
+    const kept = body
+      .split('\n')
+      .filter((line) => !/^(co-authored-by|claude-session|signed-off-by):/i.test(line.trim()))
+      .join('\n')
+      .trim()
+    if (kept && kept !== `foundry ${job.id}`) return kept
+  }
+  return ''
+}
+
+/** `origin/<base>` when the remote ref exists in this clone, the bare name otherwise. */
+async function resolveBaseRef(work: string, baseBranch: string): Promise<string> {
+  const baseRef = `origin/${baseBranch}`
   try {
     await git(work, ['rev-parse', '--verify', '--quiet', baseRef])
+    return baseRef
   } catch {
-    baseRef = baseBranch
+    return baseBranch
   }
+}
+
+async function diffStats(work: string, baseBranch: string): Promise<{ files: number; additions: number; deletions: number }> {
+  const baseRef = await resolveBaseRef(work, baseBranch)
   const numstat = await git(work, ['diff', '--numstat', `${baseRef}...HEAD`])
   let files = 0
   let additions = 0
