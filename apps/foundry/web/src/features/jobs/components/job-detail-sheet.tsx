@@ -146,7 +146,9 @@ export function JobDetailSheet({
                 )}
                 <span className="ml-auto font-mono text-[11px] text-txt-dim">{duration(elapsed)}</span>
               </div>
-              <SheetTitle className="text-[16px] font-semibold leading-snug tracking-tight">{job.task}</SheetTitle>
+              <SheetTitle className="max-h-[30dvh] overflow-y-auto whitespace-pre-wrap break-words text-[16px] font-semibold leading-snug tracking-tight">
+                {job.task}
+              </SheetTitle>
               <SheetDescription className="sr-only">Job detail and live log output</SheetDescription>
             </SheetHeader>
 
@@ -242,7 +244,7 @@ export function JobDetailSheet({
 
             <div
               ref={logRef}
-              className="flex-1 overflow-y-auto border-t border-hairline bg-iron-950/60 px-5 py-4 font-mono text-[11.5px] leading-[1.7] sm:px-6 sm:text-[12px]"
+              className="min-h-0 flex-1 overflow-y-auto border-t border-hairline bg-iron-950/60 px-5 py-4 font-mono text-[11.5px] leading-[1.7] sm:px-6 sm:text-[12px]"
             >
               {groups.map((g, gi) => {
                 if (!g.step) {
