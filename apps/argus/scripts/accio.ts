@@ -34,7 +34,7 @@ const HELP = `accio — summon the API surface
   accio map [--dry]                     derive/refresh the feature manifest
   accio sync [--offline|--check|--feature <id>]
   accio audit
-  accio journal [YYYY-MM-DD | --since YYYY-MM-DD]   day view over landings (default: today)
+  accio journal [YYYY-MM-DD | --day <d> | --since <d>]   day view over landings (default: today)
 
 Examples
   accio "status select"                 → PUT /api/v1/tasks/{taskId}/status/{status}

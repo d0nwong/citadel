@@ -58,10 +58,10 @@ export async function journalView(day?: string, since?: string, dir = FEATURES_D
 
 if (import.meta.main) {
   const argv = process.argv.slice(2);
-  const sinceFlag = argv.indexOf("--since");
-  const since = sinceFlag >= 0 ? argv[sinceFlag + 1] : undefined;
-  const positional = argv.find((a, i) => !a.startsWith("--") && i !== sinceFlag + 1);
-  const day = positional ?? (since ? undefined : new Date().toISOString().slice(0, 10));
+  const flag = (name: string) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
+  const since = flag("--since");
+  const positional = argv.find((a, i) => !a.startsWith("--") && !argv[i - 1]?.startsWith("--"));
+  const day = flag("--day") ?? positional ?? (since ? undefined : new Date().toISOString().slice(0, 10));
   for (const d of [day, since]) if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
     console.error(`error: \`${d}\` is not a YYYY-MM-DD date`);
     process.exit(1);
