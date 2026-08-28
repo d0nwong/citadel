@@ -121,11 +121,23 @@ detail. Update the `_Last updated_` line and counters each run.
 **8. Save state.** Write `.state.json` with the newest `ts` seen (channel messages
 and thread replies both count), the updated `watched_threads`, and `action_items`.
 
-**9. Report.** One or two lines to the user: how many new items, and lead with any
+**9. Commit.** Every run that changed a digest file must end with a commit, so the
+history is a clear record of what each run added:
+- Stage only digest markdown: `git add digests/*.md`. Never stage `.state.json`
+  (it is gitignored local state) or unrelated working-tree changes.
+- Commit message: `slack-digest: YYYY-MM-DD HH:MM — <n> new items (<x> decisions, <y> action items)`,
+  dropping the parenthetical when both are zero. If the run touched more than one
+  day's file (day rollover), say so in the message.
+- If `git diff --cached` is empty (a true no-op run — no new messages), skip the
+  commit; do not create empty commits.
+- Commit only — never push unless the user asks.
+
+**10. Report.** One or two lines to the user: how many new items, and lead with any
 🔴/🟠 item. If nothing new: say so in one line — that is a no-op run.
 
 ## Notes
 - Read-only with respect to Slack: never post, react, or mark anything.
 - If the day rolled over since the last run (state's newest ts is from yesterday),
   finish writing items to their own day's file — items belong to the day of their ts.
-- Digest files are meant to be committed; `.state.json` is disposable local state.
+- Digest files are committed by step 9 on every run that changes them; `.state.json`
+  is disposable local state and stays out of git (it is in `.gitignore`).
