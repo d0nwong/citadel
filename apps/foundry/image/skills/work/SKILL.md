@@ -120,6 +120,10 @@ review when headless.
   one; always include a `Closes <ticket-id>` line linking the Linear ticket,
   a summary, and how you verified the change.
 - If Linear access is available, move the ticket to In Progress when you
-  start and attach the PR link when it is up.
+  start and attach the PR link when it is up. In a headless job forge you
+  never see the PR URL — the host opens the PR and, on a Bitbucket origin,
+  files the link on the ticket itself off your `Closes <ticket-id>` line
+  (on GitHub, Linear's own integration does it). Another reason that line
+  has to be there.
 - If pushing is impossible (no `gh`/`bb` credential in this environment), say
   so and hand the user the exact commands to run instead of silently stopping.
