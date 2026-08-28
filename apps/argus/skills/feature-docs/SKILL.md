@@ -19,8 +19,14 @@ warning. Never trust `ls`/`cat` there. Pin the target sha up front (the arch doc
 `last_verified` names it) and make subagents read EVERY file via
 `git show <sha>:<path>` and list dirs via `git ls-tree -r --name-only <sha> <dir>`,
 run from the FE repo dir. `accio sync` brackets its own analysis and aborts if the tree
-moves mid-run. The BE repo gets the SAME discipline: its local checkout is routinely
-behind the remote, so never read its working tree either — fetch, pin, `git show`.
+moves mid-run. The BE repo gets the SAME discipline plus one more step: **`git pull` it
+before every run** (it goes stale by weeks), then pin and `git show` — never read its
+working tree. Do NOT pull the FE repo; it is shared, so resolve `origin/<branch>` instead.
+
+**Re-resolve every ref if the user pulls mid-run.** A pull can move `staging` under you,
+flip work you called "branch-only" into staging, and invalidate `last_verified` stamps you
+already wrote. Stamp shas in the house format `staging@<sha>` / `dev@<sha>` — bare branch
+name, never `origin/staging@<sha>`.
 
 ## Procedure
 
@@ -31,11 +37,24 @@ route/code — like `academy` — cannot get a facts-from-code doc yet; say so a
 **1. Preflight.** `bun run accio sync --offline` so the arch doc + index are current.
 Add `--check` first if the backend spec may have moved (then run online).
 
-Also pin the backend: `cd ~/git/alden-connect-portal-be && git fetch origin dev &&
-git rev-parse --short origin/dev` → `{be_sha}` (pin format `dev@{be_sha}`). The local
-checkout is routinely behind the remote — NEVER read its working tree; every BE read is
-`git show "{be_sha}:<path>"` (quote the whole argument — zsh mangles bare `sha:path`),
-listings via `git ls-tree -r --name-only {be_sha} <dir>`.
+Also pin the backend — **`git pull` it first, every time**:
+
+```bash
+cd ~/git/alden-connect-portal-be && git pull && git rev-parse --short HEAD
+```
+
+→ `{be_sha}` (pin format `dev@{be_sha}`). Pulling is required, not optional: the BE
+checkout goes stale by **weeks**, not hours. Observed 2026-08-28: local `dev` sat at
+`16c2930a` from 2026-07-07 while `origin/dev` was `c9c52464` — seven weeks behind. A doc
+subagent read the stale tree, concluded `GET /projects/:projectId/task-subtask-history`
+did not exist in the backend, and wrote that into `admin-projects` product.md as an
+`UNVERIFIED:` gap. The route was there all along, behind `checkJwtInternal`. **A stale BE
+read does not fail loudly — it silently invents missing endpoints.**
+
+After pulling, still read by sha, not from the tree: `git show "{be_sha}:<path>"` (quote
+the whole argument — zsh mangles bare `sha:path`), listings via
+`git ls-tree -r --name-only {be_sha} <dir>`. Handlers live in `src/routers/v1/` — note
+`routers`, not `routes`.
 
 **2. Detect staleness** (skip for first-time generation). A product doc is stale when the
 FE code it was verified against moved:
@@ -70,9 +89,13 @@ context). Prompt template — fill every `{…}`:
 >   SHARED working tree whose branch switches without warning: read every file via
 >   `git show {fe_sha}:<path>` (dir listings via `git ls-tree -r --name-only {fe_sha} <dir>`),
 >   never from the working tree.
-> - Backend repo: `~/git/alden-connect-portal-be` at pinned sha `{be_sha}` (`dev@{be_sha}`).
->   Same shared-tree rule: read ONLY via `git show "{be_sha}:<path>"` (quote the whole
->   argument). To find an endpoint's handler: `git grep -n "<path-suffix>" {be_sha} -- src/routers/v1`
+> - Backend repo: `~/git/alden-connect-portal-be` at pinned sha `{be_sha}` (`dev@{be_sha}`),
+>   which the caller pulled immediately before this run. Same shared-tree rule: read ONLY
+>   via `git show "{be_sha}:<path>"` (quote the whole argument) — the working tree and the
+>   local `dev` ref have been observed **seven weeks** behind, and reading them makes
+>   endpoints that exist look missing. If `{be_sha}` is absent or you cannot resolve it,
+>   STOP and say so rather than falling back to the working tree.
+>   To find an endpoint's handler: `git grep -n "<path-suffix>" {be_sha} -- src/routers/v1`
 >   → controller method in `src/controllers/v1/` → the use-case/service functions it
 >   imports (`src/use-cases/<domain>/`, `src/services/`), ONE hop, stop (protocol Phase 2
 >   step 3 budget).

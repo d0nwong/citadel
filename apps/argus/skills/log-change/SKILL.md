@@ -36,6 +36,14 @@ affected feature, passing this entry (and any other open entries for the feature
 doc subagent as diff context. When the agent confirms the change in code and the docs are
 regenerated, flip the entry to `status: documented`.
 
+> **Resolve the refs before briefing any subagent.** `git pull`
+> `~/git/alden-connect-portal-be` every time and pin its sha; for the shared FE tree
+> resolve `origin/<branch>` rather than pulling. Never hand a subagent a base ref you read
+> off a local branch or a working tree — both go stale silently (BE by weeks), and a stale
+> read invents missing endpoints rather than erroring. If the user pulls mid-run, re-resolve
+> everything: it can flip "not in staging yet" work into staging and invalidate
+> `last_verified` stamps already written. Details in `skills/feature-docs/SKILL.md` step 1.
+
 **4. Verify:** `bun run accio audit` must be clean (it validates entry frontmatter,
 feature ids, ticket format, and flags implemented entries the refresh loop missed).
 

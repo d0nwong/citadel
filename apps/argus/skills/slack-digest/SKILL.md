@@ -23,6 +23,29 @@ ToolSearch first: `slack_read_channel`, `slack_read_thread`. Same for the Linear
 tools when there are action items: `mcp__linear-server__list_issues`,
 `mcp__linear-server__save_issue`.
 
+## Run it in a subagent
+
+The thread transcripts this skill reads are bulky and single-use — they belong in a
+subagent's context, not in the session the user is working in.
+
+**If you are the main session**, don't run the procedure yourself. Spawn ONE
+general-purpose subagent via the Agent tool with **no `model` override**, so it inherits
+the session's model — the triage in step 4 and the Linear writes in step 6 are judgement
+calls and a weaker model files worse tickets. Give it this task:
+
+> Invoke the `slack-digest` skill and follow it to completion. You ARE the subagent for
+> this run: execute the procedure directly, starting at step 1. The working directory is
+> the `ai-workspace` repo. Report back the number of new items, every decision / action
+> item / needs-you item with its Linear key, and the commit sha — or "no-op, nothing new".
+
+When it reports, relay the summary to the user yourself, in the shape step 10 describes.
+A subagent's report is never shown to the user — an unrelayed run is an invisible one.
+
+**If you are the subagent** — your task says so, or another agent spawned you — ignore
+this section and start at step 1. Never spawn a subagent from here: it would recurse.
+
+Run inline only when the user explicitly asks to watch it happen in the foreground.
+
 ## Procedure
 
 **1. Load state.** Read `digests/.state.json`:
