@@ -143,6 +143,7 @@ ground truth, join, and surface only the judgement calls.
 /slack-digest            # digest only
 /log-change              # journal one landing by hand
 bun run accio audit      # reconcile without writing anything
+bun run accio journal    # day view over landings (a date, or --since YYYY-MM-DD)
 bun skills/log-change/scripts/pr-facts.ts --since 2026-08-21   # what landed, what's unjournaled
 ```
 

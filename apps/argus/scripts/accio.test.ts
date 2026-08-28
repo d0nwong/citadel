@@ -247,6 +247,34 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     await Bun.$`rm -rf ${dir}`.quiet();
   });
 
+  test("journal day view consolidates per-landing entries from frontmatter alone", async () => {
+    const { journalView } = await import("./commands/journal.ts");
+    const dir = `${ROOT}/.state/test-journal-view`;
+    await Bun.write(`${dir}/tasks/journal/2026-08/2026-08-28/2026-08-28-fe370-a.md`, [
+      "---", "date: 2026-08-28", "pr: fe#370", "merge: 550bc135e", "ticket: LIA-51",
+      "features: [tasks]", "scope: product", "status: implemented", "summary: first landing", "---",
+    ].join("\n"));
+    await Bun.write(`${dir}/tasks/journal/2026-08/2026-08-28/2026-08-28-direct-b.md`, [
+      "---", "date: 2026-08-28", "pr: direct", "merge: 9bf7402c5", "ticket: null",
+      "features: [tasks]", "scope: product", "status: implemented", "summary: second landing", "---",
+    ].join("\n"));
+    await Bun.write(`${dir}/tasks/journal/2026-08/2026-08-27/2026-08-27-fe360-c.md`, [
+      "---", "date: 2026-08-27", "pr: fe#360", "merge: df162b2be", "ticket: null",
+      "features: [tasks]", "scope: product", "status: documented", "summary: day before", "---",
+    ].join("\n"));
+    const day = await journalView("2026-08-28", undefined, dir);
+    expect(day).toContain("2026-08-28 — 2 entries");
+    expect(day).toContain("first landing");
+    expect(day).not.toContain("day before");
+    // ticket: null is elided from the line, not printed
+    expect(day).not.toContain("null");
+    const range = await journalView(undefined, "2026-08-27", dir);
+    expect(range).toContain("2026-08-28 — 2 entries");
+    expect(range).toContain("2026-08-27 — 1 entry");
+    expect(range.indexOf("2026-08-28")).toBeLessThan(range.indexOf("2026-08-27 —")); // newest first
+    await Bun.$`rm -rf ${dir}`.quiet();
+  });
+
   // several landings share a day, so "docs re-verified the same date" says nothing about
   // whether the refresh actually saw this one — it is decided by sha against last_verified
   test.skipIf(!existsSync(`${process.env.HOME}/git/alden-portal-fe`))(
