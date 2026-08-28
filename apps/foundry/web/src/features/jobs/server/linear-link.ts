@@ -8,6 +8,12 @@
  * the attachment through Linear's API. Only the Bitbucket path calls in here;
  * the GitHub one is left exactly as the integration expects to find it.
  *
+ * The ticket is read from the PR body *and* the job's own task text: an agent
+ * only reliably writes the `Closes LIA-24` line when told to, so the task —
+ * whatever the user actually typed when they queued the job — is the more
+ * dependable source. A bare id (`LIA-24`, no magic word) only counts there;
+ * in a PR body, prose like `part of feature-123` would false-positive.
+ *
  * Runs on the HOST for the same reason `bb` does: LINEAR_API_KEY never enters
  * a forge. Containers reach Linear through the MCP gateway and nowhere else.
  *
@@ -26,20 +32,44 @@ const API = 'https://api.linear.app/graphql'
 const MAGIC =
   /\b(?:close[sd]?|closing|fix(?:e[sd]|ing)?|resolve[sd]?|resolving|complete[sd]?|completing|implement(?:s|ed|ing)?|refs?|references?|part of|related to|contributes to|towards)\s+([A-Za-z][A-Za-z0-9]*-\d+)\b/gi
 
+/** A pasted Linear issue link, e.g. `linear.app/liamai/issue/LIA-24/…` — no magic word needed, the URL is the reference. */
+const LINEAR_URL = /linear\.app\/[^/\s]+\/issue\/([A-Za-z][A-Za-z0-9]*-\d+)/gi
+
+/** A ticket id on its own, e.g. a task typed as `LIA-24: fix the thing`. Task text only — see the header comment. */
+const BARE_ID = /\b([A-Z][A-Z0-9]*-\d+)\b/g
+
 const TICKET_ID = /^[A-Z][A-Z0-9]*-\d+$/
 
-/** Ticket ids a magic word points at, in the order they appear, deduped. */
-export function ticketIdsIn(text: string): Array<string> {
-  const ids = new Set<string>()
+function idsMatching(text: string, pattern: RegExp): Array<string> {
+  const ids: Array<string> = []
   // `matchAll` clones the regex, so the shared `g` lastIndex is not a hazard.
-  for (const m of text.matchAll(MAGIC)) {
-    if (TICKET_ID.test(m[1])) ids.add(m[1])
+  for (const m of text.matchAll(pattern)) {
+    if (TICKET_ID.test(m[1])) ids.push(m[1])
   }
-  return [...ids]
+  return ids
 }
 
-/** `linked` lists what was attached — empty when the body named no ticket, which is not a failure. */
-export type LinkResult = { linked: Array<string> } | { linked: null; reason: string }
+/** Ticket ids a magic word or a Linear URL points at, in the order they appear, deduped. */
+export function ticketIdsIn(text: string): Array<string> {
+  return [...new Set([...idsMatching(text, MAGIC), ...idsMatching(text, LINEAR_URL)])]
+}
+
+/** `ticketIdsIn` plus bare ids — for task text, where an id with no magic word is still unambiguous. */
+export function ticketIdsInTask(text: string): Array<string> {
+  return [...new Set([...ticketIdsIn(text), ...idsMatching(text, BARE_ID)])]
+}
+
+/**
+ * `linked` is what got attached; `unknown` is a candidate id Linear doesn't
+ * recognise — worth a quiet log line, not a failure, since a bare id can
+ * false-positive on ordinary text (`ISO-8601`); `failed` is a real error
+ * per id, e.g. the network or a declined attachment.
+ */
+export type LinkResult = {
+  linked: Array<string>
+  unknown: Array<string>
+  failed: Array<{ id: string; reason: string }>
+}
 
 const trim1 = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
@@ -73,37 +103,59 @@ async function gql<T>(apiKey: string, query: string, variables: Record<string, s
  * `attachmentLinkURL` wants the UUID — so resolve, then attach. Attachments
  * are keyed on the URL, so a re-run that opens a fresh PR adds a second link
  * rather than replacing the first, and re-filing the same URL is a no-op.
+ *
+ * One id's failure does not sink the rest — a job can (and often does) name
+ * more than one ticket, and a typo in one shouldn't cost the others.
  */
 export async function linkPrToTicket(
   apiKey: string,
-  opts: { prUrl: string; title: string; body: string },
+  opts: { prUrl: string; title: string; body: string; task: string },
 ): Promise<LinkResult> {
-  const ids = ticketIdsIn(opts.body)
-  if (ids.length === 0) return { linked: [] }
+  const ids = [...new Set([...ticketIdsIn(opts.body), ...ticketIdsInTask(opts.task)])]
 
   const linked: Array<string> = []
+  const unknown: Array<string> = []
+  const failed: Array<{ id: string; reason: string }> = []
+
   for (const id of ids) {
+    let issueId: string
     try {
       const found = await gql<{ issue: { id: string } | null }>(
         apiKey,
         'query($id: String!) { issue(id: $id) { id } }',
         { id },
       )
-      if (!found.issue) return { linked: null, reason: `Linear has no issue ${id}` }
+      if (!found.issue) {
+        unknown.push(id)
+        continue
+      }
+      issueId = found.issue.id
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      // Linear's GraphQL layer errors rather than nulling on some lookups —
+      // treat "not found" the same as a null result; anything else is real.
+      if (/not found/i.test(msg)) unknown.push(id)
+      else failed.push({ id, reason: trim1(msg, 300) })
+      continue
+    }
 
+    try {
       const done = await gql<{ attachmentLinkURL: { success: boolean } }>(
         apiKey,
         `mutation($issueId: String!, $url: String!, $title: String!) {
           attachmentLinkURL(issueId: $issueId, url: $url, title: $title) { success }
         }`,
-        { issueId: found.issue.id, url: opts.prUrl, title: trim1(opts.title, 100) },
+        { issueId, url: opts.prUrl, title: trim1(opts.title, 100) },
       )
-      if (!done.attachmentLinkURL.success) return { linked: null, reason: `Linear declined the attachment on ${id}` }
+      if (!done.attachmentLinkURL.success) {
+        failed.push({ id, reason: 'Linear declined the attachment' })
+        continue
+      }
       linked.push(id)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      return { linked: null, reason: `could not attach the PR to ${id}: ${trim1(msg, 300)}` }
+      failed.push({ id, reason: trim1(msg, 300) })
     }
   }
-  return { linked }
+  return { linked, unknown, failed }
 }
