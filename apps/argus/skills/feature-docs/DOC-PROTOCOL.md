@@ -277,32 +277,58 @@ things code can never say: who asked, which ticket, what the decision was. **Doc
 become changelogs**, and journal entries never restate current behavior (the docs own
 that). They link; they don't merge.
 
-One file per change, in the folder of the feature it is mostly about:
-`/features/<dir>/journal/YYYY-MM-DD-<slug>.md` — beside that feature's `docs/`, so a
-feature's history is in the folder you already opened. A change touching several
-features is still ONE file: `features:` stays the routing key and must name the
-folder's own feature as well as the rest.
+**The unit is one landing on staging** — a merged PR, or a commit pushed straight to the
+integration branch — not one commit and not one day. It is the only object Linear,
+Bitbucket and staging all agree on, so a ticket, a review and a deploy can all be traced
+through it; a day-scoped entry spans several PRs and several tickets and cannot carry
+`ticket:` honestly. One file per landing, in the folder of the feature it is mostly about:
+`/features/<dir>/journal/YYYY-MM-DD-<key>-<slug>.md` (`<key>` = `fe363` / `be735`, or the
+short sha for a direct push) — beside that feature's `docs/`, so a feature's history is in
+the folder you already opened. A landing touching several features is still ONE file:
+`features:` stays the routing key and must name the folder's own feature as well as the
+rest.
 
 ```markdown
 ---
-date: 2026-08-23
+date: 2026-08-23 # the day it landed on staging
 source: "Slack #alden-product — Sarah's request" # or meeting / customer / null
-ticket: ALD-123 # Trello/Linear key, if any
+pr: fe#363 # fe#N | be#N | direct | null (decided, not yet in code)
+url: https://bitbucket.org/aldenstudios/alden-portal-fe/pull-requests/363
+merge: 597bfbdf3 # the staging commit; diff = 597bfbdf3^1..597bfbdf3
+ticket: [ALD-123] # Trello/Linear keys, FLOW style; null when untracked
 features: [admin-invoicings, tasks] # manifest ids, FLOW style — greppable routing
 scope: product # product | architecture | both
 status: decided # decided | implemented | documented
+hold: "waiting on the BE half" # optional — parks the entry open, with a reason
 summary: Drafts become editable with an Approve-and-Send gate
 ---
 
-What changes, before → after, and the reasoning/constraints from the discussion.
-Quote the request where it disambiguates intent.
+## What landed — bullets naming the files, never a narration of how the code works
+
+## Why — the decision, who asked, and the judgement calls no one ratified
+
+## Watch out — what outlives the PR: a half that didn't ship, a drive-by commit, an open ticket
+
+_Detail: `git -C <repo> diff <merge>^1..<merge>` · `bb pr-details show <pr>`_
 ```
+
+An entry records **what git cannot answer**, and points at git for the rest: a future
+session greps `pr:` / `ticket:` / `features:`, reads twenty lines, and either has its
+answer or holds the exact command that produces it. Re-narrating the diff is dead weight —
+`merge:` re-derives it perfectly, forever. `bun skills/log-change/scripts/pr-facts.ts`
+resolves a PR number or sha into every field above, and `--since <date>` lists landings
+with no entry yet.
 
 Lifecycle — `status` is the only field that ever changes after creation:
 
 1. **decided** — the change is agreed but not in code. Docs are NOT touched (facts-only
    rule): the entry is the sole record of intent.
 2. **implemented** — the code landed but docs haven't been re-verified yet.
+An `implemented` entry that cannot close yet — the FE half shipped and the BE half did
+not — carries `hold: "<what it waits for>"`, which parks it and silences the refresh nag
+until the hold is removed. An entry that will never close but nags every audit teaches
+everyone to ignore the audit.
+
 3. **documented** — a Phase 2 re-run consumed this entry: the doc agent received it as
    context for the diff (the entry explains WHY the code changed), updated the docs from
    code, and closed the entry.
@@ -317,7 +343,7 @@ journal says why. Close only entries whose change the agent actually confirmed i
 
 A downstream agent answering questions MUST be able to:
 
-1. **Route by frontmatter alone** — grep `aliases` + `feature_name` across `/features/**/docs/*.md` frontmatter to pick the right file without opening bodies; grep `features:` / `ticket:` across `/features/**/journal/*.md` to find a change's history the same way.
+1. **Route by frontmatter alone** — grep `aliases` + `feature_name` across `/features/**/docs/*.md` frontmatter to pick the right file without opening bodies; grep `features:` / `ticket:` / `pr:` across `/features/**/journal/*.md` to find a change's history the same way, and read `merge:` for the one command that produces the diff behind it.
 2. **Answer "what" questions from one table row** — Business Rules table (product tier).
 3. **Answer "where/how" questions from one table row** — Component Map (architecture tier).
 4. **Answer "does the server enforce this?" from one table row** — a Business Rules row with a `be:` Source, or an FE/BE Mismatches row (architecture tier).
