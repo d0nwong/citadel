@@ -7,7 +7,7 @@
  * for the extensions that infra/postgres/init/00-init.sql installs there.
  */
 import { sql } from 'drizzle-orm'
-import { bigserial, index, integer, jsonb, pgSchema, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { index, integer, jsonb, pgSchema, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import type { BlueprintSnapshot, BlueprintStep } from '../features/blueprints/types'
 import type { RepoRef } from '../features/repos/types'
 
@@ -15,7 +15,6 @@ export const foundry = pgSchema('foundry')
 
 /* Mirrors of the unions in features/jobs/types.ts. Keep them in step. */
 export const jobStatus = foundry.enum('job_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled'])
-export const logStream = foundry.enum('log_stream', ['sys', 'out', 'tool', 'err'])
 export const revisionSource = foundry.enum('revision_source', ['seed', 'user'])
 
 /**
@@ -138,21 +137,8 @@ export const jobs = foundry.table(
   (t) => [index('jobs_created_at_idx').on(t.createdAt.desc()), index('jobs_status_idx').on(t.status)],
 )
 
-/**
- * Append-only. A table rather than a JSONB column on the job because LIA-13
- * streams these in a line at a time while the job runs.
+/*
+ * A job's log lines are deliberately not here (LIA-18). They are append-only,
+ * per-job, never joined and never updated, so they live as one JSONL file per
+ * job under ~/.foundry/logs — see features/jobs/server/job-logs.ts.
  */
-export const jobLogs = foundry.table(
-  'job_logs',
-  {
-    id: bigserial('id', { mode: 'number' }).primaryKey(),
-    jobId: uuid('job_id')
-      .notNull()
-      .references(() => jobs.id, { onDelete: 'cascade' }),
-    t: timestamp('t', { withTimezone: true }).notNull().defaultNow(),
-    stream: logStream('stream').notNull(),
-    text: text('text').notNull(),
-  },
-  /** `id` is the tiebreak: two lines can share a millisecond. */
-  (t) => [index('job_logs_job_id_idx').on(t.jobId, t.id)],
-)

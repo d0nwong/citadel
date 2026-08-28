@@ -11,18 +11,17 @@
  */
 import { execFile, spawn } from 'node:child_process'
 import { mkdir, readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { repoNotes } from '@/features/repos/server/repo-scan'
 import { createPullRequest, fetchPrComments, originHost, prCliFor } from './forge-pr'
+import { FOUNDRY_HOME, appendLogs } from './job-logs'
 import * as store from './job-store'
 import type { JobRow } from './job-store'
 import { linkPrToTicket } from './linear-link'
 
 const exec = promisify(execFile)
 
-const FOUNDRY_HOME = process.env.FOUNDRY_HOME ?? path.join(homedir(), '.foundry')
 const ENV_FILE = path.join(FOUNDRY_HOME, 'env')
 const JOBS_DIR = path.join(FOUNDRY_HOME, 'jobs')
 const IMAGE = process.env.FOUNDRY_IMAGE ?? 'foundry/forge:latest'
@@ -40,8 +39,8 @@ const PR_TEMPLATE = path.resolve(process.cwd(), '..', 'image', 'pr-template.md')
 const containerName = (jobId: string) => `foundry-${jobId}`
 const workspaceOf = (jobId: string) => path.join(JOBS_DIR, jobId, 'work')
 
-const sys = (id: string, text: string) => store.appendLogs(id, [{ stream: 'sys', text }])
-const err = (id: string, text: string) => store.appendLogs(id, [{ stream: 'err', text }])
+const sys = (id: string, text: string) => appendLogs(id, [{ stream: 'sys', text }])
+const err = (id: string, text: string) => appendLogs(id, [{ stream: 'err', text }])
 
 async function git(dir: string, args: Array<string>): Promise<string> {
   const { stdout } = await exec('git', ['-C', dir, ...args], { timeout: 60_000 })

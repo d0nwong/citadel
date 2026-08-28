@@ -20,7 +20,9 @@ that touches the database or a CLI goes through `createServerFn`, so the node-on
 modules never enter the client bundle.
 
 - `features/jobs/server/job-store.ts` — the ledger's queries, plus the write paths
-  the runner uses (`appendLogs`, `patchJob`, guarded `settleJob`).
+  the runner uses (`patchJob`, guarded `settleJob`).
+- `features/jobs/server/job-logs.ts` — the other half of a job's state, on disk:
+  `appendLogs` / `readLogs` over `~/.foundry/logs/<id>.jsonl` (see below).
 - `features/jobs/server/job-runner.ts` — the orchestrator (see below).
 - `features/repos/server/repo-scan.ts` — scans `~/git` with `node:fs`, reads each repo's
   branch, dirty state and last-commit time via `git`, and keeps the *imported* set in
@@ -108,6 +110,19 @@ Ignite ─► insert row (queued, with a per-job callback token)
 - The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the only server
   route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
   (`server/job-events.ts`) and hands the pipeline back to the host on commit.
+- **Logs are files, not rows** (LIA-18). Each job appends `{t, stream, text}` records
+  to `~/.foundry/logs/<id>.jsonl`, one JSON object per line, the way Claude Code keeps
+  a session under `~/.claude/projects/`. They are append-only, per-job, never joined
+  and never updated, so a table bought nothing and cost a round trip per batch plus a
+  full `SELECT` on every one-second poll of the detail sheet. As files they are also
+  `tail -f`-able and `jq`-able without the app. `server/job-logs.ts` is the only
+  module that touches them: appends are serialised per job id so concurrent writers
+  (the runner, the container's callback, the queue pump) cannot interleave, a
+  malformed line is skipped on read rather than thrown on, and a write that fails
+  warns instead of failing the job. `purgeJobs` unlinks the files it deletes rows for,
+  in place of the FK cascade `job_logs` used to have. The files sit outside
+  `~/.foundry/jobs/` so `foundry jobs prune` clears workspaces without taking the
+  history with them.
 - **Branch names carry the job's short id.** `branchSlug` keeps only the first
   three words of the task, so two jobs on one repo often derive the same slug —
   and the runner's `ls-remote` check cannot separate concurrent ones, since
@@ -148,9 +163,12 @@ bun run db:migrate    # apply
 bun run db:studio     # drizzle studio
 ```
 
-`db:migrate` also does a one-time adoption of `~/.foundry/repos.json`, which is where
-the imported set used to live. It leaves the file alone — `~/.foundry` is the CLI's
-state directory.
+`db:migrate` also carries two one-time hand-overs, both idempotent: it adopts
+`~/.foundry/repos.json`, which is where the imported set used to live (leaving the
+file alone — `~/.foundry` is the CLI's state directory), and it exports any remaining
+`job_logs` rows to `~/.foundry/logs/<id>.jsonl` *before* the migration that drops that
+table, so no job loses its output. A job that already has a log file is skipped, so
+the export can never clobber one that is being written right now.
 
 `DATABASE_URL` comes from `web/.env` (copy `.env.example`; bun loads it automatically),
 and falls back to the local stack's URL so a fresh clone needs no configuration.
@@ -162,7 +180,11 @@ and falls back to the local stack's URL so a fresh clone needs no configuration.
 | `blueprints` | reusable step lists; `steps` is one jsonb column, edited and consumed whole |
 | `blueprint_revisions` | every version a blueprint has held, append-only; the columns above cache the newest |
 | `jobs` | one row per job; a job *is* the run here, so there is no separate runs table |
-| `job_logs` | one row per log line, append-only, streamed in as a job runs |
+
+Log lines are deliberately not a table: they live in `~/.foundry/logs/<id>.jsonl`
+(LIA-18, above). `bun run db:migrate` exports any rows left in the old `job_logs`
+table to those files before dropping it, so an existing database keeps its history —
+the same one-time-adoption pattern `src/db/migrate.ts` uses for `~/.foundry/repos.json`.
 
 `jobs.repo_id` links to the repo when there is one, and `jobs.repo` keeps an immutable
 `RepoRef` snapshot beside it — a job can target a git URL that was never imported, and
@@ -227,8 +249,9 @@ src/
       queries.ts              queryOptions — what routes and components import
       api.ts                  createServerFn wrappers
       server/job-store.ts     node-only: the postgres queries
+      server/job-logs.ts      node-only: ~/.foundry/logs/<id>.jsonl, append + read
       server/job-runner.ts    node-only: preflight, clone, docker run, push, settle
-      server/job-events.ts    node-only: callback auth + stream-json -> job_logs
+      server/job-events.ts    node-only: callback auth + stream-json -> the JSONL log
       server/forge-pr.ts      node-only: bb / gh pr create, by origin host
       types.ts
     blueprints/

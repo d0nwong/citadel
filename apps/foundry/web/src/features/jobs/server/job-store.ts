@@ -8,13 +8,13 @@
 import { randomUUID } from 'node:crypto'
 import { and, asc, desc, eq, inArray, lt, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { jobLogs, jobs, repos } from '@/db/schema'
+import { jobs, repos } from '@/db/schema'
 import { getBlueprintRow, toSnapshot } from '@/features/blueprints/server/blueprint-store'
+import { appendLogs, deleteLogs, readLogs } from './job-logs'
 import { shortId } from '../types'
-import type { Job, JobCursor, JobDetail, JobPage, JobStatus, JobStep, LogLine, LogStream, NewJobInput } from '../types'
+import type { Job, JobCursor, JobDetail, JobPage, JobStatus, JobStep, NewJobInput } from '../types'
 
 export type JobRow = typeof jobs.$inferSelect
-type LogRow = typeof jobLogs.$inferSelect
 
 /** Statuses a job can still move out of. Every settle is guarded on these. */
 const OPEN: Array<JobStatus> = ['queued', 'running']
@@ -53,8 +53,6 @@ function toJob(row: JobRow): Job {
         : { files: row.diffFiles, additions: row.diffAdditions ?? 0, deletions: row.diffDeletions ?? 0 },
   }
 }
-
-const toLogLine = (row: LogRow): LogLine => ({ t: row.t.getTime(), stream: row.stream, text: row.text })
 
 /** `Migrate the test runner from jest` -> `migrate-the-test`. Unchanged from the mock. */
 function branchSlug(task: string): string {
@@ -121,8 +119,7 @@ export async function getJob(id: string): Promise<JobDetail | undefined> {
   if (!isUuid(id)) return undefined
   const [row] = await db.select().from(jobs).where(eq(jobs.id, id))
   if (!row) return undefined
-  const lines = await db.select().from(jobLogs).where(eq(jobLogs.jobId, id)).orderBy(asc(jobLogs.id))
-  return { ...toJob(row), logs: lines.map(toLogLine) }
+  return { ...toJob(row), logs: await readLogs(id) }
 }
 
 /**
@@ -163,26 +160,27 @@ export async function createJob(input: NewJobInput): Promise<Job> {
   // by construction, and readable back to the row in the ledger.
   const id = randomUUID()
 
-  return db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(jobs)
-      .values({
-        id,
-        task,
-        repo: input.repo,
-        repoId,
-        baseBranch: input.baseBranch,
-        branch: `foundry/${branchSlug(task)}-${shortId(id)}`,
-        forge: input.forge,
-        blueprintId: bp?.id ?? null,
-        blueprint: bp ? toSnapshot(bp) : null,
-      })
-      .returning()
+  const [row] = await db
+    .insert(jobs)
+    .values({
+      id,
+      task,
+      repo: input.repo,
+      repoId,
+      baseBranch: input.baseBranch,
+      branch: `foundry/${branchSlug(task)}-${shortId(id)}`,
+      forge: input.forge,
+      blueprintId: bp?.id ?? null,
+      blueprint: bp ? toSnapshot(bp) : null,
+    })
+    .returning()
 
-    const via = bp ? ` via blueprint "${bp.name}" (${bp.steps.length} steps)` : ''
-    await tx.insert(jobLogs).values({ jobId: row.id, stream: 'sys', text: `queued on ${row.forge}${via}` })
-    return toJob(row)
-  })
+  // Logs are a file now, so this line cannot ride in the insert's transaction —
+  // it is written once the row is real. Losing it on a failed insert is right:
+  // there would be no job for it to describe.
+  const via = bp ? ` via blueprint "${bp.name}" (${bp.steps.length} steps)` : ''
+  await appendLogs(row.id, [{ stream: 'sys', text: `queued on ${row.forge}${via}` }])
+  return toJob(row)
 }
 
 /**
@@ -199,31 +197,27 @@ export async function rerunJob(sourceId: string): Promise<Job> {
   const src = await getJobRow(sourceId)
   if (!src) throw new Error('that job no longer exists')
 
-  return db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(jobs)
-      .values({
-        task: src.task,
-        repo: src.repo,
-        repoId: src.repoId,
-        baseBranch: src.baseBranch,
-        branch: src.sourceJobId ? src.branch : `foundry/${branchSlug(src.task)}`,
-        forge: src.forge,
-        blueprintId: src.blueprintId,
-        blueprint: src.blueprint,
-        sourceJobId: src.sourceJobId,
-        prUrl: src.sourceJobId ? src.prUrl : null,
-      })
-      .returning()
-
-    const via = src.blueprint ? ` via blueprint "${src.blueprint.name}" (${src.blueprint.steps.length} steps)` : ''
-    await tx.insert(jobLogs).values({
-      jobId: row.id,
-      stream: 'sys',
-      text: `queued on ${row.forge}${via} — rerun of ${src.id.slice(0, 8)}`,
+  const [row] = await db
+    .insert(jobs)
+    .values({
+      task: src.task,
+      repo: src.repo,
+      repoId: src.repoId,
+      baseBranch: src.baseBranch,
+      branch: src.sourceJobId ? src.branch : `foundry/${branchSlug(src.task)}`,
+      forge: src.forge,
+      blueprintId: src.blueprintId,
+      blueprint: src.blueprint,
+      sourceJobId: src.sourceJobId,
+      prUrl: src.sourceJobId ? src.prUrl : null,
     })
-    return toJob(row)
-  })
+    .returning()
+
+  const via = src.blueprint ? ` via blueprint "${src.blueprint.name}" (${src.blueprint.steps.length} steps)` : ''
+  await appendLogs(row.id, [
+    { stream: 'sys', text: `queued on ${row.forge}${via} — rerun of ${shortId(src.id)}` },
+  ])
+  return toJob(row)
 }
 
 /**
@@ -240,51 +234,47 @@ export async function followUpJob(sourceId: string): Promise<Job> {
   if (OPEN.includes(src.status)) throw new Error('that job is still running — wait for its PR first')
   if (!src.prUrl) throw new Error('that job has no pull request to address comments on')
 
-  return db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(jobs)
-      .values({
-        // Following up on a follow-up keeps its label — no stacked prefixes.
-        task: src.sourceJobId ? src.task : `Address PR comments — ${src.task}`,
-        repo: src.repo,
-        repoId: src.repoId,
-        baseBranch: src.baseBranch,
-        branch: src.branch,
-        forge: src.forge,
-        sourceJobId: src.sourceJobId ?? src.id,
-        prUrl: src.prUrl,
-      })
-      .returning()
-
-    await tx.insert(jobLogs).values({
-      jobId: row.id,
-      stream: 'sys',
-      text: `queued on ${row.forge} — addressing PR comments of ${src.id.slice(0, 8)}`,
+  const [row] = await db
+    .insert(jobs)
+    .values({
+      // Following up on a follow-up keeps its label — no stacked prefixes.
+      task: src.sourceJobId ? src.task : `Address PR comments — ${src.task}`,
+      repo: src.repo,
+      repoId: src.repoId,
+      baseBranch: src.baseBranch,
+      branch: src.branch,
+      forge: src.forge,
+      sourceJobId: src.sourceJobId ?? src.id,
+      prUrl: src.prUrl,
     })
-    return toJob(row)
-  })
+    .returning()
+
+  await appendLogs(row.id, [
+    { stream: 'sys', text: `queued on ${row.forge} — addressing PR comments of ${shortId(src.id)}` },
+  ])
+  return toJob(row)
 }
 
 /** No-op unless the job is still open — a settled job keeps its outcome. */
 export async function cancelJob(id: string): Promise<void> {
-  await db.transaction(async (tx) => {
-    const [row] = await tx
-      .update(jobs)
-      .set({ status: 'cancelled', finishedAt: new Date() })
-      .where(and(eq(jobs.id, id), inArray(jobs.status, ['queued', 'running'])))
-      .returning({ id: jobs.id })
-    if (!row) return
-    await tx.insert(jobLogs).values({ jobId: id, stream: 'sys', text: 'cancelled by user' })
-  })
+  const [row] = await db
+    .update(jobs)
+    .set({ status: 'cancelled', finishedAt: new Date() })
+    .where(and(eq(jobs.id, id), inArray(jobs.status, ['queued', 'running'])))
+    .returning({ id: jobs.id })
+  // Only the call that actually made the transition says so in the log.
+  if (row) await appendLogs(id, [{ stream: 'sys', text: 'cancelled by user' }])
 }
 
 /**
  * Deletes every settled job (never one that is still queued or running, so an
- * active container's row can't vanish from under it). `job_logs` cascades on
- * the FK, so logs go with their job. Returns how many rows were removed.
+ * active container's row can't vanish from under it), and unlinks each one's
+ * log file — the job that the FK cascade on `job_logs` used to do. Returns how
+ * many rows were removed.
  */
 export async function purgeJobs(): Promise<number> {
   const rows = await db.delete(jobs).where(notInArray(jobs.status, OPEN)).returning({ id: jobs.id })
+  await deleteLogs(rows.map((r) => r.id))
   return rows.length
 }
 
@@ -297,14 +287,6 @@ export async function getJobRow(id: string): Promise<JobRow | undefined> {
   if (!isUuid(id)) return undefined
   const [row] = await db.select().from(jobs).where(eq(jobs.id, id))
   return row
-}
-
-export async function appendLogs(
-  jobId: string,
-  lines: Array<{ stream: LogStream; text: string }>,
-): Promise<void> {
-  if (lines.length === 0) return
-  await db.insert(jobLogs).values(lines.map((l) => ({ jobId, ...l })))
 }
 
 /**

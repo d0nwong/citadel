@@ -1,12 +1,13 @@
 /**
  * Node-only. The receiving end of the container's callbacks: authenticate the
- * per-job token, translate Claude's stream-json NDJSON into `job_logs` rows,
- * and hand the pipeline back to the host when the container reports commit.
+ * per-job token, translate Claude's stream-json NDJSON into the job's JSONL
+ * log, and hand the pipeline back to the host when the container reports commit.
  *
  * The runner ships lines raw and unparsed on purpose — this file is where the
  * mapping lives, in one typed, testable place, instead of in bash.
  */
 import { timingSafeEqual } from 'node:crypto'
+import { appendLogs } from './job-logs'
 import * as store from './job-store'
 import type { LogStream } from '../types'
 
@@ -52,10 +53,11 @@ export async function handleJobEvent(jobId: string, request: Request): Promise<R
   for (const s of payload.sys ?? []) lines.push({ stream: 'sys', text: s })
   for (const s of payload.stderr ?? []) lines.push({ stream: 'err', text: trim(s, 2000) })
   for (const raw of payload.ndjson ?? []) lines.push(...mapClaudeEvent(raw))
-  // A step label is a prefix on the text, not a column: job_logs stays the
-  // same shape, and the sheet reads `[plan] …` the way it reads anything else.
+  // A step label is a prefix on the text, not a field: every record in the
+  // JSONL stays the same shape, and the sheet reads `[plan] …` the way it reads
+  // anything else.
   const label = typeof payload.step === 'object' ? `[${payload.step.name}] ` : ''
-  await store.appendLogs(jobId, label ? lines.map((l) => ({ ...l, text: label + l.text })) : lines)
+  await appendLogs(jobId, label ? lines.map((l) => ({ ...l, text: label + l.text })) : lines)
 
   if (payload.step === 'commit' && payload.outcome) {
     // Move step *before* answering: the runner's curl returns only after this

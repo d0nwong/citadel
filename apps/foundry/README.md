@@ -17,6 +17,7 @@ flowchart LR
         mcp["MCP gateway<br/>(infra/, mcp-proxy · :9090)"]
         auth["~/.foundry/env<br/>CLAUDE_CODE_OAUTH_TOKEN"]
         jobs["~/.foundry/jobs/&lt;id&gt;/<br/>workspace clones"]
+        joblogs["~/.foundry/logs/&lt;id&gt;.jsonl<br/>job session logs"]
     end
 
     subgraph orb["OrbStack containers"]
@@ -41,6 +42,7 @@ flowchart LR
 
     web -- "job ledger" --> pg
     web -- "clone repo" --> jobs
+    web -- "append log lines" --> joblogs
     web -- "ignite job" --> jobforge
     jobforge -- "edits" --> jobs
     jobforge -. "progress callback<br/>host.docker.internal + per-job token" .-> web
@@ -221,6 +223,18 @@ Two things worth knowing:
 
 Job workspaces accumulate under `~/.foundry/jobs/`; `foundry jobs prune [--days 7]`
 clears old ones. See `web/README.md` for the full pipeline.
+
+A job's log is a JSONL file — `~/.foundry/logs/<id>.jsonl`, one `{t, stream, text}`
+record per line, the way Claude Code keeps a session under `~/.claude/projects/`. So
+the sheet's output is also `tail -f`-able, `grep`-able and `jq`-able from a terminal:
+
+```sh
+jq -r 'select(.stream == "err") | .text' ~/.foundry/logs/<id>.jsonl
+```
+
+The logs live outside `~/.foundry/jobs/` on purpose — `foundry jobs prune` clears
+workspace clones, which are large and reproducible, and leaves the history that
+describes them. Purging a job from the ledger deletes its file with the row.
 
 ### Repo notes
 
