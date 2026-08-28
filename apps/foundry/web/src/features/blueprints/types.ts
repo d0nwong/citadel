@@ -15,6 +15,15 @@ export type StepEffort = (typeof STEP_EFFORTS)[number]
 /** The placeholder a step prompt uses for the job's task text. */
 export const TASK_PLACEHOLDER = '{{task}}'
 
+/**
+ * "Plan → Execute", seeded by migration 0007 — what the ignite dialog starts on,
+ * because planning first is the right default for a task nobody is watching.
+ * Matched by id, not by name: the row is the user's to rename or rewrite, and
+ * only deleting it should change what a fresh job defaults to (then: no
+ * blueprint, one bare step).
+ */
+export const DEFAULT_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000001'
+
 export interface BlueprintStep {
   name: string
   model: StepModel

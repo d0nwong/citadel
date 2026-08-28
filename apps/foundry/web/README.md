@@ -73,7 +73,11 @@ Ignite ─► insert row (queued, with a per-job callback token)
   into one collapsible section per step), and stops at the first
   non-zero exit (remaining steps are reported as skipped). `FOUNDRY_TIMEOUT` is the
   whole job's budget. No blueprint means one unlabelled step on the default model —
-  the same loop, so there is exactly one launch path.
+  the same loop, so there is exactly one launch path. Migration `0007_seed_blueprints`
+  seeds "Plan → Execute" and "Backfill Tests" at fixed ids; the ignite dialog starts
+  on the former by id (`DEFAULT_BLUEPRINT_ID`), falling back to no blueprint if that
+  row has been deleted. The seed adopts a hand-made "Plan → Execute" rather than
+  colliding with its unique name — it repoints that row's jobs and drops it.
 - A settled job with a PR can spawn a **follow-up job** that addresses the PR's review
   comments (LIA-40) — the "Address PR comments" action in the detail sheet. The row
   copies the source's branch and PR URL (`source_job_id` marks it; deliberately no FK,

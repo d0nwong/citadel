@@ -247,8 +247,20 @@ A **blueprint** is a reusable sequence of agent steps, each on a model of its ow
 *plan with Fable, execute with Sonnet*. Pick one in the "Ignite a job" dialog and the
 job's forge runs `claude -p` once per step, all in one session (`--session-id` then
 `--resume`), so the executor sees the planner's exploration. Define them on the
-**Blueprints** page; `db:migrate` seeds a "Plan → Execute" one. A job snapshots the
-steps it ran, so editing or deleting a blueprint never rewrites history.
+**Blueprints** page. A job snapshots the steps it ran, so editing or deleting a
+blueprint never rewrites history.
+
+`db:migrate` seeds two, and both are yours to edit:
+
+| blueprint | steps | for |
+|---|---|---|
+| **Plan → Execute** | plan · fable · high → execute · sonnet | anything. Read and plan first, implement second — what the ignite dialog starts on |
+| **Backfill Tests** | survey · fable · high → write-tests · sonnet → verify · sonnet | tests over logic that already exists: characterise the behaviour, cover it, then check the tests would actually fail on a regression. Production code is off limits, so a bug it turns up is reported rather than fixed |
+
+The ignite dialog preselects **Plan → Execute** — planning first is the right default
+for a run nobody is watching. It matches on the seeded row's id, not its name, so
+renaming or rewriting that blueprint keeps it the default; deleting it drops the
+dialog back to *none — one step, default model*.
 
 ### Reaching it from your other devices
 
