@@ -12,6 +12,7 @@
 
 import { test, expect, describe } from "bun:test";
 import { $ } from "bun";
+import { existsSync } from "node:fs";
 import { orvalName, extractSwaggerDoc, flatten, indexOps, fingerprintOf, diffSpec, normPath } from "./lib/spec.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
@@ -150,6 +151,27 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
       "features: [tasks]", "scope: product", "status: decided",
       "summary: something agreed", "---", "Details.",
     ].join("\n"));
+    // a landed entry: PR key + merge sha + a ticket LIST (one landing can advance several)
+    await Bun.write(`${dir}/tasks/journal/2026-08-22-fe363-landed.md`, [
+      "---", "date: 2026-08-22", "pr: fe#363", "merge: 597bfbdf3",
+      "ticket: [ALD-42, ALD-43]", "features: [tasks]", "scope: product",
+      "status: documented", "summary: it landed", "---",
+    ].join("\n"));
+    // pushed straight to staging — `direct` is a valid key, and still needs its sha
+    await Bun.write(`${dir}/tasks/journal/2026-08-23-direct-ok.md`, [
+      "---", "date: 2026-08-23", "pr: direct", "merge: 9bf7402c5",
+      "ticket: null", "features: [tasks]", "scope: product",
+      "status: documented", "summary: pushed straight to staging", "---",
+    ].join("\n"));
+    await Bun.write(`${dir}/tasks/journal/2026-08-24-unretrievable.md`, [
+      "---", "date: 2026-08-24", "pr: pr-363", "features: [tasks]",
+      "scope: product", "status: implemented", "summary: bad pr key, no merge sha", "---",
+    ].join("\n"));
+    // `decided` means not in code — naming a landing contradicts it
+    await Bun.write(`${dir}/tasks/journal/2026-08-25-contradiction.md`, [
+      "---", "date: 2026-08-25", "pr: fe#370", "merge: 550bc135e", "features: [tasks]",
+      "scope: product", "status: decided", "summary: says decided, but it shipped", "---",
+    ].join("\n"));
     await Bun.write(`${dir}/tasks/journal/2026-08-21-bad.md`, [
       "---", "date: 2026-08-21", "ticket: not a ticket",
       "features: [no-such-feature]", "status: shipped", "summary: x", "---",
@@ -159,6 +181,17 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
       "---", "date: 2026-08-01", "features: [admin-signals]", "scope: product",
       "status: implemented", "summary: y", "---",
     ].join("\n"));
+    // …unless it says why it is parked open, which stops the nag but must state a reason
+    await Bun.write(`${dir}/admin/signals/journal/2026-08-02-held.md`, [
+      "---", "date: 2026-08-02", "pr: be#735", "merge: c9c52464", "ticket: null",
+      "features: [admin-signals]", "scope: product", "status: implemented",
+      'hold: "the FE half is not built"', "summary: z", "---",
+    ].join("\n"));
+    await Bun.write(`${dir}/admin/signals/journal/2026-08-03-held-blank.md`, [
+      "---", "date: 2026-08-03", "pr: null", "ticket: null",
+      "features: [admin-signals]", "scope: product", "status: implemented",
+      "hold:", "summary: z", "---",
+    ].join("\n"));
     const problems = await auditJournal(index, dir);
     expect(problems.some(x => x.includes("good"))).toBe(false);
     expect(problems.some(x => x.includes("bad") && x.includes("unknown feature"))).toBe(true);
@@ -167,6 +200,39 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     expect(problems.some(x => x.includes("missed") && x.includes("refresh missed"))).toBe(true);
     // filed in a feature folder its own `features:` list never names
     expect(problems.some(x => x.includes("bad") && x.includes("filed under `tasks`"))).toBe(true);
+    // a landing named properly is clean, ticket list and `direct` included
+    expect(problems.some(x => x.includes("fe363-landed"))).toBe(false);
+    expect(problems.some(x => x.includes("direct-ok"))).toBe(false);
+    // …and an entry nobody can retrieve is not
+    expect(problems.some(x => x.includes("unretrievable") && x.includes("pr `pr-363`"))).toBe(true);
+    expect(problems.some(x => x.includes("unretrievable") && x.includes("no `merge:` sha"))).toBe(true);
+    expect(problems.some(x => x.includes("contradiction") && x.includes("decided"))).toBe(true);
+    // implemented entries must say which landing carried them, even to say `null`
+    expect(problems.some(x => x.includes("missed") && x.includes("names no `pr:`"))).toBe(true);
+    // a stated hold parks the entry; a blank one is just a silenced nag
+    expect(problems.some(x => x.includes("2026-08-02-held"))).toBe(false);
+    expect(problems.some(x => x.includes("held-blank") && x.includes("no reason"))).toBe(true);
+    await Bun.$`rm -rf ${dir}`.quiet();
+  });
+
+  // several landings share a day, so "docs re-verified the same date" says nothing about
+  // whether the refresh actually saw this one — it is decided by sha against last_verified
+  test.skipIf(!existsSync(`${process.env.HOME}/git/alden-portal-fe`))(
+    "audit dates staleness by sha, not by same-day dates", async () => {
+    const { auditJournal } = await import("./commands/audit.ts");
+    const index = await Bun.file(`${ROOT}/.state/accio-index.json`).json();
+    const dir = `${ROOT}/.state/test-audit-sha`;
+    const entry = (merge: string) => [
+      "---", "date: 2026-08-28", "pr: fe#370", `merge: ${merge}`, "ticket: LIA-51",
+      "features: [tasks]", "scope: architecture", "status: implemented",
+      "summary: s", "---",
+    ].join("\n");
+    // tasks/docs/product.md records last_verified: staging@597bfbdf3, dated 2026-08-28
+    await Bun.write(`${dir}/tasks/journal/2026-08-28-landed-before.md`, entry("9bf7402c5"));
+    await Bun.write(`${dir}/tasks/journal/2026-08-28-landed-after.md`, entry("550bc135e"));
+    const problems = await auditJournal(index, dir);
+    expect(problems.some(x => x.includes("landed-before") && x.includes("refresh missed"))).toBe(true);
+    expect(problems.some(x => x.includes("landed-after"))).toBe(false);
     await Bun.$`rm -rf ${dir}`.quiet();
   });
 
