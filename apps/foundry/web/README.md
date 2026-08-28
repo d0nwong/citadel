@@ -48,7 +48,8 @@ Ignite ─► insert row (queued, with a per-job callback token)
                            claude -p <prompt> --model <m> --session-id|--resume <sid>
               container: git add -A && git commit
               container ─POST─► /api/jobs/$id/events   (Bearer <token>)
-       ─► host: git push, `bb`/`gh` pr create, diff stats, settle the row
+       ─► host: git push, `bb`/`gh` pr create, link the Linear ticket (`bb` only),
+              diff stats, settle the row
 ```
 
 - The **container** holds a Claude credential (`foundry auth`), the workspace, and a
@@ -92,6 +93,17 @@ Ignite ─► insert row (queued, with a per-job callback token)
   construction (`FOUNDRY_MAX_JOBS` allows 3 at once) and reads back to the row.
 - The **PR CLI** is picked by origin host in `server/forge-pr.ts`: `bb` for
   bitbucket.org, `gh` for github.com, anything else pushes the branch and says so.
+- **Linear ticket links** are filed by the host for Bitbucket PRs only
+  (`server/linear-link.ts`). Linear's GitHub integration already reads the
+  `Closes LIA-24` magic word out of a PR description and files the link itself;
+  Linear has no Bitbucket integration, so an identical description lands on a
+  forge nothing is watching. For a `bb` origin the runner pulls the magic-word
+  ticket ids out of the PR body and creates the attachment through Linear's API
+  with `LINEAR_API_KEY` from `~/.foundry/env` — host-side, like `bb` itself, so
+  the key never enters a forge. No key means no link and no complaint, and a
+  failure is logged rather than fatal: the PR is already open by then. It is a
+  one-shot link, not a sync — Bitbucket sends nothing back on merge, so ticket
+  status stays yours to move.
 - `vite dev` runs with `--host` so containers can reach the server at
   `host.docker.internal:3777` — which also means it listens on your LAN; the token
   auth on the callback route is what makes that acceptable.

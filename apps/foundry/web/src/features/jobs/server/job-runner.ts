@@ -18,6 +18,7 @@ import { repoNotes } from '@/features/repos/server/repo-scan'
 import { createPullRequest, fetchPrComments, originHost, prCliFor } from './forge-pr'
 import * as store from './job-store'
 import type { JobRow } from './job-store'
+import { linkPrToTicket } from './linear-link'
 
 const exec = promisify(execFile)
 
@@ -443,16 +444,20 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
       await sys(id, `PR updated: ${job.prUrl}`)
     } else {
       const originUrl = await git(work, ['remote', 'get-url', 'origin'])
+      const title = await prTitle(work, job.task)
+      const body = await prBody(work, job)
       const pr = await createPullRequest(originUrl, {
         workspace: work,
         branch: job.branch,
         baseBranch: job.baseBranch,
-        title: await prTitle(work, job.task),
-        body: await prBody(work, job),
+        title,
+        body,
       })
       if (pr.url !== null) await sys(id, `PR opened: ${pr.url}`)
       else await err(id, pr.reason)
       prUrl = pr.url ?? undefined
+
+      if (pr.url !== null && prCliFor(originHost(originUrl)) === 'bb') await linkTicket(id, pr.url, title, body)
     }
 
     // An agent that errored still gets its work pushed, but the job is failed:
@@ -470,6 +475,29 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
     await err(id, `push failed: ${msg} — the commit is intact in ${work}`)
   }
   void pumpQueue()
+}
+
+/**
+ * Bitbucket only. Linear's GitHub integration files GitHub PRs onto the ticket
+ * by itself, off the same `Closes LIA-24` line; it has no Bitbucket equivalent,
+ * so for a `bb` origin the host files the attachment instead. Never fatal — the
+ * PR is already open, and a missing key or an unreachable Linear is worth a log
+ * line, not a failed job.
+ */
+async function linkTicket(id: string, prUrl: string, title: string, body: string): Promise<void> {
+  try {
+    const cred = await readFoundryEnv()
+    const key = cred.LINEAR_API_KEY ?? process.env.LINEAR_API_KEY
+    if (!key) return // Linear was never configured; nothing to link to.
+
+    const res = await linkPrToTicket(key, { prUrl, title, body })
+    if (res.linked === null) await err(id, `Linear link failed: ${res.reason}`)
+    else if (res.linked.length > 0) await sys(id, `PR linked to ${res.linked.join(', ')} in Linear`)
+  } catch (e) {
+    // Belt and braces: this sits inside finishJob's try, and a throw escaping
+    // here would settle the job as a push failure it never had.
+    await err(id, `Linear link failed: ${e instanceof Error ? e.message : String(e)}`).catch(() => undefined)
+  }
 }
 
 /**
