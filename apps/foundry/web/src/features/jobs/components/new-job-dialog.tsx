@@ -47,6 +47,7 @@ import { repoQueries } from "@/features/repos/queries";
 import { cn } from "@/shared/lib/utils";
 import {
   DEFAULT_BLUEPRINT_ID,
+  blueprintLabel,
   stepsSummary,
 } from "@/features/blueprints/types";
 import { localRef, repoLabel } from "@/features/repos/types";
@@ -113,7 +114,7 @@ export function NewJobDialog() {
       // starts from the base it just used.
       qc.invalidateQueries({ queryKey: repoQueries.all });
       toast.success(`Job ${shortId(job.id)} queued`, {
-        description: `${job.repo.name} → ${job.forge}${job.blueprint ? ` · ${job.blueprint.name}` : ""}`,
+        description: `${job.repo.name} → ${job.forge}${job.blueprint ? ` · ${blueprintLabel(job.blueprint)}` : ""}`,
       });
       setOpen(false);
       reset();
@@ -300,7 +301,7 @@ export function NewJobDialog() {
             </Select>
             <p className="mt-1.5 truncate font-mono text-[11px] text-txt-faint">
               {blueprint ? (
-                stepsSummary(blueprint.steps)
+                `v${blueprint.version} · ${stepsSummary(blueprint.steps)}`
               ) : (
                 <>
                   Define multi-step runs on the{" "}

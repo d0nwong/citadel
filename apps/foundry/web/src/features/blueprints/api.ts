@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import type { Blueprint, BlueprintInput } from './types'
+import type { Blueprint, BlueprintInput, BlueprintRevision } from './types'
 
 /** Blueprints live in Postgres; the node-only store is imported inside each handler. */
 
@@ -21,6 +21,21 @@ export const updateBlueprint = createServerFn({ method: 'POST' })
     const store = await import('./server/blueprint-store')
     const { id, ...rest } = data
     return store.updateBlueprint(id, rest)
+  })
+
+export const listRevisions = createServerFn({ method: 'GET' })
+  .validator((id: string) => id)
+  .handler(async ({ data }): Promise<Array<BlueprintRevision>> => {
+    const store = await import('./server/blueprint-store')
+    return store.listRevisions(data)
+  })
+
+/** Puts an old version's content back — as a new version, never in place. */
+export const restoreRevision = createServerFn({ method: 'POST' })
+  .validator((input: { id: string; version: number }) => input)
+  .handler(async ({ data }): Promise<Blueprint> => {
+    const store = await import('./server/blueprint-store')
+    return store.restoreRevision(data.id, data.version)
   })
 
 export const deleteBlueprint = createServerFn({ method: 'POST' })

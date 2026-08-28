@@ -262,6 +262,22 @@ for a run nobody is watching. It matches on the seeded row's id, not its name, s
 renaming or rewriting that blueprint keeps it the default; deleting it drops the
 dialog back to *none — one step, default model*.
 
+#### Versions
+
+Prompts get better by being rewritten, so every save bumps a version and keeps the
+old one. The editor's **History** section lists them — what changed, when, and whether
+the text was shipped with foundry or written by you — and restores any of them with a
+click. Restoring writes a *new* version rather than reopening the old one, because a
+job that ran v3 has to keep meaning what it meant.
+
+The version rides along on each job, so the ledger reads `Plan → Execute v4` and you
+can ask whether v4 actually beat v3 instead of guessing. Jobs from before versioning
+show a bare name.
+
+Versions are also how foundry ships improvements to the blueprints it seeds: a
+migration may rewrite one *only* while you have never saved over it. Your first edit
+takes ownership of that blueprint permanently, and later releases leave it alone.
+
 ### Reaching it from your other devices
 
 ```sh

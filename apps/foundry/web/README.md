@@ -78,6 +78,24 @@ Ignite ─► insert row (queued, with a per-job callback token)
   on the former by id (`DEFAULT_BLUEPRINT_ID`), falling back to no blueprint if that
   row has been deleted. The seed adopts a hand-made "Plan → Execute" rather than
   colliding with its unique name — it repoints that row's jobs and drops it.
+- **Blueprints are versioned.** `blueprints.version` is bumped on every save and each
+  version's full content is appended to `blueprint_revisions` in the same transaction,
+  so the history can never lag the version the row claims. The number rides along on
+  the job's snapshot (`BlueprintSnapshot.version`, optional — jobs from before
+  versioning have none and render as a bare name), which is what makes *did v4 beat
+  v3* answerable from the ledger. Restoring an old version writes a **new** one rather
+  than reopening it: a job that ran v3 has to keep meaning what it meant.
+- `blueprint_revisions.source` is how shipped blueprints stay upgradable. A migration
+  may improve a blueprint in place only while its newest revision is still `seed`;
+  the first `user` revision hands the row over for good. Future seed upgrades take
+  this shape, and must bump `version` and append a `seed` revision like any other save:
+
+  ```sql
+  UPDATE "foundry"."blueprints" b SET "steps" = $steps$…$steps$::jsonb, "version" = b."version" + 1
+   WHERE b."id" = '5eeded00-…-0001'
+     AND (SELECT r."source" FROM "foundry"."blueprint_revisions" r
+           WHERE r."blueprint_id" = b."id" ORDER BY r."version" DESC LIMIT 1) = 'seed';
+  ```
 - A settled job with a PR can spawn a **follow-up job** that addresses the PR's review
   comments (LIA-40) — the "Address PR comments" action in the detail sheet. The row
   copies the source's branch and PR URL (`source_job_id` marks it; deliberately no FK,
@@ -142,6 +160,7 @@ and falls back to the local stack's URL so a fresh clone needs no configuration.
 |---|---|
 | `repos` | the imported set — what a job may target |
 | `blueprints` | reusable step lists; `steps` is one jsonb column, edited and consumed whole |
+| `blueprint_revisions` | every version a blueprint has held, append-only; the columns above cache the newest |
 | `jobs` | one row per job; a job *is* the run here, so there is no separate runs table |
 | `job_logs` | one row per log line, append-only, streamed in as a job runs |
 

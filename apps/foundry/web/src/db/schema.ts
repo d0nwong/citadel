@@ -7,7 +7,7 @@
  * for the extensions that infra/postgres/init/00-init.sql installs there.
  */
 import { sql } from 'drizzle-orm'
-import { bigserial, index, integer, jsonb, pgSchema, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { bigserial, index, integer, jsonb, pgSchema, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import type { BlueprintSnapshot, BlueprintStep } from '../features/blueprints/types'
 import type { RepoRef } from '../features/repos/types'
 
@@ -16,6 +16,7 @@ export const foundry = pgSchema('foundry')
 /* Mirrors of the unions in features/jobs/types.ts. Keep them in step. */
 export const jobStatus = foundry.enum('job_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled'])
 export const logStream = foundry.enum('log_stream', ['sys', 'out', 'tool', 'err'])
+export const revisionSource = foundry.enum('revision_source', ['seed', 'user'])
 
 /**
  * Repos the user has imported — the curated set a job may target. What the
@@ -47,9 +48,40 @@ export const blueprints = foundry.table('blueprints', {
   name: text('name').notNull().unique(),
   description: text('description'),
   steps: jsonb('steps').$type<Array<BlueprintStep>>().notNull(),
+  /** The revision these columns hold. Bumped on every save; never reused. */
+  version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+/**
+ * Every version a blueprint has ever held, append-only — the columns above are
+ * just a cache of the latest row here. Prompts are iterated on, so the point is
+ * to be able to read what v3 said, diff it against v4, and put v3 back (which
+ * writes v5 rather than rewriting history).
+ *
+ * `source` is what makes shipped blueprints upgradable: a migration may improve
+ * a blueprint in place only while its newest revision is still `seed`. The first
+ * `user` revision hands the row over for good.
+ */
+export const blueprintRevisions = foundry.table(
+  'blueprint_revisions',
+  {
+    blueprintId: uuid('blueprint_id')
+      .notNull()
+      .references(() => blueprints.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    /* The whole editable surface, so restoring a revision restores all of it. */
+    name: text('name').notNull(),
+    description: text('description'),
+    steps: jsonb('steps').$type<Array<BlueprintStep>>().notNull(),
+    source: revisionSource('source').notNull(),
+    /** One line on what changed, optional — the save dialog asks for it. */
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.blueprintId, t.version] })],
+)
 
 /**
  * One row per job. A job *is* the run in this domain — one job, one execution —

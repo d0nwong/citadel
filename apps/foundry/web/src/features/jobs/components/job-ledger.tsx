@@ -11,6 +11,7 @@ import { PageHeader } from '@/shared/components/page-header'
 import { jobQueries } from '../queries'
 import { duration, relative } from '@/shared/lib/format'
 import { repoLabel } from '@/features/repos/types'
+import { blueprintLabel } from '@/features/blueprints/types'
 import { cn } from '@/shared/lib/utils'
 import { shortId } from '../types'
 import type { Job, JobStatus } from '../types'
@@ -70,7 +71,9 @@ function JobRow({ job, onOpen, index }: { job: Job; onOpen: () => void; index: n
 
         <span className="min-w-0 font-mono text-[12px] text-txt-dim">
           <span className="block truncate">{job.forge}</span>
-          {job.blueprint && <span className="block truncate text-[11px] text-ember-soft">{job.blueprint.name}</span>}
+          {job.blueprint && (
+            <span className="block truncate text-[11px] text-ember-soft">{blueprintLabel(job.blueprint)}</span>
+          )}
         </span>
         <span className="font-mono text-[12px] tabular-nums text-txt-dim lg:text-right">
           {job.status === 'queued' ? '—' : duration(elapsed)}

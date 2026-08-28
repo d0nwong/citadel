@@ -57,6 +57,13 @@
       "when": 1787898423795,
       "tag": "0007_seed_blueprints",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787899274667,
+      "tag": "0008_blueprint_revisions",
+      "breakpoints": true
     }
   ]
 }
