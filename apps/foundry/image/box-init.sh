@@ -25,16 +25,23 @@ if [ -d /opt/foundry/skills ]; then
 fi
 
 # MCP through the host gateway (infra/ `mcp` service). The forge holds a
-# gateway token, never the upstream (Linear) credential. Registered at user
-# scope so interactive sessions, `foundry run` and headless job runs all see
-# it; ~/.claude.json lives in the container layer, so redo it on every start.
+# gateway token, never the upstream (Linear/Slack) credentials. The host says
+# which upstreams it actually has via FOUNDRY_MCP_SERVERS; stale ones from a
+# previous config are removed first. Registered at user scope so interactive
+# sessions, `foundry run` and headless job runs all see it; ~/.claude.json
+# lives in the container layer, so redo it on every start.
 if [ -n "${FOUNDRY_MCP_URL:-}" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
-  claude mcp remove -s user linear >/dev/null 2>&1 || true
-  claude mcp add-json -s user linear "$(jq -cn \
-      --arg url "${FOUNDRY_MCP_URL%/}/linear/mcp" \
-      --arg auth "Bearer $FOUNDRY_MCP_TOKEN" \
-      '{type: "http", url: $url, headers: {Authorization: $auth}}')" >/dev/null \
-    || echo "box-init: failed to register the linear MCP server" >&2
+  for server in linear slack; do
+    claude mcp remove -s user "$server" >/dev/null 2>&1 || true
+  done
+  IFS=',' read -ra servers <<< "${FOUNDRY_MCP_SERVERS:-linear}"
+  for server in "${servers[@]}"; do
+    claude mcp add-json -s user "$server" "$(jq -cn \
+        --arg url "${FOUNDRY_MCP_URL%/}/$server/mcp" \
+        --arg auth "Bearer $FOUNDRY_MCP_TOKEN" \
+        '{type: "http", url: $url, headers: {Authorization: $auth}}')" >/dev/null \
+      || echo "box-init: failed to register the $server MCP server" >&2
+  done
 fi
 
 exec "$@"

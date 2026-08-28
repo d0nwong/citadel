@@ -19,7 +19,17 @@
         "Authorization": "Bearer ${LINEAR_API_KEY}"
       },
       "options": {
-        "panicIfInvalid": true
+        "panicIfInvalid": false
+      }
+    },
+    "slack": {
+      "url": "https://mcp.slack.com/mcp",
+      "transportType": "streamable-http",
+      "headers": {
+        "Authorization": "Bearer ${SLACK_MCP_TOKEN}"
+      },
+      "options": {
+        "panicIfInvalid": false
       }
     }
   }

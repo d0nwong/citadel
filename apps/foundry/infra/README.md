@@ -38,18 +38,22 @@ password. Real environments get real credentials elsewhere.
 ## MCP gateway
 
 `mcp` is [mcp-proxy](https://github.com/tbxark/mcp-proxy) (`ghcr.io/tbxark/mcp-proxy`)
-configured by `mcp/config.json`. It connects upstream to Linear's hosted MCP server
-with the host's `LINEAR_API_KEY`, and serves it to forges as streamable HTTP at
-`http://localhost:9090/linear/mcp` (`host.docker.internal:9090` from a container,
-`mcp.foundry.local` on OrbStack), requiring `Authorization: Bearer $FOUNDRY_MCP_TOKEN`.
+configured by `mcp/config.json`. It connects upstream to Linear's and Slack's hosted
+MCP servers with the host's `LINEAR_API_KEY` / `SLACK_MCP_TOKEN`, and serves them to
+forges as streamable HTTP at `http://localhost:9090/{linear,slack}/mcp`
+(`host.docker.internal:9090` from a container, `mcp.foundry.local` on OrbStack),
+requiring `Authorization: Bearer $FOUNDRY_MCP_TOKEN`. An upstream whose key is
+missing fails to mount at startup (`panicIfInvalid: false`) and the others keep
+serving.
 
 The service sits behind the `mcp` compose profile, which `infra.sh` switches on by
-itself when `~/.foundry/env` carries both variables — `foundry auth --linear` writes
-them. `infra/.env` never holds these secrets; `infra.sh` exports `~/.foundry/env` into
-compose's environment and mcp-proxy expands the `${…}` references in the config.
+itself when `~/.foundry/env` carries the gateway token plus at least one upstream
+key — `foundry auth --linear` / `foundry auth --slack` write them. `infra/.env`
+never holds these secrets; `infra.sh` exports `~/.foundry/env` into compose's
+environment and mcp-proxy expands the `${…}` references in the config.
 
 ```sh
-curl localhost:9090/_readyz                     # {"status":"ok",...} once linear is mounted
+curl localhost:9090/_readyz                     # {"status":"ok",...} once the configured upstreams mounted
 curl -X POST localhost:9090/linear/mcp \
   -H "Authorization: Bearer $FOUNDRY_MCP_TOKEN" -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
@@ -59,8 +63,10 @@ curl -X POST localhost:9090/linear/mcp \
 To add another upstream, add an entry under `mcpServers` in `mcp/config.json`
 (remote: `url` + `transportType` + `headers`; local: `command` + `args`), reference
 its secret as `${SOME_KEY}`, put `SOME_KEY=…` in `~/.foundry/env`, and add
-`SOME_KEY: ${SOME_KEY:-}` to the service's `environment` in `compose.yaml`. Forges
-then need the matching `claude mcp add-json` line in `image/box-init.sh`. Change
+`SOME_KEY: ${SOME_KEY:-}` to the service's `environment` in `compose.yaml`. Then
+teach the hosts to advertise it: the `FOUNDRY_MCP_SERVERS` lists in `bin/foundry`
+(`load_env`) and `web/…/job-runner.ts` (preflight), and the known-server sweep in
+`image/box-init.sh`, which registers whatever the list carries. Change
 `MCP_PORT` in `infra/.env` if 9090 is taken.
 
 ## Settings

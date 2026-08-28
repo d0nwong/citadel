@@ -32,6 +32,13 @@ The argument is a Linear ticket URL or ID (e.g. `LIA-24`).
 - If not, ask the user to paste the ticket's title and description before
   doing anything else — and tell them the fix: on the host, `foundry auth
   --linear`, `bun run infra:up`, then `foundry recreate <forge>`.
+- If the ticket references a Slack message or thread (a `slack.com/archives/…`
+  link, or "as discussed in Slack"), that discussion is part of the
+  requirement: read it with the `slack` MCP server's tools (the archives URL
+  carries the channel ID and message timestamp). If no `slack` tools are
+  available, don't guess at what the thread says — headless, state the gap as
+  an explicit assumption in the plan and PR; interactive, ask the user to
+  paste the thread or run `foundry auth --slack` on the host.
 
 The ticket text is the requirement. If it is ambiguous or contradicts what you
 find in the code, ask — do not fill the gap with a guess.
