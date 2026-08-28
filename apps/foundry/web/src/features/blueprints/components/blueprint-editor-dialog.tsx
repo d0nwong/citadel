@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Loader2, Plus, Trash2 } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowDown, ArrowUp, History, Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/shared/ui/button'
 import {
@@ -15,10 +15,11 @@ import {
 import { Input } from '@/shared/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { Textarea } from '@/shared/ui/textarea'
-import { createBlueprint, updateBlueprint } from '../api'
+import { createBlueprint, restoreRevision, updateBlueprint } from '../api'
 import { blueprintQueries } from '../queries'
-import { STEP_EFFORTS, STEP_MODELS, TASK_PLACEHOLDER } from '../types'
-import type { Blueprint, BlueprintInput, BlueprintStep, StepEffort, StepModel } from '../types'
+import { STEP_EFFORTS, STEP_MODELS, TASK_PLACEHOLDER, stepsSummary } from '../types'
+import { relative } from '@/shared/lib/format'
+import type { Blueprint, BlueprintInput, BlueprintRevision, BlueprintStep, StepEffort, StepModel } from '../types'
 
 // A plain <label>: shadcn's Label ships `text-sm`, which beats `.kicker`.
 const FieldLabel = ({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) => (
@@ -32,6 +33,87 @@ const NO_EFFORT = 'default'
 
 const blankStep = (): BlueprintStep => ({ name: '', model: 'sonnet', prompt: '' })
 
+/**
+ * Past versions of one blueprint, newest first. Restoring writes a new version
+ * rather than reopening the old one, so nothing a job already ran can change
+ * underneath it — hence the immediate save, and the warning that says so.
+ */
+function RevisionHistory({ blueprint, onRestored }: { blueprint: Blueprint; onRestored: (bp: Blueprint) => void }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const { data: revisions, isLoading } = useQuery(blueprintQueries.revisions(blueprint.id))
+
+  const restore = useMutation({
+    mutationFn: (version: number) => restoreRevision({ data: { id: blueprint.id, version } }),
+    onSuccess: (bp) => {
+      qc.invalidateQueries({ queryKey: blueprintQueries.all })
+      toast.success(`Restored as v${bp.version}`)
+      onRestored(bp)
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : String(e)),
+  })
+
+  const line = (rev: BlueprintRevision) => (
+    <li key={rev.version} className="flex flex-col gap-1.5 py-2.5 lg:flex-row lg:items-start lg:gap-3">
+      <span className="flex shrink-0 items-center gap-2 lg:w-[190px]">
+        <span className="font-mono text-[12px] text-txt">v{rev.version}</span>
+        {rev.version === blueprint.version && (
+          <span className="rounded-sm bg-ember-deep/25 px-1.5 py-px font-mono text-[10px] text-ember-soft">current</span>
+        )}
+        {rev.source === 'seed' && (
+          <span className="rounded-sm border border-hairline px-1.5 py-px font-mono text-[10px] text-txt-faint">
+            shipped
+          </span>
+        )}
+        <span className="font-mono text-[11px] text-txt-faint">{relative(rev.createdAt)}</span>
+      </span>
+      <span className="min-w-0 flex-1">
+        {rev.note && <span className="block truncate text-[12px] text-txt-dim">{rev.note}</span>}
+        <span className="block truncate font-mono text-[11px] text-txt-faint" title={stepsSummary(rev.steps)}>
+          {stepsSummary(rev.steps)}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={() => restore.mutate(rev.version)}
+        disabled={rev.version === blueprint.version || restore.isPending}
+        title={`Restore v${rev.version}`}
+        className="flex shrink-0 items-center gap-1 self-end p-1 font-mono text-[11px] text-txt-faint transition-colors hover:text-ember-soft disabled:opacity-0 lg:self-start"
+      >
+        <RotateCcw className="size-3" />
+        Restore
+      </button>
+    </li>
+  )
+
+  return (
+    <div className="rounded-md border border-hairline bg-iron-900/60">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
+      >
+        <History className="size-3.5 shrink-0 text-txt-faint" />
+        <span className="text-[13px] font-medium text-txt">History</span>
+        <span className="font-mono text-[11px] text-txt-faint">
+          {revisions ? `${revisions.length} version${revisions.length === 1 ? '' : 's'}` : `v${blueprint.version}`}
+        </span>
+        <span className="ml-auto font-mono text-[11px] text-txt-faint">{open ? 'hide' : 'show'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-hairline px-3.5 py-1">
+          {isLoading && <p className="py-2.5 font-mono text-[11px] text-txt-faint">loading…</p>}
+          <ul className="divide-y divide-hairline">{revisions?.map(line)}</ul>
+          <p className="py-2.5 font-mono text-[11px] text-txt-faint">
+            Restoring saves straight away as a new version — it never rewrites an old one, so jobs that ran it keep
+            meaning what they meant. Any unsaved edits above are discarded.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Create when `blueprint` is absent, edit otherwise. The trigger is the caller's. */
 export function BlueprintEditorDialog({ blueprint, trigger }: { blueprint?: Blueprint; trigger: React.ReactNode }) {
   const qc = useQueryClient()
@@ -39,13 +121,16 @@ export function BlueprintEditorDialog({ blueprint, trigger }: { blueprint?: Blue
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [steps, setSteps] = useState<Array<BlueprintStep>>([blankStep()])
+  /** Kept with the revision this save writes. Never carried into the next save. */
+  const [note, setNote] = useState('')
 
   // Seed from the blueprint each time the dialog opens, so a cancelled edit
   // never leaks into the next one.
-  const load = () => {
-    setName(blueprint?.name ?? '')
-    setDescription(blueprint?.description ?? '')
-    setSteps(blueprint ? blueprint.steps.map((s) => ({ ...s })) : [blankStep()])
+  const load = (from: Blueprint | undefined = blueprint) => {
+    setName(from?.name ?? '')
+    setDescription(from?.description ?? '')
+    setSteps(from ? from.steps.map((s) => ({ ...s })) : [blankStep()])
+    setNote('')
   }
 
   const mutation = useMutation({
@@ -53,7 +138,7 @@ export function BlueprintEditorDialog({ blueprint, trigger }: { blueprint?: Blue
       blueprint ? updateBlueprint({ data: { id: blueprint.id, ...input } }) : createBlueprint({ data: input }),
     onSuccess: (bp) => {
       qc.invalidateQueries({ queryKey: blueprintQueries.all })
-      toast.success(blueprint ? `Blueprint "${bp.name}" saved` : `Blueprint "${bp.name}" created`)
+      toast.success(`Blueprint "${bp.name}" ${blueprint ? 'saved' : 'created'} as v${bp.version}`)
       setOpen(false)
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : String(e)),
@@ -76,7 +161,7 @@ export function BlueprintEditorDialog({ blueprint, trigger }: { blueprint?: Blue
 
   const submit = () => {
     if (!ready) return
-    mutation.mutate({ name, description: description.trim() || undefined, steps })
+    mutation.mutate({ name, description: description.trim() || undefined, steps, note: note.trim() || undefined })
   }
 
   return (
@@ -197,6 +282,22 @@ export function BlueprintEditorDialog({ blueprint, trigger }: { blueprint?: Blue
               Add step
             </Button>
           </div>
+
+          {blueprint && (
+            <>
+              <div>
+                <FieldLabel htmlFor="bp-note">What changed</FieldLabel>
+                <Input
+                  id="bp-note"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={`optional — kept with v${blueprint.version + 1}`}
+                  className={`h-10 ${FIELD}`}
+                />
+              </div>
+              <RevisionHistory blueprint={blueprint} onRestored={(bp) => load(bp)} />
+            </>
+          )}
         </div>
 
         <DialogFooter className="gap-2 border-t border-hairline bg-iron-900/60 px-5 py-4 sm:px-6">

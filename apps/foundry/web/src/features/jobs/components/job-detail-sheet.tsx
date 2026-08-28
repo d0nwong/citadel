@@ -9,7 +9,7 @@ import { cancelJob, followUpJob, rerunJob } from '../api'
 import { jobQueries } from '../queries'
 import { forgeQueries } from '@/features/forges/queries'
 import { clockTime, duration } from '@/shared/lib/format'
-import { stepsSummary } from '@/features/blueprints/types'
+import { blueprintLabel, stepsSummary } from '@/features/blueprints/types'
 import { repoDestination, repoLabel } from '@/features/repos/types'
 import { cn } from '@/shared/lib/utils'
 import { shortId } from '../types'
@@ -161,7 +161,7 @@ export function JobDetailSheet({
                 {job.forge}
                 {job.blueprint && (
                   <span className="mt-0.5 block truncate text-[10px] text-txt-faint" title={stepsSummary(job.blueprint.steps)}>
-                    {job.blueprint.name} · {job.blueprint.steps.length} steps
+                    {blueprintLabel(job.blueprint)} · {job.blueprint.steps.length} steps
                   </span>
                 )}
               </Meta>

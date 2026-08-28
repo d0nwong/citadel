@@ -45,7 +45,11 @@ import { forgeQueries } from "@/features/forges/queries";
 import { repoQueries } from "@/features/repos/queries";
 
 import { cn } from "@/shared/lib/utils";
-import { stepsSummary } from "@/features/blueprints/types";
+import {
+  DEFAULT_BLUEPRINT_ID,
+  blueprintLabel,
+  stepsSummary,
+} from "@/features/blueprints/types";
 import { localRef, repoLabel } from "@/features/repos/types";
 import { shortId } from "../types";
 import type { NewJobInput } from "../types";
@@ -79,10 +83,18 @@ export function NewJobDialog() {
   const [baseBranch, setBaseBranch] = useState("");
   /** Whether the field holds the repo's last-ignited base rather than origin's default. */
   const [baseRemembered, setBaseRemembered] = useState(false);
-  const [blueprintId, setBlueprintId] = useState(NO_BLUEPRINT);
+  /** Null until the user picks — the seeded default stands in the meantime. */
+  const [picked, setPicked] = useState<string | null>(null);
 
   const { data: repos } = useQuery(repoQueries.list());
   const { data: blueprints } = useQuery(blueprintQueries.list());
+  // Derived rather than seeded into state by an effect, so the Select lands on
+  // the default the moment the list resolves — and falls back to a bare single
+  // step if the seeded blueprint has been deleted.
+  const seededDefault = blueprints?.some((b) => b.id === DEFAULT_BLUEPRINT_ID)
+    ? DEFAULT_BLUEPRINT_ID
+    : NO_BLUEPRINT;
+  const blueprintId = picked ?? seededDefault;
   const blueprint = blueprints?.find((b) => b.id === blueprintId);
 
   const reset = () => {
@@ -90,7 +102,7 @@ export function NewJobDialog() {
     setTask("");
     setBaseBranch("");
     setBaseRemembered(false);
-    setBlueprintId(NO_BLUEPRINT);
+    setPicked(null);
   };
 
   const mutation = useMutation({
@@ -102,7 +114,7 @@ export function NewJobDialog() {
       // starts from the base it just used.
       qc.invalidateQueries({ queryKey: repoQueries.all });
       toast.success(`Job ${shortId(job.id)} queued`, {
-        description: `${job.repo.name} → ${job.forge}${job.blueprint ? ` · ${job.blueprint.name}` : ""}`,
+        description: `${job.repo.name} → ${job.forge}${job.blueprint ? ` · ${blueprintLabel(job.blueprint)}` : ""}`,
       });
       setOpen(false);
       reset();
@@ -272,7 +284,7 @@ export function NewJobDialog() {
 
           <div>
             <FieldLabel>Blueprint</FieldLabel>
-            <Select value={blueprintId} onValueChange={setBlueprintId}>
+            <Select value={blueprintId} onValueChange={setPicked}>
               <SelectTrigger className="h-10 w-full border-iron-700 bg-iron-900 font-mono text-[13px] focus-visible:ring-ember-deep">
                 <SelectValue />
               </SelectTrigger>
@@ -289,7 +301,7 @@ export function NewJobDialog() {
             </Select>
             <p className="mt-1.5 truncate font-mono text-[11px] text-txt-faint">
               {blueprint ? (
-                stepsSummary(blueprint.steps)
+                `v${blueprint.version} · ${stepsSummary(blueprint.steps)}`
               ) : (
                 <>
                   Define multi-step runs on the{" "}

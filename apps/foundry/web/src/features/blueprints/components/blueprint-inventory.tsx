@@ -101,6 +101,7 @@ export function BlueprintInventory() {
             <span className="flex items-center gap-2 text-[13.5px] font-medium text-txt">
               <Layers className="size-3.5 shrink-0 text-txt-faint" />
               <span className="truncate">{bp.name}</span>
+              <span className="shrink-0 font-mono text-[11px] text-txt-faint">v{bp.version}</span>
             </span>
             {bp.description && <span className="mt-0.5 block text-[12px] text-txt-dim">{bp.description}</span>}
           </span>

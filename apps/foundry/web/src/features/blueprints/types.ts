@@ -15,6 +15,15 @@ export type StepEffort = (typeof STEP_EFFORTS)[number]
 /** The placeholder a step prompt uses for the job's task text. */
 export const TASK_PLACEHOLDER = '{{task}}'
 
+/**
+ * "Plan → Execute", seeded by migration 0007 — what the ignite dialog starts on,
+ * because planning first is the right default for a task nobody is watching.
+ * Matched by id, not by name: the row is the user's to rename or rewrite, and
+ * only deleting it should change what a fresh job defaults to (then: no
+ * blueprint, one bare step).
+ */
+export const DEFAULT_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000001'
+
 export interface BlueprintStep {
   name: string
   model: StepModel
@@ -29,8 +38,30 @@ export interface Blueprint {
   name: string
   description?: string
   steps: Array<BlueprintStep>
+  /** Bumped on every save; `blueprint_revisions` holds each one's content. */
+  version: number
   createdAt: number
   updatedAt: number
+}
+
+/**
+ * Who wrote a revision. `seed` marks content a migration shipped and nobody has
+ * touched since — the one case where a later migration may improve a blueprint
+ * in place. One `user` revision and the row is the user's for good.
+ */
+export const REVISION_SOURCES = ['seed', 'user'] as const
+export type RevisionSource = (typeof REVISION_SOURCES)[number]
+
+/** One saved state of a blueprint. Append-only: restoring writes a new version. */
+export interface BlueprintRevision {
+  version: number
+  name: string
+  description?: string
+  steps: Array<BlueprintStep>
+  source: RevisionSource
+  /** What changed, if whoever saved it said. */
+  note?: string
+  createdAt: number
 }
 
 /**
@@ -40,6 +71,12 @@ export interface Blueprint {
 export interface BlueprintSnapshot {
   id: string
   name: string
+  /**
+   * Which revision ran — this is what makes "did v4 do better than v3" a
+   * question the ledger can answer. Absent on jobs queued before blueprints
+   * were versioned, so it stays optional forever.
+   */
+  version?: number
   steps: Array<BlueprintStep>
 }
 
@@ -47,6 +84,8 @@ export interface BlueprintInput {
   name: string
   description?: string
   steps: Array<BlueprintStep>
+  /** One line on what changed, kept with the revision this save creates. */
+  note?: string
 }
 
 export const isStepModel = (s: string): s is StepModel => (STEP_MODELS as ReadonlyArray<string>).includes(s)
@@ -54,3 +93,10 @@ export const isStepEffort = (s: string): s is StepEffort => (STEP_EFFORTS as Rea
 
 /** `plan · fable → execute · sonnet` — the one-line summary of a step list. */
 export const stepsSummary = (steps: Array<BlueprintStep>) => steps.map((s) => `${s.name} · ${s.model}`).join(' → ')
+
+/**
+ * `Plan → Execute v3` — how a blueprint is named wherever a job refers to one.
+ * Jobs from before versioning have no version and read as just the name.
+ */
+export const blueprintLabel = (bp: { name: string; version?: number }) =>
+  bp.version === undefined ? bp.name : `${bp.name} v${bp.version}`
