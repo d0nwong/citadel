@@ -1,15 +1,20 @@
 ---
 name: slack-digest
-description: Incrementally digest #dev-team Slack activity into a daily markdown file (digests/YYYY-MM-DD.md) with permalinks, so a part-time teammate can catch up on decisions they missed. Designed to run hourly via /loop. Use when asked to digest the dev channel, catch up on Slack, or when invoked as /slack-digest.
+description: Incrementally digest #dev-team Slack activity into a daily markdown file (digests/YYYY-MM-DD.md) with permalinks, so a part-time teammate can catch up on decisions they missed. Normally invoked as step 1 of /sweep; can also run standalone or hourly via /loop. Use when asked to digest the dev channel, catch up on Slack, or when invoked as /slack-digest.
 ---
 
-# slack-digest — hourly catch-up digest for #dev-team
+# slack-digest — incremental catch-up digest for #dev-team
 
 Purpose: the user is part-time and misses decisions made in Slack, which makes the
 dual-tier feature docs (`alden/alden-portal/features/*/docs/`) go stale. Each run reads
 only the messages that arrived since the last run and merges them into today's digest
-file. At the end of the day the user reads the digest and picks items to push through
-`/log-change` / `/feature-docs`.
+file.
+
+Normally this runs as step 1 of `/sweep` (`skills/sweep/SKILL.md`), which then triages
+the digest *file* and drives `/log-change` / `/feature-docs` itself. A standalone run or
+an hourly `/loop` is also fine — the digest is incremental and catch-up-safe either way,
+and a sweep after a gap simply backfills. Without a sweep, the end-of-day pass falls to
+the user reading the digest and pushing 🔴 items through `/log-change` by hand.
 
 Constants:
 - Channel: **#dev-team**, id `C07KG06L601`, workspace `alden-studios.slack.com`

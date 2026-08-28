@@ -146,16 +146,39 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     const { auditJournal } = await import("./commands/audit.ts");
     const index = await Bun.file(`${ROOT}/.state/accio-index.json`).json();
     const dir = `${ROOT}/.state/test-audit-journal`;
+    // decided entries age (open >14 days nags), so their fixture dates are relative to now
+    const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
     await Bun.write(`${dir}/tasks/journal/2026-08-20-good.md`, [
-      "---", "date: 2026-08-20", 'source: "meeting"', "ticket: ALD-42",
+      "---", `date: ${daysAgo(5)}`, 'source: "meeting"', "ticket: ALD-42",
       "features: [tasks]", "scope: product", "status: decided",
       "summary: something agreed", "---", "Details.",
     ].join("\n"));
     // a landed entry: PR key + merge sha + a ticket LIST (one landing can advance several)
     await Bun.write(`${dir}/tasks/journal/2026-08-22-fe363-landed.md`, [
       "---", "date: 2026-08-22", "pr: fe#363", "merge: 597bfbdf3",
-      "ticket: [ALD-42, ALD-43]", "features: [tasks]", "scope: product",
+      "ticket: [ALD-43, ALD-44]", "features: [tasks]", "scope: product",
       "status: documented", "summary: it landed", "---",
+    ].join("\n"));
+    // decided, and its ticket has since landed in another entry — the loop closed unlinked
+    await Bun.write(`${dir}/tasks/journal/2026-08-19-dangling.md`, [
+      "---", `date: ${daysAgo(5)}`, "ticket: ALD-43", "features: [tasks]",
+      "scope: product", "status: decided", "summary: landed elsewhere", "---",
+    ].join("\n"));
+    // a decision properly closed by its landing entry — terminal, exempt from the pr rule
+    await Bun.write(`${dir}/tasks/journal/2026-08-18-superseded-ok.md`, [
+      "---", `date: ${daysAgo(30)}`, "pr: null", "ticket: ALD-44", "features: [tasks]",
+      "scope: product", "status: superseded", "summary: closed by fe363-landed", "---",
+    ].join("\n"));
+    // decided, no landing anywhere, open past the age limit, and not parked
+    await Bun.write(`${dir}/tasks/journal/2026-08-10-stale-decided.md`, [
+      "---", `date: ${daysAgo(20)}`, "ticket: ALD-90", "features: [tasks]",
+      "scope: product", "status: decided", "summary: never landed", "---",
+    ].join("\n"));
+    // …but a parked decision waits quietly, however old
+    await Bun.write(`${dir}/tasks/journal/2026-08-09-parked-decided.md`, [
+      "---", `date: ${daysAgo(40)}`, "ticket: ALD-91", "features: [tasks]",
+      "scope: product", "status: decided", 'hold: "waiting on BE capacity"',
+      "summary: parked on purpose", "---",
     ].join("\n"));
     // pushed straight to staging — `direct` is a valid key, and still needs its sha
     await Bun.write(`${dir}/tasks/journal/2026-08-23-direct-ok.md`, [
@@ -169,7 +192,7 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     ].join("\n"));
     // `decided` means not in code — naming a landing contradicts it
     await Bun.write(`${dir}/tasks/journal/2026-08-25-contradiction.md`, [
-      "---", "date: 2026-08-25", "pr: fe#370", "merge: 550bc135e", "features: [tasks]",
+      "---", `date: ${daysAgo(3)}`, "pr: fe#370", "merge: 550bc135e", "features: [tasks]",
       "scope: product", "status: decided", "summary: says decided, but it shipped", "---",
     ].join("\n"));
     await Bun.write(`${dir}/tasks/journal/2026-08-21-bad.md`, [
@@ -201,7 +224,8 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     // filed in a feature folder its own `features:` list never names
     expect(problems.some(x => x.includes("bad") && x.includes("filed under `tasks`"))).toBe(true);
     // a landing named properly is clean, ticket list and `direct` included
-    expect(problems.some(x => x.includes("fe363-landed"))).toBe(false);
+    // (match the subject prefix — the dangling-decided message cites this entry by name)
+    expect(problems.some(x => x.includes("fe363-landed.md:"))).toBe(false);
     expect(problems.some(x => x.includes("direct-ok"))).toBe(false);
     // …and an entry nobody can retrieve is not
     expect(problems.some(x => x.includes("unretrievable") && x.includes("pr `pr-363`"))).toBe(true);
@@ -212,6 +236,13 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     // a stated hold parks the entry; a blank one is just a silenced nag
     expect(problems.some(x => x.includes("2026-08-02-held"))).toBe(false);
     expect(problems.some(x => x.includes("held-blank") && x.includes("no reason"))).toBe(true);
+    // a decided entry whose ticket landed in another entry is a loop closed unlinked…
+    expect(problems.some(x => x.includes("dangling") && x.includes("ALD-43 landed as fe#363"))).toBe(true);
+    // …one properly flipped to superseded is terminal and clean, with no pr required
+    expect(problems.some(x => x.includes("superseded-ok"))).toBe(false);
+    // an unlanded decision open past the age limit nags; a parked one waits quietly
+    expect(problems.some(x => x.includes("stale-decided") && x.includes("still open"))).toBe(true);
+    expect(problems.some(x => x.includes("parked-decided"))).toBe(false);
     await Bun.$`rm -rf ${dir}`.quiet();
   });
 

@@ -52,6 +52,14 @@ nothing. Check Linear (team `Liamai`) for an issue matching the change and use i
 untracked work — an audit nag, not an error. **A ticket the landing implements but does not
 close stays open; say so under `## Watch out` rather than assuming a merge means done.**
 
+**2b. Close the loop to any earlier decision.** Before writing an `implemented` entry,
+grep `features/*/journal/` for open `decided` entries carrying the same ticket or the same
+features (`grep -rl 'status: decided' alden/alden-portal/features/*/journal/`). On a hit:
+the new entry links the decision (`[[its-name]]`, plus its ticket in `ticket:`), and the
+decided entry flips to `status: superseded` — the one field allowed to change. A landing
+journaled without this check is how the journal ends up with two disconnected entries
+about the same change; `accio audit` flags the dangle, but catching it here is cheaper.
+
 **3. Collect what git can't tell you** (ask only for what's missing; don't interrogate):
 
 - `source` — Slack thread, meeting, customer, or null. A permalink beats a paraphrase.
@@ -74,7 +82,7 @@ merge: 597bfbdf3 # the staging commit; diff = 597bfbdf3^1..597bfbdf3
 ticket: [LIA-48] # Linear keys / Trello links, or null
 features: [admin-invoicings] # manifest ids, FLOW style — greppable routing
 scope: both # product | architecture | both
-status: implemented # decided | implemented | documented
+status: implemented # decided | implemented | documented | superseded
 hold: "the BE half never shipped" # optional — parks the entry open, with a reason
 summary: Draft-invoice lines edit by credits or by amount, and the save sends the whole project array
 ---
@@ -102,7 +110,10 @@ _Detail: `git -C ~/git/alden-portal-fe diff 597bfbdf3^1..597bfbdf3` · `bb pr-de
 
 - change NOT in code yet (FE or BE) → `status: decided`, `pr: null`. Write the entry. STOP —
   docs are not touched (facts-only rule). The entry is the record of intent until code
-  lands; when it does, a NEW entry records the landing and links back to this one.
+  lands; when it does, a NEW entry records the landing, links back to this one, and this
+  one flips to `status: superseded` (step 2b). A decision parked deliberately gets a
+  `hold:`; one left open with neither nags after two weeks — that is the audit telling you
+  it may have shipped without you noticing.
 - landed (FE or BE) → `status: implemented`, continue to step 6. A backend-only landing
   counts: the `stale` check diffs FE code only, so this entry is what flags the feature for
   a re-run with backend verification.
@@ -143,5 +154,9 @@ ids, ticket and PR format, and flags implemented entries the refresh loop missed
 - **`pr: direct` is a finding, not a formality.** Work reaching staging without a PR skipped
   CI; the entry is the record of that. Keep `merge:` so the diff is still one command away.
 - After creation, only `status` may change. Corrections get a new entry that references the
-  old one.
+  old one. Statuses move forward only: `decided → superseded` (a landing entry took over)
+  or `implemented → documented`; `superseded` and `documented` are terminal.
+- **Never guess to fill frontmatter.** A wrong ticket key silently misroutes every future
+  grep; `ticket: null` / `source: null` is recoverable, a plausible-looking guess is not.
+  This matters most when running unattended under `/sweep` with nobody to ask.
 - Keep it short. If an entry needs a fourth section, it is probably narrating the diff.
