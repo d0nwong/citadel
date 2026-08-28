@@ -134,7 +134,7 @@ async function featuresOf(files: string[]): Promise<{ mapped: [string, number][]
 async function journalled(): Promise<Map<string, string[]>> {
   const seen = new Map<string, string[]>();
   const items = (v: string) => v.replace(/^\[|\]$/g, "").split(",").map(s => s.trim()).filter(Boolean);
-  for await (const path of new Bun.Glob("**/journal/*.md").scan({ cwd: FEATURES_DIR, absolute: true })) {
+  for await (const path of new Bun.Glob("**/journal/**/*.md").scan({ cwd: FEATURES_DIR, absolute: true })) {
     const text = await Bun.file(path).text();
     const keys = [
       ...items(text.match(/^pr:[ \t]*(.+)$/m)?.[1]?.replace(/\s+#.*$/, "") ?? "").filter(k => /^(fe|be)#\d+$/.test(k)),
