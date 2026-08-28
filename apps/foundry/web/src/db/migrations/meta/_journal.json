@@ -64,6 +64,13 @@
       "when": 1787899274667,
       "tag": "0008_blueprint_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787900491685,
+      "tag": "0009_striped_tag",
+      "breakpoints": true
     }
   ]
 }

@@ -525,7 +525,9 @@ cmd_rm() {
 }
 
 # Web-UI jobs leave their workspaces under ~/.foundry/jobs/<id>/ so a finished
-# job stays inspectable. This is the corresponding broom.
+# job stays inspectable. This is the corresponding broom. It does not touch
+# ~/.foundry/logs/<id>.jsonl: the clone is large and reproducible, the log is
+# neither — purging the job in the web UI is what deletes that.
 cmd_jobs() {
   case "${1:-}" in
     prune)
@@ -589,6 +591,7 @@ foundry — Claude Code forges on OrbStack
 
   web jobs
     foundry jobs prune [--days N]     delete job workspaces older than N days (default 7)
+                                      job logs (~/.foundry/logs/<id>.jsonl) are kept
 USAGE
 }
 
