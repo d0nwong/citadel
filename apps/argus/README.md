@@ -100,6 +100,29 @@ stateDiagram-v2
 `decided` entry whose ticket landed in another entry, a `hold:` with no reason — each is
 a named problem, and the sweep report carries them verbatim.
 
+## What each source is for
+
+Every source is in the loop because it is the **only** place one kind of truth lives, and
+nothing is trusted for a question it cannot answer.
+
+| External source | Owns | Why nothing else can answer it |
+|---|---|---|
+| **#dev-team Slack** | Intent — what was decided, who asked, why | The only source that exists *before* code or tickets do, and the most perishable: a decision scrolls away in a day. Git can never answer "why". |
+| **FE / BE repos** (`origin/staging`, `origin/dev`) | What actually happened | Code is ground truth; everything else is claims about it — a thread can say "the endpoint now fully replaces" while `origin/dev` proves it doesn't. Always read via `origin/<ref>`: local trees go stale silently, and a stale read invents facts instead of erroring. |
+| **Linear** (team `Liamai`) | Your commitments | One-person truth: what you are on the hook for. Teammates don't reference these keys, so it can't say what *they* did — and it records intent-to-do, so the system annotates but never closes; only you can judge whether a landing discharged the intent. |
+
+The derived files each cache one join so it is never recomputed:
+
+| Derived file | The join it caches |
+|---|---|
+| `digests/` | Slack made durable — permalinked and triaged, so nothing ever re-reads raw threads |
+| `features/*/journal/` | The spine: *this* decision + *this* ticket + *this* landing. That connection exists in no single external source — Slack doesn't know the PR, git doesn't know the why, Linear doesn't know the merge sha — which is why frontmatter is never guessed: a wrong key corrupts the only record of the join. |
+| `features/*/docs/` | The repos distilled to present-tense facts, sha-stamped (`last_verified` / `last_verified_be`) so staleness is detectable rather than suspected |
+| `.doc-workspace/` (manifest + OpenAPI) | Routing — which files and endpoints belong to which feature; what lets a diff or an endpoint named in Slack be attributed at all |
+
+The sweep just walks these in order: capture the perishable one, check claims against
+ground truth, join, and surface only the judgement calls.
+
 ## Layout
 
 | Path | What it is |

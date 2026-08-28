@@ -54,7 +54,8 @@ close stays open; say so under `## Watch out` rather than assuming a merge means
 
 **2b. Close the loop to any earlier decision.** Before writing an `implemented` entry,
 grep `features/*/journal/` for open `decided` entries carrying the same ticket or the same
-features (`grep -rl 'status: decided' alden/alden-portal/features/*/journal/`). On a hit:
+features (`grep -rl 'status: decided' alden/alden-portal/features/*/journal/ alden/alden-portal/features/*/*/journal/`
+— both globs: nested features keep their journal a level deeper). On a hit:
 the new entry links the decision (`[[its-name]]`, plus its ticket in `ticket:`), and the
 decided entry flips to `status: superseded` — the one field allowed to change. A landing
 journaled without this check is how the journal ends up with two disconnected entries
