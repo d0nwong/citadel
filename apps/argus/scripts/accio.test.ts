@@ -165,8 +165,8 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
       "scope: product", "status: decided", "summary: landed elsewhere", "---",
     ].join("\n"));
     // a decision properly closed by its landing entry — terminal, exempt from the pr rule
-    // (filed under a YYYY-MM month dir — the audit must read both journal depths)
-    await Bun.write(`${dir}/tasks/journal/2026-08/2026-08-18-superseded-ok.md`, [
+    // (filed under YYYY-MM/YYYY-MM-DD dirs — the audit must read every journal depth)
+    await Bun.write(`${dir}/tasks/journal/2026-08/2026-08-18/2026-08-18-superseded-ok.md`, [
       "---", `date: ${daysAgo(30)}`, "pr: null", "ticket: ALD-44", "features: [tasks]",
       "scope: product", "status: superseded", "summary: closed by fe363-landed", "---",
     ].join("\n"));

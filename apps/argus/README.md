@@ -129,7 +129,7 @@ ground truth, join, and surface only the judgement calls.
 |---|---|
 | `digests/` | daily Slack digests (`.state.json` is gitignored cursor state) |
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
-| `alden/alden-portal/features/<dir>/journal/YYYY-MM/` | change journal, one file per landing, grouped by month |
+| `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
 | `alden/alden-portal/.doc-workspace/` | feature manifest + OpenAPI snapshot |
 | `skills/` | the workers and the scheduler (`sweep`, `slack-digest`, `log-change`, `feature-docs`, `linear-ticket`, `api-lookup`, `office-hours`) |
 | `scripts/accio.ts` | index / sync / audit over docs + journal |
