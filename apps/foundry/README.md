@@ -27,6 +27,7 @@ flowchart LR
 
     remote["GitHub / Bitbucket"]
     linear["Linear MCP<br/>mcp.linear.app"]
+    slack["Slack MCP<br/>mcp.slack.com"]
 
     cli -- "new · claude · shell · exec · run" --> forge
     auth -- "injected" --> forge
@@ -36,6 +37,7 @@ flowchart LR
     forge -. "gateway token" .-> mcp
     jobforge -. "gateway token" .-> mcp
     mcp -- "LINEAR_API_KEY (host only)" --> linear
+    mcp -- "SLACK_MCP_TOKEN (host only)" --> slack
 
     web -- "job ledger" --> pg
     web -- "clone repo" --> jobs
@@ -76,27 +78,38 @@ your PATH — `ln -s "$PWD/bin/foundry" ~/.local/bin/foundry` (no sudo, unlike
 
 ### Auth
 
+`foundry auth` opens an interactive picker — the Claude credential plus every MCP
+upstream from `infra/mcp/config.json`, each with its auth status; arrow keys +
+enter (re)authenticate one. Non-interactive: `--claude`, `--api-key`, `--linear`,
+`--slack`.
+
 Claude Code on macOS keeps its credential in the **Keychain**, which Linux containers
-can't read. So `foundry auth` runs `claude setup-token` and stores the long-lived
+can't read. So the `claude` row runs `claude setup-token` and stores the long-lived
 token in `~/.foundry/env` (chmod 600), injected into every forge as
 `CLAUDE_CODE_OAUTH_TOKEN`. Use `foundry auth --api-key` for a plain API key instead.
 
-### MCP gateway (Linear)
+### MCP gateway (Linear, Slack)
 
 Forges never hold third-party credentials. Instead the infra stack runs an MCP
 gateway ([mcp-proxy](https://github.com/tbxark/mcp-proxy), `infra/mcp/config.json`)
-that holds your Linear API key on the host and re-exposes Linear's MCP server at
-`host.docker.internal:9090/linear/mcp`, behind a per-install gateway token.
+that holds your Linear and Slack keys on the host and re-exposes their MCP
+servers at `host.docker.internal:9090/{linear,slack}/mcp`, behind a per-install
+gateway token.
 
 ```sh
 foundry auth --linear          # stores LINEAR_API_KEY + a generated FOUNDRY_MCP_TOKEN in ~/.foundry/env
+foundry auth --slack           # optional: a Slack user token (xoxp-…), so tickets' Slack links resolve
 bun run infra:up               # now also starts foundry-mcp (mcp.foundry.local)
 foundry recreate <name>        # existing forges pick the gateway up on next start
 ```
 
-Every forge — interactive, `foundry run`, or a web-UI job — then has a `linear`
-MCP server registered (`box-init` does it on each start), so `/work LIA-12` can
-fetch the ticket itself. Adding another upstream is one more `mcpServers` entry in
+Every forge — interactive, `foundry run`, or a web-UI job — then has the
+configured servers registered (`box-init` does it on each start, from
+`FOUNDRY_MCP_SERVERS`), so `/work LIA-12` can fetch the ticket itself — and read
+the Slack thread the ticket links to. The Slack token comes from a Slack app of
+your workspace with MCP access enabled (one manual OAuth exchange mints the
+`xoxp-…` token; see [Slack's MCP server docs](https://docs.slack.dev/ai/slack-mcp-server/)).
+Adding another upstream is one more `mcpServers` entry in
 `infra/mcp/config.json` plus its secret in `~/.foundry/env`; see `infra/README.md`.
 
 ## Daily use

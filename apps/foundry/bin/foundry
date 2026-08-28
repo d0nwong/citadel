@@ -44,16 +44,22 @@ require_forge() { exists "$1" || die "no forge named '$1' (see: foundry ls)"; }
 ensure_up() { running "$1" || { info "starting $1"; docker start "$(cname "$1")" >/dev/null; }; }
 
 load_env() {
+  local servers
   CRED_ARGS=()
   [ -f "$ENVFILE" ] || return 0
   # shellcheck disable=SC1090
   set -a; . "$ENVFILE"; set +a
   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && CRED_ARGS+=(-e "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
   [ -n "${ANTHROPIC_API_KEY:-}"        ] && CRED_ARGS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
-  # The MCP gateway (infra/, `foundry auth --linear`): forges get its URL and a
-  # gateway token only — the Linear key itself never leaves the host.
+  # The MCP gateway (infra/, `foundry auth --linear` / `--slack`): forges get
+  # its URL, a gateway token, and the list of upstreams actually configured —
+  # the Linear/Slack keys themselves never leave the host.
   if [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
     CRED_ARGS+=(-e "FOUNDRY_MCP_TOKEN=$FOUNDRY_MCP_TOKEN" -e "FOUNDRY_MCP_URL=http://host.docker.internal:$(mcp_port)")
+    servers=""
+    [ -n "${LINEAR_API_KEY:-}" ] && servers="linear"
+    [ -n "${SLACK_MCP_TOKEN:-}" ] && servers="${servers:+$servers,}slack"
+    [ -n "$servers" ] && CRED_ARGS+=(-e "FOUNDRY_MCP_SERVERS=$servers")
   fi
   return 0
 }
@@ -92,37 +98,42 @@ cmd_doctor() {
   else warn "no $ENVFILE — run: foundry auth"; fi
   command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1 \
     && ok "gh authed (available to forges created with --github)" || warn "gh not authed on host"
-  if [ -n "${LINEAR_API_KEY:-}" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
+  local upstreams=""
+  [ -n "${LINEAR_API_KEY:-}" ] && upstreams="linear"
+  [ -n "${SLACK_MCP_TOKEN:-}" ] && upstreams="${upstreams:+$upstreams, }slack"
+  if [ -n "$upstreams" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
     if curl -fsS -m 3 "http://localhost:$(mcp_port)/_readyz" >/dev/null 2>&1; then
-      ok "mcp gateway ready on :$(mcp_port) (linear)"
-    else warn "linear configured but the mcp gateway is not up — run: bun run infra:up"; fi
-  else warn "no LINEAR_API_KEY — forges cannot reach Linear (foundry auth --linear)"; fi
+      ok "mcp gateway ready on :$(mcp_port) ($upstreams)"
+    else warn "$upstreams configured but the mcp gateway is not up — run: bun run infra:up"; fi
+  else warn "no MCP upstream key — forges cannot reach Linear or Slack (foundry auth --linear / --slack)"; fi
   local n; n=$(docker ps -aq --filter "label=$LABEL" | wc -l | tr -d ' ')
   ok "$n forge(s) defined"
   return $fail
 }
 
-cmd_auth() {
-  mkdir -p "$STATE"; touch "$ENVFILE"; chmod 600 "$ENVFILE"
-  if [ "${1:-}" = "--api-key" ]; then
-    local key; read -rsp "ANTHROPIC_API_KEY: " key; echo >&2
-    [ -n "$key" ] || die "empty key"
-    write_env ANTHROPIC_API_KEY "$key"; ok "stored ANTHROPIC_API_KEY in $ENVFILE"; return
-  fi
-  if [ "${1:-}" = "--linear" ]; then
-    say "${c_dim}personal API key from https://linear.app/settings/account/security — it stays on the host, behind the MCP gateway${c_0}"
-    local key; read -rsp "LINEAR_API_KEY (lin_api_...): " key; echo >&2
-    [ -n "$key" ] || die "empty key"
-    write_env LINEAR_API_KEY "$key"; ok "stored LINEAR_API_KEY in $ENVFILE"
-    load_env
-    if [ -z "${FOUNDRY_MCP_TOKEN:-}" ]; then
-      need openssl
-      write_env FOUNDRY_MCP_TOKEN "$(openssl rand -hex 24)"
-      ok "generated FOUNDRY_MCP_TOKEN (what forges present to the gateway)"
-    fi
-    say "${c_dim}next: 'bun run infra:up' starts the gateway; existing forges need 'foundry recreate <name>'${c_0}"
-    return
-  fi
+# "name<TAB>ENV_VAR" per upstream in infra/mcp/config.json — the auth menu,
+# the --<name> flags, and the credential prompts all derive from this, so a
+# new upstream in the config shows up in `foundry auth` by itself.
+mcp_upstreams() {
+  awk '
+    /"mcpServers"[[:space:]]*:[[:space:]]*\{/ { on=1; depth=1; next }
+    on {
+      # A key opening an object at depth 1 is a server name; deeper ones
+      # (headers, options) are its innards.
+      if (depth == 1 && match($0, /^[[:space:]]*"[A-Za-z0-9_-]+"[[:space:]]*:[[:space:]]*\{/)) {
+        name=$0; sub(/^[[:space:]]*"/,"",name); sub(/".*/,"",name); found=0
+      }
+      if (name != "" && !found && match($0, /\$\{[A-Z0-9_]+\}/)) {
+        print name "\t" substr($0, RSTART+2, RLENGTH-3); found=1
+      }
+      depth += gsub(/\{/,"{") - gsub(/\}/,"}")
+      if (depth == 1) name=""
+      if (depth <= 0) on=0
+    }
+  ' "$ROOT/infra/mcp/config.json"
+}
+
+auth_claude() {
   need claude
   info "running 'claude setup-token' — approve in the browser, then paste the token back here"
   say "${c_dim}(your Mac keychain credential can't be read from Linux, so forges need a long-lived token)${c_0}"
@@ -136,6 +147,127 @@ cmd_auth() {
   write_env CLAUDE_CODE_OAUTH_TOKEN "$tok"
   ok "stored CLAUDE_CODE_OAUTH_TOKEN in $ENVFILE (chmod 600)"
   say "${c_dim}existing forges need 'foundry recreate <name>' to pick it up${c_0}"
+}
+
+auth_api_key() {
+  local key; read -rsp "ANTHROPIC_API_KEY: " key; echo >&2
+  [ -n "$key" ] || die "empty key"
+  write_env ANTHROPIC_API_KEY "$key"; ok "stored ANTHROPIC_API_KEY in $ENVFILE"
+}
+
+auth_upstream() {
+  local name="$1" var="" n v
+  while IFS=$'\t' read -r n v; do [ "$n" = "$name" ] && var="$v"; done < <(mcp_upstreams)
+  [ -n "$var" ] || die "no upstream '$name' in infra/mcp/config.json"
+  case "$name" in
+    linear)
+      say "${c_dim}personal API key from https://linear.app/settings/account/security — it stays on the host, behind the MCP gateway${c_0}"
+      ;;
+    slack)
+      say "${c_dim}user OAuth token (xoxp-…) from a Slack app with MCP access enabled — see"
+      say "https://docs.slack.dev/ai/slack-mcp-server/ — it stays on the host, behind the MCP gateway${c_0}"
+      ;;
+    *)
+      say "${c_dim}the key lands in $ENVFILE and stays on the host, behind the MCP gateway${c_0}"
+      ;;
+  esac
+  local key; read -rsp "$var: " key; echo >&2
+  [ -n "$key" ] || die "empty key"
+  write_env "$var" "$key"; ok "stored $var in $ENVFILE"
+  load_env
+  if [ -z "${FOUNDRY_MCP_TOKEN:-}" ]; then
+    need openssl
+    write_env FOUNDRY_MCP_TOKEN "$(openssl rand -hex 24)"
+    ok "generated FOUNDRY_MCP_TOKEN (what forges present to the gateway)"
+  fi
+  say "${c_dim}next: 'bun run infra:up' (re)starts the gateway; existing forges need 'foundry recreate <name>'${c_0}"
+}
+
+# Single-choice arrow-key menu, drawn on stderr over MENU_ROWS. Leaves the
+# selected index in MENU_CHOICE ("" when dismissed with q or Esc).
+menu_pick() {
+  local n=${#MENU_ROWS[@]} sel=0 i key seq drawn=0 out=""
+  tput civis 2>/dev/null || true
+  while :; do
+    [ "$drawn" = 1 ] && printf '\033[%dA' "$n" >&2
+    for i in "${!MENU_ROWS[@]}"; do
+      if [ "$i" -eq "$sel" ]; then printf '\033[2K %s❯ %s%s\n' "$c_bld" "${MENU_ROWS[i]}" "$c_0" >&2
+      else printf '\033[2K   %s\n' "${MENU_ROWS[i]}" >&2; fi
+    done
+    drawn=1
+    IFS= read -rsn1 key
+    if [ "$key" = $'\033' ]; then
+      # macOS ships bash 3.2, whose read -t is integer-only; a whole second
+      # is fine here — arrow keys deliver "[A"/"[B" instantly, so the wait
+      # only happens on a bare Esc.
+      read -rsn2 -t 1 seq || seq=""
+      case "$seq" in
+        *A) sel=$(( (sel + n - 1) % n )) ;;
+        *B) sel=$(( (sel + 1) % n )) ;;
+        "") break ;;
+      esac
+    else
+      case "$key" in
+        k) sel=$(( (sel + n - 1) % n )) ;;
+        j) sel=$(( (sel + 1) % n )) ;;
+        q) break ;;
+        "") out=$sel; break ;;
+      esac
+    fi
+  done
+  tput cnorm 2>/dev/null || true
+  MENU_CHOICE=$out
+}
+
+# Rebuild MENU_ROWS/MENU_ACTIONS from the current env: the Claude credential
+# first, then every gateway upstream with whether its key is stored.
+auth_menu_rows() {
+  MENU_ROWS=(); MENU_ACTIONS=()
+  local st name var
+  if   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then st="${c_grn}✓${c_0} CLAUDE_CODE_OAUTH_TOKEN"
+  elif [ -n "${ANTHROPIC_API_KEY:-}" ];        then st="${c_grn}✓${c_0} ANTHROPIC_API_KEY"
+  else st="${c_red}✗${c_0} not configured"; fi
+  MENU_ROWS+=("$(printf '%-8s %s' claude "$st")"); MENU_ACTIONS+=(claude)
+  while IFS=$'\t' read -r name var; do
+    if [ -n "${!var:-}" ]; then st="${c_grn}✓${c_0} $var"
+    else st="${c_red}✗${c_0} not configured"; fi
+    MENU_ROWS+=("$(printf '%-8s %s' "$name" "$st")"); MENU_ACTIONS+=("upstream:$name")
+  done < <(mcp_upstreams)
+}
+
+cmd_auth() {
+  mkdir -p "$STATE"; touch "$ENVFILE"; chmod 600 "$ENVFILE"
+  case "${1:-}" in
+    --claude)  auth_claude; return ;;
+    --api-key) auth_api_key; return ;;
+    --*)       auth_upstream "${1#--}"; return ;;
+    "")        ;;
+    *) die "usage: foundry auth [--claude|--api-key|--linear|--slack]" ;;
+  esac
+  if ! { [ -t 0 ] && [ -t 2 ]; }; then
+    die "no TTY for the picker — use foundry auth --claude|--api-key|--linear|--slack"
+  fi
+  trap 'tput cnorm 2>/dev/null || true' EXIT
+  local -a MENU_ROWS MENU_ACTIONS
+  local MENU_CHOICE
+  while :; do
+    load_env
+    auth_menu_rows
+    if curl -fsS -m 2 "http://localhost:$(mcp_port)/_readyz" >/dev/null 2>&1; then
+      say "mcp gateway on :$(mcp_port): ${c_grn}ready${c_0}"
+    else
+      say "mcp gateway on :$(mcp_port): ${c_dim}not running — bun run infra:up${c_0}"
+    fi
+    say "${c_dim}↑/↓ move · enter (re)auth · q quit${c_0}"
+    menu_pick
+    [ -n "$MENU_CHOICE" ] || return 0
+    say ""
+    case "${MENU_ACTIONS[MENU_CHOICE]}" in
+      claude)     auth_claude ;;
+      upstream:*) auth_upstream "${MENU_ACTIONS[MENU_CHOICE]#upstream:}" ;;
+    esac
+    say ""
+  done
 }
 
 write_env() {
@@ -177,7 +309,7 @@ cmd_setup() {
   if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then
     ok "credential already in $ENVFILE"
   else
-    cmd_auth
+    cmd_auth --claude
   fi
 
   info "3/8 linear / mcp gateway"
@@ -431,8 +563,9 @@ foundry — Claude Code forges on OrbStack
                                        one-time bootstrap: auth, image, web deps, infra, db
     foundry version                   print the foundry version
     foundry doctor                    check OrbStack, image, credentials
-    foundry auth [--api-key]          store a Claude credential for all forges
-    foundry auth --linear             store a Linear API key behind the MCP gateway
+    foundry auth                      interactive: credentials + status, pick one to (re)auth
+    foundry auth --claude|--api-key   store a Claude credential for all forges
+    foundry auth --linear|--slack     store that upstream's key behind the MCP gateway
     foundry build [--no-cache]        build the forge image
 
   forges

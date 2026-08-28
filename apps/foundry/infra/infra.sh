@@ -37,8 +37,9 @@ env_get() {
   printf '%s' "${val:-$fallback}"
 }
 
-# Export ~/.foundry/env into this process so compose can expand ${LINEAR_API_KEY}
-# and ${FOUNDRY_MCP_TOKEN} for the gateway. Values stay out of infra/.env.
+# Export ~/.foundry/env into this process so compose can expand the upstream
+# keys (${LINEAR_API_KEY}, ${SLACK_MCP_TOKEN}) and ${FOUNDRY_MCP_TOKEN} for the
+# gateway. Values stay out of infra/.env.
 load_foundry_env() {
   [ -f "$FOUNDRY_ENV" ] || return 0
   # shellcheck disable=SC1090
@@ -46,8 +47,8 @@ load_foundry_env() {
 }
 
 # The gateway only makes sense with an upstream credential behind it, so the
-# `mcp` profile follows LINEAR_API_KEY rather than a flag.
-mcp_enabled() { [ -n "${LINEAR_API_KEY:-}" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; }
+# `mcp` profile follows the upstream keys (Linear and/or Slack) rather than a flag.
+mcp_enabled() { [ -n "${LINEAR_API_KEY:-}${SLACK_MCP_TOKEN:-}" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; }
 mcp_port()    { env_get MCP_PORT 9090; }
 
 pg_user() { env_get POSTGRES_USER foundry; }
@@ -71,7 +72,7 @@ cmd_up() {
   if mcp_enabled; then
     ok "mcp gateway on http://localhost:$(mcp_port)  ${c_dim}(mcp.foundry.local; forges use host.docker.internal:$(mcp_port))${c_0}"
   else
-    say "  ${c_dim}mcp gateway not started — run 'foundry auth --linear' to give forges Linear access${c_0}"
+    say "  ${c_dim}mcp gateway not started — 'foundry auth --linear' (or --slack) gives forges access${c_0}"
   fi
   say ""
   say "  DATABASE_URL=$(pg_url)"
@@ -133,7 +134,7 @@ infra — foundry's local development stack
 
 Settings live in infra/.env, created from infra/.env.example on first up.
 The MCP gateway (service "mcp") starts alongside postgres once `foundry auth
---linear` has stored LINEAR_API_KEY in ~/.foundry/env.
+--linear` (or `foundry auth --slack`) has stored an upstream key in ~/.foundry/env.
 USAGE
 }
 

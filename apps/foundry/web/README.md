@@ -54,10 +54,11 @@ Ignite ─► insert row (queued, with a per-job callback token)
 - The **container** holds a Claude credential (`foundry auth`), the workspace, and a
   token that authorises callbacks for its own job id. No `GH_TOKEN`, no Bitbucket app
   password, no `DATABASE_URL` — the agent runs with permissions skipped, so it gets
-  nothing it could misuse. If `foundry auth --linear` has been run it also gets
-  `FOUNDRY_MCP_URL`/`FOUNDRY_MCP_TOKEN`, so the agent can reach Linear through the
-  infra stack's MCP gateway (`host.docker.internal:9090`, override with the
-  `FOUNDRY_MCP_URL` env of this server) — a gateway token, never the Linear key.
+  nothing it could misuse. If `foundry auth --linear` (or `--slack`) has been run it
+  also gets `FOUNDRY_MCP_URL`/`FOUNDRY_MCP_TOKEN` plus `FOUNDRY_MCP_SERVERS`, so the
+  agent can reach Linear/Slack through the infra stack's MCP gateway
+  (`host.docker.internal:9090`, override with the `FOUNDRY_MCP_URL` env of this
+  server) — a gateway token, never the upstream keys.
 - **Repo notes** (`features/repos/`) are the target repo's standing instructions,
   edited on the Repos page and stored on its `repos` row. Preflight reads them at
   launch — not at insert, so the notes standing when the forge lights are the ones
