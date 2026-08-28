@@ -1,6 +1,6 @@
 ---
 name: linear-ticket
-description: Draft and file a Linear issue in the house format — Summary / Background / Scope / Technical Notes — cross-checked against the feature's dual-tier docs and grounded in real files, functions and line ranges. Use when the user says "create a linear ticket", "file this as a ticket", "write this up for Linear", "make a ticket for <thing>", or hands over a design/Slack thread that should become an issue.
+description: Draft and file a Linear issue in the house format — Summary / Background / Scope / Pending / Technical Notes — cross-checked against the feature's dual-tier docs and grounded in real files, functions and line ranges. Use when the user says "create a linear ticket", "file this as a ticket", "write this up for Linear", "make a ticket for <thing>", or hands over a design/Slack thread that should become an issue. Also use to record what a ticket is waiting on (a backend endpoint, an unpublished field name) in its Pending section.
 ---
 
 # linear-ticket — turn an ask into a filed Linear issue
@@ -68,6 +68,9 @@ touches. These are the docs `skills/feature-docs` produces per `DOC-PROTOCOL.md`
   `src/services/`). If BE code informed the ticket, name the BE sha at the bottom too.
 - Anything you could not verify becomes an explicit open question in Technical Notes
   ("confirm with backend whether …"), never a confident claim.
+- Grounding is also how you fill **Pending**: a field the schema doesn't accept yet, a
+  table that doesn't exist, a generated hook that isn't generated — each is a pending item
+  with the sha you proved it against, not a vague "waiting on backend".
 
 **4. Resolve the destination.** `list_teams` → team; `list_projects`, `list_issue_labels`
 for the rest. Reuse `defaults.json` beside this skill if present (`{"teamId":…,
@@ -93,8 +96,17 @@ ticket touches.
 ## Rules
 
 - **Four sections, in order, always: Summary, Background, Scope / Out of Scope, Technical
-  Notes.** No acceptance criteria, no estimates, no "Testing" section unless asked — the
-  format's silence is deliberate.
+  Notes** — plus **Pending** between Scope and Technical Notes when, and only when, the
+  ticket waits on something unlanded. No acceptance criteria, no estimates, no "Testing"
+  section unless asked — the format's silence is deliberate.
+- **Pending is not the same as a Linear blocker.** A blocker (`blockedBy`) is another
+  ticket. Pending is unlanded work that usually has no ticket in this team at all: a
+  backend endpoint someone else is writing, a field name not yet published, an OpenAPI
+  regeneration, a design answer the ticket's shape depends on. Name the side (FE / BE),
+  the owner, and what can proceed meanwhile — a Pending bullet that doesn't say what to do
+  in the meantime is a complaint, not a plan. Nothing pending means no section; an empty
+  "Pending: none" is noise. When a pending item lands, delete its bullet rather than
+  striking it through — the journal owns history, not the ticket.
 - **Never draft before reading the feature's product.md + arch.md.** Those Out-of-Scope and
   Known-Gaps sections exist so tickets stop relitigating settled boundaries; skipping them
   buys exactly the review comments the docs were written to prevent.
