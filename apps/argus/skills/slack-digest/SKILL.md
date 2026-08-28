@@ -101,11 +101,22 @@ none fits, tag `[unmapped]`. This is a hint for the end-of-day pass, not a commi
   `list_issues` (team `Liamai`, query by keywords) — if an existing open issue
   covers it, **update** that issue (append the new Slack permalink / scope via
   `patch`) instead of creating a duplicate.
-- Otherwise `save_issue`: `team: "Liamai"`, `assignee: "me"`, a verb-first title
-  (e.g. "Split invoice by project — UI"), description = what/why in 2-4 lines,
-  the concrete endpoints or artifacts named in the thread, and the Slack
-  permalink. Set `dueDate`/`priority` only when the thread states a deadline or
-  urgency. Relate to overlapping issues via `relatedTo`.
+- Otherwise write the ticket **grounded, not transcribed** — a thread's technical
+  claims are claims, not facts (a confirmed-on-Slack backend change has shipped late
+  or never before). Follow `skills/linear-ticket/SKILL.md` steps 2–3 scaled to this
+  run: read the affected feature's `product.md` + `arch.md` (the step-5 tag names the
+  feature), and let every endpoint, field, file or function the ticket asserts come
+  from those docs or a pinned code read — never from the thread alone. A thread claim
+  you cannot verify goes under **Pending** as an open question ("thread says the PUT
+  becomes full-replace — unverified against `origin/dev`"), never as a fact. Running
+  unattended changes two things from that skill: never pause to ask (filing the
+  user's action items is pre-authorized), and prefer an honest Pending bullet over
+  any research detour longer than the docs + one code read.
+- Then `save_issue`: `team: "Liamai"`, `assignee: "me"`, a verb-first title
+  (e.g. "Split invoice by project — UI"), description in the house format
+  (Summary / Background with the Slack permalink / Scope / Pending when needed /
+  Technical Notes). Set `dueDate`/`priority` only when the thread states a deadline
+  or urgency. Relate to overlapping issues via `relatedTo`.
 - Record in state: `action_items: { "<thread_ts>": "<LIA-xx>" }`. Never create a
   ticket twice for the same thread; new scope in an old thread updates its ticket.
 

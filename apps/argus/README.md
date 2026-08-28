@@ -129,7 +129,7 @@ ground truth, join, and surface only the judgement calls.
 |---|---|
 | `digests/` | daily Slack digests (`.state.json` is gitignored cursor state) |
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
-| `alden/alden-portal/features/<dir>/journal/` | change journal, one file per landing |
+| `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
 | `alden/alden-portal/.doc-workspace/` | feature manifest + OpenAPI snapshot |
 | `skills/` | the workers and the scheduler (`sweep`, `slack-digest`, `log-change`, `feature-docs`, `linear-ticket`, `api-lookup`, `office-hours`) |
 | `scripts/accio.ts` | index / sync / audit over docs + journal |
@@ -143,6 +143,7 @@ ground truth, join, and surface only the judgement calls.
 /slack-digest            # digest only
 /log-change              # journal one landing by hand
 bun run accio audit      # reconcile without writing anything
+bun run accio journal    # day view over landings (a date, or --since YYYY-MM-DD)
 bun skills/log-change/scripts/pr-facts.ts --since 2026-08-21   # what landed, what's unjournaled
 ```
 

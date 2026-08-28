@@ -110,9 +110,11 @@ export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promi
   type Entry = { name: string; date?: string; status?: string; tickets: string[]; prs: string[]; hold?: string };
   const entries: Entry[] = [];
 
-  for await (const path of new Bun.Glob("**/journal/*.md").scan({ cwd: dir, absolute: true })) {
+  // entries may sit directly in journal/ or grouped under journal/YYYY-MM/ — the grouping
+  // is presentation only, so both depths are one glob and the owner is whatever precedes /journal/
+  for await (const path of new Bun.Glob("**/journal/**/*.md").scan({ cwd: dir, absolute: true })) {
     const name = relative(dir, path);
-    const owner = idByDir.get(name.replace(/\/journal\/[^/]+$/, ""));
+    const owner = idByDir.get(name.replace(/\/journal\/.*$/, ""));
     const text = await Bun.file(path).text();
     const field = (k: string) => text.match(new RegExp(`^${k}:\\s*(.+)$`, "m"))?.[1]?.trim();
     const date = field("date"), status = field("status")?.split(/\s/)[0];

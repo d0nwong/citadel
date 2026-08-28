@@ -17,7 +17,9 @@ A day-scoped entry cannot carry a ticket honestly — one day is several PRs and
 tickets, and the entry ends up labelled with whichever one was biggest.
 
 Entries live with the feature they are about:
-`alden/alden-portal/features/<dir>/journal/YYYY-MM-DD-<key>-<slug>.md`, where `<key>` is
+`alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/YYYY-MM-DD-<key>-<slug>.md`
+(entries group into month, then day directories — presentation only; the filename keeps the
+full date so links and sorting never depend on the folder), where `<key>` is
 `fe363` / `be735` for a PR and the short sha for a direct push. `<dir>` is the feature's
 folder under `features/` — the same one holding its `docs/`.
 

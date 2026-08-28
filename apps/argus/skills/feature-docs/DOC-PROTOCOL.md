@@ -282,7 +282,7 @@ integration branch — not one commit and not one day. It is the only object Lin
 Bitbucket and staging all agree on, so a ticket, a review and a deploy can all be traced
 through it; a day-scoped entry spans several PRs and several tickets and cannot carry
 `ticket:` honestly. One file per landing, in the folder of the feature it is mostly about:
-`/features/<dir>/journal/YYYY-MM-DD-<key>-<slug>.md` (`<key>` = `fe363` / `be735`, or the
+`/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/YYYY-MM-DD-<key>-<slug>.md` (`<key>` = `fe363` / `be735`, or the
 short sha for a direct push) — beside that feature's `docs/`, so a feature's history is in
 the folder you already opened. A landing touching several features is still ONE file:
 `features:` stays the routing key and must name the folder's own feature as well as the
