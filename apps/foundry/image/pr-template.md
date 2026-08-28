@@ -8,10 +8,7 @@ A repo's own PR template still wins when one exists; this is the default.
 Fill every section for real, delete these comments and any section that is
 genuinely empty. Written by the agent to /work/.git/PR_BODY.md.
 
-Write each paragraph and each bullet as ONE unbroken line. This is rendered
-markdown and it soft-wraps; hard-wrapping at a fixed column splits inline code
-runs mid-token and renders the break as an inserted space. (The commit body is
-the opposite case — git log gets the usual ~72-column wrap.)
+Write each paragraph and each bullet as ONE unbroken line. This is rendered markdown and it soft-wraps; hard-wrapping at a fixed column splits inline code runs mid-token and renders the break as an inserted space. (The commit body is the opposite case — git log gets the usual ~72-column wrap.)
 -->
 
 Closes <!-- ticket id, e.g. LIA-38 — delete the line if there is no ticket -->
