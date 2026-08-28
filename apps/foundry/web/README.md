@@ -134,11 +134,14 @@ Ignite ─► insert row (queued, with a per-job callback token)
   (`server/linear-link.ts`). Linear's GitHub integration already reads the
   `Closes LIA-24` magic word out of a PR description and files the link itself;
   Linear has no Bitbucket integration, so an identical description lands on a
-  forge nothing is watching. For a `bb` origin the runner pulls the magic-word
-  ticket ids out of the PR body and creates the attachment through Linear's API
+  forge nothing is watching. For a `bb` origin the runner pulls ticket ids out
+  of the PR body *and* the job's own task text — magic words (`Closes LIA-24`),
+  a pasted `linear.app/…/issue/LIA-24` link, or (task text only) a bare id like
+  `LIA-24: fix the thing` — and creates the attachment through Linear's API
   with `LINEAR_API_KEY` from `~/.foundry/env` — host-side, like `bb` itself, so
-  the key never enters a forge. No key means no link and no complaint, and a
-  failure is logged rather than fatal: the PR is already open by then. It is a
+  the key never enters a forge. No key means no link and no complaint, no
+  ticket id named anywhere means the same, and one id's failure is logged
+  without sinking the others: the PR is already open by then. It is a
   one-shot link, not a sync — Bitbucket sends nothing back on merge, so ticket
   status stays yours to move.
 - `vite dev` runs with `--host` so containers can reach the server at

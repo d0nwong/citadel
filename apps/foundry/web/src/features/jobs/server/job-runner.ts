@@ -456,7 +456,7 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
       else await err(id, pr.reason)
       prUrl = pr.url ?? undefined
 
-      if (pr.url !== null && prCliFor(originHost(originUrl)) === 'bb') await linkTicket(id, pr.url, title, body)
+      if (pr.url !== null && prCliFor(originHost(originUrl)) === 'bb') await linkTicket(id, pr.url, title, body, job.task)
     }
 
     // An agent that errored still gets its work pushed, but the job is failed:
@@ -481,17 +481,23 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
  * by itself, off the same `Closes LIA-24` line; it has no Bitbucket equivalent,
  * so for a `bb` origin the host files the attachment instead. Never fatal — the
  * PR is already open, and a missing key or an unreachable Linear is worth a log
- * line, not a failed job.
+ * line, not a failed job. Reads the ticket from the PR body *and* the job's own
+ * task text (linear-link.ts) — the task is what the user actually typed, and
+ * often the only place the ticket is named at all.
  */
-async function linkTicket(id: string, prUrl: string, title: string, body: string): Promise<void> {
+async function linkTicket(id: string, prUrl: string, title: string, body: string, task: string): Promise<void> {
   try {
     const cred = await readFoundryEnv()
     const key = cred.LINEAR_API_KEY ?? process.env.LINEAR_API_KEY
     if (!key) return // Linear was never configured; nothing to link to.
 
-    const res = await linkPrToTicket(key, { prUrl, title, body })
-    if (res.linked === null) await err(id, `Linear link failed: ${res.reason}`)
-    else if (res.linked.length > 0) await sys(id, `PR linked to ${res.linked.join(', ')} in Linear`)
+    const res = await linkPrToTicket(key, { prUrl, title, body, task })
+    if (res.linked.length > 0) await sys(id, `PR linked to ${res.linked.join(', ')} in Linear`)
+    for (const f of res.failed) await err(id, `Linear link failed for ${f.id}: ${f.reason}`)
+    if (res.unknown.length > 0) await sys(id, `PR body/task named ${res.unknown.join(', ')} but Linear has no such issue — skipped`)
+    if (res.linked.length === 0 && res.failed.length === 0 && res.unknown.length === 0) {
+      await sys(id, 'no Linear ticket named in the task or PR body — nothing to link')
+    }
   } catch (e) {
     // Belt and braces: this sits inside finishJob's try, and a throw escaping
     // here would settle the job as a push failure it never had.
