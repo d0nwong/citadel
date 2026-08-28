@@ -161,6 +161,14 @@
   }
 }
 
+/* Scrollable region with no visible scrollbar (drawer panes) */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer components {
   /* Machine-stamped section labels */
   .kicker {
