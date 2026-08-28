@@ -134,3 +134,19 @@ review when headless.
   has to be there.
 - If pushing is impossible (no `gh`/`bb` credential in this environment), say
   so and hand the user the exact commands to run instead of silently stopping.
+
+### Don't hard-wrap the prose you write
+
+A PR description, a ticket comment and a review reply are all rendered
+markdown, and markdown soft-wraps. Write each paragraph and each bullet as one
+unbroken line and let the reader's viewport wrap it. Hard-wrapping at some
+fixed column buys nothing there and actively hurts: it splits inline code runs
+mid-token and renders the break as an inserted space.
+
+The exception is the **commit body**, which is read in a terminal that does not
+soft-wrap — keep the conventional ~72-column wrap there. So the same content
+gets wrapped for `git log` and unwrapped for the PR.
+
+Prose inside the repo's own files (`README.md`, docs) follows that file's
+existing convention instead — match what is already there rather than this
+rule, and say so if the two conflict.
