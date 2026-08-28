@@ -38,9 +38,10 @@ landings drop out on their own, so overlapping windows are harmless.
 
 **3. Open state.** Three greps and one API call:
 
-- open decisions: `grep -rln 'status: decided' alden/alden-portal/features/*/journal/`
-- parked work: `grep -rln '^hold:' alden/alden-portal/features/*/journal/` (report-only —
-  a hold is waiting on something, list what)
+- open decisions: `grep -rln 'status: decided' alden/alden-portal/features/*/journal/ alden/alden-portal/features/*/*/journal/ 2>/dev/null`
+  (both globs — nested features like `admin/invoicing` keep their journal a level deeper)
+- parked work: `grep -rln '^hold:' alden/alden-portal/features/*/journal/ alden/alden-portal/features/*/*/journal/ 2>/dev/null`
+  (report-only — a hold is waiting on something, list what)
 - today's digest 🔴 / ✋ / 🟠 sections
 - open Linear issues, team `Liamai`, assignee me (`mcp__linear-server__list_issues`;
   ToolSearch it first if deferred)
