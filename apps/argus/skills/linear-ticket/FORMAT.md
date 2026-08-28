@@ -1,7 +1,10 @@
 # Ticket format
 
-Linear renders markdown. Use `##` for the four section headings, `-` for bullets. Nothing
+Linear renders markdown. Use `##` for the section headings, `-` for bullets. Nothing
 else: no bold section labels, no tables, no checkboxes.
+
+Four sections are always present. A fifth, **Pending**, appears only when the ticket is
+waiting on work that has not landed yet.
 
 ## Skeleton
 
@@ -27,6 +30,15 @@ In scope:
 Out of scope:
 
 - <Thing a reader would assume is included — who owns it / why not now>
+- <…>
+
+## Pending
+
+<Omit this whole section when nothing is outstanding. One bullet per unlanded thing this
+ticket needs, newest understanding first:>
+
+- **FE|BE — <the change that hasn't landed>** (<who owns it>) — <what it stops here, and
+  what can proceed meanwhile>
 - <…>
 
 ## Technical Notes
@@ -70,6 +82,14 @@ Out of scope:
 - Reassign flow (unassigned tasks tab)
 - Peer Review tab assignee column
 
+## Pending
+
+- **BE — `GET /api/v1/tasks/{taskId}` returns an assignee array** (backend team) — the
+  dashboard cell has a single name to render until it lands; build against the array shape
+  behind a fixture and the switch is a one-line mapper change
+- **FE — `assigneeIds` on the subtask `schema.ts`** — waits on the backend answer in the
+  last Technical Note; the subtask modal's field can't be wired before it
+
 ## Technical Notes
 
 - Dashboard avatar cell is in `task-table-columns.tsx` — `createMainAssigneeColumn()`,
@@ -95,5 +115,10 @@ Out of scope:
   the reader can now judge the scope list.
 - Out of scope is doing real work — it kills three assumptions (backend, reassign flow,
   peer review) that would otherwise land in review comments.
+- Pending and Out of scope look similar and are not. Out of scope means "not this ticket,
+  ever" — the multi-assignee backend is someone else's work. Pending means "this ticket,
+  but not yet" — that same backend is also what this ticket waits on, so it appears in
+  both, once as a boundary and once as a dependency. Every Pending bullet says what can
+  proceed meanwhile, so the ticket never reads as simply stuck.
 - Every technical bullet is openable: a file, the exact function, the current type, the
   target type. The one thing nobody knew is written as a question, not a guess.
