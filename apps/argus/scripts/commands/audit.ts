@@ -68,7 +68,7 @@ export async function auditDocs(index: AccioIndex, dir = FEATURES_DIR): Promise<
 export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promise<string[]> {
   const problems: string[] = [];
   const ids = new Set(index.features.map(f => f.id));
-  const STATUSES = new Set(["decided", "implemented", "documented"]);
+  const STATUSES = new Set(["decided", "implemented", "documented", "superseded"]);
   const TICKET = /^([A-Z][A-Z0-9]{1,9}-\d+|https:\/\/trello\.com\/\S+)$/;
   const PR = /^((fe|be)#\d+|direct)$/;
   /** `x` or `[x, y]` → ["x","y"]; quotes and empties stripped */
@@ -107,6 +107,9 @@ export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promi
 
   const idByDir = new Map(index.features.map(f => [f.dir, f.id]));
 
+  type Entry = { name: string; date?: string; status?: string; tickets: string[]; prs: string[]; hold?: string };
+  const entries: Entry[] = [];
+
   for await (const path of new Bun.Glob("**/journal/*.md").scan({ cwd: dir, absolute: true })) {
     const name = relative(dir, path);
     const owner = idByDir.get(name.replace(/\/journal\/[^/]+$/, ""));
@@ -119,7 +122,7 @@ export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promi
       .split(",").map(x => x.trim()).filter(Boolean);
 
     if (!date || !/^\d{4}-\d{2}-\d{2}/.test(date)) problems.push(`${name}: missing or malformed date`);
-    if (!status || !STATUSES.has(status)) problems.push(`${name}: status must be decided|implemented|documented`);
+    if (!status || !STATUSES.has(status)) problems.push(`${name}: status must be decided|implemented|documented|superseded`);
     if (!feats.length) problems.push(`${name}: features: [] is empty — entry routes nowhere`);
     for (const f of feats) if (!ids.has(f)) problems.push(`${name}: unknown feature id \`${f}\``);
     // the folder is where a human looks; `features:` is what routes the refresh. If the
@@ -136,10 +139,10 @@ export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promi
     if (prField && prField !== "null")
       for (const p of list(prField))
         if (!PR.test(p)) problems.push(`${name}: pr \`${p}\` is not fe#N, be#N or \`direct\``);
-    if (status && STATUSES.has(status) && status !== "decided" && prField === undefined)
+    if (status && STATUSES.has(status) && status !== "decided" && status !== "superseded" && prField === undefined)
       problems.push(`${name}: ${status} but names no \`pr:\` — say which landing carried it (fe#N / be#N / direct), or \`pr: null\``);
-    if (status === "decided" && prField && prField !== "null")
-      problems.push(`${name}: status decided but pr \`${prField}\` — code that landed is \`implemented\`, not \`decided\``);
+    if ((status === "decided" || status === "superseded") && prField && prField !== "null")
+      problems.push(`${name}: status ${status} but pr \`${prField}\` — code that landed is \`implemented\`, not \`${status}\``);
     if (prField && prField !== "null" && !field("merge"))
       problems.push(`${name}: pr \`${prField}\` with no \`merge:\` sha — the diff has to be one command away`);
 
@@ -148,7 +151,8 @@ export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promi
     // it, an entry that will never close nags forever and trains everyone to ignore audit.
     const hold = text.match(/^hold:[ \t]*(.*)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "");
     if (hold !== undefined && !hold) problems.push(`${name}: \`hold:\` with no reason — say what it is waiting for`);
-    if (hold && status === "documented") problems.push(`${name}: documented, but held for "${hold}" — a closed entry waits for nothing`);
+    if (hold && (status === "documented" || status === "superseded"))
+      problems.push(`${name}: ${status}, but held for "${hold}" — a closed entry waits for nothing`);
 
     // implemented + the docs' verification already contained this landing ⇒ the refresh
     // ran over this change and nobody closed the entry
@@ -160,6 +164,34 @@ export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promi
         if (v && seen)
           problems.push(`${name}: implemented, but ${f} docs were re-verified ${v} — refresh missed this entry or it should be documented`);
       }
+    }
+
+    entries.push({
+      name, date, status, hold,
+      tickets: ticket && ticket !== "null" ? list(ticket) : [],
+      prs: prField && prField !== "null" ? list(prField) : [],
+    });
+  }
+
+  // A `decided` entry is a promise that a landing will close the loop. When a later entry
+  // carries the same ticket and a real landing, the loop closed and nobody linked back —
+  // the landing entry must reference the decision, and the decision flips to `superseded`.
+  // And a decision that just sits open is how work gets re-implemented: after two weeks
+  // it either landed unnoticed, or it is parked and must say so with `hold:`.
+  const DECIDED_MAX_AGE_DAYS = 14;
+  const landedByTicket = new Map<string, Entry>();
+  for (const e of entries)
+    if ((e.status === "implemented" || e.status === "documented") && e.prs.length)
+      for (const t of e.tickets) landedByTicket.set(t, e);
+  for (const e of entries) {
+    if (e.status !== "decided") continue;
+    const hit = e.tickets.map(t => [t, landedByTicket.get(t)] as const).find(([, l]) => l);
+    if (hit)
+      problems.push(`${e.name}: decided, but ${hit[0]} landed as ${hit[1]!.prs.join(", ")} (${hit[1]!.name}) — mark this entry superseded and have the landing entry link back`);
+    else if (!e.hold && e.date && /^\d{4}-\d{2}-\d{2}/.test(e.date)) {
+      const age = Math.floor((Date.now() - Date.parse(e.date.slice(0, 10))) / 86_400_000);
+      if (age > DECIDED_MAX_AGE_DAYS)
+        problems.push(`${e.name}: decided ${age} days ago and still open — journal the landing if it shipped unnoticed, or park it with \`hold:\``);
     }
   }
   return problems;

@@ -298,7 +298,7 @@ merge: 597bfbdf3 # the staging commit; diff = 597bfbdf3^1..597bfbdf3
 ticket: [ALD-123] # Trello/Linear keys, FLOW style; null when untracked
 features: [admin-invoicings, tasks] # manifest ids, FLOW style — greppable routing
 scope: product # product | architecture | both
-status: decided # decided | implemented | documented
+status: decided # decided | implemented | documented | superseded (a landing entry took over)
 hold: "waiting on the BE half" # optional — parks the entry open, with a reason
 summary: Drafts become editable with an Approve-and-Send gate
 ---
