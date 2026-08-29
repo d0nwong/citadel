@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Button } from '@/shared/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/shared/ui/sheet'
 import { JobStatusChip } from './job-status-chip'
+import { Collapse } from '@/shared/components/collapse'
 import { cancelJob, followUpJob, rerunJob } from '../api'
 import { jobQueries } from '../queries'
 import { forgeQueries } from '@/features/forges/queries'
@@ -120,6 +121,15 @@ export function JobDetailSheet({
     if (job?.status === 'running') logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
   }, [lineCount, job?.status])
 
+  // Long tasks fold away by default so the log keeps its room, most of all on mobile.
+  const [taskOpen, setTaskOpen] = useState(false)
+  useEffect(() => setTaskOpen(false), [jobId])
+  const taskCollapsible = job ? job.task.length > 140 || job.task.includes('\n') : false
+
+  // Same idea for the metadata grid: folded until asked for, so the log leads.
+  const [metaOpen, setMetaOpen] = useState(false)
+  useEffect(() => setMetaOpen(false), [jobId])
+
   const live = job?.status === 'running' || job?.status === 'queued'
   const elapsed = job ? (job.finishedAt ?? Date.now()) - (job.startedAt ?? job.createdAt) : 0
 
@@ -127,7 +137,7 @@ export function JobDetailSheet({
     <Sheet open={jobId !== null} onOpenChange={(v) => !v && onClose()}>
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 border-l border-hairline bg-iron-850 p-0 sm:max-w-[620px]"
+        className="flex w-full flex-col gap-0 border-l border-hairline bg-iron-850 p-0 sm:max-w-[min(880px,92vw)]"
       >
         {job && (
           <>
@@ -146,60 +156,98 @@ export function JobDetailSheet({
                 )}
                 <span className="ml-auto font-mono text-[11px] text-txt-dim">{duration(elapsed)}</span>
               </div>
-              <SheetTitle className="scrollbar-none max-h-[30dvh] overflow-y-auto whitespace-pre-wrap break-words text-[16px] font-semibold leading-snug tracking-tight">
-                {job.task}
-              </SheetTitle>
+              <div className="space-y-1.5">
+                {/* Two lines stay showing while folded, so the full task grows
+                    out of the title instead of replacing it. */}
+                <Collapse
+                  open={taskOpen || !taskCollapsible}
+                  peek={taskCollapsible ? '2.75rem' : undefined}
+                  className={cn(
+                    taskCollapsible &&
+                      (taskOpen
+                        ? 'scrollbar-none max-h-[30dvh] overflow-y-auto'
+                        : '[mask-image:linear-gradient(to_bottom,#000_80%,transparent)]'),
+                  )}
+                >
+                  <SheetTitle className="whitespace-pre-wrap break-words text-[16px] font-semibold leading-snug tracking-tight">
+                    {job.task}
+                  </SheetTitle>
+                </Collapse>
+                {taskCollapsible && (
+                  <button
+                    type="button"
+                    onClick={() => setTaskOpen((v) => !v)}
+                    aria-expanded={taskOpen}
+                    className="kicker flex items-center gap-1 text-txt-faint transition-colors hover:text-ember-soft"
+                  >
+                    <ChevronRight className={cn('size-3 transition-transform duration-200 ease-out', taskOpen && 'rotate-90')} />
+                    {taskOpen ? 'Hide task' : 'Show full task'}
+                  </button>
+                )}
+              </div>
               <SheetDescription className="sr-only">Job detail and live log output</SheetDescription>
             </SheetHeader>
 
-            <div className="grid grid-cols-2 gap-x-5 gap-y-4 border-y border-hairline bg-iron-900/50 px-5 py-4 sm:gap-x-6 sm:px-6">
-              <Meta label="Repo">
-                <span className="block truncate">{repoLabel(job.repo)}</span>
-                <span className="mt-0.5 block text-[10px] text-txt-faint">{repoDestination(job.repo)}</span>
-              </Meta>
-              <Meta label="Forge">
-                {job.forge}
-                {job.blueprint && (
-                  <span className="mt-0.5 block truncate text-[10px] text-txt-faint" title={stepsSummary(job.blueprint.steps)}>
-                    {blueprintLabel(job.blueprint)} · {job.blueprint.steps.length} steps
+            <button
+              type="button"
+              onClick={() => setMetaOpen((v) => !v)}
+              aria-expanded={metaOpen}
+              className="flex w-full items-center gap-2 border-y border-hairline bg-iron-900/50 px-5 py-2.5 text-left transition-colors hover:bg-iron-900 sm:px-6"
+            >
+              <ChevronRight className={cn('size-3 shrink-0 text-txt-faint transition-transform duration-200 ease-out', metaOpen && 'rotate-90')} />
+              <span className="kicker shrink-0">Details</span>
+              <span className="ml-auto truncate font-mono text-[11px] text-txt-dim">{repoLabel(job.repo)}</span>
+            </button>
+            <Collapse open={metaOpen}>
+              <div className="grid grid-cols-2 gap-x-5 gap-y-4 border-b border-hairline bg-iron-900/50 px-5 py-4 sm:gap-x-6 sm:px-6">
+                <Meta label="Repo">
+                  <span className="block truncate">{repoLabel(job.repo)}</span>
+                  <span className="mt-0.5 block text-[10px] text-txt-faint">{repoDestination(job.repo)}</span>
+                </Meta>
+                <Meta label="Forge">
+                  {job.forge}
+                  {job.blueprint && (
+                    <span className="mt-0.5 block truncate text-[10px] text-txt-faint" title={stepsSummary(job.blueprint.steps)}>
+                      {blueprintLabel(job.blueprint)} · {job.blueprint.steps.length} steps
+                    </span>
+                  )}
+                </Meta>
+                <Meta label="Branch">
+                  <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <GitBranch className="size-3 shrink-0 text-txt-faint" />
+                      <span className="truncate">{job.branch}</span>
+                    </span>
+                    <span className="text-txt-faint">← {job.baseBranch}</span>
                   </span>
+                </Meta>
+                <Meta label="Diff">
+                  {job.diff ? (
+                    <span>
+                      {job.diff.files} files <span className="text-quench">+{job.diff.additions}</span>{' '}
+                      <span className="text-crack">−{job.diff.deletions}</span>
+                    </span>
+                  ) : (
+                    <span className="text-txt-faint">—</span>
+                  )}
+                </Meta>
+                {job.prUrl && (
+                  <div className="col-span-2">
+                    <Meta label="Pull request">
+                      <a
+                        href={job.prUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex min-w-0 items-center gap-1.5 text-ember hover:underline"
+                      >
+                        <ExternalLink className="size-3 shrink-0" />
+                        <span className="truncate">{job.prUrl.replace(/^https:\/\//, '')}</span>
+                      </a>
+                    </Meta>
+                  </div>
                 )}
-              </Meta>
-              <Meta label="Branch">
-                <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <GitBranch className="size-3 shrink-0 text-txt-faint" />
-                    <span className="truncate">{job.branch}</span>
-                  </span>
-                  <span className="text-txt-faint">← {job.baseBranch}</span>
-                </span>
-              </Meta>
-              <Meta label="Diff">
-                {job.diff ? (
-                  <span>
-                    {job.diff.files} files <span className="text-quench">+{job.diff.additions}</span>{' '}
-                    <span className="text-crack">−{job.diff.deletions}</span>
-                  </span>
-                ) : (
-                  <span className="text-txt-faint">—</span>
-                )}
-              </Meta>
-              {job.prUrl && (
-                <div className="col-span-2">
-                  <Meta label="Pull request">
-                    <a
-                      href={job.prUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex min-w-0 items-center gap-1.5 text-ember hover:underline"
-                    >
-                      <ExternalLink className="size-3 shrink-0" />
-                      <span className="truncate">{job.prUrl.replace(/^https:\/\//, '')}</span>
-                    </a>
-                  </Meta>
-                </div>
-              )}
-            </div>
+              </div>
+            </Collapse>
 
             <div className="flex items-center justify-between px-5 py-3 sm:px-6">
               <div className="kicker">Output</div>
@@ -244,64 +292,75 @@ export function JobDetailSheet({
 
             <div
               ref={logRef}
-              className="scrollbar-none min-h-0 flex-1 overflow-y-auto border-t border-hairline bg-iron-950/60 px-5 py-4 font-mono text-[11.5px] leading-[1.7] sm:px-6 sm:text-[12px]"
+              className="scrollbar-none min-h-0 flex-1 overflow-y-auto border-t border-hairline bg-iron-950/60 px-5 font-mono text-[11.5px] leading-[1.7] sm:px-6 sm:text-[12px]"
             >
-              {groups.map((g, gi) => {
-                if (!g.step) {
-                  return g.lines.map((l, i) => (
-                    <div key={`${gi}-${i}`} className="flex gap-3">
-                      <span className="hidden w-[62px] shrink-0 select-none text-txt-faint/60 sm:block">{clockTime(l.t)}</span>
-                      <span className={cn('whitespace-pre-wrap break-words', STREAM_TONE[l.stream])}>{l.text}</span>
-                    </div>
-                  ))
-                }
-                const { index, def } = g.step
-                const open = isOpen(index)
-                const first = g.lines[0].t
-                const last = g.lines[g.lines.length - 1].t
-                const stepRunning = job.status === 'running' && index === lastStepIndex
-                return (
-                  <div key={gi} className="my-1.5 rounded-md border border-hairline bg-iron-900/70">
-                    <button
-                      type="button"
-                      onClick={() => setToggled((t) => ({ ...t, [index]: !open }))}
-                      aria-expanded={open}
-                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-iron-850"
-                    >
-                      <ChevronRight className={cn('size-3.5 shrink-0 text-txt-faint transition-transform', open && 'rotate-90')} />
-                      <span className="kicker shrink-0 text-ember-soft">
-                        step {index}/{stepCount}
-                      </span>
-                      <span className="truncate text-[12px] font-medium text-txt">{def.name}</span>
-                      <span className="shrink-0 text-[11px] text-txt-dim">
-                        {def.model}
-                        {def.effort && ` · ${def.effort}`}
-                      </span>
-                      <span className="ml-auto flex shrink-0 items-center gap-3 text-[11px] text-txt-faint">
-                        {stepRunning && <span className="inline-block size-1.5 animate-ember-pulse rounded-full bg-ember" />}
-                        <span>{g.lines.length} lines</span>
-                        <span>{duration(Math.max(last - first, stepRunning ? Date.now() - first : 0))}</span>
-                      </span>
-                    </button>
-                    {open && (
-                      <div className="border-t border-hairline px-3 py-2">
-                        {g.lines.map((l, i) => (
-                          <div key={i} className="flex gap-3">
-                            <span className="hidden w-[62px] shrink-0 select-none text-txt-faint/60 sm:block">{clockTime(l.t)}</span>
-                            <span className={cn('whitespace-pre-wrap break-words', STREAM_TONE[l.stream])}>{l.text}</span>
-                          </div>
-                        ))}
+              {/* Padding lives here, not on the scroller: a sticky header pins
+                  below the scroll container's own padding-top, which would leave
+                  a band of log lines scrolling past above it. */}
+              <div className="py-4">
+                {groups.map((g, gi) => {
+                  if (!g.step) {
+                    return g.lines.map((l, i) => (
+                      <div key={`${gi}-${i}`} className="flex gap-3">
+                        <span className="hidden w-[62px] shrink-0 select-none text-txt-faint/60 sm:block">{clockTime(l.t)}</span>
+                        <span className={cn('whitespace-pre-wrap break-words', STREAM_TONE[l.stream])}>{l.text}</span>
                       </div>
-                    )}
+                    ))
+                  }
+                  const { index, def } = g.step
+                  const open = isOpen(index)
+                  const first = g.lines[0].t
+                  const last = g.lines[g.lines.length - 1].t
+                  const stepRunning = job.status === 'running' && index === lastStepIndex
+                  return (
+                    <div key={gi} className="my-2">
+                      {/* No card around a step, just a bar its lines sit under. It is
+                          sticky within this group, so it stays put exactly as long as
+                          that step's lines are on screen, and bleeds into the pane's
+                          own px-5/sm:px-6 gutters to span the full width. */}
+                      <button
+                        type="button"
+                        onClick={() => setToggled((t) => ({ ...t, [index]: !open }))}
+                        aria-expanded={open}
+                        className="sticky top-0 z-10 -mx-5 flex w-[calc(100%+2.5rem)] items-center gap-2.5 border-y border-hairline bg-iron-900 px-5 py-2 text-left transition-colors hover:bg-iron-850 sm:-mx-6 sm:w-[calc(100%+3rem)] sm:px-6"
+                      >
+                        <ChevronRight className={cn('size-3.5 shrink-0 text-txt-faint transition-transform duration-200 ease-out', open && 'rotate-90')} />
+                        <span className="kicker shrink-0 text-ember-soft">
+                          step {index}/{stepCount}
+                        </span>
+                        <span className="truncate text-[12px] font-medium text-txt">{def.name}</span>
+                        <span className="shrink-0 text-[11px] text-txt-dim">
+                          {def.model}
+                          {def.effort && ` · ${def.effort}`}
+                        </span>
+                        <span className="ml-auto flex shrink-0 items-center gap-3 text-[11px] text-txt-faint">
+                          {stepRunning && <span className="inline-block size-1.5 animate-ember-pulse rounded-full bg-ember" />}
+                          <span>{g.lines.length} lines</span>
+                          <span>{duration(Math.max(last - first, stepRunning ? Date.now() - first : 0))}</span>
+                        </span>
+                      </button>
+                      {/* No horizontal padding: a step's lines keep the same
+                          gutter and left edge as the unlabelled host lines. */}
+                      <Collapse open={open}>
+                        <div className="py-2">
+                          {g.lines.map((l, i) => (
+                            <div key={i} className="flex gap-3">
+                              <span className="hidden w-[62px] shrink-0 select-none text-txt-faint/60 sm:block">{clockTime(l.t)}</span>
+                              <span className={cn('whitespace-pre-wrap break-words', STREAM_TONE[l.stream])}>{l.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </Collapse>
+                    </div>
+                  )
+                })}
+                {job.status === 'running' && (
+                  <div className="mt-1 flex gap-3">
+                    <span className="hidden w-[62px] shrink-0 sm:block" />
+                    <span className="inline-block h-3.5 w-2 animate-ember-pulse bg-ember" />
                   </div>
-                )
-              })}
-              {job.status === 'running' && (
-                <div className="mt-1 flex gap-3">
-                  <span className="hidden w-[62px] shrink-0 sm:block" />
-                  <span className="inline-block h-3.5 w-2 animate-ember-pulse bg-ember" />
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </>
         )}
