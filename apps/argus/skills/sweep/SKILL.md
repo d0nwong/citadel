@@ -132,6 +132,18 @@ ground truth moves. Findings flow through the same policy as the join: verifiabl
 else — appears-satisfied, appears-redundant, drifted references — goes in Needs-you.
 Skip the pass entirely on a tick that refreshed nothing.
 
+**6c. Nominate agent-ready tickets.** Over the step-3 open-ticket list — every tick, no
+refresh needed to trigger. A ticket qualifies when its Pending section is absent, it has
+no blocked-by relation, and its Scope is concrete enough to execute without a round of
+questions (real files, functions, line ranges — linear-ticket's bar). A qualifying
+ticket not yet carrying the `agent-ready` label gets a Needs-you line: "LIA-xx looks
+agent-ready — label it?". The concreteness call is judgement, so nomination is
+report-only: the sweep never applies the label. That label is the entire contract with
+Foundry's ticket pickup (README, "Downstream" section) — applying it dispatches an
+agent, which is precisely the decision the report exists to surface, not make. Like
+holds, a ready-but-unlabeled ticket restates every tick until labeled or disqualified —
+the report is a snapshot, not a diff.
+
 **7. Audit.** `bun run accio audit`. Problems it still reports after dispatch go in the
 report verbatim — never silence one by inventing the missing fact.
 
@@ -140,7 +152,8 @@ report verbatim — never silence one by inventing the missing fact.
 1. **Needs you** — appears-implemented tickets to verify, appears-redundant tickets to
    close or rescope, partial matches awaiting a Scope edit, Pending bullets that only
    *appear* satisfied, review findings, unattributed landings, un-ticketed ✋ pings and
-   🟠 items, holds still waiting. ✋ items that got tickets appear by key, not restated.
+   🟠 items, holds still waiting, agent-ready nominations (6c) awaiting your label.
+   ✋ items that got tickets appear by key, not restated.
 2. **Done this tick** — entries written, docs refreshed, tickets filed (6a) and
    annotated (keys + PRs).
 3. **Linear today** — every Liamai ticket created or updated since local midnight, one
@@ -163,8 +176,10 @@ Runs unattended under `/loop`, so the write policy is fixed:
   case — the diff contains the exact thing the bullet names).
 - **Never:** close Linear tickets, edit Scope or any other ticket body text, comment
   inference onto a ticket (appears-redundant, appears-satisfied — report first, comment
-  after the user confirms), post to Slack, push git, or guess frontmatter. Anything
-  needing the user's judgement goes in the report, not into a file.
+  after the user confirms), apply the `agent-ready` label (nomination is report-only —
+  the label dispatches Foundry, and dispatch is the user's call), post to Slack, push
+  git, or guess frontmatter. Anything needing the user's judgement goes in the report,
+  not into a file.
 
 ## Running it
 
