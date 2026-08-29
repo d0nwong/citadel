@@ -63,7 +63,7 @@ async function docker(args: Array<string>, timeout = 30_000): Promise<string> {
 }
 
 /** `KEY=value` lines of ~/.foundry/env — the credential `foundry auth` stores. */
-async function readFoundryEnv(): Promise<Record<string, string>> {
+export async function readFoundryEnv(): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   try {
     for (const line of (await readFile(ENV_FILE, 'utf8')).split('\n')) {

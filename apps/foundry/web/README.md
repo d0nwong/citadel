@@ -24,6 +24,11 @@ modules never enter the client bundle.
 - `features/jobs/server/job-logs.ts` — the other half of a job's state, on disk:
   `appendLogs` / `readLogs` over `~/.foundry/logs/<id>.jsonl` (see below).
 - `features/jobs/server/job-runner.ts` — the orchestrator (see below).
+- `features/scanner/server/` — the ready-ticket scanner (LIA-52), a second door into
+  the same store/runner path: `scanner.ts` (the tick + the interval), `linear-scan.ts`
+  (the Linear GraphQL port), `repo-map.ts` (`~/.foundry/scanner.json`), `readiness.ts`
+  (the pure blocked-by / Pending guard). The invariant its tests pin down: the job
+  row's unique `ticket_id` insert is the claim, taken *before* any Linear write.
 - `features/repos/server/repo-scan.ts` — scans `~/git` with `node:fs`, reads each repo's
   branch, dirty state and last-commit time via `git`, and keeps the *imported* set in
   the `repos` table. Branch and dirty state are deliberately not stored: they are facts
@@ -152,7 +157,9 @@ Ignite ─► insert row (queued, with a per-job callback token)
   restart re-adopts jobs whose containers are still running.
 - Knobs: `FOUNDRY_MAX_JOBS` (default 3), `FOUNDRY_TIMEOUT` (seconds, default 1800),
   `FOUNDRY_CALLBACK_BASE`, `FOUNDRY_BB_REVIEWERS=1` to add Bitbucket default
-  reviewers. Old workspaces: `foundry jobs prune [--days 7]`.
+  reviewers. Old workspaces: `foundry jobs prune [--days 7]`. The ticket scanner:
+  `FOUNDRY_SCANNER=1` to enable, `FOUNDRY_SCANNER_INTERVAL` (seconds, default 300) —
+  see the root README's "Ticket scanner" section for the label contract.
 
 ## The database
 
@@ -257,6 +264,12 @@ src/
       server/job-events.ts    node-only: callback auth + stream-json -> the JSONL log
       server/forge-pr.ts      node-only: bb / gh pr create, by origin host
       types.ts
+    scanner/
+      server/scanner.ts       node-only: the ready-ticket tick + env-gated interval
+      server/linear-scan.ts   node-only: agent-ready candidates, claim mutation
+      server/repo-map.ts      node-only: ~/.foundry/scanner.json, project -> repo
+      server/readiness.ts     pure: blocked-by + Pending-section guard
+      server/*.test.ts        bun test — claim race, guard cases, one full tick
     blueprints/
       components/             blueprint-inventory, blueprint-editor-dialog
       server/blueprint-store.ts  node-only: CRUD + hand-rolled step validation
@@ -286,6 +299,13 @@ and `repoQueries`, never another feature's internals. There are deliberately no 
 
 `components.json` aliases point at `#/shared/*`, so `bunx shadcn@latest add <x>` lands
 in `src/shared/ui` without further edits.
+
+## Tests
+
+`bun test` (the runner is bun's own — no framework dependency). The readiness-guard
+suite is pure; the claim-race and tick suites run against the local Postgres, so
+`bun run infra:up` first. Test rows are keyed `TEST-…` and swept by their own
+`afterAll`, database and log files both.
 
 ## Conventions for server code
 

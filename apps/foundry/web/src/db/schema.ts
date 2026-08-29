@@ -7,7 +7,7 @@
  * for the extensions that infra/postgres/init/00-init.sql installs there.
  */
 import { sql } from 'drizzle-orm'
-import { index, integer, jsonb, pgSchema, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { index, integer, jsonb, pgSchema, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import type { BlueprintSnapshot, BlueprintStep } from '../features/blueprints/types'
 import type { RepoRef } from '../features/repos/types'
 
@@ -110,6 +110,12 @@ export const jobs = foundry.table(
      * follow-up must stay self-sufficient, like the `repo` snapshot.
      */
     sourceJobId: uuid('source_job_id'),
+    /**
+     * Linear issue identifier (e.g. LIA-52) when the ticket scanner ignited
+     * this job. Unique — the insert IS the scanner's claim on the ticket;
+     * NULL for UI-created jobs, and NULLs don't collide.
+     */
+    ticketId: text('ticket_id'),
     status: jobStatus('status').notNull().default('queued'),
     /** Where the pipeline is: prepare | agent | commit | push | pr | done. */
     step: text('step'),
@@ -134,7 +140,11 @@ export const jobs = foundry.table(
     diffAdditions: integer('diff_additions'),
     diffDeletions: integer('diff_deletions'),
   },
-  (t) => [index('jobs_created_at_idx').on(t.createdAt.desc()), index('jobs_status_idx').on(t.status)],
+  (t) => [
+    index('jobs_created_at_idx').on(t.createdAt.desc()),
+    index('jobs_status_idx').on(t.status),
+    uniqueIndex('jobs_ticket_id_unique').on(t.ticketId),
+  ],
 )
 
 /*
