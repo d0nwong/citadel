@@ -149,3 +149,48 @@ bun skills/log-change/scripts/pr-facts.ts --since 2026-08-21   # what landed, wh
 
 Everything commits locally and never pushes; anything needing judgement lands in the
 sweep report, not in a file.
+
+## Downstream: Foundry ticket pickup (planned)
+
+[Foundry](~/git/foundry) — the orchestration layer for disposable Claude Code forges —
+will consume the queue this workspace maintains: a periodic scanner picks up Linear
+tickets that are ready to be worked on and ignites a job forge per ticket. The design is
+agreed but not yet built; this section is the contract between the two repos.
+
+**Ready is an explicit signal, not an inference.** A ticket qualifies mechanically when
+its **Pending** section is empty, it has no blocked-by relation, and its Scope is
+concrete (real files and line ranges, per the linear-ticket house format) — but Foundry
+never acts on that alone. The handoff is three steps, judgement staying on this side:
+
+1. **Sweep nominates.** Ticket pass 6b already re-reads open tickets against refreshed
+   docs; a ticket that newly qualifies gets a Needs-you line ("LIA-xx looks agent-ready —
+   label it?"). Nomination is inference, so it goes in the report, never into Linear.
+2. **You confirm** by putting the `agent-ready` label on the ticket. The label is the
+   whole API between the repos.
+3. **Foundry executes.** A host-side scanner in Foundry's web server polls for labeled
+   tickets, claims one atomically (job row in its Postgres ledger, unique on ticket key,
+   *before* touching Linear), marks it In Progress, and ignites an ephemeral job forge
+   with the ticket body as the brief.
+
+```mermaid
+flowchart LR
+    sweep["/sweep 6b<br/>ticket pass"] -- "nominate in report" --> you(["you"])
+    you -- "agent-ready label" --> linear["Linear — Liamai"]
+    scanner["Foundry scanner<br/>(web/, host-side)"] -- "poll label,<br/>claim in Postgres" --> linear
+    scanner -- "ignite" --> forge["job forge<br/>(ephemeral)"]
+```
+
+Ground rules, mirroring the sweep's own write policy:
+
+- **No label, no pickup.** An unblocked ticket is not the same as the ticket you want
+  worked next; Foundry never guesses the queue order.
+- **Claim before work.** The Postgres insert is the lock — two scan ticks, or you plus
+  the agent, can never double-work a ticket.
+- **Scan after a sweep tick**, so the scanner reads reconciled state rather than tickets
+  a fresh landing already mooted.
+- **Own worktree, always.** Job forges work in per-job clones (`~/.foundry/jobs/<id>/`),
+  never the shared FE working tree.
+
+When this ships, Foundry's own README (architecture diagram + `web/README.md`) documents
+the scanner's internals; this section stays the source of truth for the label contract
+and the nomination flow.
