@@ -7,6 +7,20 @@ three durable records honest: a daily Slack digest, a per-feature change journal
 Built for a part-time schedule: everything is incremental, idempotent, and catch-up-safe,
 so the first run after days away simply backfills.
 
+## The loop at a glance
+
+Each sweep tick walks four stages, each feeding the next:
+
+```mermaid
+flowchart LR
+    capture["1 · Capture<br/>Slack digests +<br/>repo landings"]
+    journal["2 · Journal<br/>one entry per landing<br/>(the why)"]
+    docs["3 · Docs<br/>dual-tier product + arch<br/>(the what)"]
+    tickets["4 · Linear<br/>file tickets from ✋ items,<br/>annotate + review open ones"]
+
+    capture --> journal --> docs --> tickets
+```
+
 ## Architecture
 
 The design is a blackboard, not a pipeline of agents:
