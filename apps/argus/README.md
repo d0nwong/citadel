@@ -9,7 +9,8 @@ so the first run after days away simply backfills.
 
 ## The loop at a glance
 
-Each sweep tick walks four stages, each feeding the next:
+Each sweep tick walks four stages, each feeding the next; a fifth, dashed because it is
+planned and gated on your label, hands ready tickets off to Foundry:
 
 ```mermaid
 flowchart LR
@@ -17,8 +18,11 @@ flowchart LR
     journal["2 · Journal<br/>one entry per landing<br/>(the why)"]
     docs["3 · Docs<br/>dual-tier product + arch<br/>(the what)"]
     tickets["4 · Linear<br/>file tickets from ✋ items,<br/>annotate + review open ones"]
+    nominate["5 · Nominate<br/>report: 'LIA-xx looks<br/>agent-ready — label it?'"]
+    pickup["Foundry pickup<br/>(planned)"]
 
     capture --> journal --> docs --> tickets
+    tickets -.-> nominate -. "you apply the<br/>agent-ready label" .-> pickup
 ```
 
 ## Architecture
