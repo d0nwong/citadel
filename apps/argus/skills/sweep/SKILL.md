@@ -1,6 +1,6 @@
 ---
 name: sweep
-description: One idempotent pass over the whole workspace loop — digest tick, unjournaled-landing scan, the join between landings / open decisions / open Liamai tickets, per-item dispatch of log-change and feature-docs, then accio audit and a morning-readable report. Run via /loop 2h /sweep or on demand; every stage is state-driven and catch-up-safe, so the first run after days away backfills everything. Use when the user says "sweep", "run the sweep", "catch me up on everything", or asks to run the workspace loop.
+description: One idempotent pass over the whole workspace loop — digest tick, unjournaled-landing scan, the join between landings / open decisions / open Liamai tickets, per-item dispatch of log-change and feature-docs, a Linear ticket pass (file tickets from digest ✋ action items, review open tickets against refreshed docs), then accio audit and a morning-readable report. Run via /loop 2h /sweep or on demand; every stage is state-driven and catch-up-safe, so the first run after days away backfills everything. Use when the user says "sweep", "run the sweep", "catch me up on everything", or asks to run the workspace loop.
 ---
 
 # sweep — the scheduler for the workspace loop
@@ -45,6 +45,9 @@ landings drop out on their own, so overlapping windows are harmless.
 - today's digest 🔴 / ✋ / 🟠 sections
 - open Linear issues, team `Liamai`, assignee me (`mcp__linear-server__list_issues`;
   ToolSearch it first if deferred)
+- Linear activity today: same tool, team `Liamai`, no assignee filter, `updatedAt` ≥
+  local midnight — feeds the report's "Linear today" section. Split created-today from
+  merely-updated by `createdAt`.
 
 **4. The join.** For each `NOT JOURNALED` landing, before dispatching anything, try to
 match it against the open tickets and open decisions:
@@ -55,11 +58,41 @@ match it against the open tickets and open decisions:
   normal path, and it is a judgement call — phrase every semantic match as *appears*, not
   *is*.
 
-On a match to an open ticket: **annotate, never close.** Comment on the issue with the PR
-link, merge sha, and author (`save_issue` / comment — the digest's dedupe rules apply: one
-annotation per landing, not one per tick). Closing stays manual, always — a landing may
-implement half a ticket, and a wrongly closed ticket vanishes from the only queue the user
-reads. The report leads with "LIA-xx appears already implemented by fe#N — verify".
+Match against the whole ticket, not just its Scope: a landing can also satisfy a
+**Pending** bullet — a BE landing shipping the endpoint an FE ticket was waiting on is
+exactly the event Pending exists to track.
+
+A match is not always "implements". A landing can make a ticket **redundant** instead:
+it deleted or rewrote the code the ticket targets, solved the same problem a different
+way, or shipped a decision that moots the ask. Check for this whenever a landing touches
+a feature an open ticket names — the diff removing or replacing the thing the ticket
+wants changed is the tell. Redundancy is always a judgement call, so it follows the
+semantic-match rule: *appears*, never *is*.
+
+On a match to an open ticket: **annotate, never close.** Comment on the issue with the
+facts — PR link, merge sha, author, features touched (`save_issue` / comment — the
+digest's dedupe rules apply: one annotation per landing, not one per tick). The bullet
+mapping — which Scope / Pending items the landing appears to satisfy, which remain — is
+inference, so it goes in the report, not the comment. Closing stays manual, always — a
+landing may implement half a ticket, and a wrongly closed ticket vanishes from the only
+queue the user reads. The report leads with "LIA-xx appears already implemented by fe#N —
+verify"; a partial match reports "fe#N appears to cover 2 of 4 Scope bullets on LIA-xx —
+edit Scope?".
+
+On a redundancy match: **report-only, no comment.** Redundancy is inference, not
+evidence — a wrong "this may be moot" comment on a shared ticket is noise the team sees.
+The report says "LIA-xx appears redundant after fe#N — close or rescope?" and the
+comment happens after the user confirms. Cancelling is closing — it stays manual for the
+same reason: the sweep may have misread the diff, and part of the ask may survive the
+rewrite. This is the general rule for outward-facing writes: **positive evidence earns a
+comment; inference goes in the report.**
+
+One narrow body edit is allowed: **delete a Pending bullet whose named artifact
+verifiably landed** — the bullet names a concrete endpoint / field / table and the
+landing's diff contains exactly that. That is a mechanical fact, and it's what
+linear-ticket's own rule ("when a pending item lands, delete its bullet") demands. When
+the connection is only semantic, don't touch the bullet — say *appears* in the comment
+and put it in Needs-you. Scope bullets are never edited by the sweep, satisfied or not.
 
 On a match to an open `decided` entry: pass it to the dispatch below — the landing entry
 must link back and flip the decision to `superseded` (log-change step 2b).
@@ -75,15 +108,47 @@ decided entry to supersede, digest permalink as `source:`). log-change step 6 th
 (audit's "refresh missed" nag) get a `feature-docs` run here too. Bulky reading happens in
 the subagents; keep only conclusions in the sweep's context.
 
-**6. Audit.** `bun run accio audit`. Problems it still reports after dispatch go in the
+**6. Ticket pass.** Linear is the sweep's terminal surface — the queue the user actually
+reads — so this stage makes it current. Two halves:
+
+**6a. File tickets from ✋ items.** Every unmarked item in the digest's ✋ section that
+carries a real deliverable (build, fix, review, write, decide-with-follow-up) gets a
+Liamai ticket: label `digest`, assignee me, the Slack permalink as the body's anchor,
+title from the item. Pure reply/ack pings get no ticket — they stay in the report; a
+queue buried in micro-tasks stops being read. Dedupe is a writeback: after filing,
+append ` → LIA-xx` to the item's line in the digest file — a marked item is invisible
+to every later tick, which is what makes the catch-up case free. Because the file-then-
+mark pair isn't atomic, backstop before filing: search the `digest` label for the item's
+Slack permalink; a hit means a prior tick crashed mid-pair — write the missing marker
+instead of filing twice.
+
+**6b. Review tickets against refreshed reality.** For each feature whose docs or journal
+changed this tick (dispatch's output), re-read the open tickets naming that feature
+against the fresh docs: Pending items now landed? Scope bullets satisfied or mooted?
+File/line references drifted? This is what catches tickets the join can't — the join
+only sees tickets a *new landing* touches; a review triggers whenever the ticket's
+ground truth moves. Findings flow through the same policy as the join: verifiable facts
+(a named Pending artifact now exists) may annotate and delete the bullet; everything
+else — appears-satisfied, appears-redundant, drifted references — goes in Needs-you.
+Skip the pass entirely on a tick that refreshed nothing.
+
+**7. Audit.** `bun run accio audit`. Problems it still reports after dispatch go in the
 report verbatim — never silence one by inventing the missing fact.
 
-**7. Report.** One screen, in this order, skipping empty sections:
+**8. Report.** One screen, in this order, skipping empty sections:
 
-1. **Needs you** — appears-implemented tickets to verify, unattributed landings,
-   digest ✋/🟠 items, holds still waiting.
-2. **Done this tick** — entries written, docs refreshed, tickets annotated (keys + PRs).
-3. **Audit** — remaining problems, verbatim.
+1. **Needs you** — appears-implemented tickets to verify, appears-redundant tickets to
+   close or rescope, partial matches awaiting a Scope edit, Pending bullets that only
+   *appear* satisfied, review findings, unattributed landings, un-ticketed ✋ pings and
+   🟠 items, holds still waiting. ✋ items that got tickets appear by key, not restated.
+2. **Done this tick** — entries written, docs refreshed, tickets filed (6a) and
+   annotated (keys + PRs).
+3. **Linear today** — every Liamai ticket created or updated since local midnight, one
+   line each: key, title, `created` or `updated`, and by what (sweep annotation, digest
+   filing, or outside activity — the last flagged, since it's news). Built from the
+   step-3 query, not tick memory, so every tick restates the full day; a later tick's
+   report is always the complete picture.
+4. **Audit** — remaining problems, verbatim.
 
 A quiet tick reports in one line ("sweep: nothing new").
 
@@ -92,9 +157,14 @@ A quiet tick reports in one line ("sweep: nothing new").
 Runs unattended under `/loop`, so the write policy is fixed:
 
 - **Yes:** journal entries, doc regeneration, local git commits, Linear comments/
-  annotations and digest-mandated issue filing.
-- **Never:** close Linear tickets, post to Slack, push git, or guess frontmatter.
-  Anything needing the user's judgement goes in the report, not into a file.
+  annotations backed by positive evidence, digest-mandated issue filing, filing `digest`-
+  labeled tickets from ✋ deliverables (with the digest-file writeback marker, step 6a),
+  and deleting a Pending bullet whose named artifact verifiably landed (step 4's narrow
+  case — the diff contains the exact thing the bullet names).
+- **Never:** close Linear tickets, edit Scope or any other ticket body text, comment
+  inference onto a ticket (appears-redundant, appears-satisfied — report first, comment
+  after the user confirms), post to Slack, push git, or guess frontmatter. Anything
+  needing the user's judgement goes in the report, not into a file.
 
 ## Running it
 
