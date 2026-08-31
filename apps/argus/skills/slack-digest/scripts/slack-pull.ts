@@ -230,12 +230,14 @@ export function assemble(
 
 // ---------------------------------------------------------------- rendering
 
-function line(m: Msg, indent = ""): string {
+function line(m: Msg, indent = "", parentDate?: string): string {
+  const cont = " ".repeat(indent.length) + "    ";
   const flags = [m.mentionsMe ? "→you" : "", m.bot ? "[bot]" : ""].filter(Boolean).join(" ");
-  const head = `${indent}${m.date} ${m.time}  ${m.author}${flags ? `  ${flags}` : ""}:`;
-  const body = m.text.split("\n").map((l, i) => (i === 0 ? ` ${l}` : `${indent}    ${l}`)).join("\n");
+  const when = parentDate === m.date ? m.time : `${m.date} ${m.time}`;
+  const head = `${indent}${when}  ${m.author}${flags ? `  ${flags}` : ""}:`;
+  const body = m.text.split("\n").map((l, i) => (i === 0 ? ` ${l}` : `${cont}${l}`)).join("\n");
   const tail = [m.reactions && `[${m.reactions}]`, ...m.files.map((f) => `[file: ${f}]`)].filter(Boolean);
-  return `${head}${body}${tail.length ? `\n${indent}    ${tail.join("  ")}` : ""}\n${indent}    ${m.permalink}`;
+  return `${head}${body}  ·ts ${m.ts}${tail.length ? `\n${cont}${tail.join("  ")}` : ""}`;
 }
 
 export function render(p: Pull): string {
@@ -249,14 +251,19 @@ export function render(p: Pull): string {
     `${p.noiseDropped} noise dropped  ·  ${p.expiredThreads.length} watched threads expired`,
   );
   out.push(`next last_ts ${p.next.last_ts}  ·  watching ${Object.keys(p.next.watched_threads).length} threads`);
-  out.push("", "author 'you' = the user. →you = mentions the user. Reply permalinks carry thread_ts.");
+  out.push(
+    "",
+    "author 'you' = the user · →you = mentions the user · every line ends in its ts.",
+    `link: ${WORKSPACE}/archives/${CHANNEL}/p<ts without the dot> — for a reply append ?thread_ts=<parent ts>&cid=${CHANNEL}`,
+    "replies show time only when on the parent's date.",
+  );
 
   if (p.newTopLevel.length) {
     out.push("", "## New messages (chronological; threads inline)");
     for (const m of p.newTopLevel) {
       const t = threadOf.get(m.ts);
       out.push("", line(m) + (t ? `\n    ${t.totalReplies} replies:` : ""));
-      for (const r of t?.replies ?? []) out.push(line(r, "    ↳ "));
+      for (const r of t?.replies ?? []) out.push(line(r, "    ↳ ", m.date));
     }
   }
   const older = p.threads.filter((t) => !t.parentIsNew);
@@ -264,7 +271,7 @@ export function render(p: Pull): string {
     out.push("", "## New replies in older threads (parent shown for context, then only the new replies)");
     for (const t of older) {
       out.push("", `parent (${t.totalReplies} replies total):`, line(t.parent, "  "));
-      for (const r of t.replies) out.push(line(r, "    ↳ "));
+      for (const r of t.replies) out.push(line(r, "    ↳ ", t.parent.date));
     }
   }
   if (!p.newTopLevel.length && !p.threads.length) out.push("", "nothing new.");

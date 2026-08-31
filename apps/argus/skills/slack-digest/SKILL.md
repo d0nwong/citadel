@@ -74,9 +74,11 @@ channel message newer than `last_ts`, follows the threads of new messages and of
 - **New messages** — chronological, each with its thread's new replies inline;
 - **New replies in older threads** — the parent for context, then only the new replies.
 
-Every line carries `YYYY-MM-DD HH:MM`, author (`you` = the user), `→you` when the user
-is mentioned, `[bot]` for bot posts, reactions, files/canvases, and the permalink
-(reply links already carry `thread_ts`). A thread that reaches a conclusion ("let's do
+Every line carries its time (date too, when it differs from the parent's), author
+(`you` = the user), `→you` when the user is mentioned, `[bot]` for bot posts, reactions,
+files/canvases, and ends in `·ts <ts>`. Permalinks are not printed per line — build them
+from the ts with the rule in the header (`p<ts without the dot>`, plus
+`?thread_ts=<parent ts>&cid=…` for a reply). `--json` includes them ready-made. A thread that reaches a conclusion ("let's do
 X", "agreed", ✅ reactions) is a **decision** even if the parent message is old. Items
 belong to the day of their own timestamp, not today.
 
