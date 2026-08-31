@@ -8,9 +8,11 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "vite dev --port 3778 --host",
+    "dev": "vite dev --port ${PORT:-3778} --host",
     "build": "vite build",
     "start": "bun server.ts",
+    "serve": "scripts/serve.sh",
+    "serve:dev": "scripts/serve.sh dev",
     "generate-routes": "tsr generate",
     "typecheck": "tsc --noEmit",
     "test": "bun test"

@@ -33,6 +33,20 @@ bun run build                # dist/client + dist/server
 bun run start                # bun server.ts — serves dist/client, hands the rest to Start
 ```
 
+On the tailnet — HTTPS at this machine's MagicDNS name, no port-forwarding, tailnet-only
+(never Funnel; the blackboard is private):
+
+```sh
+bun run serve                # build if needed, bun server.ts, `tailscale serve` → https://<host>.ts.net:3778/
+bun run serve:dev            # same, but proxying the vite dev server (HMR included)
+scripts/serve.sh status|reset
+```
+
+Ctrl-C tears down both the app and the proxy. It listens on the app's port (not 443) so
+it won't displace anything else the node serves; `TS_HTTPS_PORT=443` takes the root URL.
+Needs MagicDNS + HTTPS certs enabled in
+the tailnet admin; `vite.config.ts` already allows `.ts.net` hosts.
+
 In a container — the blackboard is mounted, never copied in, because it changes every
 sweep tick:
 
