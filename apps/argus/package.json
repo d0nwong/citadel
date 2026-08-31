@@ -5,7 +5,7 @@
   "description": "Liam's personal AI Workspace",
   "type": "module",
   "scripts": {
-    "loop": "claude '/loop 30m /office-hours' --dangerously-skip-permissions",
+    "sweep": "claude '/loop 30m /sweep' --model claude-sonnet-5 --dangerously-skip-permissions",
     "accio": "bun scripts/accio.ts"
   },
   "bin": {

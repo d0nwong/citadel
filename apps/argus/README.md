@@ -38,7 +38,11 @@ The design is a blackboard, not a pipeline of agents:
   each other (including decisions whose change landed without anyone linking back). Code
   does the joins an LLM would only guess at.
 - **Agents are stateless workers.** `slack-digest`, `log-change`, `feature-docs` each make
-  one kind of file current, in a subagent, and can be re-run at any time.
+  one kind of file current, in a subagent, and can be re-run at any time; `ticket-pass`
+  does the same for Linear (files tickets from ✋ items, reviews open ones against
+  refreshed docs) and marks the digest file so its work is visible to the next tick. A
+  stage gets a subagent when its reading is bulky *and* its output lands on the
+  blackboard — the join, nomination and the report stay in the sweep itself.
 - **`/sweep` is the scheduler, and it is deliberately dumb.** Each tick it makes the
   digest current, scans for unjournaled landings, joins them against open tickets and
   open decisions, dispatches workers per item, audits, and reports — the files decide
@@ -56,6 +60,7 @@ flowchart TB
         sd["slack-digest"]
         lc["log-change"]
         fd["feature-docs"]
+        tp["ticket-pass"]
     end
 
     subgraph blackboard["Durable state — the blackboard"]
@@ -78,6 +83,10 @@ flowchart TB
     join -. "annotate PR link —<br/>NEVER close" .-> linear
     join -- "one dispatch per landing" --> lc --> journal
     journal -- "implemented, no hold" --> fd --> docs
+    digest -- "✋ items" --> tp
+    docs -- "refreshed features" --> tp
+    tp -- "files tickets,<br/>annotates evidence" --> linear
+    tp -. "→ LIA-xx marker" .-> digest
     journal --> audit
     docs --> audit
     audit --> report
