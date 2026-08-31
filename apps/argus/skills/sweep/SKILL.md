@@ -216,7 +216,8 @@ report verbatim — never silence one by inventing the missing fact.
    report is always the complete picture.
 4. **Audit** — remaining problems, verbatim.
 
-A quiet tick reports in one line ("sweep: nothing new").
+A quiet tick prints one line to the terminal ("sweep: nothing new") — but see below:
+the one-liner is a terminal courtesy, never the file's content.
 
 **The report is also a file.** Write the exact text you print to `reports/<today>.md`,
 overwriting whatever the previous tick wrote — the report is a snapshot that restates the
@@ -232,10 +233,21 @@ _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 …
 ```
 
-Same section names as above, same order, same skip-empty rule; a quiet tick writes the
-one-liner under the header. Commit it with the tick's other writes. This file is the
-only place Needs-you lives — nothing else on the blackboard holds an inference — so a
-report that only went to the terminal is a report that was lost.
+Same section names as above, same order, same skip-empty rule. Commit it with the
+tick's other writes. This file is the only place Needs-you lives — nothing else on the
+blackboard holds an inference — so a report that only went to the terminal is a report
+that was lost.
+
+**A quiet tick never shrinks the file.** "Nothing new" is relative to the previous
+tick; the file is read in the morning with no previous tick in view, and Pensieve
+renders it as the day's state. So on a quiet tick the file still carries the full
+snapshot — every open Needs-you item, the day's Linear list, the remaining audit
+problems. Do it by rewriting the existing file: replace the `_Tick …_` line with this
+tick's, keep every section, and append `sweep: nothing new` under the tick line if you
+want the quietness recorded. The one-liner alone is only ever correct on the first tick
+of a day when there is genuinely nothing open — and even then, "nothing open" means
+step 3 found no holds, no agent-ready nominations, and audit is clean, not that this
+tick found nothing *new*.
 
 ## Autonomy
 
