@@ -39,7 +39,8 @@ On the tailnet — HTTPS at this machine's MagicDNS name, no port-forwarding, ta
 ```sh
 bun run serve                # build if needed, bun server.ts, `tailscale serve` → https://<host>.ts.net:3778/
 bun run serve:dev            # same, but proxying the vite dev server (HMR included)
-scripts/serve.sh status|reset
+bun run unserve              # stop a running serve (and any orphaned proxy) — only this port's mapping
+scripts/serve.sh status
 ```
 
 Ctrl-C tears down both the app and the proxy. It listens on the app's port (not 443) so

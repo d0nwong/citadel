@@ -4,7 +4,7 @@
 #   scripts/serve.sh          production: build if needed, bun server.ts, proxy it
 #   scripts/serve.sh dev      vite dev server (HMR works through the proxy)
 #   scripts/serve.sh status   show what tailscale serve is currently exposing
-#   scripts/serve.sh reset    clear tailscale serve config (if a prior run was --bg'd)
+#   scripts/serve.sh stop     undo a serve: kill running serve.sh trees + the proxy on our port
 #
 # Tailnet-only on purpose: the blackboard is private, so this never enables Funnel.
 # The app runs in the background; `tailscale serve` runs in the foreground and both are
@@ -38,11 +38,32 @@ kill_tree() {
 command -v tailscale >/dev/null || die "tailscale CLI not found"
 command -v bun >/dev/null || die "bun not found"
 
+stop() {
+  local pid found=0
+  # Running serve.sh instances (not this one): killing the tree runs their cleanup too.
+  for pid in $(pgrep -f '[/]serve\.sh( |$)' 2>/dev/null); do
+    [[ "$pid" == "$$" || "$pid" == "$PPID" ]] && continue
+    echo "serve: stopping serve.sh ($pid)"; kill_tree "$pid"; found=1
+  done
+  # Orphaned proxies on our port (serve.sh died without its trap running).
+  for pid in $(pgrep -f "tailscale serve --https=${TS_HTTPS_PORT} " 2>/dev/null); do
+    echo "serve: stopping stray proxy ($pid)"; kill_tree "$pid"; found=1
+  done
+  # Only our port's mapping — never `serve reset`, which would drop everything else on this node.
+  tailscale serve --https="${TS_HTTPS_PORT}" off >/dev/null 2>&1 || true
+  sleep 0.5
+  if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "serve: note — something not started by serve.sh still listens on :$PORT (left alone):"
+    lsof -nP -iTCP:"$PORT" -sTCP:LISTEN | tail -n +2
+  fi
+  (( found )) && echo "serve: stopped" || echo "serve: nothing to stop"
+}
+
 case "$MODE" in
   status) exec tailscale serve status ;;
-  reset)  exec tailscale serve reset ;;
+  stop)   stop; exit 0 ;;
   start|dev) ;;
-  *) die "unknown mode '$MODE' (expected start | dev | status | reset)" ;;
+  *) die "unknown mode '$MODE' (expected start | dev | status | stop)" ;;
 esac
 
 tailscale status --json 2>/dev/null | grep -q '"BackendState": *"Running"' \

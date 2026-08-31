@@ -13,6 +13,7 @@
     "start": "bun server.ts",
     "serve": "scripts/serve.sh",
     "serve:dev": "scripts/serve.sh dev",
+    "unserve": "scripts/serve.sh stop",
     "generate-routes": "tsr generate",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
