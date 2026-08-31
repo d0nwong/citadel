@@ -287,12 +287,24 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
       "features: [tasks]", "scope: architecture", "status: implemented",
       "summary: s", "---",
     ].join("\n");
-    // tasks/docs/product.md records last_verified: staging@597bfbdf3, dated 2026-08-28
-    await Bun.write(`${dir}/tasks/journal/2026-08-28-landed-before.md`, entry("9bf7402c5"));
-    await Bun.write(`${dir}/tasks/journal/2026-08-28-landed-after.md`, entry("550bc135e"));
+    // Derived from the live doc, never hardcoded: every re-verification of `tasks` moves
+    // `last_verified` forward and would silently flip a pinned "landed-after" sha into an
+    // ancestor, turning this guard green-then-red for a reason that has nothing to do with
+    // the rule it covers.
+    const fe = `${process.env.HOME}/git/alden-portal-fe`;
+    const verified = (await Bun.file(`${ROOT}/alden/alden-portal/features/tasks/docs/product.md`).text())
+      .match(/^last_verified:\s*(?:\S+?@)?([0-9a-f]{7,40})\s*$/m)?.[1];
+    expect(verified).toBeTruthy();
+    // A commit the docs' verification could NOT have seen: reachable from origin/main but
+    // not from `verified`. None means staging has caught up with main — nothing to assert.
+    const after = (await Bun.$`git -C ${fe} rev-list -1 ${verified}..origin/main`.quiet().nothrow())
+      .stdout.toString().trim();
+
+    await Bun.write(`${dir}/tasks/journal/2026-08-28-landed-before.md`, entry(verified!));
+    if (after) await Bun.write(`${dir}/tasks/journal/2026-08-28-landed-after.md`, entry(after));
     const problems = await auditJournal(index, dir);
     expect(problems.some(x => x.includes("landed-before") && x.includes("refresh missed"))).toBe(true);
-    expect(problems.some(x => x.includes("landed-after"))).toBe(false);
+    if (after) expect(problems.some(x => x.includes("landed-after"))).toBe(false);
     await Bun.$`rm -rf ${dir}`.quiet();
   });
 
