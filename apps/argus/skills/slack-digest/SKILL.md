@@ -34,9 +34,11 @@ The thread transcripts this skill reads are bulky and single-use — they belong
 subagent's context, not in the session the user is working in.
 
 **If you are the main session**, don't run the procedure yourself. Spawn ONE
-general-purpose subagent via the Agent tool with **no `model` override**, so it inherits
-the session's model — the triage in step 4 and the Linear writes in step 6 are judgement
-calls and a weaker model files worse tickets. Give it this task:
+general-purpose subagent via the Agent tool with **`model: "opus"`** — the triage in
+step 4 and the Linear writes in step 6 are judgement calls and a weaker model files worse
+tickets. The override is deliberate: the sweep loop runs on Sonnet (`bun run sweep`) so
+the scheduler is cheap, and every worker that writes pins the judgement tier itself
+rather than inheriting whatever the session happens to be on. Give it this task:
 
 > Invoke the `slack-digest` skill and follow it to completion. You ARE the subagent for
 > this run: execute the procedure directly, starting at step 1. The working directory is

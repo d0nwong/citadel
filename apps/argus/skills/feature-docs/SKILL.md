@@ -76,7 +76,9 @@ a successful run flip each entry the agent CONFIRMED in code to `status: documen
 (leave unconfirmed ones alone; audit will keep nagging, which is correct).
 
 **3. One subagent per feature** (protocol isolation rule — never batch features into one
-context). Prompt template — fill every `{…}`:
+context), general-purpose, with **`model: "opus"`** — verifying a doc against two repos is
+judgement, and the sweep loop that usually drives this runs on Sonnet (see
+`skills/sweep/SKILL.md`, "Running it"). Prompt template — fill every `{…}`:
 
 > You are executing Phase 2 of the doc protocol for ONE feature of the alden-portal app:
 > **{name}** (manifest id: `{id}`).

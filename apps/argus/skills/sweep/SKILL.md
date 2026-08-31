@@ -102,8 +102,10 @@ admin-invoicings — is this LIA-xx?").
 
 **5. Dispatch.** One `log-change` run per unjournaled landing, **sequentially** — entries
 for one feature share a folder and every run ends in a commit; parallel writers would
-trip over the tree. Each run gets the join's findings for its landing (ticket or null,
-decided entry to supersede, digest permalink as `source:`). log-change step 6 then drives
+trip over the tree. Each run is a general-purpose subagent with **`model: "opus"`** (the
+entry it writes is the "why" layer — judgement, not transcription) and gets the join's
+findings for its landing (ticket or null, decided entry to supersede, digest permalink as
+`source:`). log-change step 6 then drives
 `feature-docs` for the affected features; entries left `implemented` by a previous sweep
 (audit's "refresh missed" nag) get a `feature-docs` run here too. Bulky reading happens in
 the subagents; keep only conclusions in the sweep's context. That is the general rule for
@@ -126,9 +128,9 @@ the cross-product of landings, tickets and decisions, and splitting it loses the
 **Skip the spawn** when there is nothing for it: no unmarked ✋ items *and* no feature
 refreshed this tick. Otherwise, **after dispatch has finished** (the subagent writes the
 digest file and commits — a parallel writer would trip over dispatch's tree), spawn ONE
-general-purpose subagent via the Agent tool with **no `model` override** — filing and
-review are judgement calls, and a weaker model files worse tickets. The sweep hands it
-conclusions, not sources:
+general-purpose subagent via the Agent tool with **`model: "opus"`** (the judgement
+tier — see "Running it") — filing and review are judgement calls, and a weaker model files
+worse tickets. The sweep hands it conclusions, not sources:
 
 > You are the `ticket-pass` worker for one sweep tick of the `ai-workspace` repo (working
 > directory). Execute directly; never spawn a subagent — it would recurse.
@@ -234,7 +236,13 @@ Runs unattended under `/loop`, so the write policy is fixed:
 
 ## Running it
 
-`/loop 2h /sweep` is the intended mode (self-paced `/loop` also works). The loop only
+`bun run sweep` (`claude '/loop 30m /sweep' --model claude-sonnet-5 …`) is the intended
+mode; self-paced `/loop` also works. **Two model tiers, on purpose:** the loop session
+runs on Sonnet because the sweep is a scheduler — greps, a join over compact lists, a
+report — and every worker that writes (`slack-digest`, `log-change`, `feature-docs`,
+`ticket-pass`) pins `model: "opus"` in its own spawn spec, so ticket and doc quality
+doesn't depend on which model the session was launched with. To raise the judgement
+tier, change those spawn specs, not the loop flag. The loop only
 runs while a session is alive — fine, because the design is catch-up-safe: the first tick
 after any gap backfills. If it must run with no machine awake, that is `/schedule` (cloud
 cron), not a longer loop.
