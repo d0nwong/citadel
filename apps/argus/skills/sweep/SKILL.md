@@ -207,8 +207,8 @@ report verbatim — never silence one by inventing the missing fact.
    *appear* satisfied, review findings, unattributed landings, un-ticketed ✋ pings and
    🟠 items, holds still waiting, agent-ready nominations (6c) awaiting your label.
    ✋ items that got tickets appear by key, not restated.
-2. **Done this tick** — entries written, docs refreshed, tickets filed (6a) and
-   annotated (keys + PRs).
+2. **Done today** — entries written, docs refreshed, tickets filed (6a) and
+   annotated (keys + PRs), one `### HH:MM` sub-block per tick that did something.
 3. **Linear today** — every Liamai ticket created or updated since local midnight, one
    line each: key, title, `created` or `updated`, and by what (sweep annotation, digest
    filing, or outside activity — the last flagged, since it's news). Built from the
@@ -219,10 +219,21 @@ report verbatim — never silence one by inventing the missing fact.
 A quiet tick prints one line to the terminal ("sweep: nothing new") — but see below:
 the one-liner is a terminal courtesy, never the file's content.
 
-**The report is also a file.** Write the exact text you print to `reports/<today>.md`,
-overwriting whatever the previous tick wrote — the report is a snapshot that restates the
-full day, so the last tick's file is the complete picture and older ticks have nothing
-the newer one lacks. Format:
+**The report is also a file.** `reports/<today>.md` is the durable copy of what you
+print, and it is **updated in place, not replaced** — the file outlives the tick, and
+its sections have two different natures:
+
+- **Needs you, Linear today, Audit are state.** They describe what is open *now*, so
+  each tick re-emits them from this tick's findings, replacing the previous tick's
+  section body. An item that is still open restates; an item that got resolved drops
+  out. Nothing is appended — a snapshot that accumulated stale bullets would be worse
+  than none.
+- **Done today is a log.** Append this tick's work as a `### HH:MM` sub-block at the
+  end of the section; never rewrite or drop an earlier tick's block. This is the one
+  place the file remembers the day's sequence — what 12:25 journaled is still there
+  after 13:28 — so a reader doesn't need `git log -p reports/` to see it.
+
+Format:
 
 ```markdown
 # sweep — 2026-08-28
@@ -231,23 +242,36 @@ _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 
 ## Needs you
 …
+
+## Done today
+### 12:25
+- …
+### 16:54
+- …
+
+## Linear today
+…
+
+## Audit
+…
 ```
 
-Same section names as above, same order, same skip-empty rule. Commit it with the
-tick's other writes. This file is the only place Needs-you lives — nothing else on the
-blackboard holds an inference — so a report that only went to the terminal is a report
-that was lost.
+Same section names as above, same order, same skip-empty rule. Concretely, each tick:
+read the existing file (create it from the template if today's doesn't exist), replace
+the `_Tick …_` line, replace the bodies of Needs you / Linear today / Audit, append a
+`### HH:MM` block under Done today if this tick wrote anything, and write it back.
+Commit it with the tick's other writes. This file is the only place Needs-you lives —
+nothing else on the blackboard holds an inference — so a report that only went to the
+terminal is a report that was lost.
 
 **A quiet tick never shrinks the file.** "Nothing new" is relative to the previous
 tick; the file is read in the morning with no previous tick in view, and Pensieve
-renders it as the day's state. So on a quiet tick the file still carries the full
-snapshot — every open Needs-you item, the day's Linear list, the remaining audit
-problems. Do it by rewriting the existing file: replace the `_Tick …_` line with this
-tick's, keep every section, and append `sweep: nothing new` under the tick line if you
-want the quietness recorded. The one-liner alone is only ever correct on the first tick
-of a day when there is genuinely nothing open — and even then, "nothing open" means
-step 3 found no holds, no agent-ready nominations, and audit is clean, not that this
-tick found nothing *new*.
+renders it as the day's state. So on a quiet tick the update is: new `_Tick …_` line,
+state sections re-emitted (they'll be identical), no Done-today block. Append
+`sweep: nothing new` under the tick line if you want the quietness recorded. The
+one-liner alone is only ever correct on the first tick of a day when there is genuinely
+nothing open — and even then, "nothing open" means step 3 found no holds, no agent-ready
+nominations, and audit is clean, not that this tick found nothing *new*.
 
 ## Autonomy
 
