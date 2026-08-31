@@ -39,6 +39,7 @@ function toJob(row: JobRow): Job {
     forge: row.forge,
     blueprint: row.blueprint ?? undefined,
     sourceJobId: row.sourceJobId ?? undefined,
+    ticketId: row.ticketId ?? undefined,
     status: row.status,
     step: (row.step as JobStep | null) ?? undefined,
     prUrl: row.prUrl ?? undefined,
@@ -137,7 +138,12 @@ export async function lastBaseBranchByRepo(): Promise<Map<string, string>> {
   return new Map(rows.map((r) => [r.repo_id, r.base_branch]))
 }
 
-export async function createJob(input: NewJobInput): Promise<Job> {
+/**
+ * Shared insert behind `createJob` and `claimTicketJob`. With a `ticketId` the
+ * insert doubles as the scanner's claim on the ticket: `jobs_ticket_id_unique`
+ * is the arbiter, and losing the race comes back as null rather than an error.
+ */
+async function insertJob(input: NewJobInput, ticketId?: string): Promise<Job | null> {
   const task = input.task.trim()
 
   // Link to the repo row when the target is one the user imported, so the job
@@ -160,27 +166,50 @@ export async function createJob(input: NewJobInput): Promise<Job> {
   // by construction, and readable back to the row in the ledger.
   const id = randomUUID()
 
-  const [row] = await db
-    .insert(jobs)
-    .values({
-      id,
-      task,
-      repo: input.repo,
-      repoId,
-      baseBranch: input.baseBranch,
-      branch: `foundry/${branchSlug(task)}-${shortId(id)}`,
-      forge: input.forge,
-      blueprintId: bp?.id ?? null,
-      blueprint: bp ? toSnapshot(bp) : null,
-    })
-    .returning()
+  const insert = db.insert(jobs).values({
+    id,
+    task,
+    repo: input.repo,
+    repoId,
+    baseBranch: input.baseBranch,
+    branch: `foundry/${branchSlug(task)}-${shortId(id)}`,
+    forge: input.forge,
+    blueprintId: bp?.id ?? null,
+    blueprint: bp ? toSnapshot(bp) : null,
+    ticketId: ticketId ?? null,
+  })
+  const [row] = ticketId
+    ? await insert.onConflictDoNothing({ target: jobs.ticketId }).returning()
+    : await insert.returning()
+  if (!row) return null
 
   // Logs are a file now, so this line cannot ride in the insert's transaction —
   // it is written once the row is real. Losing it on a failed insert is right:
   // there would be no job for it to describe.
   const via = bp ? ` via blueprint "${bp.name}" (${bp.steps.length} steps)` : ''
-  await appendLogs(row.id, [{ stream: 'sys', text: `queued on ${row.forge}${via}` }])
+  const claim = ticketId ? ` — scanner claim for ${ticketId}` : ''
+  await appendLogs(row.id, [{ stream: 'sys', text: `queued on ${row.forge}${via}${claim}` }])
   return toJob(row)
+}
+
+export async function createJob(input: NewJobInput): Promise<Job> {
+  const job = await insertJob(input)
+  if (!job) throw new Error('unreachable: a plain insert has no conflict to lose')
+  return job
+}
+
+/**
+ * The ticket scanner's atomic claim (LIA-52): inserting the row under the
+ * unique index IS the claim on the ticket, taken before any Linear write.
+ * `null` means another tick — or an earlier run — already holds it.
+ */
+export async function claimTicketJob(input: NewJobInput, ticketId: string): Promise<Job | null> {
+  return insertJob(input, ticketId)
+}
+
+export async function getJobByTicketId(ticketId: string): Promise<JobRow | undefined> {
+  const [row] = await db.select().from(jobs).where(eq(jobs.ticketId, ticketId))
+  return row
 }
 
 /**

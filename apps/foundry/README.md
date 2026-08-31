@@ -27,7 +27,7 @@ flowchart LR
     end
 
     remote["GitHub / Bitbucket"]
-    linear["Linear MCP<br/>mcp.linear.app"]
+    linear["Linear<br/>api.linear.app · MCP"]
     slack["Slack MCP<br/>mcp.slack.com"]
 
     cli -- "new · claude · shell · exec · run" --> forge
@@ -47,6 +47,7 @@ flowchart LR
     jobforge -- "edits" --> jobs
     jobforge -. "progress callback<br/>host.docker.internal + per-job token" .-> web
     web -- "commit · push · PR<br/>(gh / bb, host creds)" --> remote
+    web -. "scan agent-ready · claim<br/>LINEAR_API_KEY (host only)" .-> linear
 ```
 
 ## Why containers, not `orb` machines
@@ -291,6 +292,45 @@ show a bare name.
 Versions are also how foundry ships improvements to the blueprints it seeds: a
 migration may rewrite one *only* while you have never saved over it. Your first edit
 takes ownership of that blueprint permanently, and later releases leave it alone.
+
+### Ticket scanner
+
+Label a Linear ticket **`agent-ready`** and foundry picks it up by itself: on a poll
+interval the web server scans the Liamai team for open labeled tickets, queues a job
+whose brief is the full ticket body (key, title, URL, every section), assigns the
+ticket to you and moves it to In Progress, then ignites the job through the exact
+pipeline the UI uses. The label is the entire contract — the scanner never infers
+readiness from status, assignee or anything else. A human put it there on purpose.
+
+Two sanity checks guard the label rather than replace it: a ticket with an unresolved
+blocked-by relation, or with content under a `## Pending` heading, is skipped with a
+log line — it keeps the label and is retried next scan, so fix the ticket, not the
+scanner. Claiming is race-safe: the job row is inserted under a unique index on the
+ticket id *before* any Linear write, so two ticks (or two servers) can both try and
+exactly one wins; a crash in between is repaired on the next scan. A ticket the
+scanner has run stays claimed even after the job settles — re-running it is the UI's
+rerun button, or purge the job and leave the label on.
+
+Which repo a ticket lands in comes from `~/.foundry/scanner.json`, keyed by the
+ticket's Linear *project* name and read fresh each scan:
+
+```json
+{
+  "Foundry":  { "repoPath": "/Users/you/git/foundry" },
+  "my-app":   { "repoPath": "/Users/you/git/my-app-fe", "baseBranch": "staging" }
+}
+```
+
+`baseBranch` defaults to the checkout's `origin/HEAD`, and an optional `blueprintId`
+overrides the default Plan → Execute blueprint. Tickets in an unmapped project (or no
+project) are skipped and logged.
+
+Off by default. `FOUNDRY_SCANNER=1` in `web/.env` turns it on;
+`FOUNDRY_SCANNER_INTERVAL` sets the poll in seconds (default 300). The scan uses the
+host's `LINEAR_API_KEY` from `foundry auth --linear` — like every Linear credential
+here, it never enters a forge. New claims stop while `FOUNDRY_MAX_JOBS` jobs are
+open, so labeled tickets queue in Linear — where you can still edit or unlabel them —
+not in the ledger.
 
 ### Reaching it from your other devices
 

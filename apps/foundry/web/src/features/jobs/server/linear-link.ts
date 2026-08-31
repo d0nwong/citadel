@@ -83,7 +83,7 @@ interface GqlResponse<T> {
  * Authorization raw — no `Bearer`, which is the OAuth form. GraphQL errors
  * arrive with HTTP 200, so the body is checked whatever the status says.
  */
-async function gql<T>(apiKey: string, query: string, variables: Record<string, string>): Promise<T> {
+export async function gql<T>(apiKey: string, query: string, variables: Record<string, string>): Promise<T> {
   const res = await fetch(API, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: apiKey },

@@ -26,6 +26,8 @@ export interface Job {
   blueprint?: BlueprintSnapshot
   /** Set when this job addresses review comments on the source job's PR. */
   sourceJobId?: string
+  /** Linear issue identifier (e.g. LIA-52) when the ticket scanner queued this job. */
+  ticketId?: string
   status: JobStatus
   step?: JobStep
   createdAt: number
