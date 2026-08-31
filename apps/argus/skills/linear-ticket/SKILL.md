@@ -121,6 +121,12 @@ ticket touches.
   ("handled separately", "tracked in ABC-123").
 - **One ticket, one change.** A thing that spans three surfaces is still one ticket with
   three in-scope bullets — not three tickets.
+- **Scope is executable, not aspirational.** Once a ticket carries the `agent-ready`
+  label, Foundry runs an agent with the body exactly as written (workspace README,
+  "Downstream" section) — so Scope bullets must be concrete enough to execute without a
+  round of questions. Anything vaguer belongs in Pending or as an open question in
+  Technical Notes. A vague Scope doesn't just annoy the next reader; it disqualifies the
+  ticket from pickup (the sweep only nominates tickets that clear this bar).
 - Line numbers age fast: cite them only for a range you actually read, and prefer
   `function()` / component names as the durable anchor next to them.
 - Don't invent design decisions. If the design doesn't cover a case, the ticket says so.
