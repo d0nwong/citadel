@@ -123,6 +123,15 @@ none fits, tag `[unmapped]`. This is a hint for the end-of-day pass, not a commi
   `list_issues` (team `Liamai`, query by keywords) — if an existing open issue
   covers it, **update** that issue (append the new Slack permalink / scope via
   `patch`) instead of creating a duplicate.
+- **Updating an existing issue means editing it like `linear-ticket` would, not
+  appending a note.** If the thread answers or lands something the issue's Pending
+  section names, that follows `linear-ticket`'s own rule: **delete the resolved
+  bullet** (folding any detail worth keeping into Technical Notes if it isn't already
+  there) — never leave it in place annotated "Answered:" / "Landed". A Pending
+  section exists to name what's still unresolved; an annotated-but-kept bullet reads
+  as still-open to the next person who scans it. This applies whether the thread you're
+  filing *is* the action item, or it merely closes out a Pending item on some other
+  open ticket the thread's decision touches.
 - Otherwise write the ticket **grounded, not transcribed** — a thread's technical
   claims are claims, not facts (a confirmed-on-Slack backend change has shipped late
   or never before). Follow `skills/linear-ticket/SKILL.md` steps 2–3 scaled to this
