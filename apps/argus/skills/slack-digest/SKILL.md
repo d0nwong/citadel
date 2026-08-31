@@ -23,10 +23,13 @@ Constants:
 - State file: `digests/.state.json`
 - Digest file: `digests/YYYY-MM-DD.md` (local date, one per day)
 
-If the Slack MCP tools (`mcp__plugin_slack_slack__*`) are deferred, load them with
-ToolSearch first: `slack_read_channel`, `slack_read_thread`. Same for the Linear
-tools when there are action items: `mcp__linear-server__list_issues`,
-`mcp__linear-server__save_issue`.
+Slack is read by a script, not by MCP tools: `scripts/slack-pull.ts` does the cursor
+bookkeeping, pagination, thread following, user-id resolution and noise filtering, and
+prints one compact transcript. It needs `SLACK_TOKEN` in `.env` (gitignored; Bun loads
+it). Fall back to the MCP tools (`slack_read_channel`, `slack_read_thread`, ToolSearch
+them first) only if the script cannot run — and say so in the report.
+If the Linear tools are deferred when there are action items, ToolSearch
+`mcp__linear-server__list_issues`, `mcp__linear-server__save_issue`.
 
 ## Run it in a subagent
 
@@ -55,26 +58,41 @@ Run inline only when the user explicitly asks to watch it happen in the foregrou
 
 ## Procedure
 
-**1. Load state.** Read `digests/.state.json`:
+**1–3. Pull.** One command replaces load-state / fetch / follow-threads:
+
+```sh
+bun skills/slack-digest/scripts/slack-pull.ts
+```
+
+It reads `digests/.state.json` (schema below; missing → last 24h), fetches every
+channel message newer than `last_ts`, follows the threads of new messages and of every
+`watched_threads` entry (keeping only replies newer than that thread's
+`last_seen_reply_ts`), drops join/leave/system subtypes (counted, not shown), resolves
+`<@U…>` to names, and prints:
+
+- a header with counts (new top-level, new replies, noise dropped, watched threads expired);
+- **New messages** — chronological, each with its thread's new replies inline;
+- **New replies in older threads** — the parent for context, then only the new replies.
+
+Every line carries `YYYY-MM-DD HH:MM`, author (`you` = the user), `→you` when the user
+is mentioned, `[bot]` for bot posts, reactions, files/canvases, and the permalink
+(reply links already carry `thread_ts`). A thread that reaches a conclusion ("let's do
+X", "agreed", ✅ reactions) is a **decision** even if the parent message is old. Items
+belong to the day of their own timestamp, not today.
+
+The script also writes `digests/.state.next.json` — the advanced cursor — and never
+touches `.state.json` itself; step 8 promotes it. `--since <date|ts>` overrides the
+cursor for a manual backfill (no `.state.next.json` is written then); `--json` gives the
+structured form if the transcript is ambiguous.
+
 ```json
 { "last_ts": "1724650000.000000",
   "watched_threads": { "<thread_ts>": "<last_seen_reply_ts>" },
   "action_items": { "<thread_ts>": "<LIA-xx>" } }
 ```
-If missing, set `last_ts` to 24 hours ago (unix seconds is fine) and `watched_threads`
-to `{}` — the first run backfills the last day.
 
-**2. Fetch new messages.** `slack_read_channel` on `C07KG06L601` with
-`oldest = last_ts`. Paginate if needed. Discard anything with `ts <= last_ts`
-(oldest is inclusive — dedupe by ts, never re-report an item).
-
-**3. Follow threads.** Two sources:
-- new messages from step 2 that have replies → read their thread;
-- every entry in `watched_threads` → `slack_read_thread`, keep only replies newer
-  than its `last_seen_reply_ts`.
-Threads with recent activity stay in `watched_threads`; drop a thread once it has had
-no new replies for 48h. A thread that reaches a conclusion ("let's do X", "agreed",
-"decided", ✅ reactions) is a **decision** even if the parent message is old.
+If the header says nothing new and there are no threads, this is a no-op run: skip to
+step 10.
 
 **4. Triage.** Skip join/leave events, bot noise, CI chatter, pure banter (count them,
 don't list them). Classify the rest:
@@ -159,8 +177,11 @@ Summaries are the product: write what was concluded, not "there was a discussion
 about X". The user should be able to skip opening Slack entirely unless they want the
 detail. Update the `_Last updated_` line and counters each run.
 
-**8. Save state.** Write `.state.json` with the newest `ts` seen (channel messages
-and thread replies both count), the updated `watched_threads`, and `action_items`.
+**8. Save state.** Promote the cursor the script prepared: read
+`digests/.state.next.json`, merge in the `action_items` you added in step 6, write the
+result to `digests/.state.json`, and delete `.state.next.json`. Do this only after the
+digest file is written — a run that dies before this point replays on the next tick
+instead of losing messages. Never hand-edit `last_ts`.
 
 **9. Commit.** Every run that changed a digest file must end with a commit, so the
 history is a clear record of what each run added:
