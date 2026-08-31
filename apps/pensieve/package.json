@@ -1,0 +1,45 @@
+{
+  "name": "pensieve",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reading room for the ai-workspace blackboard — sweep reports, Slack digests, the change journal and feature docs.",
+  "imports": {
+    "#/*": "./src/*"
+  },
+  "scripts": {
+    "dev": "vite dev --port 3778 --host",
+    "build": "vite build",
+    "start": "bun server.ts",
+    "generate-routes": "tsr generate",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@tailwindcss/typography": "^0.5.16",
+    "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/markdown": "latest",
+    "@tanstack/react-query": "latest",
+    "@tanstack/react-router": "latest",
+    "@tanstack/react-router-ssr-query": "latest",
+    "@tanstack/react-start": "latest",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.577.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwind-merge": "^3.0.2",
+    "tailwindcss": "^4.1.18",
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@tanstack/router-cli": "latest",
+    "@types/bun": "^1.4.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
+  },
+  "packageManager": "bun@1.4.0"
+}

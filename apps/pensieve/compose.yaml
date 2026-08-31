@@ -1,0 +1,11 @@
+services:
+  pensieve:
+    build: .
+    ports:
+      - "3778:3778"
+    environment:
+      WORKSPACE_DIR: /workspace
+    volumes:
+      # read-only: the sweep in ai-workspace owns every file here
+      - ${WORKSPACE_DIR:-~/git/ai-workspace}:/workspace:ro
+    restart: unless-stopped

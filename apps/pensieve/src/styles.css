@@ -1,0 +1,238 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+/* ── Pensieve: the reading room ──────────────────────────────────────────
+   Warm paper, ink, and one cool thread of silver-blue — the memory being
+   drawn out of the basin. Light-only by design: this is read in the morning. */
+:root {
+  --paper: #f5f1e9;
+  --paper-2: #ede8dd;
+  --paper-3: #e4ded1;
+  --ink: #1d1b17;
+  --ink-dim: #5f5a51;
+  --ink-faint: #9b948a;
+  --rule: #d8d2c5;
+  --rule-soft: #e6e1d5;
+
+  --thread: #3a6a90;
+  --thread-soft: #c7d6e3;
+  --thread-wash: #e9eff5;
+  --moon: #7f9bb5;
+
+  --st-decided: #a9731c;
+  --st-implemented: #3a6a90;
+  --st-documented: #3f7a58;
+  --st-superseded: #8b8478;
+  --st-hold: #b1463b;
+
+  --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --font-body: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-paper-3: var(--paper-3);
+  --color-ink: var(--ink);
+  --color-ink-dim: var(--ink-dim);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-rule-soft: var(--rule-soft);
+  --color-thread: var(--thread);
+  --color-thread-soft: var(--thread-soft);
+  --color-thread-wash: var(--thread-wash);
+  --color-moon: var(--moon);
+  --color-st-decided: var(--st-decided);
+  --color-st-implemented: var(--st-implemented);
+  --color-st-documented: var(--st-documented);
+  --color-st-superseded: var(--st-superseded);
+  --color-st-hold: var(--st-hold);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  /* faint paper grain — a radial wash plus a hairline noise so the ground isn't flat */
+  background-image:
+    radial-gradient(1200px 600px at 20% -10%, rgba(58, 106, 144, 0.07), transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: var(--thread-soft);
+}
+
+/* ── type helpers ─────────────────────────────────────────────────────── */
+.display {
+  font-family: var(--font-display);
+  font-variation-settings: 'opsz' 96;
+  letter-spacing: -0.015em;
+  font-weight: 400;
+}
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ── page-load reveal: rows rise out of the basin in sequence ─────────── */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+}
+
+/* ── rendered markdown ────────────────────────────────────────────────── */
+.prose-pensieve {
+  max-width: 72ch;
+  color: var(--ink);
+}
+.prose-pensieve :where(h1, h2, h3, h4) {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  scroll-margin-top: 5rem;
+}
+.prose-pensieve :where(h1) {
+  font-size: 1.9rem;
+  line-height: 1.15;
+  margin: 0 0 1rem;
+}
+.prose-pensieve :where(h2) {
+  font-size: 1.28rem;
+  line-height: 1.25;
+  margin: 2.2rem 0 0.7rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--rule);
+}
+.prose-pensieve :where(h3) {
+  font-size: 1.05rem;
+  margin: 1.6rem 0 0.4rem;
+}
+.prose-pensieve :where(p, ul, ol, blockquote, table, pre) {
+  margin: 0 0 0.9rem;
+}
+.prose-pensieve :where(ul, ol) {
+  padding-left: 1.35rem;
+}
+.prose-pensieve :where(li) {
+  margin: 0.3rem 0;
+}
+.prose-pensieve :where(li > p) {
+  margin: 0;
+}
+.prose-pensieve :where(a) {
+  color: var(--thread);
+  text-decoration: underline;
+  text-decoration-color: var(--thread-soft);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.15s ease;
+}
+.prose-pensieve :where(a:hover) {
+  text-decoration-color: var(--thread);
+}
+.prose-pensieve :where(strong) {
+  font-weight: 600;
+}
+.prose-pensieve :where(em) {
+  font-style: italic;
+}
+.prose-pensieve :where(code) {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  background: var(--paper-2);
+  border: 1px solid var(--rule-soft);
+  border-radius: 3px;
+  padding: 0.08em 0.35em;
+}
+.prose-pensieve :where(pre) {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: var(--paper-2);
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+}
+.prose-pensieve :where(pre code) {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+.prose-pensieve :where(blockquote) {
+  border-left: 2px solid var(--thread-soft);
+  padding-left: 1rem;
+  color: var(--ink-dim);
+  font-style: italic;
+}
+.prose-pensieve :where(hr) {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 2rem 0;
+}
+.prose-pensieve :where(table) {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.prose-pensieve :where(th, td) {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.prose-pensieve :where(th) {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+.prose-pensieve :where(input[type='checkbox']) {
+  accent-color: var(--thread);
+  margin-right: 0.4rem;
+}
+
+/* digest / report section headings are emoji-led; give them a little breathing room */
+.prose-pensieve :where(h2 + ul) {
+  margin-top: 0.4rem;
+}
