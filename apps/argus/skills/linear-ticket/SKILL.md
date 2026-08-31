@@ -78,13 +78,24 @@ for the rest. Reuse `defaults.json` beside this skill if present (`{"teamId":…
 ask once and write the answer there so the next run is silent. Leave status, assignee,
 estimate and cycle alone unless the user names them.
 
+**Slack-derived alden-portal tickets** (a Slack thread, or a digest ✋ item, that
+becomes work in `~/git/alden-portal-fe` or `~/git/alden-connect-portal-be`):
+- always file into the **Alden Portal** project (`defaults.json` → `projectId`) — no
+  label for this, the project is the tag;
+- label `agent-ready` (`defaults.json` → `labels.agentReady`) when the drafted body has
+  **no Pending section** and the ticket has **no blocked-by relation**. Apply it at
+  filing time without asking — the user's standing rule (2026-08-31). Foundry picks the
+  label up and runs an agent on the body as written, so the Scope bar below is not
+  optional for these: if Scope isn't executable, the honest move is a Pending bullet or a
+  Technical-Notes question, which withholds the label, not a vague Scope that carries it.
+
 **5. Draft, then show it.** Write the full issue per `FORMAT.md` to
 `<scratchpad>/linear-<slug>.md` and print the title + body in the reply. Filing is
 outward-facing: get an explicit go-ahead before creating, unless the user already said
 "file it" / "just create it".
 
 **6. Create.** `save_issue` with `title`, `team`, `description` (the markdown body), plus
-`project`/`labels` if resolved — and no `id`, which is what makes it a create. Report back
+`project`/`labels` (the rule above included) — and no `id`, which is what makes it a create. Report back
 the issue key and URL, nothing else.
 
 **7. Close the loop.** If the change is an alden-portal product/behavior decision, offer

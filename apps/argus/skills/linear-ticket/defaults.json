@@ -3,5 +3,8 @@
   "teamKey": "LIA",
   "teamName": "Liamai",
   "projectId": "09faefd1-df04-405c-9e65-3c047e4c4047",
-  "projectName": "Alden Portal"
+  "projectName": "Alden Portal",
+  "labels": {
+    "agentReady": "2a20e740-8d55-452e-b38a-1e5ca0cc2496"
+  }
 }

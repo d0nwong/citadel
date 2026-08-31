@@ -146,11 +146,13 @@ worse tickets. The sweep hands it conclusions, not sources:
 > `linear-ticket` skill). Part B — review the listed open tickets against the refreshed
 > docs, per step 6b.
 >
-> Write policy is fixed: you may file `digest`-labeled tickets, write the ` → LIA-xx`
-> digest marker, comment positive evidence onto a ticket, and delete a Pending bullet
-> whose named artifact verifiably landed. You may NEVER close a ticket, edit Scope or any
-> other body text, apply the `agent-ready` label, comment inference (appears-satisfied,
-> appears-redundant), or push git. Inference goes in your report.
+> Write policy is fixed: you may file tickets from ✋ items (into the Alden Portal
+> project, with `agent-ready` at filing time per 6a), write the ` → LIA-xx` digest
+> marker, comment
+> positive evidence onto a ticket, and delete a Pending bullet whose named artifact
+> verifiably landed. You may NEVER close a ticket, edit Scope or any other body text,
+> apply `agent-ready` to a ticket you did not file this tick, comment inference
+> (appears-satisfied, appears-redundant), or push git. Inference goes in your report.
 >
 > Report back three lists, verbatim lines the sweep can paste: **Needs you** (appears-
 > satisfied / appears-redundant / drifted references, ✋ pings that got no ticket and
@@ -166,13 +168,18 @@ a lost one.
 
 **6a. File tickets from ✋ items** (subagent). Every unmarked item in the digest's ✋
 section that carries a real deliverable (build, fix, review, write, decide-with-follow-up)
-gets a Liamai ticket: label `digest`, assignee me, the Slack permalink as the body's
-anchor, title from the item. Pure reply/ack pings get no ticket — they stay in the
+gets a Liamai ticket in the **Alden Portal** project (the project is the tag — no
+`digest` / `alden-portal` labels), assignee me, the Slack permalink as the body's
+anchor, title from the item. Label `agent-ready` when the body carries no Pending
+section and the ticket has no blocked-by relation (linear-ticket's "Slack-derived
+alden-portal tickets" rule — this is the one place the sweep applies `agent-ready`
+itself, because the user has pre-authorised it for tickets it files; 6c stays
+report-only for everything already open). Pure reply/ack pings get no ticket — they stay in the
 report; a queue buried in micro-tasks stops being read. Dedupe is a writeback: after
 filing, append ` → LIA-xx` to the item's line in the digest file — a marked item is
 invisible to every later tick, which is what makes the catch-up case free. Because the
-file-then-mark pair isn't atomic, backstop before filing: search the `digest` label for
-the item's Slack permalink; a hit means a prior tick crashed mid-pair — write the missing
+file-then-mark pair isn't atomic, backstop before filing: search the Alden Portal
+project's issues for the item's Slack permalink; a hit means a prior tick crashed mid-pair — write the missing
 marker instead of filing twice.
 
 **6b. Review tickets against refreshed reality** (subagent). For each feature whose docs
@@ -191,7 +198,8 @@ no blocked-by relation, and its Scope is concrete enough to execute without a ro
 questions (real files, functions, line ranges — linear-ticket's bar). A qualifying
 ticket not yet carrying the `agent-ready` label gets a Needs-you line: "LIA-xx looks
 agent-ready — label it?". The concreteness call is judgement, so nomination is
-report-only: the sweep never applies the label. That label is the entire contract with
+report-only: the sweep never applies the label to an already-open ticket (the only
+auto-apply is 6a, at filing time, for Slack-derived alden-portal tickets). That label is the entire contract with
 Foundry's ticket pickup (README, "Downstream" section) — applying it dispatches an
 agent, which is precisely the decision the report exists to surface, not make. Like
 holds, a ready-but-unlabeled ticket restates every tick until labeled or disqualified —
@@ -278,14 +286,15 @@ nominations, and audit is clean, not that this tick found nothing *new*.
 Runs unattended under `/loop`, so the write policy is fixed:
 
 - **Yes:** journal entries, doc regeneration, `reports/<today>.md`, local git commits, Linear comments/
-  annotations backed by positive evidence, digest-mandated issue filing, filing `digest`-
-  labeled tickets from ✋ deliverables (with the digest-file writeback marker, step 6a),
+  annotations backed by positive evidence, digest-mandated issue filing, filing Alden
+  Portal tickets from ✋ deliverables (with the digest-file writeback marker, step 6a),
   and deleting a Pending bullet whose named artifact verifiably landed (step 4's narrow
   case — the diff contains the exact thing the bullet names).
 - **Never:** close Linear tickets, edit Scope or any other ticket body text, comment
   inference onto a ticket (appears-redundant, appears-satisfied — report first, comment
-  after the user confirms), apply the `agent-ready` label (nomination is report-only —
-  the label dispatches Foundry, and dispatch is the user's call), post to Slack, push
+  after the user confirms), apply the `agent-ready` label to an already-open ticket
+  (nomination is report-only — the label dispatches Foundry, and dispatch is the user's
+  call; the one pre-authorised exception is 6a's filing-time label), post to Slack, push
   git, or guess frontmatter. Anything needing the user's judgement goes in the report,
   not into a file.
 
