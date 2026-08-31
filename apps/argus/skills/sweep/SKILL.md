@@ -106,34 +106,85 @@ trip over the tree. Each run gets the join's findings for its landing (ticket or
 decided entry to supersede, digest permalink as `source:`). log-change step 6 then drives
 `feature-docs` for the affected features; entries left `implemented` by a previous sweep
 (audit's "refresh missed" nag) get a `feature-docs` run here too. Bulky reading happens in
-the subagents; keep only conclusions in the sweep's context.
+the subagents; keep only conclusions in the sweep's context. That is the general rule for
+what gets a subagent: a stage earns one when its input is bulky (threads, doc trees,
+diffs) *and* its output is a blackboard write the sweep can re-read afterwards — not
+because it is a stage.
 
 **6. Ticket pass.** Linear is the sweep's terminal surface — the queue the user actually
-reads — so this stage makes it current. Two halves:
+reads — so this stage makes it current. Three parts: 6a and 6b run together in **one
+`ticket-pass` subagent**; 6c stays inline.
 
-**6a. File tickets from ✋ items.** Every unmarked item in the digest's ✋ section that
-carries a real deliverable (build, fix, review, write, decide-with-follow-up) gets a
-Liamai ticket: label `digest`, assignee me, the Slack permalink as the body's anchor,
-title from the item. Pure reply/ack pings get no ticket — they stay in the report; a
-queue buried in micro-tasks stops being read. Dedupe is a writeback: after filing,
-append ` → LIA-xx` to the item's line in the digest file — a marked item is invisible
-to every later tick, which is what makes the catch-up case free. Because the file-then-
-mark pair isn't atomic, backstop before filing: search the `digest` label for the item's
-Slack permalink; a hit means a prior tick crashed mid-pair — write the missing marker
-instead of filing twice.
+Why the split: 6a and 6b are the bulky readers of this stage — each ✋ item means the
+Slack thread, `linear-ticket`'s `FORMAT.md` and the product + arch docs of every feature
+it touches; each refreshed feature means its full docs against every open ticket naming
+it. That reading is single-use and belongs in a worker's context, per the dispatch rule
+above. 6c is a one-line judgement per ticket over the step-3 list the sweep already
+holds, so a subagent would only re-fetch it. The join (step 4) is never delegated: it is
+the cross-product of landings, tickets and decisions, and splitting it loses the join.
 
-**6b. Review tickets against refreshed reality.** For each feature whose docs or journal
-changed this tick (dispatch's output), re-read the open tickets naming that feature
-against the fresh docs: Pending items now landed? Scope bullets satisfied or mooted?
-File/line references drifted? This is what catches tickets the join can't — the join
-only sees tickets a *new landing* touches; a review triggers whenever the ticket's
+**Skip the spawn** when there is nothing for it: no unmarked ✋ items *and* no feature
+refreshed this tick. Otherwise, **after dispatch has finished** (the subagent writes the
+digest file and commits — a parallel writer would trip over dispatch's tree), spawn ONE
+general-purpose subagent via the Agent tool with **no `model` override** — filing and
+review are judgement calls, and a weaker model files worse tickets. The sweep hands it
+conclusions, not sources:
+
+> You are the `ticket-pass` worker for one sweep tick of the `ai-workspace` repo (working
+> directory). Execute directly; never spawn a subagent — it would recurse.
+>
+> Inputs:
+> - Unmarked ✋ items from `digests/{date}.md`, one per line: `{line text} — {permalink}`.
+> - Features refreshed this tick: `{ids}`; open Liamai tickets naming them: `{keys}`.
+> - Team `Liamai`; assignee = me. Linear tools are `mcp__linear-server__*` — ToolSearch
+>   them if deferred.
+>
+> Part A — file tickets from the ✋ items, per the sweep skill's step 6a (read
+> `skills/sweep/SKILL.md`, steps 6a–6b, before starting; draft each ticket with the
+> `linear-ticket` skill). Part B — review the listed open tickets against the refreshed
+> docs, per step 6b.
+>
+> Write policy is fixed: you may file `digest`-labeled tickets, write the ` → LIA-xx`
+> digest marker, comment positive evidence onto a ticket, and delete a Pending bullet
+> whose named artifact verifiably landed. You may NEVER close a ticket, edit Scope or any
+> other body text, apply the `agent-ready` label, comment inference (appears-satisfied,
+> appears-redundant), or push git. Inference goes in your report.
+>
+> Report back three lists, verbatim lines the sweep can paste: **Needs you** (appears-
+> satisfied / appears-redundant / drifted references, ✋ pings that got no ticket and
+> why), **Done** (tickets filed with keys, comments written, bullets deleted), and the
+> commit sha of the digest writeback (or "no writeback").
+
+When it returns, the sweep does not take the report on faith for anything the blackboard
+can answer: re-read the digest file for the markers and re-run the step-3 ticket query
+for the new keys — that refreshed list is also what 6c and the report's "Linear today"
+section run over. Only the inference lines (Needs-you) come from the report, because no
+file holds them. A subagent's report is never shown to the user; an unrelayed finding is
+a lost one.
+
+**6a. File tickets from ✋ items** (subagent). Every unmarked item in the digest's ✋
+section that carries a real deliverable (build, fix, review, write, decide-with-follow-up)
+gets a Liamai ticket: label `digest`, assignee me, the Slack permalink as the body's
+anchor, title from the item. Pure reply/ack pings get no ticket — they stay in the
+report; a queue buried in micro-tasks stops being read. Dedupe is a writeback: after
+filing, append ` → LIA-xx` to the item's line in the digest file — a marked item is
+invisible to every later tick, which is what makes the catch-up case free. Because the
+file-then-mark pair isn't atomic, backstop before filing: search the `digest` label for
+the item's Slack permalink; a hit means a prior tick crashed mid-pair — write the missing
+marker instead of filing twice.
+
+**6b. Review tickets against refreshed reality** (subagent). For each feature whose docs
+or journal changed this tick (dispatch's output), re-read the open tickets naming that
+feature against the fresh docs: Pending items now landed? Scope bullets satisfied or
+mooted? File/line references drifted? This is what catches tickets the join can't — the
+join only sees tickets a *new landing* touches; a review triggers whenever the ticket's
 ground truth moves. Findings flow through the same policy as the join: verifiable facts
 (a named Pending artifact now exists) may annotate and delete the bullet; everything
 else — appears-satisfied, appears-redundant, drifted references — goes in Needs-you.
 Skip the pass entirely on a tick that refreshed nothing.
 
-**6c. Nominate agent-ready tickets.** Over the step-3 open-ticket list — every tick, no
-refresh needed to trigger. A ticket qualifies when its Pending section is absent, it has
+**6c. Nominate agent-ready tickets** (inline). Over the step-3 open-ticket list, as
+refreshed after the subagent returned — every tick, no refresh needed to trigger. A ticket qualifies when its Pending section is absent, it has
 no blocked-by relation, and its Scope is concrete enough to execute without a round of
 questions (real files, functions, line ranges — linear-ticket's bar). A qualifying
 ticket not yet carrying the `agent-ready` label gets a Needs-you line: "LIA-xx looks
