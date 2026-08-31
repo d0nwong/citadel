@@ -156,7 +156,7 @@ ground truth, join, and surface only the judgement calls.
 | Path | What it is |
 |---|---|
 | `digests/` | daily Slack digests (`.state.json` is gitignored cursor state) |
-| `reports/` | one sweep report per day, overwritten each tick — the Needs-you queue, persisted |
+| `reports/` | one sweep report per day, rewritten each tick as the full day's snapshot (quiet ticks included — the file never shrinks) — the Needs-you queue, persisted |
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
 | `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
 | `alden/alden-portal/.doc-workspace/` | feature manifest + OpenAPI snapshot |
