@@ -107,6 +107,22 @@ ticket touches.
   in the meantime is a complaint, not a plan. Nothing pending means no section; an empty
   "Pending: none" is noise. When a pending item lands, delete its bullet rather than
   striking it through — the journal owns history, not the ticket.
+- **Pending vs. an implementer's call.** Not every open question is Pending. Pending is
+  for what the ticket's author can't resolve alone — waiting on another person, another
+  team, or work unlanded elsewhere. A question the implementer can settle with ordinary
+  engineering judgment doesn't belong there, even if it's technically "open": decide it
+  and write the decision into Scope (state the chosen behavior, not the question), or
+  note it in Technical Notes if it's worth flagging — don't leave a bullet sitting in
+  Pending waiting for an answer nobody needs to give. The test: does resolving it need
+  someone else's input (a design call with real behavioral consequences, an unshipped
+  endpoint, a fact only another team can confirm)? If yes, Pending. If the ticket already
+  states the required outcome and only the *mechanism* is undecided (hide vs. disable a
+  field when the ticket already says the field must not be interactable; which of two
+  independent validations runs first), that's implementer's judgment — pick the option
+  that matches existing patterns in the codebase or ticket, state it, done. Getting this
+  wrong in the cautious direction is not free: a mechanism-level question left in Pending
+  is exactly what disqualifies a ticket from `agent-ready` (see below) even though nothing
+  external was actually being waited on.
 - **Never draft before reading the feature's product.md + arch.md.** Those Out-of-Scope and
   Known-Gaps sections exist so tickets stop relitigating settled boundaries; skipping them
   buys exactly the review comments the docs were written to prevent.
