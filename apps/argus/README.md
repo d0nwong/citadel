@@ -143,6 +143,7 @@ The derived files each cache one join so it is never recomputed:
 | Derived file | The join it caches |
 |---|---|
 | `digests/` | Slack made durable — permalinked and triaged, so nothing ever re-reads raw threads |
+| `reports/` | The sweep's judgement calls made durable — the only file that holds inference (appears-implemented, appears-redundant, nominations), so it is a snapshot per day, never a source anything else reads back |
 | `features/*/journal/` | The spine: *this* decision + *this* ticket + *this* landing. That connection exists in no single external source — Slack doesn't know the PR, git doesn't know the why, Linear doesn't know the merge sha — which is why frontmatter is never guessed: a wrong key corrupts the only record of the join. |
 | `features/*/docs/` | The repos distilled to present-tense facts, sha-stamped (`last_verified` / `last_verified_be`) so staleness is detectable rather than suspected |
 | `.doc-workspace/` (manifest + OpenAPI) | Routing — which files and endpoints belong to which feature; what lets a diff or an endpoint named in Slack be attributed at all |
@@ -155,6 +156,7 @@ ground truth, join, and surface only the judgement calls.
 | Path | What it is |
 |---|---|
 | `digests/` | daily Slack digests (`.state.json` is gitignored cursor state) |
+| `reports/` | one sweep report per day, overwritten each tick — the Needs-you queue, persisted |
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
 | `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
 | `alden/alden-portal/.doc-workspace/` | feature manifest + OpenAPI snapshot |

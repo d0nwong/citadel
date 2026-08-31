@@ -218,11 +218,30 @@ report verbatim — never silence one by inventing the missing fact.
 
 A quiet tick reports in one line ("sweep: nothing new").
 
+**The report is also a file.** Write the exact text you print to `reports/<today>.md`,
+overwriting whatever the previous tick wrote — the report is a snapshot that restates the
+full day, so the last tick's file is the complete picture and older ticks have nothing
+the newer one lacks. Format:
+
+```markdown
+# sweep — 2026-08-28
+
+_Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
+
+## Needs you
+…
+```
+
+Same section names as above, same order, same skip-empty rule; a quiet tick writes the
+one-liner under the header. Commit it with the tick's other writes. This file is the
+only place Needs-you lives — nothing else on the blackboard holds an inference — so a
+report that only went to the terminal is a report that was lost.
+
 ## Autonomy
 
 Runs unattended under `/loop`, so the write policy is fixed:
 
-- **Yes:** journal entries, doc regeneration, local git commits, Linear comments/
+- **Yes:** journal entries, doc regeneration, `reports/<today>.md`, local git commits, Linear comments/
   annotations backed by positive evidence, digest-mandated issue filing, filing `digest`-
   labeled tickets from ✋ deliverables (with the digest-file writeback marker, step 6a),
   and deleting a Pending bullet whose named artifact verifiably landed (step 4's narrow
