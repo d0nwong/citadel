@@ -2,7 +2,7 @@
 
 Orchestration layer for disposable **Claude Code forges** running on OrbStack.
 
-Each forge is a Linux container with `claude`, `git`, `gh`, `node`, `bun`, `python3`, and the
+Each forge is a Linux container with `claude`, `git`, `gh`, `node`, `bun`, `pnpm`, `python3`, and the
 usual CLI tooling. Forges are cheap (<1s to start), isolated from your Mac, and
 addressable at `<name>.foundry.local`.
 
@@ -21,7 +21,7 @@ flowchart LR
     end
 
     subgraph orb["OrbStack containers"]
-        forge["forge<br/>&lt;name&gt;.foundry.local<br/>claude · git · gh · node · bun · python3"]
+        forge["forge<br/>&lt;name&gt;.foundry.local<br/>claude · git · gh · node · bun · pnpm · python3"]
         vols[("named volumes<br/>/work · ~/.claude · ~/.config")]
         jobforge["ephemeral job forge<br/>(no git creds, no DB)"]
     end

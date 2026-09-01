@@ -41,6 +41,21 @@ RUN usermod -l "$USER" -d "/home/$USER" -m node \
  && mkdir -p /work "/home/$USER/.claude" \
  && chown -R "$USER:$USER" /work "/home/$USER"
 
+# pnpm (and yarn) via corepack. Enabled here, as root, because the shims land
+# in root-owned /usr/local/bin — `corepack enable` from the unprivileged user
+# dies with EACCES, which is what every agent working a pnpm repo tripped over
+# before burning turns on `corepack pnpm …` / `npx pnpm@… …` workarounds.
+# A repo's `packageManager` field still picks the exact version: corepack
+# fetches it into COREPACK_HOME on first use, without the interactive download
+# prompt (nobody is there to answer it). The pinned version is pre-fetched so
+# the common case needs no network for pnpm itself.
+ARG PNPM_VERSION=10.30.3
+ENV COREPACK_HOME=/opt/corepack \
+    COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable \
+ && corepack prepare "pnpm@${PNPM_VERSION}" --activate \
+ && chown -R "$USER:$USER" /opt/corepack
+
 COPY box-init.sh /usr/local/bin/box-init
 RUN chmod +x /usr/local/bin/box-init
 
