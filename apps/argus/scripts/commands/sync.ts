@@ -184,10 +184,12 @@ if (import.meta.main) {
     // checkout is older than the docs (two commits diff without a checkout)
     const newest = treeBehind ? (archSha ?? "HEAD") : "HEAD";
     const coreDiff = productSha ? await gitDiffNames(feRoot, productSha, newest, f.core_files) : null;
+    const productAhead = !!archSha && !!productSha && archSha !== productSha
+      && (await gitIsAncestor(feRoot, archSha, productSha)) === true;
     const decision = decideArchStamp({
       existingArch: existing, product, current: { rev: feRev, date: fetchedAt },
       coreChangedSinceProduct: coreDiff === null ? null : coreDiff.length > 0,
-      specChanged: specChangedFeatures.has(f.id), treeBehind,
+      specChanged: specChangedFeatures.has(f.id), treeBehind, productAhead,
     });
     byReason[decision.reason].push(f.id);
 

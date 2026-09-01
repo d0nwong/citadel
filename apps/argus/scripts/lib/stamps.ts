@@ -64,6 +64,8 @@ export function decideArchStamp(input: {
   specChanged: boolean;
   /** HEAD is a strict ancestor of the stamp already on the arch doc */
   treeBehind: boolean;
+  /** the product stamp is a strict descendant of the arch stamp — a product run re-read newer code */
+  productAhead?: boolean;
 }): StampDecision {
   const arch = readStamp(input.existingArch);
   const product = readStamp(input.product);
@@ -74,6 +76,9 @@ export function decideArchStamp(input: {
 
   if (!input.existingArch) return { ...input.current, reason: "new" };
   if (!product) return advance("no-product");
+  // A product run is a full re-read of the code at its rev; when that rev is newer than the
+  // arch stamp, the arch tier can only follow — whatever HEAD or the spec says this sync.
+  if (input.productAhead) return { rev: product.rev, date: product.date ?? input.current.date, reason: "aligned" };
   if (input.specChanged) return advance("spec-changed");
   if (input.coreChangedSinceProduct === null) return keep("undecidable");
   if (input.coreChangedSinceProduct) return advance("core-changed");

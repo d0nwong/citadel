@@ -182,6 +182,9 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     // a checkout older than the docs may align but never advance
     expect(decide({ treeBehind: true })).toMatchObject({ rev: "staging@7478faa06", reason: "aligned" });
     expect(decide({ treeBehind: true, coreChangedSinceProduct: true })).toEqual({ rev: "staging@9249e1f48", date: "2026-09-01", reason: "tree-behind" });
+    // a product run re-read newer code than the arch stamp → arch follows, whatever else this sync saw
+    expect(decide({ productAhead: true, coreChangedSinceProduct: true, specChanged: true, treeBehind: true }))
+      .toMatchObject({ rev: "staging@7478faa06", reason: "aligned" });
     // git could not answer → touch nothing
     expect(decide({ coreChangedSinceProduct: null })).toMatchObject({ rev: "staging@9249e1f48", reason: "undecidable" });
     expect(decide({ existingArch: null })).toMatchObject({ ...current, reason: "new" });
