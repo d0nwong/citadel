@@ -76,7 +76,8 @@ channel message newer than `last_ts`, follows the threads of new messages and of
 
 Every line carries its time (date too, when it differs from the parent's), author
 (`you` = the user), `→you` when the user is mentioned, `[bot]` for bot posts, reactions,
-files/canvases, and ends in `·ts <ts>`. Permalinks are not printed per line — build them
+files/canvases (a huddle-notes canvas is called out as `HUDDLE NOTES canvas F…` — see
+step 4), and ends in `·ts <ts>`. Permalinks are not printed per line — build them
 from the ts with the rule in the header (`p<ts without the dot>`, plus
 `?thread_ts=<parent ts>&cid=…` for a reply). `--json` includes them ready-made. A thread that reaches a conclusion ("let's do
 X", "agreed", ✅ reactions) is a **decision** even if the parent message is old. Items
@@ -97,7 +98,19 @@ If the header says nothing new and there are no threads, this is a no-op run: sk
 step 10.
 
 **4. Triage.** Skip join/leave events, bot noise, CI chatter, pure banter (count them,
-don't list them). Classify the rest:
+don't list them). **Exception — huddle notes.** Slackbot's "A huddle started" / "AI
+huddle notes are ready" posts look like bot noise but carry the whole meeting as a
+canvas; the transcript flags them as `HUDDLE NOTES canvas F…`. Read the canvas with the
+MCP tool `slack_read_file` (ToolSearch it first) and triage its **Summary** and **Action
+items** exactly like a thread: each settled point is a decision, each action item naming
+`U09R2MYP6A0` is the user's, attendee IDs resolve via `slack_read_user_profile`. Anchor
+every item to the huddle's start ts (the parent message) and label it `(AI huddle notes)`
+— they are machine-generated from a transcript, so treat internal contradictions as
+unverified and say so rather than picking a side. A huddle usually *closes* things the
+digest lists as 🟡 In flight or a ticket lists under Pending; apply step 6's
+delete-the-resolved-bullet rule to those. (Missed once on 2026-09-01: a 36-minute huddle
+that settled the invoice edit lanes and the soft-delete question was dropped as noise.)
+Classify the rest:
 - **Decisions & conclusions** — anything settled: agreed behavior, chosen approach,
   scope changes, "we'll do X". These are the doc-staleness risk. A message announcing
   a **backend change** (new/changed endpoint, server-side rule change, BE deploy to

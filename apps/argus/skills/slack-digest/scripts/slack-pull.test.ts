@@ -53,6 +53,24 @@ test("assemble: watched thread yields only replies newer than last_seen, expires
   expect(render(p)).toContain("New replies in older threads");
 });
 
+test("huddle notes from Slackbot are content, not noise, and point at the canvas", () => {
+  const state: State = { last_ts: "100.000000", watched_threads: {}, action_items: {} };
+  const parent = msg("200.000000", "USLACKBOT", "A huddle started", {
+    reply_count: 1,
+    files: [{ id: "F0BU4KUEXTN", title: ":headphones: Huddle notes: 9/1/26 in <#C07KG06L601>", filetype: "quip" }],
+  });
+  const reply = msg("300.000000", "USLACKBOT", "AI huddle notes are ready.", {
+    thread_ts: "200.000000",
+    files: [{ id: "F0BU4KUEXTN", title: ":headphones: Huddle notes: 9/1/26 in <#C07KG06L601>", filetype: "quip" }],
+  });
+  const p = assemble(state, state.last_ts, [parent], { "200.000000": [reply] }, {}, users, 1000);
+
+  expect(p.noiseDropped).toBe(0);
+  expect(p.newTopLevel).toHaveLength(1);
+  expect(p.newTopLevel[0]!.files[0]).toContain('slack_read_file("F0BU4KUEXTN")');
+  expect(render(p)).toContain("HUDDLE NOTES canvas F0BU4KUEXTN");
+});
+
 test("render: quiet run says so", () => {
   const p = assemble({ last_ts: "1.000000", watched_threads: {}, action_items: {} }, "1.000000", [], {}, {}, users, 2);
   expect(render(p)).toContain("nothing new.");

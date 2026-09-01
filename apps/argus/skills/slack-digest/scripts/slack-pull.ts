@@ -56,9 +56,17 @@ export type SlackMessage = {
   reply_count?: number;
   latest_reply?: string;
   reactions?: { name: string; count: number }[];
-  files?: { name?: string; title?: string; permalink?: string; filetype?: string }[];
+  files?: { id?: string; name?: string; title?: string; permalink?: string; filetype?: string }[];
   attachments?: { title?: string; text?: string; fallback?: string; title_link?: string }[];
 };
+
+/**
+ * Slackbot's "AI huddle notes are ready" post carries the whole meeting as a canvas —
+ * the decisions live in the file, not the message text, and the Web API has no
+ * endpoint that returns canvas markdown. Flagged so the agent reads it via MCP.
+ */
+export const isHuddleNotes = (m: SlackMessage) =>
+  m.user === "USLACKBOT" && (m.files ?? []).some((f) => /huddle notes/i.test(f.title ?? f.name ?? ""));
 
 export type Users = Record<string, string>;
 
@@ -139,8 +147,13 @@ export const isNoise = (m: SlackMessage) => !!m.subtype && NOISE_SUBTYPES.has(m.
 
 export function toMsg(m: SlackMessage, users: Users): Msg {
   const { date, time } = localDateTime(m.ts);
+  const huddle = isHuddleNotes(m);
   const files = [
-    ...(m.files ?? []).map((f) => `${f.title ?? f.name ?? "file"}${f.filetype ? ` (${f.filetype})` : ""}${f.permalink ? ` ${f.permalink}` : ""}`),
+    ...(m.files ?? []).map((f) =>
+      huddle && f.id
+        ? `HUDDLE NOTES canvas ${f.id} — content is NOT in this transcript; read it with slack_read_file("${f.id}") and triage its Summary + Action items like a thread`
+        : `${f.title ?? f.name ?? "file"}${f.filetype ? ` (${f.filetype})` : ""}${f.permalink ? ` ${f.permalink}` : ""}`,
+    ),
     ...(m.attachments ?? [])
       .map((a) => [a.title, a.text ?? a.fallback].filter(Boolean).join(" — "))
       .filter(Boolean)
