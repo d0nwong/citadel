@@ -139,7 +139,88 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
 
   test("audit is clean on freshly generated docs", async () => {
     const out = await $`bun ${ROOT}/scripts/accio.ts audit`.nothrow().quiet();
-    expect(out.exitCode).toBe(0);
+    // "tiers disagree" is repo state (a product tier the sweep has not re-run yet), not a
+    // code defect — it is asserted by its own test below and worked off by /sweep
+    const problems = out.stdout.toString().split("\n").filter(l => /^\s{2}\S/.test(l) && !l.includes("tiers disagree"));
+    expect(problems).toEqual([]);
+  });
+
+  test("audit flags doc tiers whose stamps disagree", async () => {
+    const { auditDocs } = await import("./commands/audit.ts");
+    const index = await Bun.file(`${ROOT}/.state/accio-index.json`).json();
+    const dir = `${ROOT}/.state/test-audit-tiers`;
+    const arch = (rev: string) => [
+      "---", "id: tasks", "tier: architecture", "aliases: []", "core_files:", "  - src/pages/tasks",
+      `last_verified: ${rev}`, "---", "# Tasks — Architecture", "## Component Map", "## Interfaces & Contracts", "",
+    ].join("\n");
+    const product = (rev: string) => ["---", "id: tasks", "tier: product", `last_verified: ${rev}`, "---", "# Tasks", ""].join("\n");
+    await Bun.write(`${dir}/tasks/docs/arch.md`, arch("staging@9249e1f48"));
+    await Bun.write(`${dir}/tasks/docs/product.md`, product("staging@7478faa06"));
+    let problems = await auditDocs(index, dir);
+    expect(problems.some(p => p.includes("tiers disagree") && p.includes("7478faa06") && p.includes("9249e1f48"))).toBe(true);
+    await Bun.write(`${dir}/tasks/docs/product.md`, product("staging@9249e1f48"));
+    problems = await auditDocs(index, dir);
+    expect(problems.some(p => p.includes("tiers disagree"))).toBe(false);
+    await Bun.$`rm -rf ${dir}`.quiet();
+  });
+
+  test("arch stamp follows the product stamp unless the feature changed", async () => {
+    const { decideArchStamp, readStamp, restamp, regionsOf } = await import("./lib/stamps.ts");
+    const arch = "---\nid: x\nlast_verified: staging@9249e1f48\nlast_verified_date: 2026-09-01\n---\n# X\n<!-- accio:begin a -->\nrow\n<!-- accio:end a -->\n";
+    const product = "---\nid: x\nlast_verified: staging@7478faa06\nlast_verified_date: 2026-08-31\n---\n# X\n";
+    const current = { rev: "staging@abcdef012", date: "2026-09-02" };
+    const decide = (over: Partial<Parameters<typeof decideArchStamp>[0]>) => decideArchStamp({
+      existingArch: arch, product, current, coreChangedSinceProduct: false, specChanged: false, treeBehind: false, ...over,
+    });
+    expect(readStamp(product)).toEqual({ rev: "staging@7478faa06", sha: "7478faa06", date: "2026-08-31" });
+    expect(readStamp("no frontmatter")).toBeNull();
+    // nothing changed → the arch tier takes the product tier's stamp, date included
+    expect(decide({})).toEqual({ rev: "staging@7478faa06", date: "2026-08-31", reason: "aligned" });
+    // the feature moved → advance to the current rev; that mismatch is the stale signal
+    expect(decide({ coreChangedSinceProduct: true })).toMatchObject({ ...current, reason: "core-changed" });
+    expect(decide({ specChanged: true })).toMatchObject({ ...current, reason: "spec-changed" });
+    // a checkout older than the docs may align but never advance
+    expect(decide({ treeBehind: true })).toMatchObject({ rev: "staging@7478faa06", reason: "aligned" });
+    expect(decide({ treeBehind: true, coreChangedSinceProduct: true })).toEqual({ rev: "staging@9249e1f48", date: "2026-09-01", reason: "tree-behind" });
+    // git could not answer → touch nothing
+    expect(decide({ coreChangedSinceProduct: null })).toMatchObject({ rev: "staging@9249e1f48", reason: "undecidable" });
+    expect(decide({ existingArch: null })).toMatchObject({ ...current, reason: "new" });
+    expect(decide({ product: null })).toMatchObject({ ...current, reason: "no-product" });
+    // restamp rewrites the two stamp lines and nothing else
+    const re = restamp(arch, "staging@7478faa06", "2026-08-31");
+    expect(readStamp(re)).toMatchObject({ rev: "staging@7478faa06", date: "2026-08-31" });
+    expect(regionsOf(re)).toBe(regionsOf(arch));
+    expect(re.split("\n").slice(4)).toEqual(arch.split("\n").slice(4));
+  });
+
+  test("product docs carry one machine-owned region: decisions not yet in code", async () => {
+    const { renderDecidedSection, patchProductDecided, DECIDED_HEADING } = await import("./lib/docs.ts");
+    const { parseJournalEntry } = await import("./lib/journal.ts");
+    const entry = parseJournalEntry([
+      "---", "date: 2026-09-01", 'source: "huddle — https://alden-studios.slack.com/archives/C07KG06L601/p1788226477509519"',
+      "pr: null", "ticket: [LIA-61]", "features: [admin-invoicings]", "scope: product", "status: decided",
+      "affects: [BR-22h, MM-16]", "summary: Two per-line edit lanes; the redistribute lane is dropped", "---", "body",
+    ].join("\n"), "admin/invoicing/journal/x.md", "/x.md");
+    expect(entry.status).toBe("decided");
+    expect(entry.affects).toEqual(["BR-22h", "MM-16"]);
+    expect(entry.pr).toBeUndefined();
+    const section = renderDecidedSection([entry]);
+    expect(section).toContain("**2026-09-01** — Two per-line edit lanes");
+    expect(section).toContain("LIA-61");
+    expect(section).toContain("[source](https://alden-studios.slack.com/archives/C07KG06L601/p1788226477509519)");
+    expect(section).toContain("rewrites `BR-22h`, `MM-16`");
+    expect(renderDecidedSection([])).toContain("Nothing decided is waiting to land");
+    // inserted before the Glossary the first time, replaced in place after that
+    const doc = "---\nid: x\n---\n# X\n\n## Business Rules\n\nrows\n\n## Glossary (feature-specific terms)\n\n| Term | Meaning |\n";
+    const once = patchProductDecided(doc, section);
+    expect(once.indexOf(DECIDED_HEADING)).toBeGreaterThan(once.indexOf("## Business Rules"));
+    expect(once.indexOf(DECIDED_HEADING)).toBeLessThan(once.indexOf("## Glossary"));
+    const twice = patchProductDecided(once, renderDecidedSection([]));
+    expect(twice.match(new RegExp(DECIDED_HEADING, "g"))!.length).toBe(1);
+    expect(twice).toContain("Nothing decided is waiting to land");
+    expect(twice).not.toContain("Two per-line edit lanes");
+    // a doc with no Glossary gets it appended
+    expect(patchProductDecided("---\nid: y\n---\n# Y\n", section).trimEnd().endsWith("<!-- accio:end decided -->")).toBe(true);
   });
 
   test("audit validates per-feature journal entries and catches a missed refresh", async () => {

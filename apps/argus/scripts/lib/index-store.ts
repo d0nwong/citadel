@@ -39,6 +39,8 @@ export type IdxFeature = {
   /** folder under features/ where this feature's docs live */
   dir: string;
   entry_routes: string[]; core_files: string[]; aliases: string[];
+  /** backend handler files, curated in the manifest (see `Feature.be_files`) */
+  be_files?: string[];
   /** every file attributed to the feature: seeds + data-layer reachable, with depth */
   files: Record<string, number>;
   ops: IdxOpRef[];
@@ -151,6 +153,7 @@ export function buildIndex(
     features.push({
       id: f.id, name: f.name, type: f.type, dir: featureDir(f),
       entry_routes: f.entry_routes, core_files: allCoreFiles(f), aliases: f.aliases,
+      be_files: f.be_files,
       files: Object.fromEntries(dist), ops: fops, components,
     });
   }

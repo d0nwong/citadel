@@ -22,6 +22,7 @@ const COMMANDS = {
   map: { module: "./commands/map.ts", blurb: "derive the feature manifest from the route tree" },
   sync: { module: "./commands/sync.ts", blurb: "refetch the spec, reanalyze the frontend, regenerate docs" },
   audit: { module: "./commands/audit.ts", blurb: "check the docs against code and spec" },
+  stale: { module: "./commands/stale.ts", blurb: "which features' docs drifted from the code, and why" },
   journal: { module: "./commands/journal.ts", blurb: "day view over per-landing journal entries" },
 } as const;
 
@@ -34,6 +35,7 @@ const HELP = `accio — summon the API surface
   accio map [--dry]                     derive/refresh the feature manifest
   accio sync [--offline|--check|--feature <id>]
   accio audit
+  accio stale [--json] [--all]          which features' docs drifted (tiers / fe-core / be-handlers / journal)
   accio journal [YYYY-MM-DD | --day <d> | --since <d>]   day view over landings (default: today)
 
 Examples

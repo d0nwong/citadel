@@ -33,6 +33,12 @@ export type Feature = {
   core_files: string[];
   /** curated additions that survive every map run (e.g. a feature dir the routes never import) */
   core_files_extra?: string[];
+  /**
+   * backend files behind this feature's endpoints (router → controller → service), relative
+   * to the BE repo. Written by the feature-docs subagent from the handler chain it read;
+   * `accio stale` diffs them against `last_verified_be` so a BE-only landing shows up
+   */
+  be_files?: string[];
   /** every word a person might use asking about this — curated + seeded */
   aliases: string[];
   /** curated component groupings; optional, coverage grows from real questions */

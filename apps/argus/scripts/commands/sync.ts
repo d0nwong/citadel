@@ -19,8 +19,10 @@ import {
 } from "../lib/spec.ts";
 import { analyzeRepo } from "../lib/analyze.ts";
 import { buildIndex, ATTR_DEPTH, type AccioIndex } from "../lib/index-store.ts";
-import { renderArchDoc, readAliases, type DocMeta } from "../lib/docs.ts";
+import { renderArchDoc, readAliases, renderDecidedSection, patchProductDecided, type DocMeta } from "../lib/docs.ts";
 import { loadManifest, saveManifest, expand, archDocPath, STATE, FEATURES_DIR, MANIFEST_PATH, ROOT } from "../lib/manifest.ts";
+import { readStamp, restamp, decideArchStamp, gitDiffNames, gitIsAncestor, gitShortSha, type StampReason } from "../lib/stamps.ts";
+import { loadJournal } from "../lib/journal.ts";
 import { auditDocs, auditJournal } from "./audit.ts";
 
 const CACHE = join(STATE, "openapi.json");
@@ -150,15 +152,73 @@ if (import.meta.main) {
 
   const meta: DocMeta = { feRev, date: fetchedAt, specVersion: doc.info?.version ?? "?", specUrl: SPEC_UI_URL };
   const opsByKey = new Map(ops.map(o => [o.key, o]));
-  let wrote = 0;
+
+  // Which features own an operation the spec changed this sync — their arch surface moved
+  // even if no FE file did, so their stamp advances and the product tier reads as stale.
+  const specChangedFeatures = new Set<string>();
+  for (const key of [...diff.added.map(o => o.key), ...diff.changed.map(o => o.key), ...diff.removed])
+    for (const id of index.ops[key]?.features ?? []) specChangedFeatures.add(id);
+
+  const feHead = await gitShortSha(feRoot);
+  const journal = await loadJournal();
+  const byReason: Record<StampReason, string[]> = {
+    new: [], "no-product": [], "tree-behind": [], undecidable: [], "core-changed": [], "spec-changed": [], aligned: [],
+  };
+  let wrote = 0, matched = 0, productPatched = 0;
   for (const f of index.features) {
     if (ONLY && f.id !== ONLY) continue;
+    matched++;
     const docPath = join(FEATURES_DIR, f.dir, "docs/arch.md");
+    const productPath = join(FEATURES_DIR, f.dir, "docs/product.md");
     const existing = await Bun.file(docPath).text().catch(() => null);
-    await Bun.write(docPath, renderArchDoc(f, opsByKey, meta, existing));
-    wrote++;
+    const product = await Bun.file(productPath).text().catch(() => null);
+
+    // The arch stamp follows the product stamp unless the feature changed since the
+    // product tier was verified (lib/stamps.ts). A shared FE checkout older than the docs
+    // can teach us nothing, so it never moves a stamp — backwards or forwards.
+    const archSha = readStamp(existing)?.sha;
+    const productSha = readStamp(product)?.sha;
+    const anchor = archSha ?? productSha;
+    const treeBehind = !!anchor && !!feHead && feHead !== anchor && (await gitIsAncestor(feRoot, "HEAD", anchor)) === true;
+    // newest rev we can honestly compare against: HEAD, or the doc's own stamp when the
+    // checkout is older than the docs (two commits diff without a checkout)
+    const newest = treeBehind ? (archSha ?? "HEAD") : "HEAD";
+    const coreDiff = productSha ? await gitDiffNames(feRoot, productSha, newest, f.core_files) : null;
+    const decision = decideArchStamp({
+      existingArch: existing, product, current: { rev: feRev, date: fetchedAt },
+      coreChangedSinceProduct: coreDiff === null ? null : coreDiff.length > 0,
+      specChanged: specChangedFeatures.has(f.id), treeBehind,
+    });
+    byReason[decision.reason].push(f.id);
+
+    // A behind checkout must not rewrite regions either — they would describe older code
+    // under a newer stamp. Frontmatter alignment is the only write it may make.
+    const rendered = treeBehind && existing
+      ? restamp(existing, decision.rev, decision.date)
+      : renderArchDoc(f, opsByKey, { ...meta, feRev: decision.rev, date: decision.date }, existing);
+    if (rendered !== existing) { await Bun.write(docPath, rendered); wrote++; }
+
+    // product tier: the one machine-owned region — decisions agreed but not yet in code
+    if (product) {
+      const decided = journal.filter(e => e.status === "decided" && e.features.includes(f.id));
+      const patched = patchProductDecided(product, renderDecidedSection(decided));
+      if (patched !== product) { await Bun.write(productPath, patched); productPatched++; }
+    }
   }
-  if (ONLY && !wrote) fail(`no feature "${ONLY}" — have: ${index.features.map(f => f.id).join(", ")}`);
+  if (ONLY && !matched) fail(`no feature "${ONLY}" — have: ${index.features.map(f => f.id).join(", ")}`);
+
+  const moved = [...byReason["core-changed"], ...byReason["spec-changed"]];
+  console.log(
+    `stamps: ${byReason.aligned.length} arch docs follow their product tier` +
+    (moved.length ? ` · ${moved.length} advanced to \`${feRev}\` (product tier now stale): ${moved.join(", ")}` : "") +
+    (byReason.new.length ? ` · ${byReason.new.length} new` : "") +
+    (byReason["no-product"].length ? ` · ${byReason["no-product"].length} without a product tier` : ""),
+  );
+  if (byReason["tree-behind"].length)
+    console.log(`⚠ FE checkout \`${feRev}\` is OLDER than the docs — ${byReason["tree-behind"].length} changed feature(s) kept their newer stamp and regions: ${byReason["tree-behind"].join(", ")}`);
+  if (byReason.undecidable.length)
+    console.log(`⚠ could not diff ${byReason.undecidable.length} feature(s) against their product stamp (unknown sha?) — stamps left alone: ${byReason.undecidable.join(", ")}`);
+  if (productPatched) console.log(`product docs: "${"Decided, not yet landed"}" region updated in ${productPatched}`);
 
   if (!ONLY) await Bun.write(REPORT, renderReport(diff, index, doc, prevMeta?.fetchedAt ?? null, fetchedAt));
 
@@ -169,6 +229,6 @@ if (import.meta.main) {
     if (problems.length > 12) console.log(`   …and ${problems.length - 12} more (accio audit)`);
   } else console.log("audit: docs clean");
 
-  console.log(`\nwrote ${wrote} arch doc${wrote === 1 ? "" : "s"} → ${rel(FEATURES_DIR)}/**/docs/arch.md` +
+  console.log(`\nrewrote ${wrote} of ${matched} arch doc${matched === 1 ? "" : "s"} → ${rel(FEATURES_DIR)}/**/docs/arch.md` +
     `${ONLY ? " (scoped — report not rewritten)" : ` · ${rel(REPORT)} · index ${rel(INDEX_PATH)}`}`);
 }
