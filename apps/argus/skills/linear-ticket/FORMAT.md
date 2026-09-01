@@ -18,7 +18,9 @@ change ("switches from a single name + avatar to an avatar stack"), not the moti
 
 <Why this is needed. What the current UI/code does and why that's now wrong or
 insufficient. What the new design/API introduces, described enough that the scope bullets
-make sense. No implementation detail — that's Technical Notes.>
+make sense. No implementation detail — that's Technical Notes. Current state only: not the
+decision trail, not what landed when — the journal owns history. When a fact changes,
+rewrite the sentence; never stack dated "Decided…" / "Landed…" paragraphs.>
 
 ## Scope / Out of Scope
 

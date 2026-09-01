@@ -71,9 +71,10 @@ semantic-match rule: *appears*, never *is*.
 
 On a match to an open ticket: **update the ticket, never close it.** The facts — PR
 link, merge sha, author, what the diff actually changed — go into the ticket's
-*description*, in the section they belong to (Background for what landed, Pending for
-what it resolves, Technical Notes for what it changes about the code), via `save_issue`
-`patch`. Not a comment: a comment is a note the next reader has to reconcile against a
+*description*, in the section they belong to, via `save_issue` `patch` — by
+**rewriting the sentences the landing made false**, not by appending a dated "Landed …"
+paragraph: the body is the current task, the journal is the history (linear-ticket's
+"current task, not its history" rule). Not a comment: a comment is a note the next reader has to reconcile against a
 body that still says the old thing, and the body is what Foundry runs on and what the
 user reads, so the body is what has to be true (the user's standing rule, 2026-09-01 —
 LIA-63). Dedupe as the digest does: one update per landing, not one per tick. The bullet
@@ -96,8 +97,9 @@ Body edits are grounded, not inferred. The clearest case: **delete a Pending bul
 whose named artifact verifiably landed** — the bullet names a concrete endpoint / field /
 table and the landing's diff contains exactly that (linear-ticket's own rule: "when a
 pending item lands, delete its bullet"). The same bar applies to every other section: a
-Background paragraph recording what landed, a Technical Note whose line anchor or
-function name the diff moved, a Scope step the landing makes executable. The recurring
+Background sentence the landing made false (rewrite it — don't add a "Landed on …"
+paragraph beside it), a Technical Note whose line anchor or function name the diff
+moved, a Scope step the landing makes executable. The recurring
 one is FORMAT.md's "backend contract → generated client" rule: once the BE half of a
 ticket is on `origin/dev` *and deployed* to the server the spec is exported from, the
 client regen stops being a Pending bullet and becomes the ticket's first Scope bullet —
@@ -185,7 +187,9 @@ worse tickets. The sweep hands it conclusions, not sources:
 > `patch`, in the section the fact belongs to — never a comment): delete a Pending
 > bullet whose named artifact landed, move a landed-and-deployed BE dependency's client
 > regen into Scope per FORMAT.md's codegen rule, correct a Technical Note the diff
-> invalidated, record what landed in Background. You may NEVER close a ticket, write
+> invalidated, rewrite the Background sentence it made false. The body is the current
+> task, never a log — no dated "Decided …" / "Landed …" paragraphs, no Slack quotes; the
+> journal owns history. You may NEVER close a ticket, write
 > inference into a ticket (appears-satisfied, appears-redundant — those go in your
 > report), apply `agent-ready` to a ticket you did not file this tick, or push git.
 >
@@ -328,9 +332,9 @@ Runs unattended under `/loop`, so the write policy is fixed:
 - **Yes:** journal entries, doc regeneration, `reports/<today>.md`, local git commits,
   **Linear ticket description updates backed by verified facts** (step 4: landed
   artifacts out of Pending, a landed-and-deployed BE dependency's client regen into
-  Scope, corrected Technical Notes, what landed in Background — always the description,
-  never a comment, so the ticket is always the current truth; the user's standing rule,
-  2026-09-01), digest-mandated issue filing, and filing Alden Portal tickets from ✋
+  Scope, corrected Technical Notes, a Background sentence rewritten to the new state —
+  always the description, never a comment, and always as the current task rather than a
+  dated log of what landed; the user's standing rules, 2026-09-01), digest-mandated issue filing, and filing Alden Portal tickets from ✋
   deliverables (with the digest-file writeback marker, step 6a).
 - **Never:** close Linear tickets, write inference into a ticket (appears-redundant,
   appears-satisfied — report first, edit after the user confirms), leave a landing as a

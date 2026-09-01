@@ -141,6 +141,14 @@ ticket touches.
   **first Scope bullet**: export the swagger doc to `./openapi.json`, run Orval, commit
   `src/http/generated/`, then the FE work. Landed-but-not-deployed stays Pending — an
   export from a stale server looks done and isn't. Worked shape in FORMAT.md.
+- **The ticket is the current task, not its history.** Background says what the code does
+  today and what the contract now is — not who decided what, when, which shape was floated
+  and dropped, or what landed on which day. No "Decided 2026-…", "Landed …", "supersedes
+  the above", no Slack quotes, no dated paragraphs stacked as facts change. When a fact
+  changes, rewrite the sentence it lives in so the body reads as one executable task from
+  the top. The journal (`/log-change`) owns the history and the digest owns the thread
+  links; one Slack permalink for provenance is fine, a narrative is not (standing rule,
+  2026-09-01).
 - **Keep the ticket current by editing it, not commenting on it.** New verified
   information about a ticket — a landing, a resolved Pending item, a moved line anchor, a
   changed contract — goes into the section it belongs to via `save_issue` `patch`. A

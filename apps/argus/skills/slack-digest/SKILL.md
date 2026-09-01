@@ -134,10 +134,14 @@ none fits, tag `[unmapped]`. This is a hint for the end-of-day pass, not a commi
 **6. File action items in Linear.** For each **new** action item of the user's:
 - Dedupe first: skip if its thread ts is already in state's `action_items`; then
   `list_issues` (team `Liamai`, query by keywords) — if an existing open issue
-  covers it, **update** that issue (append the new Slack permalink / scope via
-  `patch`) instead of creating a duplicate.
+  covers it, **update** that issue via `patch` instead of creating a duplicate.
 - **Updating an existing issue means editing it like `linear-ticket` would, not
-  appending a note.** If the thread answers or lands something the issue's Pending
+  appending a note — and the body stays the current task, not a history.** Rewrite the
+  sentences the thread made false; never stack a dated "Decided 2026-… — Foong said…" /
+  "Settled … — Sam posted…" paragraph onto Background, and never quote the thread. One
+  permalink for provenance is enough; the digest file already holds the narrative and
+  the journal holds the decision (linear-ticket's "current task, not its history" rule,
+  standing since 2026-09-01). If the thread answers or lands something the issue's Pending
   section names, that follows `linear-ticket`'s own rule: **delete the resolved
   bullet** (folding any detail worth keeping into Technical Notes if it isn't already
   there) — never leave it in place annotated "Answered:" / "Landed". A Pending
