@@ -157,8 +157,23 @@ Two writing rules that make the fold possible:
   into a fact.
 
 **7. Merge into today's digest.** File `digests/YYYY-MM-DD.md`. Create from this
-skeleton if absent, else insert new items under the existing headings (append within
-a section, keep chronological order; never rewrite or delete earlier items):
+skeleton if absent, else merge new activity into the existing headings, ordered by
+each item's original timestamp.
+
+**An item states its thread's current state, not its history.** When a thread moves
+on, *rewrite the item in place* so it still reads as one current summary — never
+append a `→ HH:MM, …` update underneath it. Stacked updates are what turned the
+2026-09-01 digest into 8,809 words over 58 messages: an item that changed four times
+carried all four states, and the reader had to reconstruct the present from a
+transcript. The digest file is committed on every run, so `git log -p digests/`
+already holds the evolution — inline history buys nothing and costs the whole page.
+Same rule the tickets follow (`skills/linear-ticket`, "the ticket is the current task,
+not its history").
+
+Rewriting is not deleting. An item is never dropped once filed, and a resolved one
+stays put — it just states its outcome in its own sentence ("merged 12:32 as fe#379")
+instead of growing a tail. Two things survive every rewrite verbatim: an item's
+original `HH:MM ·` stamp, and the ` → LIA-xx` ticket marker described below.
 
 ```markdown
 # #dev-team digest — YYYY-MM-DD
@@ -196,6 +211,16 @@ twice.
 Summaries are the product: write what was concluded, not "there was a discussion
 about X". The user should be able to skip opening Slack entirely unless they want the
 detail. Update the `_Last updated_` line and counters each run.
+
+**Length is a hard constraint, not a preference.** A digest longer than the Slack it
+summarizes has failed at its only job. Budget **≤ 40 words per item** and **≤ 1,500
+words for a full day** — for calibration, 2026-08-26 came in at 550 words and
+2026-08-28 at 1,280, while 2026-09-01 hit 8,809 and had to be rewritten. An item past
+~80 words is nearly always carrying one of three things that belong elsewhere:
+history (see the current-state rule above), code you verified (the journal entry or
+the arch doc owns that), or ticket scope (the ticket owns that). Link to them; do not
+restate them. If a day genuinely earns more words, it is because more happened — not
+because each item got longer.
 
 **8. Save state.** Promote the cursor the script prepared: read
 `digests/.state.next.json`, write it to `digests/.state.json`, and delete

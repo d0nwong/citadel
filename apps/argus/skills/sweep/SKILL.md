@@ -164,7 +164,15 @@ left over are the stale features 5c's per-tick cap did not reach — report them
 with the feature ids ("4 product tiers still behind their arch tier, next tick: …"), not
 as a decision for the user; they clear themselves as 5c works through the list.
 
-**8. Report.** One screen, in this order, skipping empty sections:
+**8. Report.** One screen, in this order, skipping empty sections. **"One screen" is a
+budget, not a figure of speech: ≤ 1,200 words for a full day.** The 2026-09-01 report
+reached 3,981 and had to be rewritten — almost entirely `Done today`, which had grown to
+87 lines because each tick block was written as an essay. A Done-today block is **1–3
+bullets** naming what changed and the commit that holds it; the journal entry, the docs
+and the diff carry the detail, and the block links to them rather than retelling them.
+Consecutive quiet ticks collapse onto one line (`### 14:19 · 15:18 · 17:17`). The same
+current-state rule the digest follows applies to Needs you: each bullet says what is open
+*now*, not how it got there.
 
 1. **Needs you** — appears-implemented tickets to verify, appears-redundant tickets to
    close or rescope, partial matches awaiting a Scope edit, Pending bullets that only
