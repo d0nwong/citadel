@@ -108,7 +108,7 @@ every item to the huddle's start ts (the parent message) and label it `(AI huddl
 — they are machine-generated from a transcript, so treat internal contradictions as
 unverified and say so rather than picking a side. A huddle usually *closes* things the
 digest lists as 🟡 In flight or a ticket lists under Pending; apply step 6's
-delete-the-resolved-bullet rule to those. (Missed once on 2026-09-01: a 36-minute huddle
+delete-the-resolved-bullet rule to those. (Missed once: a 36-minute huddle
 that settled the invoice edit lanes and the soft-delete question was dropped as noise.)
 Classify the rest:
 - **Decisions & conclusions** — anything settled: agreed behavior, chosen approach,
@@ -140,8 +140,7 @@ none fits, tag `[unmapped]`. This is a hint for the end-of-day pass, not a commi
   sentences the thread made false; never stack a dated "Decided 2026-… — Foong said…" /
   "Settled … — Sam posted…" paragraph onto Background, and never quote the thread. One
   permalink for provenance is enough; the digest file already holds the narrative and
-  the journal holds the decision (linear-ticket's "current task, not its history" rule,
-  standing since 2026-09-01). If the thread answers or lands something the issue's Pending
+  the journal holds the decision (linear-ticket's "current task, not its history" rule). If the thread answers or lands something the issue's Pending
   section names, that follows `linear-ticket`'s own rule: **delete the resolved
   bullet** (folding any detail worth keeping into Technical Notes if it isn't already
   there) — never leave it in place annotated "Answered:" / "Landed". A Pending
