@@ -197,13 +197,14 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     const { renderDecidedSection, patchProductDecided, DECIDED_HEADING } = await import("./lib/docs.ts");
     const { parseJournalEntry } = await import("./lib/journal.ts");
     const entry = parseJournalEntry([
-      "---", "date: 2026-09-01", 'source: "huddle — https://alden-studios.slack.com/archives/C07KG06L601/p1788226477509519"',
-      "pr: null", "ticket: [LIA-61]", "features: [admin-invoicings]", "scope: product", "status: decided",
+      "---", "date: 2026-09-01", 'source: "huddle in #dev-team — https://alden-studios.slack.com/archives/C07KG06L601/p1788226477509519"',
+      "pr: null # decided, not yet in code", "ticket: [LIA-61]", "features: [admin-invoicings]", "scope: product", "status: decided",
       "affects: [BR-22h, MM-16]", "summary: Two per-line edit lanes; the redistribute lane is dropped", "---", "body",
     ].join("\n"), "admin/invoicing/journal/x.md", "/x.md");
     expect(entry.status).toBe("decided");
     expect(entry.affects).toEqual(["BR-22h", "MM-16"]);
-    expect(entry.pr).toBeUndefined();
+    expect(entry.pr).toBeUndefined();                       // `null` + trailing comment → absent
+    expect(entry.source).toContain("#dev-team");            // a `#` inside quotes is not a comment
     const section = renderDecidedSection([entry]);
     expect(section).toContain("**2026-09-01** — Two per-line edit lanes");
     expect(section).toContain("LIA-61");

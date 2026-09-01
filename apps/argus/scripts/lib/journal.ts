@@ -33,7 +33,15 @@ export const listField = (v: string | undefined) =>
 
 export function parseJournalEntry(text: string, name: string, path: string): JournalEntry {
   const fm = text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
-  const field = (k: string) => fm.match(new RegExp(`^${k}:[ \\t]*(.*)$`, "m"))?.[1]?.replace(/\s+#.*$/, "").trim();
+  // a quoted value keeps its `#`s (Slack channels live in `source:`); only an unquoted
+  // value can carry a trailing ` # comment`
+  const field = (k: string) => {
+    const raw = fm.match(new RegExp(`^${k}:[ \\t]*(.*)$`, "m"))?.[1]?.trim();
+    if (raw === undefined) return undefined;
+    const quoted = raw.match(/^"((?:[^"\\]|\\.)*)"|^'([^']*)'/);
+    if (quoted) return `"${quoted[1] ?? quoted[2] ?? ""}"`;
+    return raw.replace(/\s+#.*$/, "").trim();
+  };
   const nn = (v: string | undefined) => (v === undefined || v === "" || v === "null" ? undefined : unquote(v));
   return {
     name, path,
