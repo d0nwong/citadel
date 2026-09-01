@@ -11,15 +11,19 @@ only the messages that arrived since the last run and merges them into today's d
 file.
 
 Normally this runs as step 1 of `/sweep` (`skills/sweep/SKILL.md`), which then triages
-the digest *file* and drives `/log-change` / `/feature-docs` itself. A standalone run or
-an hourly `/loop` is also fine — the digest is incremental and catch-up-safe either way,
-and a sweep after a gap simply backfills. Without a sweep, the end-of-day pass falls to
-the user reading the digest and pushing 🔴 items through `/log-change` by hand.
+the digest *file*: it drives `/log-change` / `/feature-docs` from the 🔴 items and its
+`ticket-pass` worker files Linear tickets from the ✋ items and folds thread outcomes
+into the tickets they concern. **This skill never writes to Linear** — it captures; the
+sweep acts. A standalone run or an hourly `/loop` is also fine — the digest is
+incremental and catch-up-safe either way, and a sweep after a gap simply backfills.
+Without a sweep, the end-of-day pass falls to the user reading the digest, pushing 🔴
+items through `/log-change` and ✋ items through `/linear-ticket` by hand.
 
 Constants:
 - Channel: **#dev-team**, id `C07KG06L601`, workspace `alden-studios.slack.com`
 - The user is `U09R2MYP6A0` (Liam / yickkiu)
-- Linear: team **Liamai** (key `LIA`), assignee `me`
+- Linear: team **Liamai** (key `LIA`) — read-only here, to link items to the open
+  ticket they concern
 - State file: `digests/.state.json`
 - Digest file: `digests/YYYY-MM-DD.md` (local date, one per day)
 
@@ -28,8 +32,8 @@ bookkeeping, pagination, thread following, user-id resolution and noise filterin
 prints one compact transcript. It needs `SLACK_TOKEN` in `.env` (gitignored; Bun loads
 it). Fall back to the MCP tools (`slack_read_channel`, `slack_read_thread`, ToolSearch
 them first) only if the script cannot run — and say so in the report.
-If the Linear tools are deferred when there are action items, ToolSearch
-`mcp__linear-server__list_issues`, `mcp__linear-server__save_issue`.
+If the Linear tools are deferred, ToolSearch `mcp__linear-server__list_issues` — the
+only Linear tool this skill uses.
 
 ## Run it in a subagent
 
@@ -38,15 +42,16 @@ subagent's context, not in the session the user is working in.
 
 **If you are the main session**, don't run the procedure yourself. Spawn ONE
 general-purpose subagent via the Agent tool with **`model: "opus"`** — the triage in
-step 4 and the Linear writes in step 6 are judgement calls and a weaker model files worse
-tickets. The override is deliberate: the sweep loop runs on Sonnet (`bun run sweep`) so
+step 4 is a judgement call and a weaker model writes a worse digest, which every later
+stage then reads. The override is deliberate: the sweep loop runs on Sonnet (`bun run sweep`) so
 the scheduler is cheap, and every worker that writes pins the judgement tier itself
 rather than inheriting whatever the session happens to be on. Give it this task:
 
 > Invoke the `slack-digest` skill and follow it to completion. You ARE the subagent for
 > this run: execute the procedure directly, starting at step 1. The working directory is
 > the `ai-workspace` repo. Report back the number of new items, every decision / action
-> item / needs-you item with its Linear key, and the commit sha — or "no-op, nothing new".
+> item / needs-you item with the Linear key it links (if any), and the commit sha — or
+> "no-op, nothing new".
 
 When it reports, relay the summary to the user yourself, in the shape step 10 describes.
 A subagent's report is never shown to the user — an unrelayed run is an invisible one.
@@ -90,8 +95,7 @@ structured form if the transcript is ambiguous.
 
 ```json
 { "last_ts": "1724650000.000000",
-  "watched_threads": { "<thread_ts>": "<last_seen_reply_ts>" },
-  "action_items": { "<thread_ts>": "<LIA-xx>" } }
+  "watched_threads": { "<thread_ts>": "<last_seen_reply_ts>" } }
 ```
 
 If the header says nothing new and there are no threads, this is a no-op run: skip to
@@ -107,8 +111,8 @@ items** exactly like a thread: each settled point is a decision, each action ite
 every item to the huddle's start ts (the parent message) and label it `(AI huddle notes)`
 — they are machine-generated from a transcript, so treat internal contradictions as
 unverified and say so rather than picking a side. A huddle usually *closes* things the
-digest lists as 🟡 In flight or a ticket lists under Pending; apply step 6's
-delete-the-resolved-bullet rule to those. (Missed once: a 36-minute huddle
+digest lists as 🟡 In flight or a ticket lists under Pending; say what it closed, and
+link the ticket (step 6) so `ticket-pass` folds it in. (Missed once: a 36-minute huddle
 that settled the invoice edit lanes and the soft-delete question was dropped as noise.)
 Classify the rest:
 - **Decisions & conclusions** — anything settled: agreed behavior, chosen approach,
@@ -131,41 +135,26 @@ arch.md `## Interfaces & Contracts` sections (or manifest aliases) to find the o
 feature — folder names alone won't map a BE-only change. Tag inline as `[tasks]`. If
 none fits, tag `[unmapped]`. This is a hint for the end-of-day pass, not a commitment.
 
-**6. File action items in Linear.** For each **new** action item of the user's:
-- Dedupe first: skip if its thread ts is already in state's `action_items`; then
-  `list_issues` (team `Liamai`, query by keywords) — if an existing open issue
-  covers it, **update** that issue via `patch` instead of creating a duplicate.
-- **Updating an existing issue means editing it like `linear-ticket` would, not
-  appending a note — and the body stays the current task, not a history.** Rewrite the
-  sentences the thread made false; never stack a dated "Decided 2026-… — Foong said…" /
-  "Settled … — Sam posted…" paragraph onto Background, and never quote the thread. One
-  permalink for provenance is enough; the digest file already holds the narrative and
-  the journal holds the decision (linear-ticket's "current task, not its history" rule). If the thread answers or lands something the issue's Pending
-  section names, that follows `linear-ticket`'s own rule: **delete the resolved
-  bullet** (folding any detail worth keeping into Technical Notes if it isn't already
-  there) — never leave it in place annotated "Answered:" / "Landed". A Pending
-  section exists to name what's still unresolved; an annotated-but-kept bullet reads
-  as still-open to the next person who scans it. This applies whether the thread you're
-  filing *is* the action item, or it merely closes out a Pending item on some other
-  open ticket the thread's decision touches.
-- Otherwise write the ticket **grounded, not transcribed** — a thread's technical
-  claims are claims, not facts (a confirmed-on-Slack backend change has shipped late
-  or never before). Follow `skills/linear-ticket/SKILL.md` steps 2–3 scaled to this
-  run: read the affected feature's `product.md` + `arch.md` (the step-5 tag names the
-  feature), and let every endpoint, field, file or function the ticket asserts come
-  from those docs or a pinned code read — never from the thread alone. A thread claim
-  you cannot verify goes under **Pending** as an open question ("thread says the PUT
-  becomes full-replace — unverified against `origin/dev`"), never as a fact. Running
-  unattended changes two things from that skill: never pause to ask (filing the
-  user's action items is pre-authorized), and prefer an honest Pending bullet over
-  any research detour longer than the docs + one code read.
-- Then `save_issue`: `team: "Liamai"`, `assignee: "me"`, a verb-first title
-  (e.g. "Split invoice by project — UI"), description in the house format
-  (Summary / Background with the Slack permalink / Scope / Pending when needed /
-  Technical Notes). Set `dueDate`/`priority` only when the thread states a deadline
-  or urgency. Relate to overlapping issues via `relatedTo`.
-- Record in state: `action_items: { "<thread_ts>": "<LIA-xx>" }`. Never create a
-  ticket twice for the same thread; new scope in an old thread updates its ticket.
+**6. Link, don't file.** For each 🔴 / ✋ / 🟠 item, check whether its thread names or
+clearly concerns an open Liamai ticket (`list_issues`, team `Liamai`, by key if the
+thread typed one, else by keywords) and, if so, link it inline as `([LIA-xx](url))`.
+That link is the signal the sweep's `ticket-pass` worker uses to **fold** the thread's
+outcome into the ticket instead of filing a duplicate; an unlinked ✋ item is what it
+files a new ticket from. Everything that touches Linear happens there, under the
+sweep's Autonomy policy — never here: no filing, no `patch`, no comments, no labels.
+The digest holds the narrative; the ticket body is edited by a worker that has read
+the ticket and the docs, not the transcript.
+
+Two writing rules that make the fold possible:
+
+- **Say what changed for the ticket, in the item.** "Answers LIA-61's open payload
+  question: the boolean survives, no `type` enum" gives ticket-pass a fact to rewrite a
+  sentence with; "discussed the payload" gives it nothing.
+- **A thread's technical claims are claims, not facts** — a confirmed-on-Slack backend
+  change has shipped late or never before. Either write it as a claim ("Sam says it
+  works") or verify it against a pinned ref (`origin/dev@<sha>`, the FE's generated
+  client) and say which. Never let a thread alone promote an endpoint, field or file
+  into a fact.
 
 **7. Merge into today's digest.** File `digests/YYYY-MM-DD.md`. Create from this
 skeleton if absent, else insert new items under the existing headings (append within
@@ -180,7 +169,7 @@ _Last updated: HH:MM. N messages scanned today, M skipped as noise._
 - **HH:MM · <author>** [feature-tag] One-two sentence summary of what was decided and why. [thread](permalink)
 
 ## ✋ Your action items
-- **HH:MM** What you're on the hook for, and any stated deadline. ([LIA-xx](linear-url)) [thread](permalink)
+- **HH:MM** What you're on the hook for, and any stated deadline. ([LIA-xx](linear-url) when it concerns an open ticket — step 6) [thread](permalink)
 
 ## 🟠 Needs you
 - **HH:MM · <author>** What they need from you. [message](permalink)
@@ -200,13 +189,17 @@ Permalinks: `https://alden-studios.slack.com/archives/C07KG06L601/p<ts-with-dot-
 parent thread by appending `?thread_ts=<parent_ts>&cid=C07KG06L601` to the reply link.
 Prefer results' provided permalinks when the API returns them.
 
+The sweep's `ticket-pass` appends ` → LIA-xx` to a ✋ line when it files a ticket from
+it; never remove or rewrite that marker — it is what keeps the item from being filed
+twice.
+
 Summaries are the product: write what was concluded, not "there was a discussion
 about X". The user should be able to skip opening Slack entirely unless they want the
 detail. Update the `_Last updated_` line and counters each run.
 
 **8. Save state.** Promote the cursor the script prepared: read
-`digests/.state.next.json`, merge in the `action_items` you added in step 6, write the
-result to `digests/.state.json`, and delete `.state.next.json`. Do this only after the
+`digests/.state.next.json`, write it to `digests/.state.json`, and delete
+`.state.next.json`. Do this only after the
 digest file is written — a run that dies before this point replays on the next tick
 instead of losing messages. Never hand-edit `last_ts`.
 

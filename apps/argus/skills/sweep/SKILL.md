@@ -123,14 +123,18 @@ catches up. Three per tick is a cost cap, not a judgement: the list is state, so
 remainder is picked up next tick.
 
 **6. Ticket pass.** Linear is the sweep's terminal surface — the queue the user actually
-reads — so this stage makes it current. Two parts run in **one `ticket-pass` subagent**
-(6a file tickets from ✋ items, 6b review open tickets against refreshed docs — both are
-bulky single-use readers of Slack threads and doc trees, per the dispatch rule); 6c
-stays inline because it is a one-line judgement per ticket over a list the sweep
-already holds. The worker's procedure and prompt live in `skills/sweep/ticket-pass.md`.
+reads — so this stage makes it current, and the `ticket-pass` worker is the **only
+Linear writer in the loop** (the digest links tickets, it never edits them). Three
+parts run in **one `ticket-pass` subagent** — 6a file tickets from unlinked ✋ items,
+6b fold digest items into the open tickets they link, 6c review open tickets against
+refreshed docs — all bulky single-use readers of Slack threads and doc trees, per the
+dispatch rule. 6d stays inline because it is a one-line judgement per ticket over a
+list the sweep already holds. The worker's procedure and prompt live in
+`skills/sweep/ticket-pass.md`.
 
-**Skip the spawn** when there is nothing for it: no unmarked ✋ items *and* no feature
-refreshed this tick. Otherwise, **after dispatch has finished** (the worker writes the
+**Skip the spawn** when there is nothing for it: no unmarked unlinked ✋ items, no
+ticket-linked digest item newer than the previous tick's `_Tick` stamp in
+`reports/<today>.md`, *and* no feature refreshed this tick. Otherwise, **after dispatch has finished** (the worker writes the
 digest file and commits — a parallel writer would trip over dispatch's tree), spawn ONE
 general-purpose subagent via the Agent tool with **`model: "opus"`** (filing and review
 are judgement calls, and a weaker model files worse tickets), using the prompt in
@@ -138,12 +142,12 @@ are judgement calls, and a weaker model files worse tickets), using the prompt i
 
 When it returns, don't take the report on faith for anything the blackboard can answer:
 re-read the digest file for the ` → LIA-xx` markers and re-run the step-3 ticket query
-for the new keys — that refreshed list is also what 6c and the report's "Linear today"
+for the new keys — that refreshed list is also what 6d and the report's "Linear today"
 section run over. Only the inference lines (Needs-you) come from the report, because no
 file holds them. A subagent's report is never shown to the user; an unrelayed finding is
 a lost one.
 
-**6c. Nominate agent-ready tickets** (inline, every tick). Over the step-3 open-ticket
+**6d. Nominate agent-ready tickets** (inline, every tick). Over the step-3 open-ticket
 list as refreshed after the worker returned: a ticket qualifies when its Pending section
 is absent, it has no blocked-by relation, and its Scope is concrete enough to execute
 without a round of questions (real files, functions, line ranges — linear-ticket's bar).
@@ -164,8 +168,8 @@ as a decision for the user; they clear themselves as 5c works through the list.
 
 1. **Needs you** — appears-implemented tickets to verify, appears-redundant tickets to
    close or rescope, partial matches awaiting a Scope edit, Pending bullets that only
-   *appear* satisfied, 6b review findings, unattributed landings, un-ticketed ✋ pings
-   and 🟠 items, holds still waiting, agent-ready nominations (6c) awaiting your label.
+   *appear* satisfied, 6b/6c findings, unattributed landings, un-ticketed ✋ pings and
+   🟠 items, holds still waiting, agent-ready nominations (6d) awaiting your label.
    ✋ items that got tickets appear by key, not restated.
 2. **Done today** — entries written, docs refreshed, tickets filed (6a) and updated
    (keys + PRs), one `### HH:MM` sub-block per tick that did something.
@@ -237,8 +241,9 @@ refer here rather than restating it.
 **Yes:**
 
 - journal entries, doc regeneration, `reports/<today>.md`, local git commits;
-- filing Liamai tickets from digest ✋ deliverables (6a, with the digest-file writeback
-  marker) and digest-mandated issue filing;
+- filing Liamai tickets from unlinked digest ✋ deliverables (6a, with the digest-file
+  writeback marker) and folding linked digest items into their tickets (6b) — both in
+  `ticket-pass`, the loop's only Linear writer;
 - **Linear ticket description updates backed by verified facts.** The rules are
   linear-ticket's ("Keep the ticket current by editing it, not commenting on it" and
   "The ticket is the current task, not its history"); in sweep terms:
@@ -268,6 +273,8 @@ refer here rather than restating it.
 - leave a landing as a comment instead of updating the body;
 - apply `agent-ready` to an already-open ticket — nomination is report-only; the one
   pre-authorised exception is 6a's filing-time label on tickets the sweep itself files;
+- write to Linear from any worker other than `ticket-pass` — `slack-digest` only reads
+  it, to link items to the tickets they concern;
 - post to Slack, push git, or guess frontmatter.
 
 Anything needing the user's judgement goes in the report, not into a file.

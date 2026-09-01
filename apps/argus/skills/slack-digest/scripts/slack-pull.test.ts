@@ -16,7 +16,7 @@ test("permalink formats reply links with thread_ts", () => {
 });
 
 test("assemble: new messages, thread follow, noise, cursor advance", () => {
-  const state: State = { last_ts: "100.000000", watched_threads: {}, action_items: { "5.0": "LIA-1" } };
+  const state: State = { last_ts: "100.000000", watched_threads: {} };
   const now = 1000;
   const history = [
     msg("100.000000", "U1", "old — exactly at cursor, excluded"),
@@ -34,11 +34,10 @@ test("assemble: new messages, thread follow, noise, cursor advance", () => {
   expect(p.threads[0]!.replies.map((r) => r.author)).toEqual(["Foong Leung", "you"]);
   expect(p.next.last_ts).toBe("300.000000");
   expect(p.next.watched_threads).toEqual({ "200.000000": "260.000000", "300.000000": "300.000000" });
-  expect(p.next.action_items).toEqual({ "5.0": "LIA-1" });
 });
 
 test("assemble: watched thread yields only replies newer than last_seen, expires stale ones", () => {
-  const state: State = { last_ts: "500.000000", watched_threads: { "10.000000": "20.000000", "11.000000": "11.000000" }, action_items: {} };
+  const state: State = { last_ts: "500.000000", watched_threads: { "10.000000": "20.000000", "11.000000": "11.000000" } };
   const parents = { "10.000000": msg("10.000000", "U1", "old parent", { reply_count: 3 }), "11.000000": msg("11.000000", "U1", "dead", { reply_count: 0 }) };
   const replies = { "10.000000": [msg("20.000000", "U2", "seen"), msg("199000.000000", "U2", "new reply")], "11.000000": [] };
   const p = assemble(state, state.last_ts, [], replies, parents, users, 200000); // 11.0 is >48h old → expires
@@ -54,7 +53,7 @@ test("assemble: watched thread yields only replies newer than last_seen, expires
 });
 
 test("huddle notes from Slackbot are content, not noise, and point at the canvas", () => {
-  const state: State = { last_ts: "100.000000", watched_threads: {}, action_items: {} };
+  const state: State = { last_ts: "100.000000", watched_threads: {} };
   const parent = msg("200.000000", "USLACKBOT", "A huddle started", {
     reply_count: 1,
     files: [{ id: "F0BU4KUEXTN", title: ":headphones: Huddle notes: 9/1/26 in <#C07KG06L601>", filetype: "quip" }],
@@ -72,6 +71,6 @@ test("huddle notes from Slackbot are content, not noise, and point at the canvas
 });
 
 test("render: quiet run says so", () => {
-  const p = assemble({ last_ts: "1.000000", watched_threads: {}, action_items: {} }, "1.000000", [], {}, {}, users, 2);
+  const p = assemble({ last_ts: "1.000000", watched_threads: {} }, "1.000000", [], {}, {}, users, 2);
   expect(render(p)).toContain("nothing new.");
 });
