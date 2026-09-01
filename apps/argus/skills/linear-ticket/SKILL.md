@@ -84,7 +84,7 @@ becomes work in `~/git/alden-portal-fe` or `~/git/alden-connect-portal-be`):
   label for this, the project is the tag;
 - label `agent-ready` (`defaults.json` → `labels.agentReady`) when the drafted body has
   **no Pending section** and the ticket has **no blocked-by relation**. Apply it at
-  filing time without asking — the user's standing rule (2026-08-31). Foundry picks the
+  filing time without asking — the user's standing rule. Foundry picks the
   label up and runs an agent on the body as written, so the Scope bar below is not
   optional for these: if Scope isn't executable, the honest move is a Pending bullet or a
   Technical-Notes question, which withholds the label, not a vague Scope that carries it.
@@ -147,13 +147,12 @@ ticket touches.
   the above", no Slack quotes, no dated paragraphs stacked as facts change. When a fact
   changes, rewrite the sentence it lives in so the body reads as one executable task from
   the top. The journal (`/log-change`) owns the history and the digest owns the thread
-  links; one Slack permalink for provenance is fine, a narrative is not (standing rule,
-  2026-09-01).
+  links; one Slack permalink for provenance is fine, a narrative is not.
 - **Keep the ticket current by editing it, not commenting on it.** New verified
   information about a ticket — a landing, a resolved Pending item, a moved line anchor, a
   changed contract — goes into the section it belongs to via `save_issue` `patch`. A
   comment leaves the body saying the old thing, and the body is what Foundry executes and
-  what gets read, so the body is what has to be true (standing rule, 2026-09-01 — LIA-63).
+  what gets read, so the body is what has to be true.
   Comments are for conversation, not for state.
 - **Never draft before reading the feature's product.md + arch.md.** Those Out-of-Scope and
   Known-Gaps sections exist so tickets stop relitigating settled boundaries; skipping them

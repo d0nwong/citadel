@@ -7,17 +7,18 @@ description: One idempotent pass over the whole workspace loop — digest tick, 
 
 The workspace is a blackboard: durable state lives in files (`digests/`, per-feature
 `journal/`, `docs/`), reconciliation is deterministic (`pr-facts`, `accio audit`), and
-agents are stateless workers. The sweep adds the one missing piece — a scheduler — and
-stays deliberately dumb: **the files decide what runs.** Every stage is idempotent, so
-cadence is not a design question; a tick after three days away just does three days of
-work, and a tick after ten quiet minutes does nothing.
+agents are stateless workers. The sweep is the scheduler and stays deliberately dumb:
+**the files decide what runs.** Every stage is idempotent, so a tick after three days
+away does three days of work and a tick after ten quiet minutes does nothing.
 
-Two invariants, before anything else:
+Three invariants:
 
 - **Null over guess.** An unattributed landing gets `ticket: null` and a question in the
   report — never a plausible key. Wrong frontmatter silently misroutes every future grep.
 - **The sweep reads files, not reports.** Subagents make files current; triage always
   works off the file. That is what makes a half-crashed sweep safely re-runnable.
+- **Verified facts go into files and tickets; inference goes in the report.** The full
+  write policy is the Autonomy section below — every step that writes defers to it.
 
 ## Procedure
 
@@ -49,94 +50,67 @@ landings drop out on their own, so overlapping windows are harmless.
   local midnight — feeds the report's "Linear today" section. Split created-today from
   merely-updated by `createdAt`.
 
-**4. The join.** For each `NOT JOURNALED` landing, before dispatching anything, try to
-match it against the open tickets and open decisions:
+**4. The join.** For each `NOT JOURNALED` landing, before dispatching anything, match it
+against the open tickets and open decisions. The join is never delegated: it is the
+cross-product of landings, tickets and decisions, and splitting it loses the join.
+
+How to match:
 
 - **by key** when the branch or commits typed one — trust it;
 - **semantically** otherwise: features the diff touches vs. ticket scope vs. the digest
   thread that spawned the ticket. Teammates do not reference Liamai keys, so this is the
   normal path, and it is a judgement call — phrase every semantic match as *appears*, not
   *is*.
+- **against the whole ticket**, not just Scope: a BE landing shipping the endpoint an FE
+  ticket was waiting on satisfies a **Pending** bullet — exactly the event Pending tracks.
+- **for redundancy** too: a landing can make a ticket moot instead of implementing it —
+  it deleted or rewrote the code the ticket targets, solved the same problem another
+  way, or shipped a decision that ends the ask. Check whenever a landing touches a
+  feature an open ticket names; the tell is the diff removing or replacing the thing the
+  ticket wants changed. Always *appears*.
 
-Match against the whole ticket, not just its Scope: a landing can also satisfy a
-**Pending** bullet — a BE landing shipping the endpoint an FE ticket was waiting on is
-exactly the event Pending exists to track.
+What each outcome does:
 
-A match is not always "implements". A landing can make a ticket **redundant** instead:
-it deleted or rewrote the code the ticket targets, solved the same problem a different
-way, or shipped a decision that moots the ask. Check for this whenever a landing touches
-a feature an open ticket names — the diff removing or replacing the thing the ticket
-wants changed is the tell. Redundancy is always a judgement call, so it follows the
-semantic-match rule: *appears*, never *is*.
-
-On a match to an open ticket: **update the ticket, never close it.** The facts — PR
-link, merge sha, author, what the diff actually changed — go into the ticket's
-*description*, in the section they belong to, via `save_issue` `patch` — by
-**rewriting the sentences the landing made false**, not by appending a dated "Landed …"
-paragraph: the body is the current task, the journal is the history (linear-ticket's
-"current task, not its history" rule). Not a comment: a comment is a note the next reader has to reconcile against a
-body that still says the old thing, and the body is what Foundry runs on and what the
-user reads, so the body is what has to be true (the user's standing rule, 2026-09-01 —
-LIA-63). Dedupe as the digest does: one update per landing, not one per tick. The bullet
-mapping — which Scope / Pending items the landing *appears* to satisfy, which remain — is
-inference, so it goes in the report, not the ticket. Closing stays manual, always — a
-landing may implement half a ticket, and a wrongly closed ticket vanishes from the only
-queue the user reads. The report leads with "LIA-xx appears already implemented by fe#N —
-verify"; a partial match reports "fe#N appears to cover 2 of 4 Scope bullets on LIA-xx —
-edit Scope?".
-
-On a redundancy match: **report-only, no ticket write.** Redundancy is inference, not
-evidence — a wrong "this may be moot" written into a shared ticket is noise the team
-sees. The report says "LIA-xx appears redundant after fe#N — close or rescope?" and the
-ticket edit happens after the user confirms. Cancelling is closing — it stays manual for
-the same reason: the sweep may have misread the diff, and part of the ask may survive
-the rewrite. This is the general rule for outward-facing writes: **verified facts go
-into the ticket body; inference goes in the report.**
-
-Body edits are grounded, not inferred. The clearest case: **delete a Pending bullet
-whose named artifact verifiably landed** — the bullet names a concrete endpoint / field /
-table and the landing's diff contains exactly that (linear-ticket's own rule: "when a
-pending item lands, delete its bullet"). The same bar applies to every other section: a
-Background sentence the landing made false (rewrite it — don't add a "Landed on …"
-paragraph beside it), a Technical Note whose line anchor or function name the diff
-moved, a Scope step the landing makes executable. The recurring
-one is FORMAT.md's "backend contract → generated client" rule: once the BE half of a
-ticket is on `origin/dev` *and deployed* to the server the spec is exported from, the
-client regen stops being a Pending bullet and becomes the ticket's first Scope bullet —
-nobody else owns it, so it is not "waiting". When the connection is only semantic, don't
-touch the body — say *appears* in the report and put it in Needs-you.
-
-On a match to an open `decided` entry: pass it to the dispatch below — the landing entry
-must link back and flip the decision to `superseded` (log-change step 2b).
-
-No match: journal with `ticket: null` and ask in the report ("unattributed landing touched
-admin-invoicings — is this LIA-xx?").
+- **Match to an open ticket → update the ticket, per Autonomy.** The verified facts (PR
+  link, merge sha, author, what the diff changed) go into the description; which Scope /
+  Pending bullets the landing *appears* to satisfy is inference and goes in the report:
+  "LIA-xx appears already implemented by fe#N — verify", or for a partial "fe#N appears
+  to cover 2 of 4 Scope bullets on LIA-xx — edit Scope?". Dedupe as the digest does: one
+  update per landing, not one per tick.
+- **Redundancy match → report only.** "LIA-xx appears redundant after fe#N — close or
+  rescope?" The ticket is edited after the user confirms. Cancelling is closing, and
+  closing is manual (Autonomy): the sweep may have misread the diff, and part of the ask
+  may survive the rewrite.
+- **Match to an open `decided` entry → pass it to dispatch.** The landing entry must link
+  back and flip the decision to `superseded` (log-change step 2b).
+- **No match → journal with `ticket: null`** and ask in the report ("unattributed landing
+  touched admin-invoicings — is this LIA-xx?").
 
 **5. Dispatch.** One `log-change` run per unjournaled landing, **sequentially** — entries
 for one feature share a folder and every run ends in a commit; parallel writers would
 trip over the tree. Each run is a general-purpose subagent with **`model: "opus"`** (the
 entry it writes is the "why" layer — judgement, not transcription) and gets the join's
 findings for its landing (ticket or null, decided entry to supersede, digest permalink as
-`source:`). log-change step 6 then drives
-`feature-docs` for the affected features; entries left `implemented` by a previous sweep
-(audit's "refresh missed" nag) get a `feature-docs` run here too. Bulky reading happens in
-the subagents; keep only conclusions in the sweep's context. That is the general rule for
-what gets a subagent: a stage earns one when its input is bulky (threads, doc trees,
-diffs) *and* its output is a blackboard write the sweep can re-read afterwards — not
-because it is a stage.
+`source:`). log-change step 6 then drives `feature-docs` for the affected features;
+entries left `implemented` by a previous sweep (audit's "refresh missed" nag) get a
+`feature-docs` run here too.
+
+The general rule for what gets a subagent: a stage earns one when its input is bulky
+(threads, doc trees, diffs) *and* its output is a blackboard write the sweep can re-read
+afterwards — not because it is a stage. Bulky reading happens in the worker; the sweep
+keeps only conclusions.
 
 **5b. Decisions ahead of code.** Behaviour changes are decided in Slack before they are
-code, and the docs describe code only — so between the decision and the landing the
-product doc is silently about to be wrong. Every 🔴 item in today's digest that **changes
-a documented rule** (a Business Rules row, a Mismatch row, a Known Gap) and has no code
+code, and the docs describe code only — so between decision and landing the product doc
+is silently about to be wrong. Every 🔴 item in today's digest that **changes a
+documented rule** (a Business Rules row, a Mismatch row, a Known Gap) and has no code
 landed yet gets a `log-change` run **at decision time**: `status: decided`, `pr: null`,
-`features:` naming the feature, and `affects:` naming the rule ids it will rewrite (read
-them off the product/arch docs — the digest entry usually already cites them). Docs are
-not touched; `accio sync` surfaces the entry in that product doc's "Decided, not yet
-landed" region, and the landing entry later supersedes it (log-change step 2b). Dedupe
-against the open-decisions grep from step 3: one entry per decision, not per tick. Product
-direction with no rule behind it yet (a new feature nobody has scoped) is not a rule
-change — leave it in the digest.
+`features:` naming the feature, `affects:` naming the rule ids it will rewrite (read them
+off the product/arch docs — the digest entry usually already cites them). Docs are not
+touched; `accio sync` surfaces the entry in that product doc's "Decided, not yet landed"
+region, and the landing entry later supersedes it. Dedupe against the step-3 decisions
+grep: one entry per decision, not per tick. Product direction with no rule behind it yet
+(a new feature nobody has scoped) is not a rule change — leave it in the digest.
 
 **5c. Stale pass.** `bun run accio stale` — one line per feature whose docs no longer
 describe the code, with why (`tiers`, `fe-core`, `be-handlers`, `journal`). Dispatch
@@ -149,102 +123,40 @@ catches up. Three per tick is a cost cap, not a judgement: the list is state, so
 remainder is picked up next tick.
 
 **6. Ticket pass.** Linear is the sweep's terminal surface — the queue the user actually
-reads — so this stage makes it current. Three parts: 6a and 6b run together in **one
-`ticket-pass` subagent**; 6c stays inline.
+reads — so this stage makes it current, and the `ticket-pass` worker is the **only
+Linear writer in the loop** (the digest links tickets, it never edits them). Three
+parts run in **one `ticket-pass` subagent** — 6a file tickets from unlinked ✋ items,
+6b fold digest items into the open tickets they link, 6c review open tickets against
+refreshed docs — all bulky single-use readers of Slack threads and doc trees, per the
+dispatch rule. 6d stays inline because it is a one-line judgement per ticket over a
+list the sweep already holds. The worker's procedure and prompt live in
+`skills/sweep/ticket-pass.md`.
 
-Why the split: 6a and 6b are the bulky readers of this stage — each ✋ item means the
-Slack thread, `linear-ticket`'s `FORMAT.md` and the product + arch docs of every feature
-it touches; each refreshed feature means its full docs against every open ticket naming
-it. That reading is single-use and belongs in a worker's context, per the dispatch rule
-above. 6c is a one-line judgement per ticket over the step-3 list the sweep already
-holds, so a subagent would only re-fetch it. The join (step 4) is never delegated: it is
-the cross-product of landings, tickets and decisions, and splitting it loses the join.
-
-**Skip the spawn** when there is nothing for it: no unmarked ✋ items *and* no feature
-refreshed this tick. Otherwise, **after dispatch has finished** (the subagent writes the
+**Skip the spawn** when there is nothing for it: no unmarked unlinked ✋ items, no
+ticket-linked digest item newer than the previous tick's `_Tick` stamp in
+`reports/<today>.md`, *and* no feature refreshed this tick. Otherwise, **after dispatch has finished** (the worker writes the
 digest file and commits — a parallel writer would trip over dispatch's tree), spawn ONE
-general-purpose subagent via the Agent tool with **`model: "opus"`** (the judgement
-tier — see "Running it") — filing and review are judgement calls, and a weaker model files
-worse tickets. The sweep hands it conclusions, not sources:
+general-purpose subagent via the Agent tool with **`model: "opus"`** (filing and review
+are judgement calls, and a weaker model files worse tickets), using the prompt in
+`ticket-pass.md` with its `{…}` filled from steps 1–5. Hand it conclusions, not sources.
 
-> You are the `ticket-pass` worker for one sweep tick of the `ai-workspace` repo (working
-> directory). Execute directly; never spawn a subagent — it would recurse.
->
-> Inputs:
-> - Unmarked ✋ items from `digests/{date}.md`, one per line: `{line text} — {permalink}`.
-> - Features refreshed this tick: `{ids}`; open Liamai tickets naming them: `{keys}`.
-> - Team `Liamai`; assignee = me. Linear tools are `mcp__linear-server__*` — ToolSearch
->   them if deferred.
->
-> Part A — file tickets from the ✋ items, per the sweep skill's step 6a (read
-> `skills/sweep/SKILL.md`, steps 6a–6b, before starting; draft each ticket with the
-> `linear-ticket` skill). Part B — review the listed open tickets against the refreshed
-> docs, per step 6b.
->
-> Write policy is fixed: you may file tickets from ✋ items (into the Alden Portal
-> project, with `agent-ready` at filing time per 6a), write the ` → LIA-xx` digest
-> marker, and **update a ticket's description with verified facts** (`save_issue`
-> `patch`, in the section the fact belongs to — never a comment): delete a Pending
-> bullet whose named artifact landed, move a landed-and-deployed BE dependency's client
-> regen into Scope per FORMAT.md's codegen rule, correct a Technical Note the diff
-> invalidated, rewrite the Background sentence it made false. The body is the current
-> task, never a log — no dated "Decided …" / "Landed …" paragraphs, no Slack quotes; the
-> journal owns history. You may NEVER close a ticket, write
-> inference into a ticket (appears-satisfied, appears-redundant — those go in your
-> report), apply `agent-ready` to a ticket you did not file this tick, or push git.
->
-> Report back three lists, verbatim lines the sweep can paste: **Needs you** (appears-
-> satisfied / appears-redundant, ✋ pings that got no ticket and why), **Done** (tickets
-> filed with keys, descriptions updated — which ticket, which section, what changed),
-> and the commit sha of the digest writeback (or "no writeback").
-
-When it returns, the sweep does not take the report on faith for anything the blackboard
-can answer: re-read the digest file for the markers and re-run the step-3 ticket query
-for the new keys — that refreshed list is also what 6c and the report's "Linear today"
+When it returns, don't take the report on faith for anything the blackboard can answer:
+re-read the digest file for the ` → LIA-xx` markers and re-run the step-3 ticket query
+for the new keys — that refreshed list is also what 6d and the report's "Linear today"
 section run over. Only the inference lines (Needs-you) come from the report, because no
 file holds them. A subagent's report is never shown to the user; an unrelayed finding is
 a lost one.
 
-**6a. File tickets from ✋ items** (subagent). Every unmarked item in the digest's ✋
-section that carries a real deliverable (build, fix, review, write, decide-with-follow-up)
-gets a Liamai ticket in the **Alden Portal** project (the project is the tag — no
-`digest` / `alden-portal` labels), assignee me, the Slack permalink as the body's
-anchor, title from the item. Label `agent-ready` when the body carries no Pending
-section and the ticket has no blocked-by relation (linear-ticket's "Slack-derived
-alden-portal tickets" rule — this is the one place the sweep applies `agent-ready`
-itself, because the user has pre-authorised it for tickets it files; 6c stays
-report-only for everything already open). Pure reply/ack pings get no ticket — they stay in the
-report; a queue buried in micro-tasks stops being read. Dedupe is a writeback: after
-filing, append ` → LIA-xx` to the item's line in the digest file — a marked item is
-invisible to every later tick, which is what makes the catch-up case free. Because the
-file-then-mark pair isn't atomic, backstop before filing: search the Alden Portal
-project's issues for the item's Slack permalink; a hit means a prior tick crashed mid-pair — write the missing
-marker instead of filing twice.
-
-**6b. Review tickets against refreshed reality** (subagent). For each feature whose docs
-or journal changed this tick (dispatch's output), re-read the open tickets naming that
-feature against the fresh docs: Pending items now landed? Scope bullets satisfied or
-mooted? File/line references drifted? This is what catches tickets the join can't — the
-join only sees tickets a *new landing* touches; a review triggers whenever the ticket's
-ground truth moves. Findings flow through the same policy as the join: verifiable facts
-(a named Pending artifact now exists, a line anchor moved, a BE dependency landed and
-deployed so its regen is now a Scope step) are written into the ticket body; everything
-else — appears-satisfied, appears-redundant — goes in Needs-you. A drifted reference you
-re-verified against the pinned sha is a fact, not an inference: fix it in Technical
-Notes rather than reporting it. Skip the pass entirely on a tick that refreshed nothing.
-
-**6c. Nominate agent-ready tickets** (inline). Over the step-3 open-ticket list, as
-refreshed after the subagent returned — every tick, no refresh needed to trigger. A ticket qualifies when its Pending section is absent, it has
-no blocked-by relation, and its Scope is concrete enough to execute without a round of
-questions (real files, functions, line ranges — linear-ticket's bar). A qualifying
-ticket not yet carrying the `agent-ready` label gets a Needs-you line: "LIA-xx looks
+**6d. Nominate agent-ready tickets** (inline, every tick). Over the step-3 open-ticket
+list as refreshed after the worker returned: a ticket qualifies when its Pending section
+is absent, it has no blocked-by relation, and its Scope is concrete enough to execute
+without a round of questions (real files, functions, line ranges — linear-ticket's bar).
+A qualifying ticket not yet carrying `agent-ready` gets a Needs-you line: "LIA-xx looks
 agent-ready — label it?". The concreteness call is judgement, so nomination is
-report-only: the sweep never applies the label to an already-open ticket (the only
-auto-apply is 6a, at filing time, for Slack-derived alden-portal tickets). That label is the entire contract with
-Foundry's ticket pickup (README, "Downstream" section) — applying it dispatches an
-agent, which is precisely the decision the report exists to surface, not make. Like
-holds, a ready-but-unlabeled ticket restates every tick until labeled or disqualified —
-the report is a snapshot, not a diff.
+report-only (Autonomy): the label is the entire contract with Foundry's ticket pickup
+(README, "Downstream"), so applying it dispatches an agent — precisely the decision the
+report exists to surface, not make. Like holds, a ready-but-unlabeled ticket restates
+every tick until labeled or disqualified — the report is a snapshot, not a diff.
 
 **7. Audit.** `bun run accio audit`. Problems it still reports after dispatch go in the
 report verbatim — never silence one by inventing the missing fact. `tiers disagree` lines
@@ -256,34 +168,31 @@ as a decision for the user; they clear themselves as 5c works through the list.
 
 1. **Needs you** — appears-implemented tickets to verify, appears-redundant tickets to
    close or rescope, partial matches awaiting a Scope edit, Pending bullets that only
-   *appear* satisfied, review findings, unattributed landings, un-ticketed ✋ pings and
-   🟠 items, holds still waiting, agent-ready nominations (6c) awaiting your label.
+   *appear* satisfied, 6b/6c findings, unattributed landings, un-ticketed ✋ pings and
+   🟠 items, holds still waiting, agent-ready nominations (6d) awaiting your label.
    ✋ items that got tickets appear by key, not restated.
-2. **Done today** — entries written, docs refreshed, tickets filed (6a) and
-   annotated (keys + PRs), one `### HH:MM` sub-block per tick that did something.
+2. **Done today** — entries written, docs refreshed, tickets filed (6a) and updated
+   (keys + PRs), one `### HH:MM` sub-block per tick that did something.
 3. **Linear today** — every Liamai ticket created or updated since local midnight, one
-   line each: key, title, `created` or `updated`, and by what (sweep annotation, digest
+   line each: key, title, `created` or `updated`, and by what (sweep update, digest
    filing, or outside activity — the last flagged, since it's news). Built from the
-   step-3 query, not tick memory, so every tick restates the full day; a later tick's
-   report is always the complete picture.
+   step-3 query, not tick memory, so every tick restates the full day.
 4. **Audit** — remaining problems, verbatim.
 
-A quiet tick prints one line to the terminal ("sweep: nothing new") — but see below:
-the one-liner is a terminal courtesy, never the file's content.
+A quiet tick prints one line to the terminal ("sweep: nothing new") — a terminal
+courtesy, never the file's content.
 
 **The report is also a file.** `reports/<today>.md` is the durable copy of what you
-print, and it is **updated in place, not replaced** — the file outlives the tick, and
-its sections have two different natures:
+print, **updated in place, not replaced**. Its sections have two natures:
 
 - **Needs you, Linear today, Audit are state.** They describe what is open *now*, so
   each tick re-emits them from this tick's findings, replacing the previous tick's
-  section body. An item that is still open restates; an item that got resolved drops
-  out. Nothing is appended — a snapshot that accumulated stale bullets would be worse
-  than none.
+  section body. An item still open restates; an item resolved drops out. Nothing is
+  appended — a snapshot that accumulated stale bullets would be worse than none.
 - **Done today is a log.** Append this tick's work as a `### HH:MM` sub-block at the
   end of the section; never rewrite or drop an earlier tick's block. This is the one
-  place the file remembers the day's sequence — what 12:25 journaled is still there
-  after 13:28 — so a reader doesn't need `git log -p reports/` to see it.
+  place the file remembers the day's sequence, so a reader doesn't need
+  `git log -p reports/` to see it.
 
 Format:
 
@@ -308,41 +217,67 @@ _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 …
 ```
 
-Same section names as above, same order, same skip-empty rule. Concretely, each tick:
-read the existing file (create it from the template if today's doesn't exist), replace
-the `_Tick …_` line, replace the bodies of Needs you / Linear today / Audit, append a
-`### HH:MM` block under Done today if this tick wrote anything, and write it back.
-Commit it with the tick's other writes. This file is the only place Needs-you lives —
-nothing else on the blackboard holds an inference — so a report that only went to the
-terminal is a report that was lost.
+Each tick: read the existing file (create it from the template if today's doesn't
+exist), replace the `_Tick …_` line, replace the bodies of Needs you / Linear today /
+Audit, append a `### HH:MM` block under Done today if this tick wrote anything, write it
+back, and commit it with the tick's other writes. This file is the only place Needs-you
+lives — nothing else on the blackboard holds an inference — so a report that only went
+to the terminal is a report that was lost.
 
-**A quiet tick never shrinks the file.** "Nothing new" is relative to the previous
-tick; the file is read in the morning with no previous tick in view, and Pensieve
-renders it as the day's state. So on a quiet tick the update is: new `_Tick …_` line,
-state sections re-emitted (they'll be identical), no Done-today block. Append
-`sweep: nothing new` under the tick line if you want the quietness recorded. The
-one-liner alone is only ever correct on the first tick of a day when there is genuinely
-nothing open — and even then, "nothing open" means step 3 found no holds, no agent-ready
-nominations, and audit is clean, not that this tick found nothing *new*.
+**A quiet tick never shrinks the file.** "Nothing new" is relative to the previous tick;
+the file is read in the morning with no previous tick in view, and Pensieve renders it
+as the day's state. On a quiet tick the update is: new `_Tick …_` line, state sections
+re-emitted (identical), no Done-today block; append `sweep: nothing new` under the tick
+line if you want the quietness recorded. The terminal one-liner alone is only correct on
+the first tick of a day when there is genuinely nothing open — meaning step 3 found no
+holds, no agent-ready nominations, and audit is clean, not merely nothing *new*.
 
 ## Autonomy
 
-Runs unattended under `/loop`, so the write policy is fixed:
+Runs unattended under `/loop`, so the write policy is fixed. This is the single source
+for every write the sweep and its workers make; the steps above and `ticket-pass.md`
+refer here rather than restating it.
 
-- **Yes:** journal entries, doc regeneration, `reports/<today>.md`, local git commits,
-  **Linear ticket description updates backed by verified facts** (step 4: landed
-  artifacts out of Pending, a landed-and-deployed BE dependency's client regen into
-  Scope, corrected Technical Notes, a Background sentence rewritten to the new state —
-  always the description, never a comment, and always as the current task rather than a
-  dated log of what landed; the user's standing rules, 2026-09-01), digest-mandated issue filing, and filing Alden Portal tickets from ✋
-  deliverables (with the digest-file writeback marker, step 6a).
-- **Never:** close Linear tickets, write inference into a ticket (appears-redundant,
-  appears-satisfied — report first, edit after the user confirms), leave a landing as a
-  comment instead of updating the body, apply the `agent-ready` label to an already-open ticket
-  (nomination is report-only — the label dispatches Foundry, and dispatch is the user's
-  call; the one pre-authorised exception is 6a's filing-time label), post to Slack, push
-  git, or guess frontmatter. Anything needing the user's judgement goes in the report,
-  not into a file.
+**Yes:**
+
+- journal entries, doc regeneration, `reports/<today>.md`, local git commits;
+- filing Liamai tickets from unlinked digest ✋ deliverables (6a, with the digest-file
+  writeback marker) and folding linked digest items into their tickets (6b) — both in
+  `ticket-pass`, the loop's only Linear writer;
+- **Linear ticket description updates backed by verified facts.** The rules are
+  linear-ticket's ("Keep the ticket current by editing it, not commenting on it" and
+  "The ticket is the current task, not its history"); in sweep terms:
+  - *Where:* the description, in the section the fact belongs to, via `save_issue`
+    `patch`. Never a comment — a comment leaves the body saying the old thing, and the
+    body is what Foundry executes and what the user reads, so the body is what has to
+    be true.
+  - *How:* rewrite the sentence the fact made false. No dated "Landed …" / "Decided …"
+    paragraphs, no Slack quotes; the journal owns history.
+  - *What counts as verified:* delete a Pending bullet whose named artifact (endpoint,
+    field, table) is in the landing's diff; rewrite a Background sentence the landing
+    made false; fix a Technical Note whose line anchor or function name moved (a drift
+    re-verified against the pinned sha is a fact, not an inference); move a BE
+    dependency's client regen into Scope once it is on `origin/dev` *and deployed* to
+    the spec's export server (FORMAT.md's codegen rule — nobody else owns the regen, so
+    it is not "waiting").
+  - *What doesn't:* anything that is only a semantic match. Say *appears* in the report
+    and leave the body alone.
+
+**Never:**
+
+- close or cancel a Linear ticket — a landing may implement half a ticket, and a
+  wrongly closed ticket vanishes from the only queue the user reads;
+- write inference into a ticket (appears-satisfied, appears-redundant, bullet-to-landing
+  mappings) — report first, edit after the user confirms; a wrong "this may be moot" in
+  a shared ticket is noise the team sees;
+- leave a landing as a comment instead of updating the body;
+- apply `agent-ready` to an already-open ticket — nomination is report-only; the one
+  pre-authorised exception is 6a's filing-time label on tickets the sweep itself files;
+- write to Linear from any worker other than `ticket-pass` — `slack-digest` only reads
+  it, to link items to the tickets they concern;
+- post to Slack, push git, or guess frontmatter.
+
+Anything needing the user's judgement goes in the report, not into a file.
 
 ## Running it
 
@@ -352,7 +287,7 @@ runs on Sonnet because the sweep is a scheduler — greps, a join over compact l
 report — and every worker that writes (`slack-digest`, `log-change`, `feature-docs`,
 `ticket-pass`) pins `model: "opus"` in its own spawn spec, so ticket and doc quality
 doesn't depend on which model the session was launched with. To raise the judgement
-tier, change those spawn specs, not the loop flag. The loop only
-runs while a session is alive — fine, because the design is catch-up-safe: the first tick
-after any gap backfills. If it must run with no machine awake, that is `/schedule` (cloud
-cron), not a longer loop.
+tier, change those spawn specs, not the loop flag. The loop only runs while a session is
+alive — fine, because the design is catch-up-safe: the first tick after any gap
+backfills. If it must run with no machine awake, that is `/schedule` (cloud cron), not a
+longer loop.

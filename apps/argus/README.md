@@ -192,7 +192,7 @@ its **Pending** section is empty, it has no blocked-by relation, and its Scope i
 concrete (real files and line ranges, per the linear-ticket house format) — but Foundry
 never acts on that alone. The handoff is three steps, judgement staying on this side:
 
-1. **Sweep nominates.** Ticket pass 6b already re-reads open tickets against refreshed
+1. **Sweep nominates.** Ticket pass 6c already re-reads open tickets against refreshed
    docs; a ticket that newly qualifies gets a Needs-you line ("LIA-xx looks agent-ready —
    label it?"). Nomination is inference, so it goes in the report, never into Linear.
 2. **You confirm** by putting the `agent-ready` label on the ticket. The label is the
@@ -204,7 +204,7 @@ never acts on that alone. The handoff is three steps, judgement staying on this 
 
 ```mermaid
 flowchart LR
-    sweep["/sweep 6b<br/>ticket pass"] -- "nominate in report" --> you(["you"])
+    sweep["/sweep 6c<br/>ticket pass"] -- "nominate in report" --> you(["you"])
     you -- "agent-ready label" --> linear["Linear — Liamai"]
     scanner["Foundry scanner<br/>(web/, host-side)"] -- "poll label,<br/>claim in Postgres" --> linear
     scanner -- "ignite" --> forge["job forge<br/>(ephemeral)"]

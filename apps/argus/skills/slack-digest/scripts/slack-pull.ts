@@ -42,7 +42,6 @@ const NOISE_SUBTYPES = new Set([
 export type State = {
   last_ts: string;
   watched_threads: Record<string, string>;
-  action_items: Record<string, string>;
 };
 
 export type SlackMessage = {
@@ -237,7 +236,7 @@ export function assemble(
     threads: threads.sort((a, b) => tsNum(a.parent.ts) - tsNum(b.parent.ts)),
     noiseDropped: noise,
     expiredThreads: expired,
-    next: { last_ts: newest, watched_threads: watched, action_items: state.action_items },
+    next: { last_ts: newest, watched_threads: watched },
   };
 }
 
@@ -338,7 +337,7 @@ async function loadUsers(): Promise<Users> {
 async function loadState(): Promise<State> {
   const f = Bun.file(STATE);
   if (await f.exists()) return (await f.json()) as State;
-  return { last_ts: String(Math.floor(Date.now() / 1000) - 24 * 3600), watched_threads: {}, action_items: {} };
+  return { last_ts: String(Math.floor(Date.now() / 1000) - 24 * 3600), watched_threads: {} };
 }
 
 /** "2026-08-28" → ts at local midnight; anything else is taken as a unix ts */
