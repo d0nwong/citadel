@@ -113,6 +113,29 @@ what gets a subagent: a stage earns one when its input is bulky (threads, doc tr
 diffs) *and* its output is a blackboard write the sweep can re-read afterwards — not
 because it is a stage.
 
+**5b. Decisions ahead of code.** Behaviour changes are decided in Slack before they are
+code, and the docs describe code only — so between the decision and the landing the
+product doc is silently about to be wrong. Every 🔴 item in today's digest that **changes
+a documented rule** (a Business Rules row, a Mismatch row, a Known Gap) and has no code
+landed yet gets a `log-change` run **at decision time**: `status: decided`, `pr: null`,
+`features:` naming the feature, and `affects:` naming the rule ids it will rewrite (read
+them off the product/arch docs — the digest entry usually already cites them). Docs are
+not touched; `accio sync` surfaces the entry in that product doc's "Decided, not yet
+landed" region, and the landing entry later supersedes it (log-change step 2b). Dedupe
+against the open-decisions grep from step 3: one entry per decision, not per tick. Product
+direction with no rule behind it yet (a new feature nobody has scoped) is not a rule
+change — leave it in the digest.
+
+**5c. Stale pass.** `bun run accio stale` — one line per feature whose docs no longer
+describe the code, with why (`tiers`, `fe-core`, `be-handlers`, `journal`). Dispatch
+`feature-docs` for each, **sequentially, at most three per tick**, oldest product stamp
+first, skipping any feature dispatch already refreshed this tick. The `tiers` reason is
+authoritative: `accio sync` only advances an arch stamp when the feature's core files or
+owned endpoints changed since the product tier was read, so a disagreement is a stale
+product doc, never bookkeeping — and `accio audit` fails on it until the product tier
+catches up. Three per tick is a cost cap, not a judgement: the list is state, so the
+remainder is picked up next tick.
+
 **6. Ticket pass.** Linear is the sweep's terminal surface — the queue the user actually
 reads — so this stage makes it current. Three parts: 6a and 6b run together in **one
 `ticket-pass` subagent**; 6c stays inline.
@@ -206,7 +229,10 @@ holds, a ready-but-unlabeled ticket restates every tick until labeled or disqual
 the report is a snapshot, not a diff.
 
 **7. Audit.** `bun run accio audit`. Problems it still reports after dispatch go in the
-report verbatim — never silence one by inventing the missing fact.
+report verbatim — never silence one by inventing the missing fact. `tiers disagree` lines
+left over are the stale features 5c's per-tick cap did not reach — report them as a count
+with the feature ids ("4 product tiers still behind their arch tier, next tick: …"), not
+as a decision for the user; they clear themselves as 5c works through the list.
 
 **8. Report.** One screen, in this order, skipping empty sections:
 

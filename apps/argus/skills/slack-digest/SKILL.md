@@ -189,7 +189,7 @@ _Last updated: HH:MM. N messages scanned today, M skipped as noise._
 - **HH:MM · <author>** Summary. [message](permalink)
 
 ## End of day → docs
-_Filled by the evening pass: for each 🔴 item, run `/log-change` (journal + doc update) or note "no doc impact". BE-side changes go through `/log-change` like FE ones — the journal entry is what flags the feature for regeneration (the automatic `stale` check diffs FE code only); regeneration then re-verifies against fresh `origin/dev` and bumps `last_verified_be`._
+_Filled by the evening pass: for each 🔴 item, run `/log-change` (journal + doc update) or note "no doc impact". BE-side changes go through `/log-change` like FE ones — the journal entry is what flags the feature for regeneration (`accio stale` also diffs the manifest's `be_files`); regeneration then re-verifies against fresh `origin/dev` and bumps `last_verified_be`. A 🔴 decision that changes a documented rule but has **no code yet** is journaled at decision time as `status: decided` with `affects:` naming the rule ids — not parked as "no `/log-change` yet"; the product doc's "Decided, not yet landed" region is where it shows up (sweep step 5b)._
 ```
 
 Permalinks: `https://alden-studios.slack.com/archives/C07KG06L601/p<ts-with-dot-removed>`

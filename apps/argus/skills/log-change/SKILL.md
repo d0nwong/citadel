@@ -87,6 +87,7 @@ features: [admin-invoicings] # manifest ids, FLOW style — greppable routing
 scope: both # product | architecture | both
 status: implemented # decided | implemented | documented | superseded
 hold: "the BE half never shipped" # optional — parks the entry open, with a reason
+affects: [BR-21, BR-22h] # optional — documented rule / mismatch ids this change rewrites (read them off product.md / arch.md)
 summary: Draft-invoice lines edit by credits or by amount, and the save sends the whole project array
 ---
 
@@ -111,10 +112,15 @@ _Detail: `git -C ~/git/alden-portal-fe diff 597bfbdf3^1..597bfbdf3` · `bb pr-de
 
 **5. Determine status** (this decides everything downstream):
 
-- change NOT in code yet (FE or BE) → `status: decided`, `pr: null`. Write the entry. STOP —
-  docs are not touched (facts-only rule). The entry is the record of intent until code
-  lands; when it does, a NEW entry records the landing, links back to this one, and this
-  one flips to `status: superseded` (step 2b). A decision parked deliberately gets a
+- change NOT in code yet (FE or BE) → `status: decided`, `pr: null`. Write the entry **now,
+  at decision time** — a decision that changes a documented rule is journaled the day it
+  is made, not the day code appears; fill `affects:` with the rule ids it will rewrite.
+  STOP — the docs' rules are not touched (facts-only rule), but the next `accio sync`
+  lists the entry in that product doc's "Decided, not yet landed" region, which is how the
+  decision becomes visible beside the rules it will change. The entry is the record of
+  intent until code lands; when it does, a NEW entry records the landing, links back to
+  this one, and this one flips to `status: superseded` (step 2b) — and drops out of the
+  region on its own. A decision parked deliberately gets a
   `hold:`; one left open with neither nags after two weeks — that is the audit telling you
   it may have shipped without you noticing.
 - landed (FE or BE) → `status: implemented`, continue to step 6. A backend-only landing

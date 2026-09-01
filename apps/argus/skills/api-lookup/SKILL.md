@@ -61,7 +61,8 @@ bun run accio sync             # refetch spec, reanalyze frontend, regen docs; r
 bun run accio sync --offline   # same, cached spec (no network)
 bun run accio sync --check     # exit 1 if the backend spec drifted — report only
 bun run accio map              # refresh feature manifest after route changes (curation survives)
-bun run accio audit            # exit 1 if any doc claims what code/spec no longer back
+bun run accio audit            # exit 1 if any doc claims what code/spec no longer back, or a feature's two tiers disagree
+bun run accio stale            # which features' docs drifted and why: tiers · fe-core · be-handlers · journal
 ```
 
 The analysis is branch-dependent — `last_verified` in each doc names the frontend

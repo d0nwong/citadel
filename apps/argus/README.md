@@ -171,7 +171,8 @@ ground truth, join, and surface only the judgement calls.
 /sweep                   # one manual pass ("catch me up")
 /slack-digest            # digest only
 /log-change              # journal one landing by hand
-bun run accio audit      # reconcile without writing anything
+bun run accio audit      # reconcile without writing anything (fails when a feature's two doc tiers disagree)
+bun run accio stale      # which features' docs drifted, and why (tiers / fe-core / be-handlers / journal)
 bun run accio journal    # day view over landings (a date, or --since YYYY-MM-DD)
 bun skills/log-change/scripts/pr-facts.ts --since 2026-08-21   # what landed, what's unjournaled
 ```

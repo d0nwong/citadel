@@ -35,7 +35,11 @@ name, never `origin/staging@<sha>`.
 route/code — like `academy` — cannot get a facts-from-code doc yet; say so and stop).
 
 **1. Preflight.** `bun run accio sync --offline` so the arch doc + index are current.
-Add `--check` first if the backend spec may have moved (then run online).
+Add `--check` first if the backend spec may have moved (then run online). Sync no longer
+restamps arch docs wholesale: an arch stamp follows its product stamp until the feature's
+core files or owned endpoints change, and only then advances (`scripts/lib/stamps.ts`) —
+so after this run, `product.last_verified ≠ arch.last_verified` means exactly "this
+product tier is stale", and `accio audit` fails on it until you finish.
 
 Also pin the backend — **`git pull` it first, every time**:
 
@@ -56,16 +60,25 @@ the whole argument — zsh mangles bare `sha:path`), listings via
 `git ls-tree -r --name-only {be_sha} <dir>`. Handlers live in `src/routers/v1/` — note
 `routers`, not `routes`.
 
-**2. Detect staleness** (skip for first-time generation). A product doc is stale when the
-FE code it was verified against moved:
+**2. Detect staleness** (skip for first-time generation). Behaviour changes reach a
+feature four ways, and the product tier is stale when any of them fired since it was read:
 
 ```bash
-cd ~/git/alden-portal-fe && git diff --name-only <sha-from-last_verified>..HEAD -- <core_files...>
+bun run accio stale            # one line per drifted feature: tiers · fe-core · be-handlers · journal
 ```
 
-Non-empty diff → regenerate. Empty → do NOT rewrite or bump `last_verified` (protocol
-Phase 4 rule). `"stale"` as the arg means: run this check across every feature whose
-`status` is `done` and regenerate the drifted ones.
+- `tiers` — arch stamp ahead of product stamp (sync advanced it: core files or owned
+  endpoints changed)
+- `fe-core` — `core_files` differ between the product stamp and `origin/staging`
+  (the protocol Phase 4 diff, against the origin ref — never the shared checkout)
+- `be-handlers` — the manifest's `be_files` differ between `last_verified_be` and
+  `origin/dev` (fetch the BE repo first; a BE-only landing changes behaviour with no FE
+  file touched — this is the signal the old FE-only diff could never see)
+- `journal` — `implemented` entries naming the feature that no refresh has consumed
+
+Listed → regenerate **both tiers in one run**, stamped at the same `(fe, be)` pair. Not
+listed → do NOT rewrite or bump any stamp (protocol Phase 4 rule). `"stale"` as the arg
+means: regenerate everything `accio stale` lists, oldest product stamp first.
 
 **2b. Collect the why.** Grep `alden/alden-portal/features/**/journal/*.md` for entries whose
 `features:` include this id and whose `status` is not `documented` — the feature's own
@@ -127,9 +140,19 @@ judgement, and the sweep loop that usually drives this runs on Sonnet (see
 >    Source = the actual file (`be:` prefix for backend files); escape `|` as `\|`.
 > 4. In arch.md replace ONLY the TL;DR placeholder; optionally append curated sections
 >    (including `## FE/BE Mismatches`) after the regions. NEVER edit inside
->    `<!-- accio:begin/end -->` markers.
-> 5. Write your chosen aliases back to this feature's `aliases` array in the manifest
->    (touch nothing else).
+>    `<!-- accio:begin/end -->` markers — in EITHER tier: product.md carries one too
+>    (`## Decided, not yet landed`, filled by `accio sync` from the journal; leave the
+>    heading and region in place, never write decisions into Business Rules yourself).
+>    **Re-read every curated bullet that names a Linear key, a PR, or says "unshipped /
+>    not landed / in review"** against the pinned shas and either re-confirm it, rewrite
+>    it, or strike it — time-bound claims are how the arch doc ends up contradicting its
+>    own Mismatch rows (observed 2026-09-01: a Gaps bullet still said "unshipped" three
+>    sections above an MM row recording the landing).
+> 5. Write your chosen aliases back to this feature's `aliases` array in the manifest,
+>    and the backend files you actually read for step 2 (router → controller →
+>    service/use-case, paths relative to the BE repo) to its `be_files` array — that
+>    list is what lets `accio stale` notice the next backend-only landing. Touch nothing
+>    else in the manifest.
 >
 > {If open journal entries exist:} Context for the diff — these journal entries explain
 > why the code changed; verify each against the code and say which you confirmed:
@@ -139,7 +162,11 @@ judgement, and the sweep loop that usually drives this runs on Sonnet (see
 > BE rules verified/refuted, FE/BE mismatches found (with proposed status), and which
 > journal entries you confirmed in code.
 
-`{fe_rev}` = the `last_verified` value in the current arch.md (branch@sha format).
+`{fe_rev}` = `staging@<short sha of origin/staging>`, resolved at the start of the run —
+NOT the arch doc's current stamp (that may be behind, or held on an older product stamp)
+and NOT the shared checkout's HEAD. Both tiers end the run stamped with this same value:
+the subagent writes it into product.md, and the close-out `accio sync` moves arch.md onto
+it (a fresh product stamp with no core diff against it is exactly the "aligned" case).
 `{be_sha}` = the short sha of `origin/dev` pinned in step 1.
 
 **4. Verify.** After the subagent(s) return:
@@ -150,7 +177,10 @@ judgement, and the sweep loop that usually drives this runs on Sonnet (see
 
 **5. Close out.** In the manifest set the feature's `status: "done"` and
 `docs_sha: "<fe short sha>"`. Re-run `bun run accio sync --offline` (folds new aliases
-into the index). For each `needs-clarification` row in `## FE/BE Mismatches`, offer to
+and `be_files` into the index, and moves the arch stamp onto the fresh product stamp), then
+confirm `bun run accio audit` no longer lists this feature under `tiers disagree` and
+`bun run accio stale` no longer lists it at all — if either still does, the run is not
+finished. For each `needs-clarification` row in `## FE/BE Mismatches`, offer to
 file a Linear ticket via the `linear-ticket` skill (one per genuine mismatch) and write
 the ticket key into the row. Commit docs separately from code changes.
 
