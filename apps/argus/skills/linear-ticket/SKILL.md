@@ -134,6 +134,19 @@ ticket touches.
   wrong in the cautious direction is not free: a mechanism-level question left in Pending
   is exactly what disqualifies a ticket from `agent-ready` (see below) even though nothing
   external was actually being waited on.
+- **Backend contract → generated client is Scope once the backend has landed.** Before
+  the BE change is on `origin/dev`, it is a Pending bullet like any other. Once it is
+  there *and deployed to the server the spec is exported from* (`dev-alden-portal`, per
+  `orval.config.ts`), the regen stops being something to wait on and becomes the ticket's
+  **first Scope bullet**: export the swagger doc to `./openapi.json`, run Orval, commit
+  `src/http/generated/`, then the FE work. Landed-but-not-deployed stays Pending — an
+  export from a stale server looks done and isn't. Worked shape in FORMAT.md.
+- **Keep the ticket current by editing it, not commenting on it.** New verified
+  information about a ticket — a landing, a resolved Pending item, a moved line anchor, a
+  changed contract — goes into the section it belongs to via `save_issue` `patch`. A
+  comment leaves the body saying the old thing, and the body is what Foundry executes and
+  what gets read, so the body is what has to be true (standing rule, 2026-09-01 — LIA-63).
+  Comments are for conversation, not for state.
 - **Never draft before reading the feature's product.md + arch.md.** Those Out-of-Scope and
   Known-Gaps sections exist so tickets stop relitigating settled boundaries; skipping them
   buys exactly the review comments the docs were written to prevent.

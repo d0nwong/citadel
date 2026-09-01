@@ -69,30 +69,40 @@ a feature an open ticket names — the diff removing or replacing the thing the 
 wants changed is the tell. Redundancy is always a judgement call, so it follows the
 semantic-match rule: *appears*, never *is*.
 
-On a match to an open ticket: **annotate, never close.** Comment on the issue with the
-facts — PR link, merge sha, author, features touched (`save_issue` / comment — the
-digest's dedupe rules apply: one annotation per landing, not one per tick). The bullet
-mapping — which Scope / Pending items the landing appears to satisfy, which remain — is
-inference, so it goes in the report, not the comment. Closing stays manual, always — a
+On a match to an open ticket: **update the ticket, never close it.** The facts — PR
+link, merge sha, author, what the diff actually changed — go into the ticket's
+*description*, in the section they belong to (Background for what landed, Pending for
+what it resolves, Technical Notes for what it changes about the code), via `save_issue`
+`patch`. Not a comment: a comment is a note the next reader has to reconcile against a
+body that still says the old thing, and the body is what Foundry runs on and what the
+user reads, so the body is what has to be true (the user's standing rule, 2026-09-01 —
+LIA-63). Dedupe as the digest does: one update per landing, not one per tick. The bullet
+mapping — which Scope / Pending items the landing *appears* to satisfy, which remain — is
+inference, so it goes in the report, not the ticket. Closing stays manual, always — a
 landing may implement half a ticket, and a wrongly closed ticket vanishes from the only
 queue the user reads. The report leads with "LIA-xx appears already implemented by fe#N —
 verify"; a partial match reports "fe#N appears to cover 2 of 4 Scope bullets on LIA-xx —
 edit Scope?".
 
-On a redundancy match: **report-only, no comment.** Redundancy is inference, not
-evidence — a wrong "this may be moot" comment on a shared ticket is noise the team sees.
-The report says "LIA-xx appears redundant after fe#N — close or rescope?" and the
-comment happens after the user confirms. Cancelling is closing — it stays manual for the
-same reason: the sweep may have misread the diff, and part of the ask may survive the
-rewrite. This is the general rule for outward-facing writes: **positive evidence earns a
-comment; inference goes in the report.**
+On a redundancy match: **report-only, no ticket write.** Redundancy is inference, not
+evidence — a wrong "this may be moot" written into a shared ticket is noise the team
+sees. The report says "LIA-xx appears redundant after fe#N — close or rescope?" and the
+ticket edit happens after the user confirms. Cancelling is closing — it stays manual for
+the same reason: the sweep may have misread the diff, and part of the ask may survive
+the rewrite. This is the general rule for outward-facing writes: **verified facts go
+into the ticket body; inference goes in the report.**
 
-One narrow body edit is allowed: **delete a Pending bullet whose named artifact
-verifiably landed** — the bullet names a concrete endpoint / field / table and the
-landing's diff contains exactly that. That is a mechanical fact, and it's what
-linear-ticket's own rule ("when a pending item lands, delete its bullet") demands. When
-the connection is only semantic, don't touch the bullet — say *appears* in the comment
-and put it in Needs-you. Scope bullets are never edited by the sweep, satisfied or not.
+Body edits are grounded, not inferred. The clearest case: **delete a Pending bullet
+whose named artifact verifiably landed** — the bullet names a concrete endpoint / field /
+table and the landing's diff contains exactly that (linear-ticket's own rule: "when a
+pending item lands, delete its bullet"). The same bar applies to every other section: a
+Background paragraph recording what landed, a Technical Note whose line anchor or
+function name the diff moved, a Scope step the landing makes executable. The recurring
+one is FORMAT.md's "backend contract → generated client" rule: once the BE half of a
+ticket is on `origin/dev` *and deployed* to the server the spec is exported from, the
+client regen stops being a Pending bullet and becomes the ticket's first Scope bullet —
+nobody else owns it, so it is not "waiting". When the connection is only semantic, don't
+touch the body — say *appears* in the report and put it in Needs-you.
 
 On a match to an open `decided` entry: pass it to the dispatch below — the landing entry
 must link back and flip the decision to `superseded` (log-change step 2b).
@@ -171,16 +181,18 @@ worse tickets. The sweep hands it conclusions, not sources:
 >
 > Write policy is fixed: you may file tickets from ✋ items (into the Alden Portal
 > project, with `agent-ready` at filing time per 6a), write the ` → LIA-xx` digest
-> marker, comment
-> positive evidence onto a ticket, and delete a Pending bullet whose named artifact
-> verifiably landed. You may NEVER close a ticket, edit Scope or any other body text,
-> apply `agent-ready` to a ticket you did not file this tick, comment inference
-> (appears-satisfied, appears-redundant), or push git. Inference goes in your report.
+> marker, and **update a ticket's description with verified facts** (`save_issue`
+> `patch`, in the section the fact belongs to — never a comment): delete a Pending
+> bullet whose named artifact landed, move a landed-and-deployed BE dependency's client
+> regen into Scope per FORMAT.md's codegen rule, correct a Technical Note the diff
+> invalidated, record what landed in Background. You may NEVER close a ticket, write
+> inference into a ticket (appears-satisfied, appears-redundant — those go in your
+> report), apply `agent-ready` to a ticket you did not file this tick, or push git.
 >
 > Report back three lists, verbatim lines the sweep can paste: **Needs you** (appears-
-> satisfied / appears-redundant / drifted references, ✋ pings that got no ticket and
-> why), **Done** (tickets filed with keys, comments written, bullets deleted), and the
-> commit sha of the digest writeback (or "no writeback").
+> satisfied / appears-redundant, ✋ pings that got no ticket and why), **Done** (tickets
+> filed with keys, descriptions updated — which ticket, which section, what changed),
+> and the commit sha of the digest writeback (or "no writeback").
 
 When it returns, the sweep does not take the report on faith for anything the blackboard
 can answer: re-read the digest file for the markers and re-run the step-3 ticket query
@@ -211,9 +223,11 @@ feature against the fresh docs: Pending items now landed? Scope bullets satisfie
 mooted? File/line references drifted? This is what catches tickets the join can't — the
 join only sees tickets a *new landing* touches; a review triggers whenever the ticket's
 ground truth moves. Findings flow through the same policy as the join: verifiable facts
-(a named Pending artifact now exists) may annotate and delete the bullet; everything
-else — appears-satisfied, appears-redundant, drifted references — goes in Needs-you.
-Skip the pass entirely on a tick that refreshed nothing.
+(a named Pending artifact now exists, a line anchor moved, a BE dependency landed and
+deployed so its regen is now a Scope step) are written into the ticket body; everything
+else — appears-satisfied, appears-redundant — goes in Needs-you. A drifted reference you
+re-verified against the pinned sha is a fact, not an inference: fix it in Technical
+Notes rather than reporting it. Skip the pass entirely on a tick that refreshed nothing.
 
 **6c. Nominate agent-ready tickets** (inline). Over the step-3 open-ticket list, as
 refreshed after the subagent returned — every tick, no refresh needed to trigger. A ticket qualifies when its Pending section is absent, it has
@@ -311,14 +325,16 @@ nominations, and audit is clean, not that this tick found nothing *new*.
 
 Runs unattended under `/loop`, so the write policy is fixed:
 
-- **Yes:** journal entries, doc regeneration, `reports/<today>.md`, local git commits, Linear comments/
-  annotations backed by positive evidence, digest-mandated issue filing, filing Alden
-  Portal tickets from ✋ deliverables (with the digest-file writeback marker, step 6a),
-  and deleting a Pending bullet whose named artifact verifiably landed (step 4's narrow
-  case — the diff contains the exact thing the bullet names).
-- **Never:** close Linear tickets, edit Scope or any other ticket body text, comment
-  inference onto a ticket (appears-redundant, appears-satisfied — report first, comment
-  after the user confirms), apply the `agent-ready` label to an already-open ticket
+- **Yes:** journal entries, doc regeneration, `reports/<today>.md`, local git commits,
+  **Linear ticket description updates backed by verified facts** (step 4: landed
+  artifacts out of Pending, a landed-and-deployed BE dependency's client regen into
+  Scope, corrected Technical Notes, what landed in Background — always the description,
+  never a comment, so the ticket is always the current truth; the user's standing rule,
+  2026-09-01), digest-mandated issue filing, and filing Alden Portal tickets from ✋
+  deliverables (with the digest-file writeback marker, step 6a).
+- **Never:** close Linear tickets, write inference into a ticket (appears-redundant,
+  appears-satisfied — report first, edit after the user confirms), leave a landing as a
+  comment instead of updating the body, apply the `agent-ready` label to an already-open ticket
   (nomination is report-only — the label dispatches Foundry, and dispatch is the user's
   call; the one pre-authorised exception is 6a's filing-time label), post to Slack, push
   git, or guess frontmatter. Anything needing the user's judgement goes in the report,

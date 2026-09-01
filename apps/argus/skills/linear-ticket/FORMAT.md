@@ -48,6 +48,27 @@ ticket needs, newest understanding first:>
 - <Open question stated as one: "confirm with backend whether X covers this or a new Y is needed".>
 ```
 
+## Backend contract changes and the generated client
+
+A ticket whose FE work depends on a backend contract change has two phases, and the same
+fact lives in a different section in each:
+
+- **BE not yet on `origin/dev`** → a `Pending` bullet, as above:
+  `**BE — <route/schema change>** (<owner>) — <what it stops here, what can proceed>`.
+- **BE on `origin/dev` and deployed to `dev-alden-portal`** (the server `orval.config.ts`
+  exports the swagger from) → the regen is the **first Scope bullet**, not a Pending one:
+
+  ```markdown
+  - Generated client — regenerate against `dev@<sha>`: confirm the change is live on
+    `https://dev-alden-portal.uc.r.appspot.com/api-docs/swagger-ui-init.js`, export the
+    `swaggerDoc` object to `./openapi.json`, run Orval, commit `src/http/generated/`
+  - <the FE work, written against the regenerated types>
+  ```
+
+  Nobody else owns the regen, so it is not "waiting" — it is step one of the ticket.
+  Landed-but-not-deployed stays Pending: an export from a stale server looks done and
+  isn't. Delete the Pending bullet when you move it; the journal owns the history.
+
 ## Worked example (the reference — match this register)
 
 Title: `Support multiple assignees in task and subtask assignee displays`
