@@ -6,12 +6,20 @@
   "type": "module",
   "scripts": {
     "sweep": "claude '/loop 1h /sweep' --model claude-sonnet-5 --dangerously-skip-permissions",
-    "accio": "bun scripts/accio.ts"
+    "accio": "bun scripts/accio.ts",
+    "canvas": "bun --hot canvas/server.ts"
   },
   "bin": {
     "accio": "./scripts/accio.ts"
   },
   "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
     "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.11.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }
