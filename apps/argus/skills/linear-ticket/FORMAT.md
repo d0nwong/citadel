@@ -50,6 +50,36 @@ ticket needs, newest understanding first:>
 - <Open question stated as one: "confirm with backend whether X covers this or a new Y is needed".>
 ```
 
+## Parent tickets with sub-issues
+
+A parent gets sub-issues only when the work is several deliverables that land separately.
+The parent keeps the five normal sections, describes the whole change, and adds one more
+section at the very bottom:
+
+```markdown
+## Execution order
+
+1. LIA-xx — <sub-issue title> — blocked by: none
+2. LIA-yy — <sub-issue title> — blocked by LIA-xx (<what it needs from it>)
+3. LIA-zz — <sub-issue title> — blocked by: none — can run alongside step 2
+4. LIA-aa — <sub-issue title> — blocked by LIA-yy, LIA-zz
+```
+
+Each sub-issue is a full ticket in its own right (same five sections, same grounding bar)
+and opens with a single position line above `## Summary`:
+
+```markdown
+Step 2 of 4 of LIA-pp — blocked by LIA-xx (needs the regenerated client); blocks LIA-aa.
+
+## Summary
+…
+```
+
+The relations in those lines are also set in Linear (`blockedBy` / `blocks`), so the
+dependency shows on the issue itself and not only in prose. Numbering that isn't a
+dependency — two steps that can run at once — says so on the line; leaving it implied
+reads as sequential and stalls work that could have started.
+
 ## Backend contract changes and the generated client
 
 A ticket whose FE work depends on a backend contract change has two phases, and the same

@@ -98,6 +98,13 @@ outward-facing: get an explicit go-ahead before creating, unless the user alread
 `project`/`labels` (the rule above included) — and no `id`, which is what makes it a create. Report back
 the issue key and URL, nothing else.
 
+Splitting into sub-issues is a three-pass create, because relations need keys that don't
+exist yet: (1) create the parent, (2) create each sub-issue in execution order with
+`parentId` set to the parent's key, (3) one `save_issue` per dependent sub-issue with
+`blockedBy: ["LIA-yy"]`, then `patch` the parent's Execution order list to swap the
+drafted placeholders for the real keys. Report the parent key followed by the sub-issue
+keys in execution order, so the reply reads as the running order.
+
 **7. Close the loop.** If the change is an alden-portal product/behavior decision, offer
 `/log-change` with the new key as `ticket` — the journal entry and the ticket are separate
 records and the journal wants the key. The journal's `features:` list is what later drives
@@ -168,6 +175,23 @@ ticket touches.
   ("handled separately", "tracked in ABC-123").
 - **One ticket, one change.** A thing that spans three surfaces is still one ticket with
   three in-scope bullets — not three tickets.
+- **Sub-issues always carry an execution order and explicit blockers.** Sub-issues are
+  the narrow exception to the rule above: separate deliverables that land separately (a
+  BE contract, then the FE that consumes it), not three surfaces of one change. When a
+  ticket does get them, two things are non-negotiable:
+  - The parent body ends with an **Execution order** section — a numbered list, one line
+    per sub-issue, in the order they should be worked, each naming what blocks it
+    (`blocked by: none`, `blocked by LIA-yy`). Nobody should have to open four tickets to
+    learn what to start on.
+  - Every dependency is a **real Linear relation** (`blockedBy` / `blocks` on
+    `save_issue`), not only prose, and each sub-issue's body opens with its own position
+    line: `Step 2 of 4 — blocked by LIA-xx (<what it needs from it>); blocks LIA-zz`.
+  Order and blocking are different facts and both get stated even when they agree: the
+  order is how a human should sequence the work, the blockers are which ones *cannot*
+  start yet. Steps that can run in parallel say so (`blocked by: none — can run alongside
+  step 2`) rather than being silently numbered as if sequential. A blocked sub-issue
+  therefore never carries `agent-ready` — that falls straight out of the Slack-derived
+  rule in step 4.
 - **Scope is executable, not aspirational.** Once a ticket carries the `agent-ready`
   label, Foundry runs an agent with the body exactly as written (workspace README,
   "Downstream" section) — so Scope bullets must be concrete enough to execute without a
