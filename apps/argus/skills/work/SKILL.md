@@ -1,6 +1,6 @@
 ---
 name: work
-description: Read a Linear issue and implement it in pulse-backend
+description: Read a Linear issue and implement it
 ---
 
 Implement Linear issue $ARGUMENTS:
@@ -21,22 +21,22 @@ Implement Linear issue $ARGUMENTS:
    - **Return values over mutation**: prefer pure functions; document when mutation is chosen for perf
    - **Full data contract**: understand what the caller/consumer reads — don't return empty for relied-upon fields
    - **No unreachable guards**: only add null checks that can actually trigger given the preceding logic
-6. Format only the files you changed: `pnpm prettier --write <file1> <file2> ...` — never run `pnpm fmt` globally as it reformats the entire repo
-7. Write or update Vitest tests that verify each acceptance criterion
-   - Unit tests: `pnpm --filter <service> test:unit`
+6. Format only the files you changed: `bunx prettier --write <file1> <file2> ...` — never run `bun run fmt` globally as it reformats the entire repo
+7. Write or update `bun test` tests that verify each acceptance criterion
+   - Unit tests: `bun --filter <service> test:unit`
    - Integration tests: **must be run from inside the service directory** — integration tests resolve path aliases against `dist/`, so build first:
-     `cd services/<service> && pnpm build && pnpm run test:integration`
+     `cd services/<service> && bun run build && bun run test:integration`
 8. **Before pushing — run ci:test from inside the service directory and fix any failures**:
-   `cd services/<service> && pnpm run ci:test`
+   `cd services/<service> && bun run ci:test`
    This runs unit + integration combined. Do not push until this passes. Never skip this step.
 9. **Version bump** — run the `/changeset` skill to generate a `.changeset/*.md` file for the
    affected packages. It picks the bump level per package (`major`/`minor`/`patch`) from the
    nature of the change and writes the frontmatter + summary. Do **not** run
-   `pnpm --filter <name> version <bump>` — versioning goes through changesets, which the release
+   `bun --filter <name> version <bump>` — versioning goes through changesets, which the release
    flow consumes. After it runs, confirm to the user which modules were bumped and why.
 
 10. Commit with the issue number in the message (e.g. "PUL-123: description")
 11. Ask the user: "Are you happy with the changes?"
-    - **Yes → Create PR**: Run the `/pr` skill to create a GitHub pull request, then offer to run `/request-review` to draft a Slack message asking for a review
+    - **Yes → Create PR**: Create a GitHub pull request
     - **No → Request changes**: Ask what they'd like changed and go back to step 5
 12. If the changes contain database migrations, check if the `database/RLS_ROLES.md` needs an update due to policy/role/RLS changes.
