@@ -160,8 +160,9 @@ ground truth, join, and surface only the judgement calls.
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
 | `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
 | `alden/alden-portal/.doc-workspace/` | feature manifest + OpenAPI snapshot |
-| `skills/` | the workers and the scheduler (`sweep`, `slack-digest`, `log-change`, `feature-docs`, `linear-ticket`, `api-lookup`, `office-hours`) |
+| `skills/` | the workers and the scheduler (`sweep`, `slack-digest`, `log-change`, `feature-docs`, `linear-ticket`, `api-lookup`, `office-hours`), plus `prototyping` for fast issue-to-PR spikes |
 | `scripts/accio.ts` | index / sync / audit over docs + journal |
+| `scripts/sync-skills.ts` | symlink every `skills/<name>/` into the global Claude skills folder, per skill; prunes only its own dangling links |
 | `skills/log-change/scripts/pr-facts.ts` | resolve a landing; `--since` finds unjournaled ones |
 
 ## Running it
@@ -175,6 +176,7 @@ bun run accio audit      # reconcile without writing anything (fails when a feat
 bun run accio stale      # which features' docs drifted, and why (tiers / fe-core / be-handlers / journal)
 bun run accio journal    # day view over landings (a date, or --since YYYY-MM-DD)
 bun skills/log-change/scripts/pr-facts.ts --since 2026-08-21   # what landed, what's unjournaled
+bun run sync-skills      # after adding/removing a skill: make it global (--check to only report)
 ```
 
 Everything commits locally and never pushes; anything needing judgement lands in the

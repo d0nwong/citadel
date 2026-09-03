@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "sweep": "claude '/loop 1h /sweep' --model claude-sonnet-5 --dangerously-skip-permissions",
-    "accio": "bun scripts/accio.ts"
+    "accio": "bun scripts/accio.ts",
+    "sync-skills": "bun scripts/sync-skills.ts"
   },
   "bin": {
     "accio": "./scripts/accio.ts"
