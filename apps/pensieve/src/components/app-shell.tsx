@@ -1,9 +1,10 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { BookOpenText, Inbox, MessagesSquare, ScrollText } from 'lucide-react'
+import { BookOpenText, CircleDot, Inbox, MessagesSquare, ScrollText } from 'lucide-react'
 import { cn } from '#/lib/utils'
 
 const NAV = [
   { to: '/', label: 'Inbox', icon: Inbox, hint: 'latest sweep' },
+  { to: '/points', label: 'Points', icon: CircleDot, hint: 'send / ignore' },
   { to: '/journal', label: 'Journal', icon: ScrollText, hint: 'one entry per landing' },
   { to: '/digests', label: 'Digests', icon: MessagesSquare, hint: '#dev-team, daily' },
   { to: '/docs', label: 'Docs', icon: BookOpenText, hint: 'product + arch' },
@@ -49,9 +50,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="mt-auto hidden px-5 py-4 lg:block">
-          <p className="kicker">read-only</p>
+          <p className="kicker">read-only, but one</p>
           <p className="mt-1 text-[12px] leading-snug text-ink-faint">
-            The sweep writes the blackboard; this room only reads it.
+            The sweep writes the blackboard; this room only reads it — except{' '}
+            <span className="mono">decisions/</span>, where a verdict on a point lands.
           </p>
         </div>
       </aside>

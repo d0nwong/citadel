@@ -13,7 +13,8 @@ COPY --from=build /app/package.json /app/bun.lock ./
 RUN bun install --frozen-lockfile --production
 COPY --from=build /app/dist ./dist
 COPY server.ts ./
-# the blackboard is mounted, never baked in — it changes every sweep tick
+# the blackboard is mounted, never baked in — it changes every sweep tick. The sweep
+# owns every file in it except decisions/, which this app writes (see compose.yaml).
 VOLUME ["/workspace"]
 EXPOSE 3778
 CMD ["bun", "server.ts"]

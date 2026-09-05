@@ -7,10 +7,11 @@ import type { JournalEntry, JournalStatus } from '#/server/workspace'
 
 const STATUSES: Array<JournalStatus | 'hold'> = ['decided', 'implemented', 'documented', 'superseded', 'hold']
 
-type Search = { day?: string; feature?: string; status?: JournalStatus | 'hold'; q?: string }
+type Search = { app?: string; day?: string; feature?: string; status?: JournalStatus | 'hold'; q?: string }
 
 export const Route = createFileRoute('/journal/')({
   validateSearch: (s: Record<string, unknown>): Search => ({
+    app: typeof s.app === 'string' && s.app ? s.app : undefined,
     day: typeof s.day === 'string' ? s.day : undefined,
     feature: typeof s.feature === 'string' ? s.feature : undefined,
     status: STATUSES.includes(s.status as JournalStatus) ? (s.status as Search['status']) : undefined,
@@ -21,8 +22,12 @@ export const Route = createFileRoute('/journal/')({
 })
 
 function matches(e: JournalEntry, s: Search) {
+  if (s.app && e.app !== s.app) return false
   if (s.day && e.date !== s.day) return false
-  if (s.feature && e.feature !== s.feature && !e.features.includes(s.feature)) return false
+  // `features:` holds bare ids, `e.feature` is `<app>/<dir>` — accept a filter written
+  // either way, so a link from a doc's feature key and a click on this page agree.
+  if (s.feature && e.feature !== s.feature && !e.features.includes(s.feature) && !e.feature.endsWith(`/${s.feature}`))
+    return false
   if (s.status === 'hold' ? !e.hold : s.status && e.status !== s.status) return false
   if (s.q) {
     const hay = `${e.slug} ${e.summary ?? ''} ${e.pr ?? ''} ${e.ticket ?? ''} ${e.merge ?? ''}`.toLowerCase()
@@ -36,7 +41,13 @@ function JournalPage() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
 
-  const features = useMemo(() => Array.from(new Set(all.map((e) => e.feature))).sort(), [all])
+  const apps = useMemo(() => Array.from(new Set(all.map((e) => e.app))).sort(), [all])
+  // The feature list follows the app filter: every feature of every app at once is a
+  // wall of names, and a feature only means something inside its app.
+  const features = useMemo(
+    () => Array.from(new Set(all.filter((e) => !search.app || e.app === search.app).map((e) => e.feature))).sort(),
+    [all, search.app],
+  )
   const shown = useMemo(() => all.filter((e) => matches(e, search)), [all, search])
   const byDay = useMemo(() => {
     const m = new Map<string, JournalEntry[]>()
@@ -45,7 +56,7 @@ function JournalPage() {
   }, [shown])
 
   const set = (patch: Partial<Search>) => navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
-  const filtered = Boolean(search.day || search.feature || search.status || search.q)
+  const filtered = Boolean(search.app || search.day || search.feature || search.status || search.q)
 
   return (
     <>
@@ -66,6 +77,23 @@ function JournalPage() {
       />
 
       <div className="rise mb-8 flex flex-col gap-3" style={{ animationDelay: '40ms' }}>
+        {apps.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {apps.map((a) => (
+              <button
+                key={a}
+                // Changing app drops the feature filter — a feature key belongs to one app.
+                onClick={() => set({ app: search.app === a ? undefined : a, feature: undefined })}
+                className={cn(
+                  'rounded-full border px-2.5 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em] transition-colors',
+                  search.app === a ? 'border-thread bg-thread text-paper' : 'border-rule text-ink-dim hover:border-ink-dim',
+                )}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-1.5">
           {STATUSES.map((s) => (
             <button
@@ -93,7 +121,7 @@ function JournalPage() {
               onClick={() => set({ feature: search.feature === f ? undefined : f })}
               className={cn('mono transition-colors', search.feature === f ? 'text-thread underline underline-offset-4' : 'text-ink-faint hover:text-ink')}
             >
-              {f}
+              {search.app && f.startsWith(`${search.app}/`) ? f.slice(search.app.length + 1) : f}
             </button>
           ))}
         </div>
@@ -115,7 +143,7 @@ function JournalPage() {
             {entries.map((e) => (
               <li key={e.id} className="py-3">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
-                  <FeatureLink feature={e.feature} />
+                  <FeatureLink feature={e.feature} app={e.app} />
                   <PrLink pr={e.pr} url={e.url} />
                   {e.merge && <span className="mono text-ink-faint">{e.merge.slice(0, 9)}</span>}
                   <TicketLink ticket={e.ticket} />

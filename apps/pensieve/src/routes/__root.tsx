@@ -16,7 +16,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'Pensieve' },
-      { name: 'description', content: 'Reading room for the ai-workspace blackboard.' },
+      { name: 'description', content: 'Reading room for the argus blackboard.' },
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
