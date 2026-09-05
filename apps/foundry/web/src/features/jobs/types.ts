@@ -28,6 +28,8 @@ export interface Job {
   sourceJobId?: string
   /** Linear issue identifier (e.g. LIA-52) when the ticket scanner queued this job. */
   ticketId?: string
+  /** Where the host POSTs a signed `job.settled` event — set by the trigger API only. */
+  callbackUrl?: string
   status: JobStatus
   step?: JobStep
   createdAt: number
@@ -68,4 +70,6 @@ export interface NewJobInput {
   forge: string
   /** Run the task through a blueprint's steps instead of one bare `claude -p`. */
   blueprintId?: string
+  /** Notify this URL when the job settles (see server/job-webhook.ts). */
+  callbackUrl?: string
 }

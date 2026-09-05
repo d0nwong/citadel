@@ -40,6 +40,7 @@ function toJob(row: JobRow): Job {
     blueprint: row.blueprint ?? undefined,
     sourceJobId: row.sourceJobId ?? undefined,
     ticketId: row.ticketId ?? undefined,
+    callbackUrl: row.callbackUrl ?? undefined,
     status: row.status,
     step: (row.step as JobStep | null) ?? undefined,
     prUrl: row.prUrl ?? undefined,
@@ -177,6 +178,7 @@ async function insertJob(input: NewJobInput, ticketId?: string): Promise<Job | n
     blueprintId: bp?.id ?? null,
     blueprint: bp ? toSnapshot(bp) : null,
     ticketId: ticketId ?? null,
+    callbackUrl: input.callbackUrl ?? null,
   })
   const [row] = ticketId
     ? await insert.onConflictDoNothing({ target: jobs.ticketId }).returning()
@@ -284,8 +286,11 @@ export async function followUpJob(sourceId: string): Promise<Job> {
   return toJob(row)
 }
 
-/** No-op unless the job is still open — a settled job keeps its outcome. */
-export async function cancelJob(id: string): Promise<void> {
+/**
+ * No-op unless the job is still open — a settled job keeps its outcome.
+ * Returns whether this call made the transition, like `settleJob`.
+ */
+export async function cancelJob(id: string): Promise<boolean> {
   const [row] = await db
     .update(jobs)
     .set({ status: 'cancelled', finishedAt: new Date() })
@@ -293,6 +298,7 @@ export async function cancelJob(id: string): Promise<void> {
     .returning({ id: jobs.id })
   // Only the call that actually made the transition says so in the log.
   if (row) await appendLogs(id, [{ stream: 'sys', text: 'cancelled by user' }])
+  return row !== undefined
 }
 
 /**

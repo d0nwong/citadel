@@ -116,6 +116,12 @@ export const jobs = foundry.table(
      * NULL for UI-created jobs, and NULLs don't collide.
      */
     ticketId: text('ticket_id'),
+    /**
+     * Where to POST a signed `job.settled` event once the job leaves the open
+     * set — set only by the trigger API (a service that would rather not poll).
+     * NULL for UI and scanner jobs.
+     */
+    callbackUrl: text('callback_url'),
     status: jobStatus('status').notNull().default('queued'),
     /** Where the pipeline is: prepare | agent | commit | push | pr | done. */
     step: text('step'),

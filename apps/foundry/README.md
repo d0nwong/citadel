@@ -26,6 +26,7 @@ flowchart LR
         jobforge["ephemeral job forge<br/>(no git creds, no DB)"]
     end
 
+    caller["API caller<br/>CI · bot · agent · curl"]
     remote["GitHub / Bitbucket"]
     linear["Linear<br/>api.linear.app · MCP"]
     slack["Slack MCP<br/>mcp.slack.com"]
@@ -40,6 +41,8 @@ flowchart LR
     mcp -- "LINEAR_API_KEY (host only)" --> linear
     mcp -- "SLACK_MCP_TOKEN (host only)" --> slack
 
+    caller -- "POST /api/jobs<br/>FOUNDRY_API_TOKEN" --> web
+    web -. "job.settled webhook<br/>HMAC-signed" .-> caller
     web -- "job ledger" --> pg
     web -- "clone repo" --> jobs
     web -- "append log lines" --> joblogs
@@ -236,6 +239,22 @@ jq -r 'select(.stream == "err") | .text' ~/.foundry/logs/<id>.jsonl
 The logs live outside `~/.foundry/jobs/` on purpose — `foundry jobs prune` clears
 workspace clones, which are large and reproducible, and leaves the history that
 describes them. Purging a job from the ledger deletes its file with the row.
+
+### Trigger a job over HTTP
+
+Anything that can make a request — CI, a Slack bot, another agent, a shell script — can
+queue a job with the instructions in the body. `foundry auth --api` mints the bearer token
+(it lands in `~/.foundry/env`, read per request, so rotation needs no restart):
+
+```sh
+curl -s -X POST http://localhost:3777/api/jobs \
+  -H "Authorization: Bearer $FOUNDRY_API_TOKEN" -H 'content-type: application/json' \
+  -d '{"repo": "my-api", "instructions": "Add a CI status badge to the README"}'
+```
+
+`202` comes back with the job the moment its row exists; `GET /api/jobs/<id>` follows it
+to a PR URL, or pass a `callbackUrl` and the host POSTs you a signed `job.settled` event
+instead. The full payload and the webhook contract are in `web/README.md`.
 
 ### Repo notes
 

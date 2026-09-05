@@ -112,9 +112,12 @@ Ignite ─► insert row (queued, with a per-job callback token)
   and hands them to the forge as its task; the workspace checks out origin's tip of
   the PR branch, and the finishing push updates the existing PR instead of opening a
   new one. The container still holds no credentials.
-- The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the only server
-  route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
+- The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the container's
+  server route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
   (`server/job-events.ts`) and hands the pipeline back to the host on commit.
+- The **trigger API** (`src/routes/api/jobs.ts`, `jobs.$id.ts`) is the third door into
+  the pipeline, after the dialog and the scanner, and ends in the same two calls —
+  see "Trigger a job over HTTP" below.
 - **Logs are files, not rows** (LIA-18). Each job appends `{t, stream, text}` records
   to `~/.foundry/logs/<id>.jsonl`, one JSON object per line, the way Claude Code keeps
   a session under `~/.claude/projects/`. They are append-only, per-job, never joined
@@ -160,6 +163,72 @@ Ignite ─► insert row (queued, with a per-job callback token)
   reviewers. Old workspaces: `foundry jobs prune [--days 7]`. The ticket scanner:
   `FOUNDRY_SCANNER=1` to enable, `FOUNDRY_SCANNER_INTERVAL` (seconds, default 300) —
   see the root README's "Ticket scanner" section for the label contract.
+
+## Trigger a job over HTTP
+
+`POST /api/jobs` queues a job with the instructions in the body — for CI, a Slack bot,
+another agent, or a `curl`. Everything after the insert is the pipeline above: blueprints,
+repo notes, branch naming, push and PR all apply exactly as they do to a dialog job.
+
+**Auth.** One install-wide bearer token, `FOUNDRY_API_TOKEN` in `~/.foundry/env`, minted by
+`foundry auth --api` (`--rotate` replaces it). It is read fresh per request like every other
+credential there. With none configured the route answers `503` rather than opening up —
+the dev server listens on the LAN so containers can call back, and this endpoint runs
+Claude against your repos and pushes with your credentials.
+
+```sh
+curl -s -X POST http://localhost:3777/api/jobs \
+  -H "Authorization: Bearer $FOUNDRY_API_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{
+    "repo": "alden-portal-fe",
+    "instructions": "LIA-60: add a CI status badge\n\nPut it under the title in README.md …",
+    "baseBranch": "staging",
+    "ticketId": "LIA-60",
+    "callbackUrl": "https://ci.example.com/hooks/foundry"
+  }'
+```
+
+| field | | |
+|---|---|---|
+| `repo` | required | a tracked repo (Repos page): its path (`~` allowed) or its basename when unique |
+| `instructions` | required | the job's task, verbatim |
+| `baseBranch` | optional | default: the base of this repo's last job, else origin's default branch |
+| `blueprintId` | optional | default: the seeded "Plan → Execute" (a bare job if that row is gone); `"none"` for one bare step |
+| `ticketId` | optional | claims the ticket the way the scanner does; a second trigger for it is a `409` naming the holder |
+| `callbackUrl` | optional | `http(s)` URL to POST the `job.settled` event to |
+
+`202` returns the `Job` as soon as its row exists — the runner's cap and queue pump take it
+from there. Errors are `{ error }` with `400` (payload), `401` (token), `409` (ticket) or
+`503` (no token configured). The first line of `instructions` is the fallback commit
+subject and PR title, and its first three words name the branch, so lead with a one-line
+summary; a leading `LIA-123:` also gets the PR linked to the ticket on Bitbucket origins.
+
+`GET /api/jobs/<id>` (same bearer) returns the job — status, step, branch, `prUrl`,
+`exitCode`, `diff` — and `?logs=1` adds its log lines.
+
+**Completion webhook.** With a `callbackUrl`, the host POSTs it once when the job leaves
+the open set — succeeded, failed or cancelled, whichever path settled it (a preflight
+failure, the `docker wait` watcher and a restart's orphan sweep included, since every
+terminal transition goes through the runner's one `settle` helper):
+
+```
+POST <callbackUrl>
+content-type: application/json
+x-foundry-event: job.settled
+x-foundry-signature: sha256=<hex HMAC-SHA256 of the raw body, keyed with FOUNDRY_API_TOKEN>
+
+{ "event": "job.settled", "job": { …the same Job shape GET returns… } }
+```
+
+Signed, not authenticated: the token never leaves the host, and the receiver verifies with
+the secret it already holds to call us (GitHub-style, so any existing webhook receiver
+fits). Delivery is best effort — three attempts, 1s then 5s apart, 10s each — and the
+outcome is a `sys` line in the job's log on success or an `err` line after the last
+failure. A dead receiver never changes the job's status and never blocks the queue.
+
+Not yet: inline blueprint steps in the payload, per-caller tokens. Both are small
+follow-ups on `features/jobs/server/job-api.ts`.
 
 ## The database
 
@@ -251,7 +320,8 @@ render a component from a feature.
 src/
   routes/                     thin adapters, URL-shaped (generated route tree)
     __root.tsx                document shell, AppShell, toaster
-    api/jobs.$id.events.ts    the forge container's callback (the one server route)
+    api/jobs.ts  api/jobs.$id.ts    the trigger API: POST queues a job, GET polls it
+    api/jobs.$id.events.ts    the forge container's callback
     index.tsx  forges.tsx  repos.tsx  blueprints.tsx
   features/
     jobs/
@@ -262,6 +332,10 @@ src/
       server/job-logs.ts      node-only: ~/.foundry/logs/<id>.jsonl, append + read
       server/job-runner.ts    node-only: preflight, clone, docker run, push, settle
       server/job-events.ts    node-only: callback auth + stream-json -> the JSONL log
+      server/job-api.ts       node-only: the trigger API — bearer auth, payload -> NewJobInput
+      server/job-webhook.ts   node-only: the signed job.settled POST to a job's callbackUrl
+      server/auth.ts          node-only: constant-time bearer checks, FOUNDRY_API_TOKEN
+      server/foundry-env.ts   node-only: ~/.foundry/env, read fresh per use
       server/forge-pr.ts      node-only: bb / gh pr create, by origin host
       types.ts
     scanner/

@@ -40,6 +40,11 @@ async function readTracked(): Promise<Map<string, TrackedRepo>> {
   return new Map(rows.map((r) => [r.path, { notes: r.notes ?? '', lastBaseBranch: lastBase.get(r.id) }]))
 }
 
+/** The imported set as the trigger API resolves it — id, path and basename, nothing live. */
+export async function trackedRepos(): Promise<Array<{ id: string; path: string; name: string }>> {
+  return db.select({ id: reposTable.id, path: reposTable.path, name: reposTable.name }).from(reposTable)
+}
+
 async function isGitRepo(dir: string) {
   try {
     return (await stat(path.join(dir, '.git'))).isDirectory() || (await stat(path.join(dir, '.git'))).isFile()
