@@ -6,6 +6,9 @@
     "foundry": "./bin/foundry"
   },
   "scripts": {
+    "setup": "./scripts/bootstrap.sh",
+    "setup:check": "./scripts/bootstrap.sh --check",
+    "setup:bb": "./scripts/setup-bb.sh",
     "infra:up": "./infra/infra.sh up",
     "infra:down": "./infra/infra.sh down",
     "infra:reset": "./infra/infra.sh reset",
@@ -13,9 +16,9 @@
     "infra:logs": "./infra/infra.sh logs",
     "infra:psql": "./infra/infra.sh psql",
     "infra:url": "./infra/infra.sh url",
-    "db:generate": "cd web && bun run db:generate",
-    "db:migrate": "cd web && bun run db:migrate",
-    "db:studio": "cd web && bun run db:studio",
+    "db:generate": "./scripts/db.sh generate",
+    "db:migrate": "./scripts/db.sh migrate",
+    "db:studio": "./scripts/db.sh studio",
     "web:dev": "cd web && bun run dev",
     "web:serve": "./web/serve.sh up",
     "web:unserve": "./web/serve.sh down",

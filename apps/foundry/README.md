@@ -61,6 +61,36 @@ point of a sandbox, and they boot far slower. Containers are reproducible from
 
 ## Setup
 
+From a **brand-new Mac**, one script:
+
+```sh
+git clone <this repo> ~/git/foundry && cd ~/git/foundry
+./scripts/bootstrap.sh         # host tooling, git identity, PATH, config files, then foundry setup
+./scripts/bootstrap.sh --check # or: report what's missing and change nothing
+```
+
+`bootstrap.sh` is the step *before* `foundry setup`, which checks for docker, bun and
+gh and dies when they are missing. It installs them instead — OrbStack, bun, the
+`claude` CLI, `gh`, `php` + the `bb` phar, `tailscale` — prompting before each one,
+settles `git config --global user.name/user.email` (every forge inherits it), symlinks
+`bin/foundry` onto your PATH, creates `infra/.env` and `web/.env` from their examples
+and a starting `~/.foundry/scanner.json`, then hands over to `foundry setup` and mints
+the trigger-API token. Every phase is a no-op when it's already done, and each runs on
+its own (`./scripts/bootstrap.sh prereqs|identity|link|envfiles|scanner|foundry`).
+
+It never touches `~/.foundry/env` — credentials stay with `foundry auth`, below — and
+three things stay yours to do: `gh auth login`, `./scripts/setup-bb.sh` for Bitbucket,
+and cloning the repos you want jobs to target under `~/git`, which is the only
+directory the Repos page scans.
+
+`setup-bb.sh` installs the `bb` phar and walks you through an Atlassian API token.
+It exists because `bb auth` stores whatever you type without checking it — including
+nothing at all, which is how an empty config gets written over a working one. This
+takes the token without echoing it and verifies it against a real Bitbucket repo
+before writing anything, then reports which of the four scopes `bb` needs are
+missing. `--verify` checks the setup and changes nothing; `--reauth` replaces the
+stored credentials.
+
 ```sh
 ./bin/foundry setup            # one-time: credential, forge image, web deps, local infra, db
 ```
@@ -80,7 +110,23 @@ The steps below are the same thing run by hand, for when you want more control:
 
 Everything below writes a bare `foundry` for brevity. To get that, symlink it onto
 your PATH — `ln -s "$PWD/bin/foundry" ~/.local/bin/foundry` (no sudo, unlike
-`/usr/local/bin`). Otherwise run `./bin/foundry` from the repo root.
+`/usr/local/bin`); `bootstrap.sh link` does exactly that. Otherwise run
+`./bin/foundry` from the repo root.
+
+### Shell entry points
+
+Every `bun run` script in the root `package.json` is a one-line forward to a shell
+script, so nothing about setting a machine up depends on bun being there first:
+
+| script | `bun run` alias |
+|---|---|
+| `./scripts/bootstrap.sh` | `setup`, `setup:check` |
+| `./scripts/setup-bb.sh [--verify\|--reauth]` | `setup:bb` |
+| `./scripts/db.sh migrate\|generate\|studio\|url` | `db:migrate`, `db:generate`, `db:studio` |
+| `./infra/infra.sh up\|down\|reset\|status\|logs\|psql\|url` | `infra:*` |
+| `./web/serve.sh up\|down\|status\|url` | `web:serve*` |
+
+`bin/foundry` is the odd one out: it is the CLI, not a wrapper, and has no alias.
 
 ### Auth
 
