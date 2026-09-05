@@ -186,7 +186,27 @@ ground truth, join, and surface only the judgement calls.
 | `skills/` | the workers and the scheduler (`sweep`, `slack-digest`, `log-change`, `feature-docs`, `linear-ticket`, `api-lookup`, `office-hours`), plus `prototyping` for fast issue-to-PR spikes |
 | `scripts/accio.ts` | index / sync / audit over docs + journal |
 | `scripts/sync-skills.ts` | symlink every `skills/<name>/` into the global Claude skills folder, per skill; prunes only its own dangling links |
+| `scripts/bootstrap.sh` | brand-new Mac → running sweep, in phases; `--check` reports without touching anything ("Setting it up") |
+| `.env.example` | the one secret the loop needs, `SLACK_TOKEN`, and where it comes from; copy to `.env` |
 | `skills/log-change/scripts/pr-facts.ts` | resolve a landing; `--since` finds unjournaled ones |
+
+## Setting it up
+
+`./scripts/bootstrap.sh` takes a brand-new Mac to the point where `bun run sweep` works.
+Same shape as Foundry's: phases that run alone (`prereqs`, `repos`, `deps`, `skills`,
+`state`, `env`, `check`), `--check` to report without changing anything, a prompt before
+every install, a no-op when a step is already done. It installs git / bun / `claude`,
+verifies (or offers to clone) the two alden checkouts at the paths `accio` expects and
+never switches their branches, runs `bun install`, links the skills globally, rebuilds
+`.state/` from the FE tree, and creates `.env` from `.env.example`. Two things it can
+only point you at: `SLACK_TOKEN` in `.env` (documented there) and the Linear MCP login,
+which is `/mcp` → linear → Authenticate inside a Claude session opened in this directory.
+
+```sh
+./scripts/bootstrap.sh            # everything, asking first
+./scripts/bootstrap.sh --check    # what's missing, touching nothing
+./scripts/bootstrap.sh check      # just: is the Linear MCP server authenticated?
+```
 
 ## Running it
 
