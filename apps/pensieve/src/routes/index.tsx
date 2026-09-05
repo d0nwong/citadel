@@ -11,7 +11,7 @@ export const Route = createFileRoute('/')({
 })
 
 function InboxPage() {
-  const { report, digest, workspace } = Route.useLoaderData()
+  const { report, digest, workspace, openPoints } = Route.useLoaderData()
   return (
     <>
       <PageTitle
@@ -25,11 +25,19 @@ function InboxPage() {
       />
 
       <section className="rise" style={{ animationDelay: '60ms' }}>
-        <div className="mb-3 flex items-baseline justify-between">
+        <div className="mb-3 flex items-baseline justify-between gap-4">
           <h2 className="kicker">Sweep report</h2>
-          <Link to="/reports" className="text-[12.5px] text-ink-faint hover:text-thread">
-            past reports
-          </Link>
+          <div className="flex items-baseline gap-4 text-[12.5px]">
+            {openPoints !== null && (
+              <Link to="/points" className="inline-flex items-center gap-1 text-thread hover:underline">
+                {openPoints === 0 ? 'nothing needs you' : `${openPoints} point${openPoints === 1 ? '' : 's'} need${openPoints === 1 ? 's' : ''} you`}
+                <ArrowUpRight className="size-3" />
+              </Link>
+            )}
+            <Link to="/reports" className="text-ink-faint hover:text-thread">
+              past reports
+            </Link>
+          </div>
         </div>
         {report ? (
           <Md doc={report.doc} />

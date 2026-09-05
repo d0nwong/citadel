@@ -5,7 +5,16 @@ services:
       - "3778:3778"
     environment:
       WORKSPACE_DIR: /workspace
+      # Foundry runs on the host (bun · :3777); host-gateway is how a container reaches it.
+      FOUNDRY_URL: ${FOUNDRY_URL:-http://host.docker.internal:3777}
+      # The shared credentials file (~/.config/liamai/env) is not mounted; pass the token.
+      FOUNDRY_API_TOKEN: ${FOUNDRY_API_TOKEN:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      # read-only: the sweep in argus owns every file here
+      # read-only: the sweep in argus owns every file here …
       - ${WORKSPACE_DIR:-~/git/argus}:/workspace:ro
+      # … except decisions/, the one directory this app writes (a Send / Ignore verdict
+      # per point). Mounted writable over the read-only tree; the sweep commits what lands.
+      - ${WORKSPACE_DIR:-~/git/argus}/decisions:/workspace/decisions
     restart: unless-stopped

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PointsRouteImport } from './routes/points'
 import { Route as DigestsIndexRouteImport } from './routes/digests/index'
 import { Route as DigestsDayRouteImport } from './routes/digests/$day'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
@@ -22,6 +23,11 @@ import { Route as ReportsDayRouteImport } from './routes/reports/$day'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PointsRoute = PointsRouteImport.update({
+  id: '/points',
+  path: '/points',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DigestsIndexRoute = DigestsIndexRouteImport.update({
@@ -67,6 +73,7 @@ const ReportsDayRoute = ReportsDayRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/points': typeof PointsRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/journal/$': typeof JournalSplatRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/points': typeof PointsRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/journal/$': typeof JournalSplatRoute
@@ -90,6 +98,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/points': typeof PointsRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/journal/$': typeof JournalSplatRoute
@@ -103,6 +112,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/points'
     | '/digests/$day'
     | '/docs/$'
     | '/journal/$'
@@ -114,6 +124,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/points'
     | '/digests/$day'
     | '/docs/$'
     | '/journal/$'
@@ -125,6 +136,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/points'
     | '/digests/$day'
     | '/docs/$'
     | '/journal/$'
@@ -137,6 +149,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  PointsRoute: typeof PointsRoute
   DigestsDayRoute: typeof DigestsDayRoute
   DocsSplatRoute: typeof DocsSplatRoute
   JournalSplatRoute: typeof JournalSplatRoute
@@ -154,6 +167,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/points': {
+      id: '/points'
+      path: '/points'
+      fullPath: '/points'
+      preLoaderRoute: typeof PointsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/digests/': {
@@ -217,6 +237,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  PointsRoute: PointsRoute,
   DigestsDayRoute: DigestsDayRoute,
   DocsSplatRoute: DocsSplatRoute,
   JournalSplatRoute: JournalSplatRoute,

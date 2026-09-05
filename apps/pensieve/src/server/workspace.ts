@@ -1,12 +1,14 @@
 /**
- * The blackboard reader. Pensieve never writes here — the argus loop owns every
- * file under WORKSPACE_DIR; this module only turns them into typed, serialisable shapes.
+ * The blackboard reader. The argus loop owns every file under WORKSPACE_DIR except
+ * `decisions/` (see ./decisions.ts, the one writer); this module only turns them into
+ * typed, serialisable shapes.
  *
  * Layout it expects (see argus/README.md "Layout"):
  *   reports/YYYY-MM-DD.md                       sweep report, one per day
  *   digests/YYYY-MM-DD.md                       Slack digest, one per day
  *   <app>/features/<dir>/journal/**\/*.md       one entry per landing
  *   <app>/features/<dir>/docs/{product,arch}.md
+ *   reports/points.json                         Needs-you as data, one record per point
  *
  * `<app>` is discovered, not hardcoded: any directory one or two levels under
  * WORKSPACE_DIR holding a `features/` tree is an app — `foundry` and `pensieve` are one
@@ -434,4 +436,89 @@ export async function readDoc(feature: string, tier: 'product' | 'arch'): Promis
   const r = await render(p, featureOf(p, roots))
   const meta = docMeta(p, r.frontmatter, roots)
   return meta ? { ...r, meta } : null
+}
+
+// ── points ─────────────────────────────────────────────────────────────────────
+
+export type PointGroup = 'decide' | 'verify' | 'confirm' | 'hold' | 'housekeeping'
+
+/** The sweep's own copy of a verdict, attached when it re-emits a decided point (LIA-88). */
+export interface PointDecision {
+  point: string
+  action: 'sent' | 'ignored'
+  reason?: string
+  at: string
+  subject: string
+  job?: { id: string; url: string }
+}
+
+/** One Needs-you item as `skills/sweep/scripts/points.ts` emits it (LIA-87). */
+export interface Point {
+  /** `<group>/<slug>` — stable tick to tick, and the decision file's path. */
+  id: string
+  group: PointGroup
+  subject: string
+  ask: string
+  detail?: string
+  firstSeen: string
+  ticket?: string
+  repo?: string
+  features?: string[]
+  decision?: PointDecision
+}
+
+export interface PointsFile {
+  tick: string
+  date: string
+  points: Point[]
+}
+
+/**
+ * `reports/points.json`, or null when the sweep has not written it. Its name fails
+ * `DAY_RE`, so the reports listing never shows it — this is its only reader. Records are
+ * copied field by field so a shape the sweep adds later cannot leak onto the wire unnamed.
+ */
+export async function readPoints(): Promise<PointsFile | null> {
+  let raw: string
+  try {
+    raw = await readFile(join(REPORTS_DIR, 'points.json'), 'utf8')
+  } catch {
+    return null
+  }
+  let v: unknown
+  try {
+    v = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!v || typeof v !== 'object') return null
+  const f = v as { tick?: unknown; date?: unknown; points?: unknown }
+  const points: Point[] = []
+  for (const r of Array.isArray(f.points) ? f.points : []) {
+    if (!r || typeof r !== 'object' || typeof r.id !== 'string' || typeof r.group !== 'string') continue
+    const d = r.decision && typeof r.decision === 'object' ? (r.decision as PointDecision) : undefined
+    points.push({
+      id: r.id,
+      group: r.group as PointGroup,
+      subject: String(r.subject ?? ''),
+      ask: String(r.ask ?? ''),
+      detail: str(r.detail),
+      firstSeen: String(r.firstSeen ?? ''),
+      ticket: str(r.ticket),
+      repo: str(r.repo),
+      features: Array.isArray(r.features) ? r.features.map(String) : undefined,
+      decision:
+        d && typeof d.point === 'string' && (d.action === 'sent' || d.action === 'ignored')
+          ? {
+              point: d.point,
+              action: d.action,
+              reason: str(d.reason),
+              at: String(d.at ?? ''),
+              subject: String(d.subject ?? ''),
+              job: d.job && typeof d.job === 'object' && typeof d.job.id === 'string' ? { id: d.job.id, url: String(d.job.url ?? '') } : undefined,
+            }
+          : undefined,
+    })
+  }
+  return { tick: String(f.tick ?? ''), date: String(f.date ?? ''), points }
 }
