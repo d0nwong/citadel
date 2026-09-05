@@ -180,6 +180,7 @@ ground truth, join, and surface only the judgement calls.
 | `digests/` | daily Slack digests (`.state.json` is gitignored cursor state) |
 | `reports/` | one sweep report per day, updated in place each tick — Needs-you / Linear / Audit re-emitted as current state, Done-today appended per tick; never shrunk by a quiet tick |
 | `reports/points.json` | the current Needs-you section as data — one record per point with a stable `<group>/<slug>` id, `firstSeen`, and `ticket` / `repo` when known; derived from the day's report by `skills/sweep/scripts/points.ts` every tick, never hand-edited. What Pensieve lists to Send / Ignore a point (LIA-94) and what decisions are keyed by (LIA-88) |
+| `decisions/<group>/<slug>.json` | one file per Send / Ignore verdict on a Needs-you point, `{ point, action, reason, at, subject, job? }`. Written by Pensieve (LIA-94), only ever read and committed by the sweep: `points.ts` matches each file's `point` against the tick's points, drops a decided point from the report's Needs-you and keeps it in `points.json` with the `decision` attached (LIA-88). A file whose point is gone is history, left alone |
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
 | `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
 | `alden/alden-portal/.doc-workspace/` | feature manifest + OpenAPI snapshot |
@@ -191,7 +192,7 @@ ground truth, join, and surface only the judgement calls.
 | `scripts/lib/shared-env.ts` | reader for `~/.config/liamai/env`, the credentials file shared with Foundry and Pensieve (`SLACK_TOKEN`, `LINEAR_API_KEY`, `FOUNDRY_API_TOKEN`); scripts read it themselves, nothing is exported shell-wide |
 | `.env.example` | argus needs no `.env`; the file only says where `SLACK_TOKEN` lives and that a local `.env` overrides it |
 | `skills/log-change/scripts/pr-facts.ts` | resolve a landing; `--since` finds unjournaled ones |
-| `skills/sweep/scripts/points.ts` | `reports/<day>.md` → `reports/points.json`, carrying `firstSeen` forward and syncing the report's ages; `--dry-run` prints without writing |
+| `skills/sweep/scripts/points.ts` | `reports/<day>.md` → `reports/points.json`, carrying `firstSeen` forward, syncing the report's ages and applying `decisions/` (decided points out of Needs-you, count under Housekeeping, unreadable files under Audit); `--dry-run` prints without writing |
 
 ## Setting it up
 
