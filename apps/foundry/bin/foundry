@@ -369,9 +369,12 @@ cmd_setup() {
 
   info "8/8 summary"
   cmd_doctor || true
+  # Either way of getting `foundry` onto PATH counts — the directory itself, or
+  # the symlink the README (and scripts/bootstrap.sh) suggest instead.
   case ":$PATH:" in
     *":$ROOT/bin:"*) ;;
-    *) warn "bin/ is not on PATH — export PATH=\"$ROOT/bin:\$PATH\" (or symlink bin/foundry)" ;;
+    *) command -v foundry >/dev/null 2>&1 \
+         || warn "bin/ is not on PATH — export PATH=\"$ROOT/bin:\$PATH\" (or symlink bin/foundry)" ;;
   esac
   say ""
   ok "setup complete"
