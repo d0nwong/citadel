@@ -187,8 +187,31 @@ ground truth, join, and surface only the judgement calls.
 | `skills/` | the workers and the scheduler (`sweep`, `slack-digest`, `log-change`, `feature-docs`, `linear-ticket`, `api-lookup`, `office-hours`), plus `prototyping` for fast issue-to-PR spikes |
 | `scripts/accio.ts` | index / sync / audit over docs + journal |
 | `scripts/sync-skills.ts` | symlink every `skills/<name>/` into the global Claude skills folder, per skill; prunes only its own dangling links |
+| `scripts/bootstrap.sh` | brand-new Mac → running sweep, in phases; `--check` reports without touching anything ("Setting it up") |
+| `scripts/lib/shared-env.ts` | reader for `~/.config/liamai/env`, the credentials file shared with Foundry and Pensieve (`SLACK_TOKEN`, `LINEAR_API_KEY`, `FOUNDRY_API_TOKEN`); scripts read it themselves, nothing is exported shell-wide |
+| `.env.example` | argus needs no `.env`; the file only says where `SLACK_TOKEN` lives and that a local `.env` overrides it |
 | `skills/log-change/scripts/pr-facts.ts` | resolve a landing; `--since` finds unjournaled ones |
 | `skills/sweep/scripts/points.ts` | `reports/<day>.md` → `reports/points.json`, carrying `firstSeen` forward and syncing the report's ages; `--dry-run` prints without writing |
+
+## Setting it up
+
+`./scripts/bootstrap.sh` takes a brand-new Mac to the point where `bun run sweep` works.
+Same shape as Foundry's: phases that run alone (`prereqs`, `repos`, `deps`, `skills`,
+`state`, `env`, `check`), `--check` to report without changing anything, a prompt before
+every install, a no-op when a step is already done. It installs git / bun / `claude`,
+reports whether the product checkouts the feature manifests name are where they should
+be (cloning them is yours — nothing here knows a remote), runs `bun install`, links the
+skills globally, rebuilds `.state/` from the FE tree, and puts `SLACK_TOKEN` in the shared
+credentials file `~/.config/liamai/env` — the one file argus, Foundry and Pensieve all
+read, so each secret is typed once per Mac (`foundry auth` writes the same file). The one
+thing it can only point you at is the Linear MCP login, which is `/mcp` → linear →
+Authenticate inside a Claude session opened in this directory.
+
+```sh
+./scripts/bootstrap.sh            # everything, asking first
+./scripts/bootstrap.sh --check    # what's missing, touching nothing
+./scripts/bootstrap.sh check      # just: is the Linear MCP server authenticated?
+```
 
 ## Running it
 

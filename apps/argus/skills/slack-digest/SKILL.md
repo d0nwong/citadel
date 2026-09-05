@@ -29,8 +29,9 @@ Constants:
 
 Slack is read by a script, not by MCP tools: `scripts/slack-pull.ts` does the cursor
 bookkeeping, pagination, thread following, user-id resolution and noise filtering, and
-prints one compact transcript. It needs `SLACK_TOKEN` in `.env` (gitignored; Bun loads
-it). Fall back to the MCP tools (`slack_read_channel`, `slack_read_thread`, ToolSearch
+prints one compact transcript. It needs `SLACK_TOKEN`, read from the environment or
+else from the shared credentials file `~/.config/liamai/env` (`./scripts/bootstrap.sh
+env` writes it; so does Foundry's `foundry auth --slack`). Fall back to the MCP tools (`slack_read_channel`, `slack_read_thread`, ToolSearch
 them first) only if the script cannot run — and say so in the report.
 If the Linear tools are deferred, ToolSearch `mcp__linear-server__list_issues` — the
 only Linear tool this skill uses.
