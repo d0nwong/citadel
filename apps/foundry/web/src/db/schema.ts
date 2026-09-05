@@ -122,6 +122,19 @@ export const jobs = foundry.table(
      * NULL for UI and scanner jobs.
      */
     callbackUrl: text('callback_url'),
+    /**
+     * The trigger API's `Idempotency-Key` header (LIA-91), unique so a replay
+     * finds the job it already made — and so two concurrent first requests
+     * insert one row, the same way `ticket_id` arbitrates a claim. NULL for
+     * UI and scanner jobs, and for API calls that sent no header.
+     */
+    idempotencyKey: text('idempotency_key'),
+    /**
+     * sha256 (hex) of the raw request body that first used the key, so a
+     * replay with the same key but a different body is refused rather than
+     * silently answered with the wrong job. Set and read only with the key.
+     */
+    idempotencyFingerprint: text('idempotency_fingerprint'),
     status: jobStatus('status').notNull().default('queued'),
     /** Where the pipeline is: prepare | agent | commit | push | pr | done. */
     step: text('step'),
@@ -150,6 +163,7 @@ export const jobs = foundry.table(
     index('jobs_created_at_idx').on(t.createdAt.desc()),
     index('jobs_status_idx').on(t.status),
     uniqueIndex('jobs_ticket_id_unique').on(t.ticketId),
+    uniqueIndex('jobs_idempotency_key_unique').on(t.idempotencyKey),
   ],
 )
 

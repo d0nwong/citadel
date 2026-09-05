@@ -198,10 +198,23 @@ the parser rejects; the path skeleton is hand-written in `server/openapi.ts`, an
 `openapi.test.ts` fails if a route file lands under `routes/api/` without a spec entry.
 
 `202` returns the `Job` as soon as its row exists — the runner's cap and queue pump take it
-from there. Errors are `{ error }` with `400` (payload), `401` (token), `409` (ticket) or
-`503` (no token configured). The first line of `instructions` is the fallback commit
-subject and PR title, and its first three words name the branch, so lead with a one-line
-summary; a leading `LIA-123:` also gets the PR linked to the ticket on Bitbucket origins.
+from there. Errors are `{ error }` with `400` (payload or key), `401` (token), `409`
+(ticket), `422` (key reused with another body) or `503` (no token configured). The first
+line of `instructions` is the fallback commit subject and PR title, and its first three
+words name the branch, so lead with a one-line summary; a leading `LIA-123:` also gets the
+PR linked to the ticket on Bitbucket origins.
+
+**Retries.** Send an `Idempotency-Key` header (1–128 characters, else `400`) and the call is
+safe to repeat: a replay with the same key and the same body answers `200` with the job the
+first call made — its current state, the shape `GET /api/jobs/<id>` returns — and queues
+nothing. The same key with a different body is `422` and inserts nothing; a fresh intent
+needs a fresh key. Bodies are compared as the raw bytes sent (a sha256 stored on the row
+with the key), before any parsing, so the same JSON serialised differently — keys
+reordered, whitespace changed — counts as a different body. Two concurrent first calls
+with one key insert one row; the loser is answered `200` with the winner. A replayed
+`ticketId` job with the same key is `200` too, not `409`; `409` remains for a *different*
+key (or none) on a ticket that already has a job. Keys live on the job row and go with it
+on purge — the cockpit sends the point id, so a decision can be re-sent without a second job.
 
 `GET /api/jobs/<id>` (same bearer) returns the job — status, step, branch, `prUrl`,
 `exitCode`, `diff` — and `?logs=1` adds its log lines.

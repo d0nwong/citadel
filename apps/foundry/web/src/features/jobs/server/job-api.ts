@@ -9,7 +9,13 @@
  * The dev server listens on the LAN so containers can call back, and this
  * endpoint runs Claude against your repos and pushes with your credentials —
  * so with no token configured it answers 503 rather than opening up.
+ *
+ * An `Idempotency-Key` header (LIA-91) makes the insert safe to retry: the
+ * same key with the same body answers the job made the first time, the same
+ * key with a different body is refused. Callers are services and a cockpit
+ * that retries on timeout, so one intent must never queue two jobs.
  */
+import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { z } from 'zod'
@@ -38,6 +44,18 @@ const realDeps = (): ApiDeps => ({
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+/** The request header that makes `POST /api/jobs` replay-safe, and how long a key may be. */
+export const IDEMPOTENCY_HEADER = 'Idempotency-Key'
+export const IDEMPOTENCY_KEY_MAX = 128
+
+/**
+ * What a key is compared against on a replay: the raw body bytes, hashed. Raw
+ * on purpose — the check runs before the body is parsed, so an equivalent JSON
+ * serialised differently counts as a different body. Cheap, and never wrong
+ * about "did the caller send the same thing".
+ */
+const fingerprint = (rawBody: string) => createHash('sha256').update(rawBody).digest('hex')
 
 /** A 400 with a message the caller can act on, thrown from the parse/resolve steps. */
 class BadRequest extends Error {}
@@ -218,7 +236,7 @@ export async function resolveRepo(ref: string): Promise<{ id: string; path: stri
 }
 
 /** The payload turned into what the store takes, defaults filled the way the ignite dialog fills them. */
-async function toInput(p: TriggerPayload): Promise<NewJobInput> {
+async function toInput(p: TriggerPayload, idempotency?: NewJobInput['idempotency']): Promise<NewJobInput> {
   const repo = await resolveRepo(p.repo)
 
   const baseBranch = p.baseBranch ?? (await store.lastBaseBranchByRepo()).get(repo.id) ?? (await defaultBranchOf(repo.path))
@@ -240,7 +258,22 @@ async function toInput(p: TriggerPayload): Promise<NewJobInput> {
     forge: 'orbstack',
     blueprintId,
     callbackUrl: p.callbackUrl,
+    idempotency,
   }
+}
+
+/**
+ * The answer for a key that already has a job: the job itself when the body
+ * is the one that made it (a replay), a 422 when it is not (a reused key).
+ * Null when the key has no job yet.
+ */
+async function replayResponse(key: string, bodyFingerprint: string): Promise<Response | null> {
+  const found = await store.findJobByIdempotencyKey(key)
+  if (!found) return null
+  if (found.fingerprint !== bodyFingerprint) {
+    return json(422, { error: `${IDEMPOTENCY_HEADER} ${key} was already used with a different body` })
+  }
+  return json(200, found.job)
 }
 
 /** `POST /api/jobs` */
@@ -248,9 +281,26 @@ export async function handleTriggerJob(request: Request, deps: ApiDeps = realDep
   const denied = await authorize(request, deps)
   if (denied) return denied
 
+  // `Headers.get` already strips surrounding whitespace, so '' is an empty header.
+  const key = request.headers.get(IDEMPOTENCY_HEADER)
+  if (key !== null && (key === '' || key.length > IDEMPOTENCY_KEY_MAX)) {
+    return json(400, { error: `${IDEMPOTENCY_HEADER} must be 1 to ${IDEMPOTENCY_KEY_MAX} characters` })
+  }
+
+  // The body is read as text so the fingerprint covers the bytes as sent, and
+  // the key is checked before anything in the body is parsed or resolved: a
+  // replay must answer the job it already made even if, say, its blueprint
+  // has since been deleted or its repo untracked.
+  const raw = await request.text()
+  const idempotency = key === null ? undefined : { key, fingerprint: fingerprint(raw) }
+  if (idempotency) {
+    const replay = await replayResponse(idempotency.key, idempotency.fingerprint)
+    if (replay) return replay
+  }
+
   let body: unknown
   try {
-    body = await request.json()
+    body = JSON.parse(raw)
   } catch {
     return json(400, { error: 'invalid json' })
   }
@@ -259,29 +309,32 @@ export async function handleTriggerJob(request: Request, deps: ApiDeps = realDep
   let input: NewJobInput
   try {
     payload = parsePayload(body)
-    input = await toInput(payload)
+    input = await toInput(payload, idempotency)
   } catch (e) {
     if (e instanceof BadRequest) return json(400, { error: e.message })
     throw e
   }
 
-  let job: Job
-  if (payload.ticketId) {
-    const claimed = await store.claimTicketJob(input, payload.ticketId)
-    if (claimed === null) {
-      const holder = await store.getJobByTicketId(payload.ticketId)
-      return json(409, {
-        error: `ticket ${payload.ticketId} already has a job`,
-        job: holder ? { id: holder.id, status: holder.status } : undefined,
-      })
+  const job = await store.createJobIdempotent(input, payload.ticketId)
+  if (job === null) {
+    // A unique index refused the row. The key's, if a concurrent first request
+    // with this key won the race — then the winner is this request's answer,
+    // exactly as a replay would be. Otherwise the ticket's.
+    if (idempotency) {
+      const replay = await replayResponse(idempotency.key, idempotency.fingerprint)
+      if (replay) return replay
     }
-    job = claimed
-  } else {
-    job = await store.createJob(input)
+    if (!payload.ticketId) throw new Error('unreachable: a row without a ticket can only lose on its key')
+    const holder = await store.getJobByTicketId(payload.ticketId)
+    return json(409, {
+      error: `ticket ${payload.ticketId} already has a job`,
+      job: holder ? { id: holder.id, status: holder.status } : undefined,
+    })
   }
 
   // Fire and forget, exactly as the ignite dialog does: the row is the
-  // answer, and the runner's cap/pump take it from here.
+  // answer, and the runner's cap/pump take it from here. Only the request
+  // that inserted the row ignites — a replay or a race loser never does.
   void deps.ignite(job.id)
   return json(202, job)
 }

@@ -72,4 +72,9 @@ export interface NewJobInput {
   blueprintId?: string
   /** Notify this URL when the job settles (see server/job-webhook.ts). */
   callbackUrl?: string
+  /**
+   * The trigger API's `Idempotency-Key` and the sha256 of the raw body it
+   * arrived with (see server/job-api.ts). Stored on the row, never shown.
+   */
+  idempotency?: { key: string; fingerprint: string }
 }
