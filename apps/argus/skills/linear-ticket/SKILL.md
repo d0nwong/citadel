@@ -1,6 +1,6 @@
 ---
 name: linear-ticket
-description: Draft and file a Linear issue in the house format — Summary / Background / Scope / Acceptance Criteria / Test Cases / Pending / Technical Notes — cross-checked against the feature's dual-tier docs and grounded in real files, functions and line ranges. Use when the user says "create a linear ticket", "file this as a ticket", "write this up for Linear", "make a ticket for <thing>", or hands over a design/Slack thread that should become an issue. Also use to record what a ticket is waiting on (a backend endpoint, an unpublished field name) in its Pending section.
+description: Draft and file a Linear issue in the house format — Summary / Background / Scope / Acceptance Criteria / Pending / Technical Notes — cross-checked against the feature's dual-tier docs and grounded in real files, functions and line ranges. Use when the user says "create a linear ticket", "file this as a ticket", "write this up for Linear", "make a ticket for <thing>", or hands over a design/Slack thread that should become an issue. Also use to record what a ticket is waiting on (a backend endpoint, an unpublished field name) in its Pending section.
 ---
 
 # linear-ticket — turn an ask into a filed Linear issue
@@ -40,7 +40,7 @@ touches. These are the docs `skills/feature-docs` produces per `DOC-PROTOCOL.md`
     by rule number, in Background. A ticket that silently breaks one is a bug being filed
     as a feature.
   - **product.md → Edge Cases & Error States.** The states the new UI still has to handle;
-    each becomes an AC with its own Test Case, not a QA ticket later.
+    each becomes an AC, not a QA ticket later.
   - **arch.md → Interfaces & Contracts.** The endpoints and DTOs that already exist, so
     "we need a new endpoint" becomes a claim you can defend — name the closest existing one
     and what its DTO is missing.
@@ -115,10 +115,10 @@ ticket touches.
 
 ## Rules
 
-- **Six sections, in order, always: Summary, Background, Scope / Out of Scope, Acceptance
-  Criteria, Test Cases, Technical Notes** — plus **Pending** between Test Cases and
-  Technical Notes when, and only when, the ticket waits on something unlanded. No
-  estimates, no separate "Testing" or "QA" section — Test Cases is the whole of it, and the
+- **Five sections, in order, always: Summary, Background, Scope / Out of Scope, Acceptance
+  Criteria, Technical Notes** — plus **Pending** between Acceptance Criteria and Technical
+  Notes when, and only when, the ticket waits on something unlanded. No estimates, no
+  "Test Cases", "Testing" or "QA" section — each AC is worded as its own check, and the
   format's silence on everything else is deliberate.
 - **Pending is not the same as a Linear blocker.** A blocker (`blockedBy`) is another
   ticket. Pending is unlanded work that usually has no ticket in this team at all: a
@@ -179,13 +179,12 @@ ticket touches.
   are ACs or Technical Notes). **Out of scope** bullets name the things a reader would
   otherwise assume are included, with the owner where known ("handled separately",
   "tracked in ABC-123").
-- **ACs are outcomes, Test Cases are their checks, Technical Notes ground both.** One
-  `- [ ] ACn — …` per observable outcome, no mechanism, the product rule cited where one
-  exists; one `- [ ] ACn — …` under Test Cases per AC, same label, same order, stating the
-  check and not the harness; every AC named by at least one Technical Note. Ticks are the
-  implementer's (ticket body with Linear access, PR body without); the sweep never ticks
-  on its own judgement. Full shape and the reasons in FORMAT.md, "Acceptance Criteria and
-  Test Cases".
+- **ACs are outcomes worded as their own check; Technical Notes ground them.** One
+  `- [ ] ACn — …` per observable outcome — the state to set up and what must be observed,
+  no mechanism, the product rule cited where one exists; every AC named by at least one
+  Technical Note. Ticks are the implementer's (ticket body with Linear access, PR body
+  without); the sweep never ticks on its own judgement. Full shape and the reasons in
+  FORMAT.md, "Acceptance Criteria".
 - **One ticket, one change.** A thing that spans three surfaces is still one ticket with
   three in-scope bullets — not three tickets.
 - **Sub-issues always carry an execution order and explicit blockers.** Sub-issues are

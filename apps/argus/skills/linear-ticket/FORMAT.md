@@ -1,10 +1,10 @@
 # Ticket format
 
 Linear renders markdown. Use `##` for the section headings, `-` for bullets. Nothing
-else: no bold section labels, no tables. Checkboxes (`- [ ]`) appear in exactly two
-sections, Acceptance Criteria and Test Cases, and nowhere else.
+else: no bold section labels, no tables. Checkboxes (`- [ ]`) appear in exactly one
+section, Acceptance Criteria, and nowhere else.
 
-Six sections are always present. A seventh, **Pending**, appears only when the ticket is
+Five sections are always present. A sixth, **Pending**, appears only when the ticket is
 waiting on work that has not landed yet.
 
 ## Skeleton
@@ -39,15 +39,9 @@ Out of scope:
 ## Acceptance Criteria
 
 - [ ] AC1 — <one observable outcome: what a user, a test or a reviewer can see is true once
-      this lands. No mechanism, no file names. Cite the product rule it implements where one
-      exists: "(product BR-93)">
-- [ ] AC2 — <…>
-
-## Test Cases
-
-- [ ] AC1 — <the one check that would fail if AC1 were false: what to do, what must be
-      observed. Manual or automated is the implementer's call; the line states the check,
-      not the harness>
+      this lands, worded so it is also the check — the input or state to set up and what
+      must then be observed. No mechanism, no file names. Cite the product rule it
+      implements where one exists: "(product BR-93)">
 - [ ] AC2 — <…>
 
 ## Pending
@@ -69,35 +63,36 @@ ticket needs, newest understanding first:>
 Verified at FE <branch>@<sha>, BE dev@<sha>.
 ```
 
-## Acceptance Criteria and Test Cases
+## Acceptance Criteria
 
 - **An AC is an outcome, never a mechanism.** "The headline shows Σ `credits.totalCredits`
   over the selected entities" is an AC; "`map-usage-response.ts` sums the entities" is a
   Technical Note. If an AC names a file, move it. Where the AC implements a rule the
-  feature's `product.md` already states, cite the rule number — the test case then proves
-  the documented behaviour, not a restatement of it.
-- **One Test Case per AC, same label, same order.** A Test Case is the single check that
-  would fail if its AC were false: what to do and what to observe. Whether that runs as a
-  manual step or an automated test is decided at implementation time, so the line never
-  names a framework or a test file. An AC that needs two checks is two ACs.
+  feature's `product.md` already states, cite the rule number — the check then proves the
+  documented behaviour, not a restatement of it.
+- **An AC is its own test case.** It is worded as the check that would fail if it were
+  false — the state to set up and what must be observed — so there is no separate Test
+  Cases list to keep in step with it. Whether the check runs as a manual step or an
+  automated test is decided at implementation time; the line never names a framework or a
+  test file. An AC that needs two checks is two ACs.
 - **Every AC is grounded.** At least one Technical Note names the file or function where it
   is satisfied. An AC nobody can ground is an open question in Technical Notes, not a
   criterion.
 - **Division of labour.** Scope says *where* the change lands (3–6 lines). Acceptance
   Criteria say *when it is done*. Technical Notes say *where to start*. A formula, a field
   name or a fallback lives in exactly one of the last two.
-- **Ticks are the implementer's record.** Whoever does the work ticks the Test Cases — in
-  the ticket when they have Linear access, otherwise in the PR body, which copies the list.
-  The sweep never ticks a box from its own reading of the code; "appears satisfied" is a
-  report line, not a tick.
+- **Ticks are the implementer's record.** Whoever does the work ticks the ACs — in the
+  ticket when they have Linear access, otherwise in the PR body, which copies the list. The
+  sweep never ticks a box from its own reading of the code; "appears satisfied" is a report
+  line, not a tick.
 
 ## Parent tickets with sub-issues
 
 A parent gets sub-issues only when the work is several deliverables that land separately.
-The parent keeps the six normal sections, describes the whole change, and adds one more
+The parent keeps the five normal sections, describes the whole change, and adds one more
 section at the very bottom. Its Acceptance Criteria are one line per sub-issue — the
 outcome that sub-issue delivers, in Execution-order order — so parent and child never carry
-the same AC twice, and its Test Cases are the matching one-per-line checks.
+the same AC twice.
 
 ```markdown
 ## Execution order
@@ -108,7 +103,7 @@ the same AC twice, and its Test Cases are the matching one-per-line checks.
 4. LIA-aa — <sub-issue title> — blocked by LIA-yy, LIA-zz
 ```
 
-Each sub-issue is a full ticket in its own right (same six sections, same AC and grounding
+Each sub-issue is a full ticket in its own right (same five sections, same AC and grounding
 bar) and opens with a single position line above `## Summary`:
 
 ```markdown
@@ -206,8 +201,9 @@ Out of scope:
       `credits.totalAvailableCredits` over those responses (product BR-93)
 - [ ] AC3 — Group headers show the entity's name and code, and the breadcrumb the client's
       name, from the entity roster — never from the usage payload
-- [ ] AC4 — The rows are the entity's active tasks plus tasks completed inside the open
-      cycle, and nothing else
+- [ ] AC4 — An entity with one in-progress task, one task completed this cycle and one
+      completed last cycle shows exactly two rows: active tasks plus tasks completed inside
+      the open cycle, nothing else
 - [ ] AC5 — A task's Credit is its own `credits` plus the sum of its subtasks' `credits`; a
       subtask's is its own; no quantity × multiplier fallback anywhere
 - [ ] AC6 — Each bar segment is one configured asset type sized `quantity × creditWeight ×
@@ -219,38 +215,10 @@ Out of scope:
 - [ ] AC9 — Subtask rows read `{assetType.name} Subtask`, or `Subtask` when the type is null
 - [ ] AC10 — The donut shows credits per asset type as a share of their sum, with no
       denominator; its heading and the drawer trigger's accessible name read Credit
-- [ ] AC11 — Loading, empty, slow and 4xx responses each render their own state; a 4xx never
-      leaves mock or stale rows on screen
+- [ ] AC11 — With the endpoint stubbed to a 404, a 5 s delay and an entity with no tasks,
+      the page shows error-with-retry, skeleton and empty state respectively; no rows from a
+      previous client remain on screen
 - [ ] AC12 — No modelling-hours JSX, DTO field, mapper branch or meter remains
-
-## Test Cases
-
-- [ ] AC1 — Open a client with three projects on dev: the network tab shows three
-      `current-cycle` calls and no other usage call; `git grep get-usage-mock src/` returns
-      nothing
-- [ ] AC2 — Pick two entities whose `credits` are known from the swagger UI on dev: the
-      headline equals the two sums
-- [ ] AC3 — Compare a group header against the same entity in the `GET /api/v1/entity`
-      response: name and code match it; the `current-cycle` payload for that entity carries
-      no name field
-- [ ] AC4 — An entity with one in-progress task, one task completed this cycle and one
-      completed last cycle shows two rows
-- [ ] AC5 — A task with two subtasks shows own + both credits; a task with asset quantities
-      but zero `credits` shows 0
-- [ ] AC6 — A task with one asset type and an active ×1.5 multiplier: hovering the bar shows
-      `quantity × creditWeight × 1.5`; with the multiplier deactivated it shows ×1
-- [ ] AC7 — The header's note is visible without hover and names the figure
-- [ ] AC8 — An entity whose `rolloverCreditsStartDate` is more than four months ago shows no
-      hatched band; one inside the window shows the banked figure
-- [ ] AC9 — One subtask with an `assetType` and one with none read `CGI Subtask` and
-      `Subtask`
-- [ ] AC10 — Slice values sum to the Credit bar's used figure for the same selection; the
-      heading reads Credit; the trigger's accessible name reads Credit drawer
-- [ ] AC11 — Stub the endpoint to 404, to a 5 s delay, and to an entity with no tasks:
-      error-with-retry, skeleton and empty state respectively; no rows from a previous client
-      remain
-- [ ] AC12 — `git grep -i modellingHours src/http/usage src/hooks/usage src/pages/admin/usage`
-      returns nothing
 
 ## Pending
 
@@ -347,11 +315,9 @@ Verified at FE `staging@3c520fc4c`, BE `dev@5ca2ed71`.
 - Summary names **every** surface the ticket touches, in the order Scope follows.
 - Scope is five lines and contains no formula: a reader knows which files move and
   nothing else.
-- Every AC is checkable by someone who has never opened the repo; every formula and
-  fallback that used to sit in Scope is now an AC with a product rule cited where one
-  exists.
-- Each Test Case is the one thing to do that would expose a false AC; none names a test
-  framework or a file.
+- Every AC is checkable by someone who has never opened the repo, and is worded as the
+  check itself (AC4 and AC11 name the state to set up); every formula and fallback that
+  used to sit in Scope is now an AC with a product rule cited where one exists.
 - Pending names which ACs each unlanded item blocks and what to build meanwhile, so the
   ticket says exactly how much can proceed. Out of scope is doing real work too — it kills
   three assumptions (writes, layout, an hours quantity) that would otherwise land in review.

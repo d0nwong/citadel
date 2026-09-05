@@ -280,6 +280,8 @@ refer here rather than restating it.
   mappings) — report first, edit after the user confirms; a wrong "this may be moot" in
   a shared ticket is noise the team sees;
 - leave a landing as a comment instead of updating the body;
+- tick or untick an AC — the boxes are the implementer's record, and a tick from
+  the sweep's own reading is inference in the shared body;
 - apply `agent-ready` to an already-open ticket — nomination is report-only; the one
   pre-authorised exception is 6a's filing-time label on tickets the sweep itself files;
 - write to Linear from any worker other than `ticket-pass` — `slack-digest` only reads
@@ -300,5 +302,3 @@ tier, change those spawn specs, not the loop flag. The loop only runs while a se
 alive — fine, because the design is catch-up-safe: the first tick after any gap
 backfills. If it must run with no machine awake, that is `/schedule` (cloud cron), not a
 longer loop.
-- tick or untick a Test Case — the boxes are the implementer's record, and a tick from
-  the sweep's own reading is inference in the shared body;
