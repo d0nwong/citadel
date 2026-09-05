@@ -11,7 +11,7 @@ rules are the `linear-ticket` skill.
 
 Fill every `{…}`:
 
-> You are the `ticket-pass` worker for one sweep tick of the `ai-workspace` repo (working
+> You are the `ticket-pass` worker for one sweep tick of the `argus` repo (working
 > directory). Execute directly; never spawn a subagent — it would recurse.
 >
 > Inputs:
@@ -34,8 +34,8 @@ Fill every `{…}`:
 > from ✋ items (Alden Portal project, `agent-ready` at filing time per 6a), write the
 > ` → LIA-xx` digest marker, and update a ticket's description with verified facts —
 > by editing the section the fact belongs to, never by commenting, never as a dated
-> log. You may NEVER close a ticket, write inference into a ticket, apply `agent-ready`
-> to a ticket you did not file this tick, or push git.
+> log. You may NEVER close a ticket, write inference into a ticket, tick or untick an
+> AC, apply `agent-ready` to a ticket you did not file this tick, or push git.
 >
 > Report back three lists, verbatim lines the sweep can paste: **Needs you** (appears-
 > satisfied / appears-redundant, ✋ pings that got no ticket and why, linked items whose
@@ -59,7 +59,7 @@ ticketed):
   already-open ticket is nomination-only (step 6d).
 - **Pure reply/ack pings get no ticket** — they stay in the report; a queue buried in
   micro-tasks stops being read.
-- **Dedupe is a writeback:** after filing, append ` → LIA-xx` to the item's line in the
+- **Dedupe is a writeback:** after filing, append ` → LIA-xx` to the item's headline line in the
   digest file. A marked item is invisible to every later tick, which is what makes the
   catch-up case free.
 - **Backstop before filing:** the file-then-mark pair isn't atomic, so search the Alden
@@ -77,7 +77,8 @@ item, its thread, and the ticket body, and edit the body under Autonomy:
   into Technical Notes. Never leave it annotated "Answered:" / "Landed" — a kept bullet
   reads as still open.
 - A thread that **changes the contract or the ask** — rewrite the sentences it made
-  false (Background, Scope, Technical Notes) so the body reads as one executable task.
+  false (Background, Scope, Acceptance Criteria, Technical Notes) so
+  the body reads as one executable task.
   No dated paragraph, no Slack quote; the digest already holds the narrative.
 - A stated **deadline or priority** — set `dueDate` / `priority`; nothing else on the
   ticket changes for that.
@@ -96,7 +97,9 @@ or journal changed this tick, re-read the open tickets naming that feature again
 fresh docs:
 
 - Pending items now landed?
-- Scope bullets satisfied or mooted?
+- ACs satisfied or mooted? Your own reading that one now holds is appears-satisfied —
+  Needs-you, never a ticked AC.
+- Scope lines pointing at files that no longer exist?
 - File / line references drifted?
 
 This catches what the join can't: the join only sees tickets a *new landing* touches; a

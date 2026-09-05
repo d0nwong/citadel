@@ -1,12 +1,13 @@
 ---
 name: linear-ticket
-description: Draft and file a Linear issue in the house format — Summary / Background / Scope / Pending / Technical Notes — cross-checked against the feature's dual-tier docs and grounded in real files, functions and line ranges. Use when the user says "create a linear ticket", "file this as a ticket", "write this up for Linear", "make a ticket for <thing>", or hands over a design/Slack thread that should become an issue. Also use to record what a ticket is waiting on (a backend endpoint, an unpublished field name) in its Pending section.
+description: Draft and file a Linear issue in the house format — Summary / Background / Scope / Acceptance Criteria / Pending / Technical Notes — cross-checked against the feature's dual-tier docs and grounded in real files, functions and line ranges. Use when the user says "create a linear ticket", "file this as a ticket", "write this up for Linear", "make a ticket for <thing>", or hands over a design/Slack thread that should become an issue. Also use to record what a ticket is waiting on (a backend endpoint, an unpublished field name) in its Pending section.
 ---
 
 # linear-ticket — turn an ask into a filed Linear issue
 
-The value of a ticket from this skill is the **Technical Notes**: whoever picks it up
-should be able to open the named files and start. Everything else is scaffolding.
+The value of a ticket from this skill is its **Acceptance Criteria** and **Technical
+Notes**: whoever picks it up knows what done looks like and can open the named files and
+start. Everything else is scaffolding.
 
 Format spec + worked example: `FORMAT.md` (read it before drafting).
 Tools: the Linear MCP (`.mcp.json`, project scope). Tool names are `mcp__linear__*` —
@@ -39,7 +40,7 @@ touches. These are the docs `skills/feature-docs` produces per `DOC-PROTOCOL.md`
     by rule number, in Background. A ticket that silently breaks one is a bug being filed
     as a feature.
   - **product.md → Edge Cases & Error States.** The states the new UI still has to handle;
-    they belong in scope bullets, not in a QA ticket later.
+    each becomes an AC, not a QA ticket later.
   - **arch.md → Interfaces & Contracts.** The endpoints and DTOs that already exist, so
     "we need a new endpoint" becomes a claim you can defend — name the closest existing one
     and what its DTO is missing.
@@ -83,11 +84,12 @@ becomes work in `~/git/alden-portal-fe` or `~/git/alden-connect-portal-be`):
 - always file into the **Alden Portal** project (`defaults.json` → `projectId`) — no
   label for this, the project is the tag;
 - label `agent-ready` (`defaults.json` → `labels.agentReady`) when the drafted body has
-  **no Pending section** and the ticket has **no blocked-by relation**. Apply it at
-  filing time without asking — the user's standing rule. Foundry picks the
-  label up and runs an agent on the body as written, so the Scope bar below is not
-  optional for these: if Scope isn't executable, the honest move is a Pending bullet or a
-  Technical-Notes question, which withholds the label, not a vague Scope that carries it.
+  **no Pending section**, the ticket has **no blocked-by relation**, and every AC clears
+  the bar in the last rule below. Apply it at filing time without asking — the user's
+  standing rule. Foundry picks the label up and runs an agent on the body as written, so
+  the AC bar is not optional for these: if an AC isn't observable and grounded, the honest
+  move is a Pending bullet or a Technical-Notes question, which withholds the label, not a
+  vague AC that carries it.
 
 **5. Draft, then show it.** Write the full issue per `FORMAT.md` to
 `<scratchpad>/linear-<slug>.md` and print the title + body in the reply. Filing is
@@ -113,10 +115,11 @@ ticket touches.
 
 ## Rules
 
-- **Four sections, in order, always: Summary, Background, Scope / Out of Scope, Technical
-  Notes** — plus **Pending** between Scope and Technical Notes when, and only when, the
-  ticket waits on something unlanded. No acceptance criteria, no estimates, no "Testing"
-  section unless asked — the format's silence is deliberate.
+- **Five sections, in order, always: Summary, Background, Scope / Out of Scope, Acceptance
+  Criteria, Technical Notes** — plus **Pending** between Acceptance Criteria and Technical
+  Notes when, and only when, the ticket waits on something unlanded. No estimates, no
+  "Test Cases", "Testing" or "QA" section — each AC is worded as its own check, and the
+  format's silence on everything else is deliberate.
 - **Pending is not the same as a Linear blocker.** A blocker (`blockedBy`) is another
   ticket. Pending is unlanded work that usually has no ticket in this team at all: a
   backend endpoint someone else is writing, a field name not yet published, an OpenAPI
@@ -129,7 +132,7 @@ ticket touches.
   for what the ticket's author can't resolve alone — waiting on another person, another
   team, or work unlanded elsewhere. A question the implementer can settle with ordinary
   engineering judgment doesn't belong there, even if it's technically "open": decide it
-  and write the decision into Scope (state the chosen behavior, not the question), or
+  and write the decision as an AC (state the chosen behavior, not the question), or
   note it in Technical Notes if it's worth flagging — don't leave a bullet sitting in
   Pending waiting for an answer nobody needs to give. The test: does resolving it need
   someone else's input (a design call with real behavioral consequences, an unshipped
@@ -145,9 +148,10 @@ ticket touches.
   the BE change is on `origin/dev`, it is a Pending bullet like any other. Once it is
   there *and deployed to the server the spec is exported from* (`dev-alden-portal`, per
   `orval.config.ts`), the regen stops being something to wait on and becomes the ticket's
-  **first Scope bullet**: export the swagger doc to `./openapi.json`, run Orval, commit
-  `src/http/generated/`, then the FE work. Landed-but-not-deployed stays Pending — an
-  export from a stale server looks done and isn't. Worked shape in FORMAT.md.
+  **first Scope bullet** (`Generated client — regenerate against dev@<sha>`), with a
+  Technical Note that says "regen per FORMAT.md" and names the hook. Landed-but-not-deployed
+  stays Pending — an export from a stale server looks done and isn't. Worked shape in
+  FORMAT.md.
 - **The ticket is the current task, not its history.** Background says what the code does
   today and what the contract now is — not who decided what, when, which shape was floated
   and dropped, or what landed on which day. No "Decided 2026-…", "Landed …", "supersedes
@@ -164,15 +168,25 @@ ticket touches.
 - **Never draft before reading the feature's product.md + arch.md.** Those Out-of-Scope and
   Known-Gaps sections exist so tickets stop relitigating settled boundaries; skipping them
   buys exactly the review comments the docs were written to prevent.
-- **Title**: imperative, ≤ 80 chars, names the surface and the change
-  ("Support multiple assignees in task and subtask assignee displays"). No ticket-speak
-  prefixes, no `[FE]` tags.
+- **Title**: imperative, ≤ 80 chars, names the surface and the change, prefixed with
+  `[FE]` or `[BE]` for the repo the change lands in
+  (`[FE] Support multiple assignees in task and subtask assignee displays`). Use both
+  tags (`[FE][BE]`) only when the change genuinely spans both repos, not merely because
+  the FE consumes a BE endpoint. No other ticket-speak prefixes.
 - **Summary** is what changes, per surface, in 2–4 present-tense sentences. **Background**
   is why it's needed and what's broken today. If a sentence could sit in either, it's
   Background.
-- **In scope** bullets read `Surface — element: change`. **Out of scope** bullets name the
-  things a reader would otherwise assume are included, with the owner where known
-  ("handled separately", "tracked in ABC-123").
+- **In scope** is 3–6 one-line bullets, `Surface or file — what changes there`, naming
+  where the change lands and nothing more: no formulas, field names or fallbacks (those
+  are ACs or Technical Notes). **Out of scope** bullets name the things a reader would
+  otherwise assume are included, with the owner where known ("handled separately",
+  "tracked in ABC-123").
+- **ACs are outcomes worded as their own check; Technical Notes ground them.** One
+  `- [ ] ACn — …` per observable outcome — the state to set up and what must be observed,
+  no mechanism, the product rule cited where one exists; every AC named by at least one
+  Technical Note. Ticks are the implementer's (ticket body with Linear access, PR body
+  without); the sweep never ticks on its own judgement. Full shape and the reasons in
+  FORMAT.md, "Acceptance Criteria".
 - **One ticket, one change.** A thing that spans three surfaces is still one ticket with
   three in-scope bullets — not three tickets.
 - **Sub-issues always carry an execution order and explicit blockers.** Sub-issues are
@@ -192,12 +206,18 @@ ticket touches.
   step 2`) rather than being silently numbered as if sequential. A blocked sub-issue
   therefore never carries `agent-ready` — that falls straight out of the Slack-derived
   rule in step 4.
-- **Scope is executable, not aspirational.** Once a ticket carries the `agent-ready`
+- **ACs are executable, not aspirational.** Once a ticket carries the `agent-ready`
   label, Foundry runs an agent with the body exactly as written (workspace README,
-  "Downstream" section) — so Scope bullets must be concrete enough to execute without a
-  round of questions. Anything vaguer belongs in Pending or as an open question in
-  Technical Notes. A vague Scope doesn't just annoy the next reader; it disqualifies the
-  ticket from pickup (the sweep only nominates tickets that clear this bar).
+  "Downstream" section) and the ACs are its definition of done — so each AC must be
+  observable and grounded in a Technical Note without a round of questions. Anything
+  vaguer belongs in Pending or as an open question in Technical Notes. A vague AC doesn't
+  just annoy the next reader; it disqualifies the ticket from pickup (the sweep only
+  nominates tickets that clear this bar: Pending absent, no blocked-by relation, every AC
+  concrete).
+- **Technical Notes are what the code won't tell you.** At most eight bullets; a fact the
+  implementer would find by opening a Scope file is not a note, and a fact the feature's
+  arch or product doc already states is an MM / BR citation, not a paragraph. Whole body
+  under about 800 words. Budget and examples in FORMAT.md, "Length budget".
 - Line numbers age fast: cite them only for a range you actually read, and prefer
   `function()` / component names as the durable anchor next to them.
 - Don't invent design decisions. If the design doesn't cover a case, the ticket says so.

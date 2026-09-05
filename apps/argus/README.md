@@ -1,4 +1,4 @@
-# ai-workspace
+# argus
 
 A one-person orchestration workspace for **alden-portal**: it watches the places where
 change happens — #dev-team Slack, Linear (team `Liamai`), and the FE/BE repos — and keeps
@@ -160,8 +160,10 @@ ground truth, join, and surface only the judgement calls.
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
 | `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
 | `alden/alden-portal/.doc-workspace/` | feature manifest + OpenAPI snapshot |
-| `skills/` | the workers and the scheduler (`sweep`, `slack-digest`, `log-change`, `feature-docs`, `linear-ticket`, `api-lookup`, `office-hours`) |
+| `foundry/`, `pensieve/` | the same `features/<dir>/docs/` + `.doc-workspace/` layout for the two single-repo apps (`~/git/foundry`, `~/git/pensieve`). No backend repo, so their docs carry no `be:` sources and no `## FE/BE Mismatches`; their manifests are hand-curated, since `accio map` needs an FE route tree plus an OpenAPI spec and neither app has one. Pensieve discovers them by their `features/` tree and addresses a feature as `<app>/<dir>`; `accio` is still hardcoded to `alden/alden-portal` |
+| `skills/` | the workers and the scheduler (`sweep`, `slack-digest`, `log-change`, `feature-docs`, `linear-ticket`, `api-lookup`, `office-hours`), plus `prototyping` for fast issue-to-PR spikes |
 | `scripts/accio.ts` | index / sync / audit over docs + journal |
+| `scripts/sync-skills.ts` | symlink every `skills/<name>/` into the global Claude skills folder, per skill; prunes only its own dangling links |
 | `skills/log-change/scripts/pr-facts.ts` | resolve a landing; `--since` finds unjournaled ones |
 
 ## Running it
@@ -175,6 +177,7 @@ bun run accio audit      # reconcile without writing anything (fails when a feat
 bun run accio stale      # which features' docs drifted, and why (tiers / fe-core / be-handlers / journal)
 bun run accio journal    # day view over landings (a date, or --since YYYY-MM-DD)
 bun skills/log-change/scripts/pr-facts.ts --since 2026-08-21   # what landed, what's unjournaled
+bun run sync-skills      # after adding/removing a skill: make it global (--check to only report)
 ```
 
 Everything commits locally and never pushes; anything needing judgement lands in the
@@ -188,19 +191,20 @@ tickets that are ready to be worked on and ignites a job forge per ticket. The d
 agreed but not yet built; this section is the contract between the two repos.
 
 **Ready is an explicit signal, not an inference.** A ticket qualifies mechanically when
-its **Pending** section is empty, it has no blocked-by relation, and its Scope is
-concrete (real files and line ranges, per the linear-ticket house format) — but Foundry
+its **Pending** section is empty, it has no blocked-by relation, and its Acceptance
+Criteria are concrete (observable outcomes, each grounded in a Technical Note, per the
+linear-ticket house format) — but Foundry
 never acts on that alone. The handoff is three steps, judgement staying on this side:
 
-1. **Sweep nominates.** Ticket pass 6c already re-reads open tickets against refreshed
-   docs; a ticket that newly qualifies gets a Needs-you line ("LIA-xx looks agent-ready —
+1. **Sweep nominates.** Sweep step 6d checks every open ticket against that bar each
+   tick; a ticket that newly qualifies gets a Needs-you line ("LIA-xx looks agent-ready —
    label it?"). Nomination is inference, so it goes in the report, never into Linear.
 2. **You confirm** by putting the `agent-ready` label on the ticket. The label is the
    whole API between the repos.
 3. **Foundry executes.** A host-side scanner in Foundry's web server polls for labeled
    tickets, claims one atomically (job row in its Postgres ledger, unique on ticket key,
    *before* touching Linear), marks it In Progress, and ignites an ephemeral job forge
-   with the ticket body as the brief.
+   with the ticket body as the brief; the Acceptance Criteria are its definition of done.
 
 ```mermaid
 flowchart LR
