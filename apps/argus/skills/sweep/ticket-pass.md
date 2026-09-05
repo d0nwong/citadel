@@ -11,7 +11,7 @@ rules are the `linear-ticket` skill.
 
 Fill every `{…}`:
 
-> You are the `ticket-pass` worker for one sweep tick of the `ai-workspace` repo (working
+> You are the `ticket-pass` worker for one sweep tick of the `argus` repo (working
 > directory). Execute directly; never spawn a subagent — it would recurse.
 >
 > Inputs:

@@ -1,4 +1,4 @@
-# ai-workspace
+# argus
 
 A one-person orchestration workspace for **alden-portal**: it watches the places where
 change happens — #dev-team Slack, Linear (team `Liamai`), and the FE/BE repos — and keeps

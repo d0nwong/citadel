@@ -49,7 +49,7 @@ rather than inheriting whatever the session happens to be on. Give it this task:
 
 > Invoke the `slack-digest` skill and follow it to completion. You ARE the subagent for
 > this run: execute the procedure directly, starting at step 1. The working directory is
-> the `ai-workspace` repo. Report back the number of new items, every decision / action
+> the `argus` repo. Report back the number of new items, every decision / action
 > item / needs-you item with the Linear key it links (if any), and the commit sha — or
 > "no-op, nothing new".
 
