@@ -25,7 +25,7 @@ The gap between today and that line is the scanner and the label: today the hand
 the decision onto the screen where the report is read — the sweep emits each Needs-you
 point as data, Pensieve lets you send a point to Foundry or ignore it with a reason, and
 the scanner and the label retire. That is tickets LIA-87 → LIA-94 across the three Linear
-projects; the diagram is `canvas/setup.json` (`bun run canvas`, then `?g=setup`). The
+projects, in the order `PLAN.md` gives; the diagram is `canvas/setup.json` (`bun run canvas`, then `?g=setup`). The
 "Downstream" section at the bottom describes the label path and is superseded when LIA-89
 lands.
 
