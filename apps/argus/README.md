@@ -7,6 +7,28 @@ three durable records honest: a daily Slack digest, a per-feature change journal
 Built for a part-time schedule: everything is incremental, idempotent, and catch-up-safe,
 so the first run after days away simply backfills.
 
+## The three systems, as of 2026-09-05
+
+Three repos share this work. Each has one job, and the seams between them are files and
+one HTTP API — nothing else.
+
+| | job | today | never |
+|---|---|---|---|
+| **argus** (this repo) | Knows. The blackboard is the single source of truth for everything not in Linear or a repo; the sweep keeps it current, reconciles landings against tickets, and nominates what needs a decision. | Files (`digests/`, `reports/`, `features/*/journal`, `features/*/docs`) plus skills run by `/loop` sessions. Produces a report; holds no queue. | Dispatch work. Close tickets. Run as a daemon. |
+| **Pensieve** (`~/git/pensieve`) | The decision surface. Where you read what argus reports and decide what to act on. | A reading room: renders the report, digests, journal and docs for every app under the blackboard. Writes nothing. | Hold workflow state of its own. Write any blackboard file other than `decisions/`. |
+| **Foundry** (`~/git/foundry`) | Executes. Takes a job over HTTP, runs it in an ephemeral forge, pushes a PR, reports back. | Jobs, blueprints, repos, forges, the trigger API. Also still carries the `agent-ready` ticket scanner, which makes it a decider as well. | Read the blackboard. Judge readiness. Choose what runs. |
+
+One line: **argus knows, you decide in Pensieve, Foundry does.**
+
+The gap between today and that line is the scanner and the label: today the handoff is
+"sweep nominates, you label in Linear, Foundry polls the label". The decided target moves
+the decision onto the screen where the report is read — the sweep emits each Needs-you
+point as data, Pensieve lets you send a point to Foundry or ignore it with a reason, and
+the scanner and the label retire. That is tickets LIA-87 → LIA-94 across the three Linear
+projects; the diagram is `canvas/setup.json` (`bun run canvas`, then `?g=setup`). The
+"Downstream" section at the bottom describes the label path and is superseded when LIA-89
+lands.
+
 ## The loop at a glance
 
 Each sweep tick walks four stages, each feeding the next; a fifth, dashed because it is
