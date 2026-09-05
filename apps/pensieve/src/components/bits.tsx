@@ -81,10 +81,15 @@ export function PrLink({ pr, url }: { pr?: string; url?: string }) {
   )
 }
 
-export function FeatureLink({ feature, className }: { feature: string; className?: string }) {
+/**
+ * A feature key is `<app>/<dir>`. Pass the app to show only the part that varies within
+ * it — the link still carries the whole key, so it never becomes ambiguous.
+ */
+export function FeatureLink({ feature, app, className }: { feature: string; app?: string; className?: string }) {
+  const label = app && feature.startsWith(`${app}/`) ? feature.slice(app.length + 1) : feature
   return (
     <Link to="/docs/$" params={{ _splat: feature }} className={cn('mono text-ink-dim hover:text-thread', className)}>
-      {feature}
+      {label}
     </Link>
   )
 }

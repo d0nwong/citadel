@@ -24,15 +24,17 @@ export const Route = createFileRoute('/docs/$')({
 function DocPage() {
   const { doc, meta, path } = Route.useLoaderData()
   const headings = (doc.headings ?? []).filter((h) => h.level <= 2)
+  // The key is `<app>/<dir>`; the app is already the kicker's first half.
+  const short = meta.feature.startsWith(`${meta.app}/`) ? meta.feature.slice(meta.app.length + 1) : meta.feature
   return (
     <>
       <PageTitle
         kicker={
           <>
-            docs · <span className="normal-case tracking-normal">{meta.feature}</span>
+            {meta.app} · <span className="normal-case tracking-normal">{short}</span>
           </>
         }
-        title={meta.name ?? meta.feature}
+        title={meta.name ?? short}
         aside={
           <span className="flex gap-1.5">
             {(['product', 'arch'] as const).map((t) => (
@@ -66,6 +68,7 @@ function DocPage() {
                 </>
               )}
             </Fact>
+            {/* Single-repo apps carry no backend stamp; `Fact` omits an empty row. */}
             <Fact label="Verified · BE">
               {meta.lastVerifiedBe && (
                 <>
