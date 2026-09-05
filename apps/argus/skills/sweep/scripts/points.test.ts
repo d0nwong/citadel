@@ -218,3 +218,163 @@ describe("AC6 — quiet tick", () => {
     expect(new Date(iso).getMinutes()).toBe(14);
   });
 });
+
+// ---------------------------------------------------------------- LIA-88 — decisions
+
+import { parseDecision, stripOwned, applyDecisions, readDecisions, type Decision } from "./points.ts";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const ignored: Decision = {
+  point: "decide/lia-53-looks-agent-ready",
+  action: "ignored",
+  reason: "not this sprint",
+  at: "2026-09-05T10:00:00.000Z",
+  subject: "LIA-53 looks agent-ready",
+};
+const sent: Decision = {
+  point: "verify/lia-78",
+  action: "sent",
+  at: "2026-09-05T10:05:00.000Z",
+  subject: "LIA-78",
+  job: { id: "job_1", url: "http://foundry.local/jobs/job_1" },
+};
+const withDecisions = (over: Partial<Derive> = {}) =>
+  ctx({ decisions: new Map([ignored, sent].map((d) => [d.point, d])), ...over });
+
+/** the whole pipeline `run` performs on text, minus disk */
+const pipeline = (md: string, d: Derive, unreadable: Parameters<typeof applyDecisions>[3] = []) => {
+  const stripped = stripOwned(md);
+  const items = parseNeedsYou(stripped);
+  const file = derive(items, d);
+  return { file, md: applyDecisions(syncAges(stripped, items, file), items, file, unreadable) };
+};
+
+describe("LIA-88 AC1 — a decided point leaves Needs-you and carries the decision in points.json", () => {
+  const { file, md } = pipeline(REPORT, withDecisions());
+  const byId = Object.fromEntries(file.points.map((p) => [p.id, p]));
+  test("the record keeps its place and gets the file's decision, verbatim", () => {
+    expect(file.points).toHaveLength(8);
+    expect(byId["decide/lia-53-looks-agent-ready"]!.decision).toEqual(ignored);
+    expect(byId["verify/lia-78"]!.decision).toEqual(sent);
+    expect("decision" in byId["decide/lia-71-history-rollup"]!).toBe(false);
+  });
+  test("its bullet and detail line are gone from the report; undecided bullets stay", () => {
+    expect(md).not.toContain("LIA-53 looks agent-ready");
+    expect(md).not.toContain("No Pending, no blockers");
+    expect(md).not.toContain("four ACs appear satisfied");
+    expect(md).toContain("- **LIA-71 History rollup** —");
+    expect(md).toContain("- **MM-32 — an under-retainer");
+  });
+  test("a group emptied by the drop loses its header; others keep theirs", () => {
+    expect(md).not.toContain("**Verify**");
+    expect(md).toContain("**Decide**");
+    expect(md).toContain("**Confirm with someone**");
+  });
+  test("the report re-read next tick yields the undecided points, same ids", () => {
+    const again = derive(parseNeedsYou(md), ctx({ previous: file }));
+    expect(again.points.map((p) => p.id)).toEqual(file.points.filter((p) => !p.decision).map((p) => p.id));
+  });
+  test("firstSeen survives the drop, by id, when the sweep writes the point back as new", () => {
+    const rewritten = REPORT.replace("label it? · 5d", "label it? · new");
+    const next = pipeline(rewritten, withDecisions({ previous: file }));
+    expect(next.file.points.find((p) => p.id === "decide/lia-53-looks-agent-ready")!.firstSeen).toBe("2026-08-31");
+  });
+});
+
+describe("LIA-88 AC2 — Housekeeping shows the count", () => {
+  test("N decided → one `N points decided (decisions/)` line under Housekeeping", () => {
+    const { md } = pipeline(REPORT, withDecisions());
+    expect(md).toContain("**Housekeeping**\n- All 22 features clean — no stale docs, audit clean\n- 2 points decided (decisions/)\n");
+    expect(md.match(/points? decided/g)).toHaveLength(1);
+  });
+  test("one decided → singular", () => {
+    const { md } = pipeline(REPORT, ctx({ decisions: new Map([[sent.point, sent]]) }));
+    expect(md).toContain("- 1 point decided (decisions/)\n");
+  });
+  test("no Housekeeping group → one is added at the end of Needs you", () => {
+    const noHk = REPORT.replace("\n**Housekeeping**\n- All 22 features clean — no stale docs, audit clean\n", "\n");
+    const { md } = pipeline(noHk, withDecisions());
+    expect(md).toContain("waits on Auth0 tenant settings from Foong\n\n**Housekeeping**\n- 2 points decided (decisions/)\n\n## Done today");
+  });
+  test("zero decided → no line, and the count line is never itself a point", () => {
+    const { md, file } = pipeline(REPORT, ctx());
+    expect(md).not.toContain("decided (decisions/)");
+    const prior = REPORT.replace("audit clean\n", "audit clean\n- 2 points decided (decisions/)\n");
+    const again = pipeline(prior, ctx());
+    expect(again.md).not.toContain("decided (decisions/)");
+    expect(again.file.points.map((p) => p.id)).toEqual(file.points.map((p) => p.id));
+  });
+});
+
+describe("LIA-88 AC3 / AC6 — a decision matches by id, and only a current point", () => {
+  test("a decision whose point is not in the report changes nothing and adds no record", () => {
+    const stale: Decision = { point: "decide/something-that-was-resolved", action: "ignored", reason: "moot", at: "t" };
+    const { file, md } = pipeline(REPORT, ctx({ decisions: new Map([[stale.point, stale]]) }));
+    expect(file.points).toHaveLength(8);
+    expect(file.points.some((p) => p.decision)).toBe(false);
+    expect(md).toBe(pipeline(REPORT, ctx()).md);
+  });
+  test("a reworded subject is a new id: it renders undecided, the old decision is left alone", () => {
+    const reworded = REPORT.replace("**LIA-53 looks agent-ready** — label it?", "**LIA-53 ready for Foundry** — label it?");
+    const { file, md } = pipeline(reworded, ctx({ decisions: new Map([[ignored.point, ignored]]) }));
+    const p = file.points.find((p) => p.id === "decide/lia-53-ready-for-foundry")!;
+    expect(p).toBeDefined();
+    expect("decision" in p).toBe(false);
+    expect(md).toContain("- **LIA-53 ready for Foundry** —");
+    expect(md).not.toContain("decided (decisions/)");
+  });
+});
+
+describe("LIA-88 AC4 — an unreadable decision file is one Audit line; its point renders undecided", () => {
+  const unreadable = [{ file: "decisions/decide/lia-53-looks-agent-ready.json", error: "not valid JSON: Unexpected end of JSON input" }];
+  test("parseDecision names the one reason", () => {
+    expect(parseDecision("{")).toMatchObject({ error: expect.stringContaining("not valid JSON") });
+    expect(parseDecision("[]")).toEqual({ error: "not a JSON object" });
+    expect(parseDecision('{"action":"sent"}')).toEqual({ error: "`point` missing or not a string" });
+    expect(parseDecision('{"point":"a/b","action":"maybe"}')).toEqual({ error: '`action` must be "sent" or "ignored"' });
+    expect(parseDecision('{"point":"a/b","action":"ignored"}')).toEqual({ error: "`reason` required for an ignored point" });
+    expect(parseDecision(JSON.stringify(sent))).toEqual({ decision: sent });
+  });
+  test("Audit gets the block; the point stays in Needs-you", () => {
+    const withAudit = REPORT + "\n## Audit\n\n**Tiers disagree**\n- `peer-review` — product@1, arch@2\n";
+    const { md, file } = pipeline(withAudit, ctx(), unreadable);
+    expect(md).toContain("- `peer-review` — product@1, arch@2\n\n**Unreadable decision files**\n- `decisions/decide/lia-53-looks-agent-ready.json` — not valid JSON: Unexpected end of JSON input\n");
+    expect(md).toContain("- **LIA-53 looks agent-ready** — label it? · 5d");
+    expect("decision" in file.points.find((p) => p.id === "decide/lia-53-looks-agent-ready")!).toBe(false);
+  });
+  test("no Audit section → one is appended", () => {
+    const { md } = pipeline(REPORT, ctx(), unreadable);
+    expect(md.endsWith("- **LIA-71** — updated\n\n## Audit\n\n**Unreadable decision files**\n- `decisions/decide/lia-53-looks-agent-ready.json` — not valid JSON: Unexpected end of JSON input\n")).toBe(true);
+  });
+  test("running again does not duplicate the block, and a fixed file removes it", () => {
+    const once = pipeline(REPORT, ctx(), unreadable).md;
+    const twice = pipeline(once, ctx(), unreadable).md;
+    expect(twice).toBe(once);
+    expect(pipeline(once, ctx()).md).not.toContain("Unreadable decision files");
+  });
+});
+
+describe("LIA-88 — readDecisions walks decisions/**/*.json, keyed by `point`, later `at` wins", () => {
+  test("reads nested files, splits unreadable ones, dedupes by point", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "argus-decisions-"));
+    await mkdir(join(dir, "decide"), { recursive: true });
+    await mkdir(join(dir, "verify"), { recursive: true });
+    await writeFile(join(dir, "decide", "lia-53-looks-agent-ready.json"), JSON.stringify(ignored));
+    await writeFile(join(dir, "verify", "lia-78.json"), JSON.stringify(sent));
+    await writeFile(join(dir, "verify", "lia-78-moved-by-hand.json"), JSON.stringify({ ...sent, at: "2026-09-01T00:00:00.000Z", reason: "older" }));
+    await writeFile(join(dir, "decide", "broken.json"), "{");
+    await writeFile(join(dir, "README.md"), "not a decision");
+    const { decisions, unreadable } = await readDecisions(dir);
+    expect([...decisions.keys()].sort()).toEqual(["decide/lia-53-looks-agent-ready", "verify/lia-78"]);
+    expect(decisions.get("verify/lia-78")!.at).toBe(sent.at);
+    expect(unreadable).toHaveLength(1);
+    expect(unreadable[0]!.file.endsWith("decide/broken.json")).toBe(true);
+  });
+  test("no directory → nothing decided, nothing unreadable", async () => {
+    const { decisions, unreadable } = await readDecisions("/nonexistent/argus-decisions");
+    expect(decisions.size).toBe(0);
+    expect(unreadable).toEqual([]);
+  });
+});

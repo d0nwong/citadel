@@ -215,6 +215,18 @@ current-state rule the digest follows applies to Needs you: each bullet says wha
    the age restarts when it changes — so an open item keeps its subject text verbatim
    from tick to tick; rewording is how a decided point comes back as a new one. ✋
    items that got tickets appear by key, not restated.
+   **Write every open point, decided or not.** Pensieve's Send / Ignore verdicts live in
+   `decisions/<group>/<slug>.json` (LIA-94); you never read them to compose this section.
+   `points.ts` reads them and drops each decided point from the file's Needs-you while
+   keeping its record in `points.json` with the `decision` attached — so an ignored
+   point stops reappearing and a sent point stops asking, but the match is re-checked
+   every tick against a point you still observe. A point you leave out because "it was
+   decided" is a point the script can no longer tell apart from one whose condition
+   cleared; the omission is the script's, not yours. The script also owns two lines:
+   `- N points decided (decisions/)` under Housekeeping (absent when N is 0) and an
+   `**Unreadable decision files**` block under Audit naming any file it could not parse
+   — that point renders undecided until the file is fixed. Rewrite neither; it rewrites
+   both each run.
 2. **Done today** — entries written, docs refreshed, tickets filed (6a) and updated
    (keys + PRs), one `### HH:MM` sub-block per tick that did something.
 3. **Linear today** — every Liamai ticket created or updated since local midnight, one
@@ -295,17 +307,26 @@ back, then run
 bun skills/sweep/scripts/points.ts        # reports/<today>.md → reports/points.json, ages synced
 ```
 
-and commit both files with the tick's other writes. `points.json` is Needs-you as data
+and commit both files, plus `decisions/`, with the tick's other writes (`git add reports/
+decisions/ …` — any decision file Pensieve wrote since the last tick rides in this commit,
+untouched). `points.json` is Needs-you as data
 — one record per Decide / Verify / Confirm / On-hold / Housekeeping bullet, with `id`
 (`<group>/<slug>` of the subject), `group`, `subject`, `ask`, `detail`, `firstSeen`, and
-`ticket` / `repo` / `features` when the line carries them — the shape Pensieve lists to
-offer Send / Ignore per point and the sweep later reads decisions back against. It is
+`ticket` / `repo` / `features` when the line carries them, and `decision` (the
+`decisions/` file body, copied) on a point the cockpit has sent or ignored — the shape
+Pensieve lists to offer Send / Ignore per point. It is
 **derived from the report, never hand-written**: the two are the same list in two shapes,
-and deriving one from the other is what keeps them from drifting. `firstSeen` carries
-over from the previous `points.json` by id, so it survives the day rollover; the script
+and deriving one from the other is what keeps them from drifting — the one asymmetry is
+that a decided point is in `points.json` and not in the report, and that too is the
+script's doing (Needs you, above). `firstSeen` carries
+over from the previous `points.json` by id, so it survives the day rollover and the
+decided-point drop; the script
 then rewrites the report's `· new` / `· Nd` suffixes to agree. `repo` comes from the
 ticket's `[FE]` / `[BE]` title tag, which the script reads from `.state/linear-titles.json`
-— step 3 writes it. The report is the human copy and `points.json` the machine copy of
+— step 3 writes it. Decisions match by the file's `point` id, not its path, and only
+against a point in this tick's report: a decision for a point that is gone changes
+nothing, and a reworded subject renders undecided with the stale file left where it is.
+The report is the human copy and `points.json` the machine copy of
 the one thing on the blackboard that holds an inference, so a report that only went to
 the terminal is a report that was lost.
 
@@ -327,7 +348,8 @@ refer here rather than restating it.
 **Yes:**
 
 - journal entries, doc regeneration, `reports/<today>.md` and the derived
-  `reports/points.json`, local git commits;
+  `reports/points.json`, local git commits — and those commits include whatever
+  Pensieve has written under `decisions/` (step 8), as-is;
 - filing Liamai tickets from unlinked digest ✋ deliverables (6a, with the digest-file
   writeback marker) and folding linked digest items into their tickets (6b) — both in
   `ticket-pass`, the loop's only Linear writer;
@@ -364,6 +386,9 @@ refer here rather than restating it.
   pre-authorised exception is 6a's filing-time label on tickets the sweep itself files;
 - write to Linear from any worker other than `ticket-pass` — `slack-digest` only reads
   it, to link items to the tickets they concern;
+- create, edit or delete a file under `decisions/` — Pensieve writes them, the sweep
+  and its workers only read and commit them; a decision the sweep disagrees with is a
+  report line, not a file change;
 - post to Slack, push git, or guess frontmatter.
 
 Anything needing the user's judgement goes in the report, not into a file.
