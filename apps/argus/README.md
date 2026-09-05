@@ -179,6 +179,7 @@ ground truth, join, and surface only the judgement calls.
 |---|---|
 | `digests/` | daily Slack digests (`.state.json` is gitignored cursor state) |
 | `reports/` | one sweep report per day, updated in place each tick — Needs-you / Linear / Audit re-emitted as current state, Done-today appended per tick; never shrunk by a quiet tick |
+| `reports/points.json` | the current Needs-you section as data — one record per point with a stable `<group>/<slug>` id, `firstSeen`, and `ticket` / `repo` when known; derived from the day's report by `skills/sweep/scripts/points.ts` every tick, never hand-edited. What Pensieve lists to Send / Ignore a point (LIA-94) and what decisions are keyed by (LIA-88) |
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
 | `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
 | `alden/alden-portal/.doc-workspace/` | feature manifest + OpenAPI snapshot |
@@ -187,6 +188,7 @@ ground truth, join, and surface only the judgement calls.
 | `scripts/accio.ts` | index / sync / audit over docs + journal |
 | `scripts/sync-skills.ts` | symlink every `skills/<name>/` into the global Claude skills folder, per skill; prunes only its own dangling links |
 | `skills/log-change/scripts/pr-facts.ts` | resolve a landing; `--since` finds unjournaled ones |
+| `skills/sweep/scripts/points.ts` | `reports/<day>.md` → `reports/points.json`, carrying `firstSeen` forward and syncing the report's ages; `--dry-run` prints without writing |
 
 ## Running it
 
@@ -199,6 +201,7 @@ bun run accio audit      # reconcile without writing anything (fails when a feat
 bun run accio stale      # which features' docs drifted, and why (tiers / fe-core / be-handlers / journal)
 bun run accio journal    # day view over landings (a date, or --since YYYY-MM-DD)
 bun skills/log-change/scripts/pr-facts.ts --since 2026-08-21   # what landed, what's unjournaled
+bun skills/sweep/scripts/points.ts --dry-run                    # today's Needs-you as points, without writing
 bun run sync-skills      # after adding/removing a skill: make it global (--check to only report)
 ```
 

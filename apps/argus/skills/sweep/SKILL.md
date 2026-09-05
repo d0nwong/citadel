@@ -49,6 +49,9 @@ landings drop out on their own, so overlapping windows are harmless.
 - Linear activity today: same tool, team `Liamai`, no assignee filter, `updatedAt` ≥
   local midnight — feeds the report's "Linear today" section. Split created-today from
   merely-updated by `createdAt`.
+- write the open tickets' titles to `.state/linear-titles.json` as `{ "LIA-nn": "<title>" }`
+  (gitignored; refresh it again after the ticket pass adds keys). Step 8's `points.ts`
+  reads the `[FE]` / `[BE]` title tag off it to fill each point's `repo`.
 
 **4. The join.** For each `NOT JOURNALED` landing, before dispatching anything, match it
 against the open tickets and open decisions. The join is never delegated: it is the
@@ -204,9 +207,14 @@ current-state rule the digest follows applies to Needs you: each bullet says wha
    a question ("revert, or accept the churn?", "ticket them?", "Foong"). The detail
    line is the fact, never the history — the journal entry, docs, ticket and diff
    carry the rest, so link rather than retell. Age is `new` when the subject first
-   appears in a report today, else `Nd` = days since the oldest `reports/*.md` that
-   names it (`grep -il '<subject>' reports/*.md | sort | head -1`) — a file lookup,
-   never tick memory. ✋ items that got tickets appear by key, not restated.
+   appears today, else `Nd` — but you don't compute it: write `new` for anything you
+   believe is new, keep the previous tick's suffix otherwise, and `points.ts` (below)
+   rewrites every suffix from `reports/points.json`'s `firstSeen`, never tick memory.
+   **The subject is the item's identity.** `points.json` derives each point's id from
+   it (`<group>/<slug>`), Pensieve's Send / Ignore decisions are keyed by that id, and
+   the age restarts when it changes — so an open item keeps its subject text verbatim
+   from tick to tick; rewording is how a decided point comes back as a new one. ✋
+   items that got tickets appear by key, not restated.
 2. **Done today** — entries written, docs refreshed, tickets filed (6a) and updated
    (keys + PRs), one `### HH:MM` sub-block per tick that did something.
 3. **Linear today** — every Liamai ticket created or updated since local midnight, one
@@ -281,15 +289,32 @@ _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 Each tick: read the existing file (create it from the template if today's doesn't
 exist), replace the `_Tick …_` line, replace the bodies of Needs you / Linear today /
 Audit, append a `### HH:MM` block under Done today if this tick wrote anything, write it
-back, and commit it with the tick's other writes. This file is the only place Needs-you
-lives — nothing else on the blackboard holds an inference — so a report that only went
-to the terminal is a report that was lost.
+back, then run
+
+```sh
+bun skills/sweep/scripts/points.ts        # reports/<today>.md → reports/points.json, ages synced
+```
+
+and commit both files with the tick's other writes. `points.json` is Needs-you as data
+— one record per Decide / Verify / Confirm / On-hold / Housekeeping bullet, with `id`
+(`<group>/<slug>` of the subject), `group`, `subject`, `ask`, `detail`, `firstSeen`, and
+`ticket` / `repo` / `features` when the line carries them — the shape Pensieve lists to
+offer Send / Ignore per point and the sweep later reads decisions back against. It is
+**derived from the report, never hand-written**: the two are the same list in two shapes,
+and deriving one from the other is what keeps them from drifting. `firstSeen` carries
+over from the previous `points.json` by id, so it survives the day rollover; the script
+then rewrites the report's `· new` / `· Nd` suffixes to agree. `repo` comes from the
+ticket's `[FE]` / `[BE]` title tag, which the script reads from `.state/linear-titles.json`
+— step 3 writes it. The report is the human copy and `points.json` the machine copy of
+the one thing on the blackboard that holds an inference, so a report that only went to
+the terminal is a report that was lost.
 
 **A quiet tick never shrinks the file.** "Nothing new" is relative to the previous tick;
 the file is read in the morning with no previous tick in view, and Pensieve renders it
 as the day's state. On a quiet tick the update is: new `_Tick …_` line, state sections
 re-emitted (identical), no Done-today block; append `sweep: nothing new` under the tick
-line if you want the quietness recorded. The terminal one-liner alone is only correct on
+line if you want the quietness recorded, and run `points.ts` all the same — the file gets
+a new `tick` and the same points. The terminal one-liner alone is only correct on
 the first tick of a day when there is genuinely nothing open — meaning step 3 found no
 holds, no agent-ready nominations, and audit is clean, not merely nothing *new*.
 
@@ -301,7 +326,8 @@ refer here rather than restating it.
 
 **Yes:**
 
-- journal entries, doc regeneration, `reports/<today>.md`, local git commits;
+- journal entries, doc regeneration, `reports/<today>.md` and the derived
+  `reports/points.json`, local git commits;
 - filing Liamai tickets from unlinked digest ✋ deliverables (6a, with the digest-file
   writeback marker) and folding linked digest items into their tickets (6b) — both in
   `ticket-pass`, the loop's only Linear writer;
