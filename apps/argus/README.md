@@ -190,19 +190,20 @@ tickets that are ready to be worked on and ignites a job forge per ticket. The d
 agreed but not yet built; this section is the contract between the two repos.
 
 **Ready is an explicit signal, not an inference.** A ticket qualifies mechanically when
-its **Pending** section is empty, it has no blocked-by relation, and its Scope is
-concrete (real files and line ranges, per the linear-ticket house format) — but Foundry
+its **Pending** section is empty, it has no blocked-by relation, and its Acceptance
+Criteria are concrete (observable outcomes, each grounded in a Technical Note, per the
+linear-ticket house format) — but Foundry
 never acts on that alone. The handoff is three steps, judgement staying on this side:
 
-1. **Sweep nominates.** Ticket pass 6c already re-reads open tickets against refreshed
-   docs; a ticket that newly qualifies gets a Needs-you line ("LIA-xx looks agent-ready —
+1. **Sweep nominates.** Sweep step 6d checks every open ticket against that bar each
+   tick; a ticket that newly qualifies gets a Needs-you line ("LIA-xx looks agent-ready —
    label it?"). Nomination is inference, so it goes in the report, never into Linear.
 2. **You confirm** by putting the `agent-ready` label on the ticket. The label is the
    whole API between the repos.
 3. **Foundry executes.** A host-side scanner in Foundry's web server polls for labeled
    tickets, claims one atomically (job row in its Postgres ledger, unique on ticket key,
    *before* touching Linear), marks it In Progress, and ignites an ephemeral job forge
-   with the ticket body as the brief.
+   with the ticket body as the brief; the Acceptance Criteria are its definition of done.
 
 ```mermaid
 flowchart LR

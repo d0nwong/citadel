@@ -75,7 +75,7 @@ What each outcome does:
   link, merge sha, author, what the diff changed) go into the description; which Scope /
   Pending bullets the landing *appears* to satisfy is inference and goes in the report:
   "LIA-xx appears already implemented by fe#N — verify", or for a partial "fe#N appears
-  to cover 2 of 4 Scope bullets on LIA-xx — edit Scope?". Dedupe as the digest does: one
+  to cover 2 of 4 ACs on LIA-xx — edit the ACs?". Dedupe as the digest does: one
   update per landing, not one per tick.
 - **Redundancy match → report only.** "LIA-xx appears redundant after fe#N — close or
   rescope?" The ticket is edited after the user confirms. Cancelling is closing, and
@@ -149,8 +149,9 @@ a lost one.
 
 **6d. Nominate agent-ready tickets** (inline, every tick). Over the step-3 open-ticket
 list as refreshed after the worker returned: a ticket qualifies when its Pending section
-is absent, it has no blocked-by relation, and its Scope is concrete enough to execute
-without a round of questions (real files, functions, line ranges — linear-ticket's bar).
+is absent, it has no blocked-by relation, and every Acceptance Criterion is concrete — an
+observable outcome with a Technical Note naming where it is met (linear-ticket's "ACs are
+executable" bar).
 A qualifying ticket not yet carrying `agent-ready` gets a Needs-you line: "LIA-xx looks
 agent-ready — label it?". The concreteness call is judgement, so nomination is
 report-only (Autonomy): the label is the entire contract with Foundry's ticket pickup
@@ -299,3 +300,5 @@ tier, change those spawn specs, not the loop flag. The loop only runs while a se
 alive — fine, because the design is catch-up-safe: the first tick after any gap
 backfills. If it must run with no machine awake, that is `/schedule` (cloud cron), not a
 longer loop.
+- tick or untick a Test Case — the boxes are the implementer's record, and a tick from
+  the sweep's own reading is inference in the shared body;

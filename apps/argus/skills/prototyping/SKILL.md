@@ -15,7 +15,7 @@ re-deriving them.
 ## Steps
 
 1. **Read the issue.** Use the Linear MCP (`get_issue` with relations) — title, description,
-   acceptance criteria, comments, and blockers. If the issue is blocked, or has open Pending
+   Acceptance Criteria and Test Cases, comments, and blockers. If the issue is blocked, or has open Pending
    items the code depends on (an unpublished endpoint, an undecided field name), stop and say
    so rather than guessing.
 
@@ -45,7 +45,9 @@ re-deriving them.
 
 5. **Implement.** Four rules, each stated here and nowhere else:
    - **Write no tests.** Do not add or modify `*.test.*` / `*.spec.*` files, even in repos
-     that have them.
+     that have them. The ticket's Test Cases are still the bar: run each as a manual check
+     and tick it; one only an automated test could prove stays unticked and is named in the
+     PR body as needing a test when hardening.
    - **Run no tests.** Do not invoke `bun test`, any `test:*` script, or any CI test script.
    - **Fix only TS errors during steps.** After each meaningful edit, typecheck — the repo's
      `typecheck` script if it has one, else `bunx tsc --noEmit`, scoped to the package in a
@@ -74,7 +76,8 @@ re-deriving them.
 
 9. **Confirm with the user** — "Happy with the prototype?"
    - Yes → open the PR. Title carries the issue key. Body: what was built, the business-logic
-     comments rolled up as bullets, and an explicit "Prototype — no tests" line so reviewers
+     comments rolled up as bullets, the ticket's Test Cases list copied with the
+     manually-checked ones ticked, and an explicit "Prototype — no tests" line so reviewers
      know the bar.
    - No → ask what to change and return to step 5.
 
