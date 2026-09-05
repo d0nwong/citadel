@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Reading room for the ai-workspace blackboard — sweep reports, Slack digests, the change journal and feature docs.",
+  "description": "Reading room for the argus blackboard — sweep reports, Slack digests, the change journal and feature docs.",
   "imports": {
     "#/*": "./src/*"
   },

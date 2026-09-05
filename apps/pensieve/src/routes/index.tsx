@@ -36,7 +36,7 @@ function InboxPage() {
         ) : (
           <Empty title="No sweep report on file">
             The sweep writes <span className="mono">reports/&lt;day&gt;.md</span> each tick. Run <span className="mono">/sweep</span> in
-            ai-workspace and this page fills in.
+            argus and this page fills in.
           </Empty>
         )}
       </section>

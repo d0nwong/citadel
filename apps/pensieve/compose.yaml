@@ -6,6 +6,6 @@ services:
     environment:
       WORKSPACE_DIR: /workspace
     volumes:
-      # read-only: the sweep in ai-workspace owns every file here
-      - ${WORKSPACE_DIR:-~/git/ai-workspace}:/workspace:ro
+      # read-only: the sweep in argus owns every file here
+      - ${WORKSPACE_DIR:-~/git/argus}:/workspace:ro
     restart: unless-stopped

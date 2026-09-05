@@ -1,13 +1,13 @@
 # pensieve
 
-The reading room for [ai-workspace](https://github.com/d0nwong/ai-workspace) — a UI over
+The reading room for [argus](https://github.com/d0nwong/argus) — a UI over
 the blackboard the sweep maintains: **sweep reports** (the Needs-you queue), **Slack
 digests**, the per-landing **change journal**, and the dual-tier **feature docs**.
 
-Pensieve is read-only by design. The sweep in ai-workspace owns every file it shows;
+Pensieve is read-only by design. The sweep in argus owns every file it shows;
 this app only parses and renders them, so there is never a second writer to the
 workflow state. Anything you decide while reading goes back through Linear, Slack, or the
-ai-workspace skills — not through here.
+argus skills — not through here.
 
 ## Stack
 
@@ -22,7 +22,7 @@ two could share a shell later.
 
 ```sh
 bun install
-cp .env.example .env         # WORKSPACE_DIR defaults to ~/git/ai-workspace
+cp .env.example .env         # WORKSPACE_DIR defaults to ~/git/argus
 bun run dev                  # http://localhost:3778
 ```
 
@@ -52,13 +52,13 @@ In a container — the blackboard is mounted, never copied in, because it change
 sweep tick:
 
 ```sh
-docker compose up --build    # mounts ~/git/ai-workspace at /workspace, read-only
+docker compose up --build    # mounts ~/git/argus at /workspace, read-only
 WORKSPACE_DIR=/some/where docker compose up
 ```
 
 ## What it reads
 
-| Route | Source in ai-workspace |
+| Route | Source in argus |
 |---|---|
 | `/` Inbox | `reports/<latest>.md` + `digests/<latest>.md` |
 | `/reports`, `/reports/:day` | `reports/YYYY-MM-DD.md` — one per day, overwritten each tick |

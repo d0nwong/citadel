@@ -27,4 +27,4 @@ Bun.serve({
   },
 })
 
-console.log(`pensieve · http://localhost:${PORT} · workspace ${process.env.WORKSPACE_DIR ?? '~/git/ai-workspace'}`)
+console.log(`pensieve · http://localhost:${PORT} · workspace ${process.env.WORKSPACE_DIR ?? '~/git/argus'}`)
