@@ -160,7 +160,8 @@ report exists to surface, not make. Like holds, a ready-but-unlabeled ticket res
 every tick until labeled or disqualified — the report is a snapshot, not a diff.
 
 **7. Audit.** `bun run accio audit`. Problems it still reports after dispatch go in the
-report verbatim — never silence one by inventing the missing fact. `tiers disagree` lines
+report, every one, in step 8's Audit shape — never silence one by inventing the missing
+fact. `tiers disagree` lines
 left over are the stale features 5c's per-tick cap did not reach — report them as a count
 with the feature ids ("4 product tiers still behind their arch tier, next tick: …"), not
 as a decision for the user; they clear themselves as 5c works through the list.
@@ -175,18 +176,48 @@ Consecutive quiet ticks collapse onto one line (`### 14:19 · 15:18 · 17:17`). 
 current-state rule the digest follows applies to Needs you: each bullet says what is open
 *now*, not how it got there.
 
-1. **Needs you** — appears-implemented tickets to verify, appears-redundant tickets to
-   close or rescope, partial matches awaiting a Scope edit, Pending bullets that only
-   *appear* satisfied, 6b/6c findings, unattributed landings, un-ticketed ✋ pings and
-   🟠 items, holds still waiting, agent-ready nominations (6d) awaiting your label.
-   ✋ items that got tickets appear by key, not restated.
+1. **Needs you** — grouped by what is being asked of the user, as bold labels in
+   this fixed order, empty groups omitted:
+   - **Decide** — only the user can settle it: revert or accept, ticket or not, close
+     or rescope, apply `agent-ready` (6d nominations), attribute an unattributed
+     landing.
+   - **Verify** — an inference to check: appears-implemented or appears-redundant
+     tickets, Pending bullets that only *appear* satisfied, partial matches awaiting a
+     AC edit, 6b/6c findings.
+   - **Confirm with someone** — needs a named teammate; the ask *is* the name.
+     Un-ticketed ✋ pings and 🟠 items land here or under Decide, whichever fits.
+   - **On hold** — holds waiting on something outside the loop. One line each, no
+     detail: `subject → waits on X`. Nothing to do; listed so it is not forgotten.
+   - **Housekeeping** — self-clearing state (stale features past the 5c cap,
+     `implemented`-not-`documented` entries). One line with the count; Audit holds
+     the list.
+
+   Every Decide / Verify / Confirm item is **one headline and at most one detail
+   line**:
+
+   ```markdown
+   - **<subject>** — <the ask, ≤ 12 words> · <age>
+     <the one fact needed to act, ≤ 25 words>
+   ```
+
+   The subject is the ticket key or PR when there is one. The ask is a verb phrase or
+   a question ("revert, or accept the churn?", "ticket them?", "Foong"). The detail
+   line is the fact, never the history — the journal entry, docs, ticket and diff
+   carry the rest, so link rather than retell. Age is `new` when the subject first
+   appears in a report today, else `Nd` = days since the oldest `reports/*.md` that
+   names it (`grep -il '<subject>' reports/*.md | sort | head -1`) — a file lookup,
+   never tick memory. ✋ items that got tickets appear by key, not restated.
 2. **Done today** — entries written, docs refreshed, tickets filed (6a) and updated
    (keys + PRs), one `### HH:MM` sub-block per tick that did something.
 3. **Linear today** — every Liamai ticket created or updated since local midnight, one
    line each: key, title, `created` or `updated`, and by what (sweep update, digest
    filing, or outside activity — the last flagged, since it's news). Built from the
    step-3 query, not tick memory, so every tick restates the full day.
-4. **Audit** — remaining problems, verbatim.
+4. **Audit** — every remaining problem, **one line each, grouped by kind**, none
+   omitted: keep the feature or journal file and the kind, drop the boilerplate
+   suffix (`bun run accio audit` reprints it in full). Shape:
+   `- \`peer-review\` — tiers disagree (product@67e5abc, arch@885f086)` and
+   `- fe#402 → admin-usage — implemented, docs re-verified 09-03`.
 
 A quiet tick prints one line to the terminal ("sweep: nothing new") — a terminal
 courtesy, never the file's content.
@@ -211,7 +242,23 @@ Format:
 _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 
 ## Needs you
-…
+
+**Decide**
+- **fe#396 quoteStyle flip** — revert, or accept the churn? · 4d
+  Only touched files were reformatted; the next repo-wide format run churns the rest.
+
+**Verify**
+- **LIA-79** — huddle's "retainer forced to 100%" appears to close its Pending bullet · 2d
+
+**Confirm with someone**
+- **Capacity-unit direction** — Foong · 2d
+  Huddle: 1 unit = 2.5 h. Shipped: 2.5 units = 1 h.
+
+**On hold**
+- fe#401 capacity formula → waits on LIA-78's usage endpoint
+
+**Housekeeping**
+- 3 product tiers behind their arch tier (see Audit) — clears over the next ticks
 
 ## Done today
 ### 12:25
@@ -223,7 +270,12 @@ _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 …
 
 ## Audit
-…
+
+**Tiers disagree**
+- `peer-review` — product@67e5abc, arch@885f086
+
+**Implemented, not documented**
+- fe#402 → admin-usage — docs re-verified 09-03
 ```
 
 Each tick: read the existing file (create it from the template if today's doesn't

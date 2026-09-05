@@ -59,7 +59,7 @@ ticketed):
   already-open ticket is nomination-only (step 6d).
 - **Pure reply/ack pings get no ticket** — they stay in the report; a queue buried in
   micro-tasks stops being read.
-- **Dedupe is a writeback:** after filing, append ` → LIA-xx` to the item's line in the
+- **Dedupe is a writeback:** after filing, append ` → LIA-xx` to the item's headline line in the
   digest file. A marked item is invisible to every later tick, which is what makes the
   catch-up case free.
 - **Backstop before filing:** the file-then-mark pair isn't atomic, so search the Alden

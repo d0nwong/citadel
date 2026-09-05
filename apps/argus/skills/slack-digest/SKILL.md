@@ -175,29 +175,56 @@ stays put — it just states its outcome in its own sentence ("merged 12:32 as f
 instead of growing a tail. Two things survive every rewrite verbatim: an item's
 original `HH:MM ·` stamp, and the ` → LIA-xx` ticket marker described below.
 
+**An item is one headline and at most one detail line.** The headline is the
+conclusion in ≤ 12 words, bold, first — the reader scans headlines and only drops into
+a detail line when they need the fact behind it:
+
+```markdown
+- **<headline: what was decided / what they need / where it stands>** — HH:MM · <author> [feature] [thread](permalink)
+  <detail, ≤ 30 words: the one fact that makes the headline actionable>
+```
+
+The stamp, tag, ticket link `([LIA-xx](url))` and ` → LIA-xx` marker all live on the
+headline line, after the headline; the detail line carries none of them. A 🟠 headline
+names the ask, not the topic ("Billing Entity Name should render `legalName`", not
+"Entity Billing page"). A ✋ headline is the deliverable, with its deadline if stated.
+
+**A section with no items is omitted from the file**, not printed empty; add its
+heading back, in skeleton order, when its first item arrives.
+
 ```markdown
 # #dev-team digest — YYYY-MM-DD
 
 _Last updated: HH:MM. N messages scanned today, M skipped as noise._
 
 ## 🔴 Decisions & conclusions
-- **HH:MM · <author>** [feature-tag] One-two sentence summary of what was decided and why. [thread](permalink)
+- **<what was decided>** — HH:MM · <author> [feature-tag] [thread](permalink)
+  <why, or what it replaces>
 
 ## ✋ Your action items
-- **HH:MM** What you're on the hook for, and any stated deadline. ([LIA-xx](linear-url) when it concerns an open ticket — step 6) [thread](permalink)
+- **<the deliverable, deadline if stated>** — HH:MM ([LIA-xx](linear-url) when it concerns an open ticket — step 6) [thread](permalink)
 
 ## 🟠 Needs you
-- **HH:MM · <author>** What they need from you. [message](permalink)
+- **<what they need from you>** — HH:MM · <author> [feature-tag] [message](permalink)
+  <the one fact behind the ask>
 
 ## 🟡 In flight
-- **HH:MM · <topic>** Where the discussion stands, who disagrees about what. [thread](permalink)
+- **<topic: where it stands>** — HH:MM [thread](permalink)
+  <who disagrees about what>
 
 ## ⚪ FYI
-- **HH:MM · <author>** Summary. [message](permalink)
+- **<summary>** — HH:MM · <author> [message](permalink)
 
 ## End of day → docs
-_Filled by the evening pass: for each 🔴 item, run `/log-change` (journal + doc update) or note "no doc impact". BE-side changes go through `/log-change` like FE ones — the journal entry is what flags the feature for regeneration (`accio stale` also diffs the manifest's `be_files`); regeneration then re-verifies against fresh `origin/dev` and bumps `last_verified_be`. A 🔴 decision that changes a documented rule but has **no code yet** is journaled at decision time as `status: decided` with `affects:` naming the rule ids — not parked as "no `/log-change` yet"; the product doc's "Decided, not yet landed" region is where it shows up (sweep step 5b)._
+_🔴 items go through `/log-change`; ✋ items through the sweep's ticket-pass; a decision with no code yet is journaled as `status: decided` (sweep step 5b)._
+
+**Outstanding**
+- <one bullet per 🔴 / 🟠 item not yet journaled or verified, ≤ 25 words: what to do with it>
 ```
+
+Empty sections are omitted (rule above); the skeleton shows every heading only to fix
+their order. The End-of-day line is a pointer, not the rule — the rules live in
+`/log-change` and sweep step 5b, one copy each.
 
 Permalinks: `https://alden-studios.slack.com/archives/C07KG06L601/p<ts-with-dot-removed>`
 (e.g. ts `1724650000.123456` → `p1724650000123456`). For a thread reply, link the
