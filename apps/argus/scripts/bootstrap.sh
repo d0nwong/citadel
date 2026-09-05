@@ -16,6 +16,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 SKILLS_DIR="$HOME/.claude/skills"
+# The shared credentials file — the secrets more than one of argus / Foundry / Pensieve
+# needs (SLACK_TOKEN, LINEAR_API_KEY, FOUNDRY_API_TOKEN), typed once per machine.
+# KEY=value lines, mode 600; Foundry's `foundry auth` writes the same file.
+SHARED_ENV="${LIAMAI_ENV:-$HOME/.config/liamai/env}"
 
 c_dim=$'\033[2m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_yel=$'\033[33m'; c_bld=$'\033[1m'; c_0=$'\033[0m'
 say()  { printf '%s\n' "$*" >&2; }
@@ -183,20 +187,41 @@ cmd_state() {
   ok "accio sync"
 }
 
-# SLACK_TOKEN is the one secret the loop needs (slack-digest's slack-pull reads it as
-# process.env.SLACK_TOKEN; Bun loads .env from the repo root, so nothing has to be
-# exported in the shell). The value is never printed.
+# SLACK_TOKEN is the one secret the loop needs. slack-pull reads it from the environment
+# (Bun loads .env) and otherwise from the shared file itself, so nothing is exported in
+# the shell — no other process, Claude sessions included, inherits it. Never printed.
 cmd_env() {
-  info ".env"
-  local f="$ROOT/.env" example="$ROOT/.env.example"
-  if [ ! -f "$f" ]; then
-    if [ "$CHECK" = 1 ]; then warn ".env missing — cp .env.example .env"; FAIL=1; return 0; fi
-    cp "$example" "$f"; ok "created .env from .env.example ${c_dim}(gitignored)${c_0}"
+  info "shared credentials"
+  if [ -f "$SHARED_ENV" ]; then
+    ok "$SHARED_ENV exists"
+    [ "$(stat -f '%Lp' "$SHARED_ENV" 2>/dev/null || stat -c '%a' "$SHARED_ENV")" = 600 ] || warn "$SHARED_ENV is not mode 600 — chmod 600 $SHARED_ENV"
+  elif [ "$CHECK" = 1 ]; then
+    warn "$SHARED_ENV missing — rerun without --check to create it, or: foundry auth --slack"; FAIL=1; return 0
   else
-    ok ".env exists"
+    mkdir -p -m 700 "$(dirname "$SHARED_ENV")"
+    (umask 077; : > "$SHARED_ENV")
+    ok "created $SHARED_ENV ${c_dim}(mode 600, empty)${c_0}"
   fi
-  if grep -Eq '^SLACK_TOKEN=.+' "$f"; then ok "SLACK_TOKEN set"
-  else warn "SLACK_TOKEN empty — slack-digest (and so the sweep's digest tick) cannot pull Slack; see .env.example"; FAIL=1; fi
+  if grep -Eq '^SLACK_TOKEN=.+' "$SHARED_ENV"; then ok "SLACK_TOKEN set"; return 0; fi
+  warn "SLACK_TOKEN empty — slack-digest (and so the sweep's digest tick) cannot pull Slack"
+  if [ "$CHECK" = 1 ] || [ ! -t 0 ]; then
+    say "  ${c_dim}foundry auth --slack${c_0}                          if Foundry is set up here"
+    say "  ${c_dim}./scripts/bootstrap.sh env${c_0}                    from a terminal, to be prompted"
+    FAIL=1; return 0
+  fi
+  if confirm "enter the Slack user token (xoxp-…) now?"; then
+    local tok; read -rsp "  SLACK_TOKEN: " tok; echo >&2
+    [ -n "$tok" ] || { warn "empty — nothing written"; FAIL=1; return 0; }
+    write_shared SLACK_TOKEN "$tok"; ok "stored SLACK_TOKEN in $SHARED_ENV"
+  else FAIL=1; fi
+}
+
+# One key into the shared file, replacing an existing line for it — the same shape as
+# Foundry's write_env, so either tool can maintain the file.
+write_shared() {
+  local k="$1" v="$2" tmp; tmp="$(mktemp "$(dirname "$SHARED_ENV")/.env.XXXXXX")"
+  { [ -f "$SHARED_ENV" ] && grep -v "^$k=" "$SHARED_ENV"; printf '%s=%s\n' "$k" "$v"; } > "$tmp"
+  mv "$tmp" "$SHARED_ENV"; chmod 600 "$SHARED_ENV"
 }
 
 # Linear MCP state lives with the claude CLI, not in this repo. `claude mcp get linear`
@@ -265,13 +290,14 @@ bootstrap — take a brand-new Mac to a running sweep
     deps       bun install, when node_modules is missing or older than bun.lock
     skills     bun run sync-skills — every skills/<name>/ linked into ~/.claude/skills
     state      bun run accio sync, when .state/openapi.json is absent
-    env        .env from .env.example; warns when SLACK_TOKEN is empty
+    env        the shared credentials file ~/.config/liamai/env; prompts for SLACK_TOKEN
     check      is the Linear MCP server authenticated? prints the /mcp steps if not
 
 Secrets stay yours: this script never prints a token, and the Linear login is a
 browser flow inside a Claude session that it can only point you at.
 
   ARGUS_FE_REMOTE / ARGUS_BE_REMOTE   override the clone URLs the repos phase offers
+  LIAMAI_ENV                          the shared credentials file (default ~/.config/liamai/env)
 USAGE
 }
 

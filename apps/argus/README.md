@@ -187,7 +187,8 @@ ground truth, join, and surface only the judgement calls.
 | `scripts/accio.ts` | index / sync / audit over docs + journal |
 | `scripts/sync-skills.ts` | symlink every `skills/<name>/` into the global Claude skills folder, per skill; prunes only its own dangling links |
 | `scripts/bootstrap.sh` | brand-new Mac → running sweep, in phases; `--check` reports without touching anything ("Setting it up") |
-| `.env.example` | the one secret the loop needs, `SLACK_TOKEN`, and where it comes from; copy to `.env` |
+| `scripts/lib/shared-env.ts` | reader for `~/.config/liamai/env`, the credentials file shared with Foundry and Pensieve (`SLACK_TOKEN`, `LINEAR_API_KEY`, `FOUNDRY_API_TOKEN`); scripts read it themselves, nothing is exported shell-wide |
+| `.env.example` | argus needs no `.env`; the file only says where `SLACK_TOKEN` lives and that a local `.env` overrides it |
 | `skills/log-change/scripts/pr-facts.ts` | resolve a landing; `--since` finds unjournaled ones |
 
 ## Setting it up
@@ -198,9 +199,11 @@ Same shape as Foundry's: phases that run alone (`prereqs`, `repos`, `deps`, `ski
 every install, a no-op when a step is already done. It installs git / bun / `claude`,
 verifies (or offers to clone) the two alden checkouts at the paths `accio` expects and
 never switches their branches, runs `bun install`, links the skills globally, rebuilds
-`.state/` from the FE tree, and creates `.env` from `.env.example`. Two things it can
-only point you at: `SLACK_TOKEN` in `.env` (documented there) and the Linear MCP login,
-which is `/mcp` → linear → Authenticate inside a Claude session opened in this directory.
+`.state/` from the FE tree, and puts `SLACK_TOKEN` in the shared credentials file
+`~/.config/liamai/env` — the one file argus, Foundry and Pensieve all read, so each secret
+is typed once per Mac (`foundry auth` writes the same file). The one thing it can only
+point you at is the Linear MCP login, which is `/mcp` → linear → Authenticate inside a
+Claude session opened in this directory.
 
 ```sh
 ./scripts/bootstrap.sh            # everything, asking first
