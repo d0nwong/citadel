@@ -14,6 +14,8 @@ import { Route as BlueprintsRouteImport } from './routes/blueprints'
 import { Route as ForgesRouteImport } from './routes/forges'
 import { Route as ReposRouteImport } from './routes/repos'
 import { Route as ApiJobsRouteImport } from './routes/api/jobs'
+import { Route as ApiOpenapiDotjsonRouteImport } from './routes/api/openapi[.]json'
+import { Route as ApiReferenceRouteImport } from './routes/api/reference'
 import { Route as ApiJobsIdRouteImport } from './routes/api/jobs.$id'
 import { Route as ApiJobsIdEventsRouteImport } from './routes/api/jobs.$id.events'
 
@@ -42,6 +44,16 @@ const ApiJobsRoute = ApiJobsRouteImport.update({
   path: '/api/jobs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOpenapiDotjsonRoute = ApiOpenapiDotjsonRouteImport.update({
+  id: '/api/openapi.json',
+  path: '/api/openapi.json',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiReferenceRoute = ApiReferenceRouteImport.update({
+  id: '/api/reference',
+  path: '/api/reference',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiJobsIdRoute = ApiJobsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -59,6 +71,8 @@ export interface FileRoutesByFullPath {
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
   '/api/jobs': typeof ApiJobsRouteWithChildren
+  '/api/openapi.json': typeof ApiOpenapiDotjsonRoute
+  '/api/reference': typeof ApiReferenceRoute
   '/api/jobs/$id': typeof ApiJobsIdRouteWithChildren
   '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
@@ -68,6 +82,8 @@ export interface FileRoutesByTo {
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
   '/api/jobs': typeof ApiJobsRouteWithChildren
+  '/api/openapi.json': typeof ApiOpenapiDotjsonRoute
+  '/api/reference': typeof ApiReferenceRoute
   '/api/jobs/$id': typeof ApiJobsIdRouteWithChildren
   '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
@@ -78,6 +94,8 @@ export interface FileRoutesById {
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
   '/api/jobs': typeof ApiJobsRouteWithChildren
+  '/api/openapi.json': typeof ApiOpenapiDotjsonRoute
+  '/api/reference': typeof ApiReferenceRoute
   '/api/jobs/$id': typeof ApiJobsIdRouteWithChildren
   '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
@@ -89,6 +107,8 @@ export interface FileRouteTypes {
     | '/forges'
     | '/repos'
     | '/api/jobs'
+    | '/api/openapi.json'
+    | '/api/reference'
     | '/api/jobs/$id'
     | '/api/jobs/$id/events'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +118,8 @@ export interface FileRouteTypes {
     | '/forges'
     | '/repos'
     | '/api/jobs'
+    | '/api/openapi.json'
+    | '/api/reference'
     | '/api/jobs/$id'
     | '/api/jobs/$id/events'
   id:
@@ -107,6 +129,8 @@ export interface FileRouteTypes {
     | '/forges'
     | '/repos'
     | '/api/jobs'
+    | '/api/openapi.json'
+    | '/api/reference'
     | '/api/jobs/$id'
     | '/api/jobs/$id/events'
   fileRoutesById: FileRoutesById
@@ -117,6 +141,8 @@ export interface RootRouteChildren {
   ForgesRoute: typeof ForgesRoute
   ReposRoute: typeof ReposRoute
   ApiJobsRoute: typeof ApiJobsRouteWithChildren
+  ApiOpenapiDotjsonRoute: typeof ApiOpenapiDotjsonRoute
+  ApiReferenceRoute: typeof ApiReferenceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -154,6 +180,20 @@ declare module '@tanstack/react-router' {
       path: '/api/jobs'
       fullPath: '/api/jobs'
       preLoaderRoute: typeof ApiJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/openapi.json': {
+      id: '/api/openapi.json'
+      path: '/api/openapi.json'
+      fullPath: '/api/openapi.json'
+      preLoaderRoute: typeof ApiOpenapiDotjsonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/reference': {
+      id: '/api/reference'
+      path: '/api/reference'
+      fullPath: '/api/reference'
+      preLoaderRoute: typeof ApiReferenceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/jobs/$id': {
@@ -202,6 +242,8 @@ const rootRouteChildren: RootRouteChildren = {
   ForgesRoute: ForgesRoute,
   ReposRoute: ReposRoute,
   ApiJobsRoute: ApiJobsRouteWithChildren,
+  ApiOpenapiDotjsonRoute: ApiOpenapiDotjsonRoute,
+  ApiReferenceRoute: ApiReferenceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

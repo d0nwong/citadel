@@ -42,9 +42,11 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.0.2",
     "tailwindcss": "^4.1.18",
-    "tw-animate-css": "^1.3.6"
+    "tw-animate-css": "^1.3.6",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@seriousme/openapi-schema-validator": "^2.9.1",
     "@tailwindcss/typography": "^0.5.16",
     "@tanstack/devtools-vite": "latest",
     "@tanstack/router-cli": "^1.132.0",

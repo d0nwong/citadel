@@ -6,24 +6,35 @@
  * The runner ships lines raw and unparsed on purpose — this file is where the
  * mapping lives, in one typed, testable place, instead of in bash.
  */
+import { z } from 'zod'
 import { tokenMatches } from './auth'
 import { appendLogs } from './job-logs'
 import * as store from './job-store'
 import type { LogStream } from '../types'
 
-interface EventPayload {
-  /**
-   * 'commit' hands the pipeline back to the host. The object form labels a
-   * blueprint step's lines (LIA-25) — a plain job never sends it.
-   */
-  step?: 'agent' | 'commit' | { index: number; name: string }
-  /** Raw stream-json lines from `claude -p --output-format stream-json`. */
-  ndjson?: Array<string>
-  stderr?: Array<string>
-  sys?: Array<string>
-  outcome?: 'committed' | 'no-changes'
-  exitCode?: number
-}
+/**
+ * What image/forge-run.sh POSTs. A zod schema rather than an interface so the
+ * same object feeds the published OpenAPI document (openapi.ts) — the runner
+ * is the only caller, but the route is served on the public origin and is
+ * documented as internal there. Unknown keys are stripped, not rejected.
+ */
+export const EventPayloadSchema = z.object({
+  step: z
+    .union([
+      z.literal('agent'),
+      z.literal('commit'),
+      z.object({ index: z.number().int().positive(), name: z.string() }).describe('Labels a blueprint step\'s lines with its name.'),
+    ])
+    .optional()
+    .describe("'commit' hands the pipeline back to the host. The object form labels a blueprint step's lines — a plain job never sends it."),
+  ndjson: z.array(z.string()).optional().describe('Raw stream-json lines from `claude -p --output-format stream-json`.'),
+  stderr: z.array(z.string()).optional(),
+  sys: z.array(z.string()).optional().describe("The runner's own progress lines."),
+  outcome: z.enum(['committed', 'no-changes']).optional().describe('Sent with `step: "commit"`.'),
+  exitCode: z.number().int().nonnegative().optional().describe("The agent's exit code, sent with `step: \"commit\"`."),
+})
+
+export type EventPayload = z.output<typeof EventPayloadSchema>
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -35,12 +46,15 @@ export async function handleJobEvent(jobId: string, request: Request): Promise<R
     return json(401, { error: 'unauthorized' })
   }
 
-  let payload: EventPayload
+  let body: unknown
   try {
-    payload = (await request.json()) as EventPayload
+    body = await request.json()
   } catch {
     return json(400, { error: 'invalid json' })
   }
+  const parsed = EventPayloadSchema.safeParse(body)
+  if (!parsed.success) return json(400, { error: parsed.error.issues[0]?.message ?? 'invalid payload' })
+  const payload = parsed.data
 
   const lines: Array<{ stream: LogStream; text: string }> = []
   for (const s of payload.sys ?? []) lines.push({ stream: 'sys', text: s })
