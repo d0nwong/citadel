@@ -13,6 +13,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as BlueprintsRouteImport } from './routes/blueprints'
 import { Route as ForgesRouteImport } from './routes/forges'
 import { Route as ReposRouteImport } from './routes/repos'
+import { Route as ApiJobsRouteImport } from './routes/api/jobs'
+import { Route as ApiJobsIdRouteImport } from './routes/api/jobs.$id'
 import { Route as ApiJobsIdEventsRouteImport } from './routes/api/jobs.$id.events'
 
 const IndexRoute = IndexRouteImport.update({
@@ -35,10 +37,20 @@ const ReposRoute = ReposRouteImport.update({
   path: '/repos',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiJobsIdEventsRoute = ApiJobsIdEventsRouteImport.update({
-  id: '/api/jobs/$id/events',
-  path: '/api/jobs/$id/events',
+const ApiJobsRoute = ApiJobsRouteImport.update({
+  id: '/api/jobs',
+  path: '/api/jobs',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ApiJobsIdRoute = ApiJobsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiJobsRoute,
+} as any)
+const ApiJobsIdEventsRoute = ApiJobsIdEventsRouteImport.update({
+  id: '/events',
+  path: '/events',
+  getParentRoute: () => ApiJobsIdRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -46,6 +58,8 @@ export interface FileRoutesByFullPath {
   '/blueprints': typeof BlueprintsRoute
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
+  '/api/jobs': typeof ApiJobsRouteWithChildren
+  '/api/jobs/$id': typeof ApiJobsIdRouteWithChildren
   '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
 export interface FileRoutesByTo {
@@ -53,6 +67,8 @@ export interface FileRoutesByTo {
   '/blueprints': typeof BlueprintsRoute
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
+  '/api/jobs': typeof ApiJobsRouteWithChildren
+  '/api/jobs/$id': typeof ApiJobsIdRouteWithChildren
   '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
 export interface FileRoutesById {
@@ -61,19 +77,37 @@ export interface FileRoutesById {
   '/blueprints': typeof BlueprintsRoute
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
+  '/api/jobs': typeof ApiJobsRouteWithChildren
+  '/api/jobs/$id': typeof ApiJobsIdRouteWithChildren
   '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/blueprints' | '/forges' | '/repos' | '/api/jobs/$id/events'
+  fullPaths:
+    | '/'
+    | '/blueprints'
+    | '/forges'
+    | '/repos'
+    | '/api/jobs'
+    | '/api/jobs/$id'
+    | '/api/jobs/$id/events'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/blueprints' | '/forges' | '/repos' | '/api/jobs/$id/events'
+  to:
+    | '/'
+    | '/blueprints'
+    | '/forges'
+    | '/repos'
+    | '/api/jobs'
+    | '/api/jobs/$id'
+    | '/api/jobs/$id/events'
   id:
     | '__root__'
     | '/'
     | '/blueprints'
     | '/forges'
     | '/repos'
+    | '/api/jobs'
+    | '/api/jobs/$id'
     | '/api/jobs/$id/events'
   fileRoutesById: FileRoutesById
 }
@@ -82,7 +116,7 @@ export interface RootRouteChildren {
   BlueprintsRoute: typeof BlueprintsRoute
   ForgesRoute: typeof ForgesRoute
   ReposRoute: typeof ReposRoute
-  ApiJobsIdEventsRoute: typeof ApiJobsIdEventsRoute
+  ApiJobsRoute: typeof ApiJobsRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -115,22 +149,59 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReposRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/jobs': {
+      id: '/api/jobs'
+      path: '/api/jobs'
+      fullPath: '/api/jobs'
+      preLoaderRoute: typeof ApiJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/jobs/$id': {
+      id: '/api/jobs/$id'
+      path: '/$id'
+      fullPath: '/api/jobs/$id'
+      preLoaderRoute: typeof ApiJobsIdRouteImport
+      parentRoute: typeof ApiJobsRoute
+    }
     '/api/jobs/$id/events': {
       id: '/api/jobs/$id/events'
-      path: '/api/jobs/$id/events'
+      path: '/events'
       fullPath: '/api/jobs/$id/events'
       preLoaderRoute: typeof ApiJobsIdEventsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof ApiJobsIdRoute
     }
   }
 }
+
+interface ApiJobsIdRouteChildren {
+  ApiJobsIdEventsRoute: typeof ApiJobsIdEventsRoute
+}
+
+const ApiJobsIdRouteChildren: ApiJobsIdRouteChildren = {
+  ApiJobsIdEventsRoute: ApiJobsIdEventsRoute,
+}
+
+const ApiJobsIdRouteWithChildren = ApiJobsIdRoute._addFileChildren(
+  ApiJobsIdRouteChildren,
+)
+
+interface ApiJobsRouteChildren {
+  ApiJobsIdRoute: typeof ApiJobsIdRouteWithChildren
+}
+
+const ApiJobsRouteChildren: ApiJobsRouteChildren = {
+  ApiJobsIdRoute: ApiJobsIdRouteWithChildren,
+}
+
+const ApiJobsRouteWithChildren =
+  ApiJobsRoute._addFileChildren(ApiJobsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BlueprintsRoute: BlueprintsRoute,
   ForgesRoute: ForgesRoute,
   ReposRoute: ReposRoute,
-  ApiJobsIdEventsRoute: ApiJobsIdEventsRoute,
+  ApiJobsRoute: ApiJobsRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -50,6 +50,15 @@ function groupLogs(logs: Array<LogLine>, steps: Array<BlueprintStep> | undefined
   return groups
 }
 
+/** The receiver's host only — the full URL (which may carry a secret path) stays in the title attribute. */
+function callbackHost(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
@@ -152,6 +161,11 @@ export function JobDetailSheet({
                 {job.sourceJobId && (
                   <span className="font-mono text-[11px] text-txt-faint" title={job.sourceJobId}>
                     follow-up of {shortId(job.sourceJobId)}
+                  </span>
+                )}
+                {job.callbackUrl && (
+                  <span className="font-mono text-[11px] text-txt-faint" title={job.callbackUrl}>
+                    notifies {callbackHost(job.callbackUrl)}
                   </span>
                 )}
                 <span className="ml-auto font-mono text-[11px] text-txt-dim">{duration(elapsed)}</span>

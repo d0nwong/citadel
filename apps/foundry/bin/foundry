@@ -155,6 +155,22 @@ auth_api_key() {
   write_env ANTHROPIC_API_KEY "$key"; ok "stored ANTHROPIC_API_KEY in $ENVFILE"
 }
 
+# The trigger API's bearer token (web/README.md, "Trigger a job over HTTP").
+# Minted once, like FOUNDRY_MCP_TOKEN; --rotate replaces it.
+auth_api() {
+  load_env
+  if [ -n "${FOUNDRY_API_TOKEN:-}" ] && [ "${1:-}" != "--rotate" ]; then
+    ok "FOUNDRY_API_TOKEN already set in $ENVFILE"
+    say "${c_dim}foundry auth --api --rotate replaces it (every caller must then be updated)${c_0}"
+    return
+  fi
+  need openssl
+  local tok; tok=$(openssl rand -hex 24)
+  write_env FOUNDRY_API_TOKEN "$tok"
+  ok "stored FOUNDRY_API_TOKEN in $ENVFILE — the web server reads it on every request, no restart needed"
+  say "${c_dim}callers send it as  Authorization: Bearer $tok${c_0}"
+}
+
 auth_upstream() {
   local name="$1" var="" n v
   while IFS=$'\t' read -r n v; do [ "$n" = "$name" ] && var="$v"; done < <(mcp_upstreams)
@@ -228,6 +244,9 @@ auth_menu_rows() {
   elif [ -n "${ANTHROPIC_API_KEY:-}" ];        then st="${c_grn}✓${c_0} ANTHROPIC_API_KEY"
   else st="${c_red}✗${c_0} not configured"; fi
   MENU_ROWS+=("$(printf '%-8s %s' claude "$st")"); MENU_ACTIONS+=(claude)
+  if [ -n "${FOUNDRY_API_TOKEN:-}" ]; then st="${c_grn}✓${c_0} FOUNDRY_API_TOKEN"
+  else st="${c_red}✗${c_0} not configured"; fi
+  MENU_ROWS+=("$(printf '%-8s %s' api "$st")"); MENU_ACTIONS+=(api)
   while IFS=$'\t' read -r name var; do
     if [ -n "${!var:-}" ]; then st="${c_grn}✓${c_0} $var"
     else st="${c_red}✗${c_0} not configured"; fi
@@ -240,12 +259,13 @@ cmd_auth() {
   case "${1:-}" in
     --claude)  auth_claude; return ;;
     --api-key) auth_api_key; return ;;
+    --api)     auth_api "${2:-}"; return ;;
     --*)       auth_upstream "${1#--}"; return ;;
     "")        ;;
-    *) die "usage: foundry auth [--claude|--api-key|--linear|--slack]" ;;
+    *) die "usage: foundry auth [--claude|--api-key|--api [--rotate]|--linear|--slack]" ;;
   esac
   if ! { [ -t 0 ] && [ -t 2 ]; }; then
-    die "no TTY for the picker — use foundry auth --claude|--api-key|--linear|--slack"
+    die "no TTY for the picker — use foundry auth --claude|--api-key|--api|--linear|--slack"
   fi
   trap 'tput cnorm 2>/dev/null || true' EXIT
   local -a MENU_ROWS MENU_ACTIONS
@@ -264,6 +284,7 @@ cmd_auth() {
     say ""
     case "${MENU_ACTIONS[MENU_CHOICE]}" in
       claude)     auth_claude ;;
+      api)        auth_api --rotate ;;
       upstream:*) auth_upstream "${MENU_ACTIONS[MENU_CHOICE]#upstream:}" ;;
     esac
     say ""
@@ -568,6 +589,7 @@ foundry — Claude Code forges on OrbStack
     foundry auth                      interactive: credentials + status, pick one to (re)auth
     foundry auth --claude|--api-key   store a Claude credential for all forges
     foundry auth --linear|--slack     store that upstream's key behind the MCP gateway
+    foundry auth --api [--rotate]     mint the bearer token for POST /api/jobs (web/README.md)
     foundry build [--no-cache]        build the forge image
 
   forges

@@ -15,14 +15,15 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { repoNotes } from '@/features/repos/server/repo-scan'
 import { createPullRequest, fetchPrComments, originHost, prCliFor } from './forge-pr'
+import { readFoundryEnv } from './foundry-env'
 import { FOUNDRY_HOME, appendLogs } from './job-logs'
 import * as store from './job-store'
 import type { JobRow } from './job-store'
+import { notifyCallback } from './job-webhook'
 import { linkPrToTicket } from './linear-link'
 
 const exec = promisify(execFile)
 
-const ENV_FILE = path.join(FOUNDRY_HOME, 'env')
 const JOBS_DIR = path.join(FOUNDRY_HOME, 'jobs')
 const IMAGE = process.env.FOUNDRY_IMAGE ?? 'foundry/forge:latest'
 const CALLBACK_BASE = process.env.FOUNDRY_CALLBACK_BASE ?? 'http://host.docker.internal:3777'
@@ -41,6 +42,19 @@ const workspaceOf = (jobId: string) => path.join(JOBS_DIR, jobId, 'work')
 
 const sys = (id: string, text: string) => appendLogs(id, [{ stream: 'sys', text }])
 const err = (id: string, text: string) => appendLogs(id, [{ stream: 'err', text }])
+
+/**
+ * The one door out of the open set. Every terminal transition — a clean
+ * finish, a preflight failure, a push failure, the `docker wait` watcher, a
+ * restart's orphan sweep — goes through here, so the completion webhook is a
+ * consequence of settling wherever settling happens. Returns whether this
+ * call made the transition (the store's guard); the webhook fires only then.
+ */
+async function settle(id: string, outcome: Parameters<typeof store.settleJob>[1]): Promise<boolean> {
+  const settled = await store.settleJob(id, outcome)
+  if (settled) void notifyCallback(id)
+  return settled
+}
 
 async function git(dir: string, args: Array<string>): Promise<string> {
   const { stdout } = await exec('git', ['-C', dir, ...args], { timeout: 60_000 })
@@ -62,19 +76,8 @@ async function docker(args: Array<string>, timeout = 30_000): Promise<string> {
   return stdout.trim()
 }
 
-/** `KEY=value` lines of ~/.foundry/env — the credential `foundry auth` stores. */
-export async function readFoundryEnv(): Promise<Record<string, string>> {
-  const out: Record<string, string> = {}
-  try {
-    for (const line of (await readFile(ENV_FILE, 'utf8')).split('\n')) {
-      const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim())
-      if (m) out[m[1]] = m[2]
-    }
-  } catch {
-    /* no file — preflight reports it */
-  }
-  return out
-}
+/** Re-exported for the scanner, which reads LINEAR_API_KEY the same way launches do. */
+export { readFoundryEnv }
 
 /* ------------------------------------------------------------------ */
 /* Preflight                                                          */
@@ -336,7 +339,7 @@ function armWatcher(jobId: string): void {
       const settledByHost = row.step === 'push' || row.step === 'pr' || row.step === 'done'
       if (settledByHost || (row.status !== 'running' && row.status !== 'queued')) return
       const code = out.trim() || '?'
-      const wasSettled = await store.settleJob(jobId, { status: 'failed' })
+      const wasSettled = await settle(jobId, { status: 'failed' })
       if (wasSettled) await err(jobId, `container exited unexpectedly (exit ${code}) — job failed`)
       await removeContainer(jobId)
       void pumpQueue()
@@ -400,7 +403,7 @@ export async function startJob(id: string): Promise<void> {
     await sys(id, `forge lit — ${containerName(id)}`)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    await store.settleJob(id, { status: 'failed' })
+    await settle(id, { status: 'failed' })
     await err(id, msg)
     await removeContainer(id)
     void pumpQueue()
@@ -422,7 +425,7 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
 
   if (outcome === 'no-changes') {
     await sys(id, agentFailed ? `agent exited ${exitCode} with no changes` : 'agent made no changes — nothing to push')
-    await store.settleJob(id, { status: agentFailed ? 'failed' : 'succeeded', exitCode })
+    await settle(id, { status: agentFailed ? 'failed' : 'succeeded', exitCode })
     void pumpQueue()
     return
   }
@@ -461,7 +464,7 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
 
     // An agent that errored still gets its work pushed, but the job is failed:
     // the outcome should not read clean when the run wasn't.
-    await store.settleJob(id, {
+    await settle(id, {
       status: agentFailed ? 'failed' : 'succeeded',
       exitCode,
       diff,
@@ -470,7 +473,7 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
     await sys(id, 'job settled')
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    await store.settleJob(id, { status: 'failed', exitCode })
+    await settle(id, { status: 'failed', exitCode })
     await err(id, `push failed: ${msg} — the commit is intact in ${work}`)
   }
   void pumpQueue()
@@ -593,7 +596,7 @@ async function diffStats(work: string, baseBranch: string): Promise<{ files: num
  * watcher's `failed` wins the guarded transition instead of this cancel.
  */
 export async function cancelJob(id: string): Promise<void> {
-  await store.cancelJob(id)
+  if (await store.cancelJob(id)) void notifyCallback(id)
   await removeContainer(id)
   void pumpQueue()
 }
@@ -631,7 +634,7 @@ export function ensureReconciled(): Promise<void> {
         await sys(job.id, `resuming ${job.step} after a server restart`)
         void finishJob(job.id, 'committed', job.exitCode ?? 0)
       } else {
-        const settled = await store.settleJob(job.id, { status: 'failed' })
+        const settled = await settle(job.id, { status: 'failed' })
         if (settled) await err(job.id, `orphaned mid-${job.step ?? 'run'} by a server restart — job failed`)
         await removeContainer(job.id)
       }

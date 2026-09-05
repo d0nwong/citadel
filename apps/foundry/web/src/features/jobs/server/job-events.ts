@@ -6,7 +6,7 @@
  * The runner ships lines raw and unparsed on purpose — this file is where the
  * mapping lives, in one typed, testable place, instead of in bash.
  */
-import { timingSafeEqual } from 'node:crypto'
+import { tokenMatches } from './auth'
 import { appendLogs } from './job-logs'
 import * as store from './job-store'
 import type { LogStream } from '../types'
@@ -27,13 +27,6 @@ interface EventPayload {
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
-
-function tokenMatches(expected: string, header: string | null): boolean {
-  const got = header?.replace(/^Bearer\s+/i, '') ?? ''
-  const a = Buffer.from(expected)
-  const b = Buffer.from(got)
-  return a.length === b.length && timingSafeEqual(a, b)
-}
 
 export async function handleJobEvent(jobId: string, request: Request): Promise<Response> {
   const job = await store.getJobRow(jobId)
