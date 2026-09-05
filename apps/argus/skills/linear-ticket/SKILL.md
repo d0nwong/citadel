@@ -168,9 +168,11 @@ ticket touches.
 - **Never draft before reading the feature's product.md + arch.md.** Those Out-of-Scope and
   Known-Gaps sections exist so tickets stop relitigating settled boundaries; skipping them
   buys exactly the review comments the docs were written to prevent.
-- **Title**: imperative, ≤ 80 chars, names the surface and the change
-  ("Support multiple assignees in task and subtask assignee displays"). No ticket-speak
-  prefixes, no `[FE]` tags.
+- **Title**: imperative, ≤ 80 chars, names the surface and the change, prefixed with
+  `[FE]` or `[BE]` for the repo the change lands in
+  (`[FE] Support multiple assignees in task and subtask assignee displays`). Use both
+  tags (`[FE][BE]`) only when the change genuinely spans both repos, not merely because
+  the FE consumes a BE endpoint. No other ticket-speak prefixes.
 - **Summary** is what changes, per surface, in 2–4 present-tense sentences. **Background**
   is why it's needed and what's broken today. If a sentence could sit in either, it's
   Background.
