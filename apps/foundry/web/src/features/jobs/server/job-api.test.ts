@@ -76,7 +76,10 @@ test('bad payloads → 400 with a reason', async () => {
   const cases: Array<[unknown, RegExp]> = [
     ['not json', /invalid json/],
     [[], /JSON object/],
-    [valid({ instructions: '   ' }), /instructions/],
+    [valid({ instructions: '   ' }), /instructions is required/],
+    [{ instructions: 'x' }, /repo is required/],
+    [valid({ repo: 42 }), /repo must be a string/],
+    [valid({ ticketId: 'T'.repeat(65) }), /ticketId is too long/],
     [valid({ repo: 'no-such-repo' }), /not tracked/],
     [valid({ blueprintId: randomUUID() }), /blueprint .* does not exist/],
     [valid({ callbackUrl: 'ftp://x' }), /http or https/],

@@ -12,14 +12,15 @@
  */
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
+import { z } from 'zod'
+import { DEFAULT_BLUEPRINT_ID, STEP_EFFORTS, STEP_MODELS } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
 import { trackedRepos } from '@/features/repos/server/repo-scan'
 import { tilde } from '@/features/repos/types'
 import { defaultBranchOf } from '@/features/scanner/server/repo-map'
 import { apiToken, tokenMatches } from './auth'
 import * as store from './job-store'
-import type { Job, NewJobInput } from '../types'
+import type { Job, JobDetail, NewJobInput } from '../types'
 
 /** Injectable edges, so the tests need neither ~/.foundry/env nor docker. */
 export interface ApiDeps {
@@ -49,55 +50,153 @@ export async function authorize(request: Request, deps: ApiDeps): Promise<Respon
   return null
 }
 
-/** The request body, as documented in web/README.md ("Trigger a job over HTTP"). */
-export interface TriggerPayload {
-  /** A tracked repo: its path (`~` allowed) or its basename when that is unique. */
-  repo: string
-  /** The job's task, verbatim. First line = commit subject / PR title fallback. */
-  instructions: string
-  baseBranch?: string
-  /** A blueprint id, or `"none"` for one bare step. Default: the seeded "Plan → Execute". */
-  blueprintId?: string
-  /** Claims the ticket the way the scanner does — a second trigger for it is a 409. */
-  ticketId?: string
-  /** Where to POST the signed `job.settled` event. http(s) only. */
-  callbackUrl?: string
-}
+/* ------------------------------------------------------------------ */
+/* Schemas                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * The wire shapes live here as zod schemas because they do double duty: the
+ * handlers parse with them, and openapi.ts turns the same objects into the
+ * published document's component schemas. One source, so the spec can never
+ * promise a field the parser rejects (LIA-90). Descriptions are written for
+ * the reference page; error messages are written for the caller's terminal.
+ */
 
-const optionalString = (v: unknown, name: string): string | undefined => {
-  if (v === undefined || v === null) return undefined
-  if (typeof v !== 'string') throw new BadRequest(`${name} must be a string`)
-  const t = v.trim()
-  return t === '' ? undefined : t
-}
+/**
+ * A string field that is optional, where blank or null means "not given".
+ * `refine` narrows the string before it is trimmed away, so a length cap
+ * lands in the JSON Schema as `maxLength` rather than being lost.
+ */
+const optionalString = (name: string, refine: (s: z.ZodString) => z.ZodString = (s) => s) =>
+  refine(z.string({ error: `${name} must be a string` }).trim())
+    .transform((s) => (s === '' ? undefined : s))
+    .nullish()
+    .transform((s) => s ?? undefined)
 
+const requiredString = (name: string, hint: string) =>
+  z
+    .string({ error: (issue) => (issue.input === undefined ? hint : `${name} must be a string`) })
+    .trim()
+    .min(1, hint)
+
+/** The request body of `POST /api/jobs`. */
+export const TriggerPayloadSchema = z.object(
+  {
+    repo: requiredString('repo', 'repo is required — a tracked repo path or name').describe(
+      'A tracked repo (Repos page): its path (`~` allowed) or its basename when that is unique.',
+    ),
+    instructions: requiredString('instructions', 'instructions is required').describe(
+      "The job's task, verbatim. The first line is the fallback commit subject and PR title, and its first three words name the branch.",
+    ),
+    baseBranch: optionalString('baseBranch').describe(
+      "Default: the base of this repo's last job, else origin's default branch.",
+    ),
+    blueprintId: optionalString('blueprintId').describe(
+      'A blueprint id, or `"none"` for one bare step. Default: the seeded "Plan → Execute" (a bare job if that row is gone).',
+    ),
+    ticketId: optionalString('ticketId', (s) => s.max(64, 'ticketId is too long')).describe(
+      'Claims the ticket the way the scanner does — a second trigger for it is a `409` naming the holder.',
+    ),
+    callbackUrl: z
+      .url({
+        protocol: /^https?$/,
+        error: (issue) =>
+          typeof issue.input === 'string' && URL.canParse(issue.input)
+            ? 'callbackUrl must be http or https'
+            : 'callbackUrl must be an absolute URL',
+      })
+      .optional()
+      .describe('Where to POST the signed `job.settled` event. http(s) only.'),
+  },
+  { error: 'body must be a JSON object' },
+)
+
+export type TriggerPayload = z.output<typeof TriggerPayloadSchema>
+
+const RepoRefSchema = z
+  .discriminatedUnion('kind', [
+    z.object({ kind: z.literal('local'), name: z.string(), path: z.string() }),
+    z.object({ kind: z.literal('git'), name: z.string(), url: z.string(), ref: z.string() }),
+  ])
+  .describe('What the job points at: a local checkout (bind-mounted) or a remote git repo (cloned).')
+
+const BlueprintStepSchema = z.object({
+  name: z.string(),
+  model: z.enum(STEP_MODELS),
+  effort: z.enum(STEP_EFFORTS).optional(),
+  prompt: z.string().describe("May contain `{{task}}`, substituted with the job's task in the container."),
+})
+
+const BlueprintSnapshotSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    version: z.number().int().positive().optional().describe('Which revision ran. Absent on jobs queued before blueprints were versioned.'),
+    steps: z.array(BlueprintStepSchema),
+  })
+  .describe('What a job keeps of the blueprint it ran — immune to later edits or deletion of the blueprint row.')
+
+export const JobStatusSchema = z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled'])
+const JobStepSchema = z
+  .enum(['prepare', 'agent', 'commit', 'push', 'pr', 'done'])
+  .describe('Where the pipeline is. The container owns agent+commit; the host owns the rest.')
+
+const epochMs = (what: string) => z.number().int().nonnegative().describe(`${what}, epoch milliseconds.`)
+
+/** A job as the API returns it. Timestamps are epoch milliseconds everywhere. */
+export const JobSchema = z.object({
+  id: z.uuid(),
+  task: z.string(),
+  repo: RepoRefSchema,
+  baseBranch: z.string(),
+  branch: z.string().describe('The branch the job pushes: `foundry/<slug>-<short id>`.'),
+  forge: z.string(),
+  blueprint: BlueprintSnapshotSchema.optional().describe('The blueprint that ran, snapshotted — absent for a plain single-step job.'),
+  sourceJobId: z.string().optional().describe("Set when this job addresses review comments on the source job's PR."),
+  ticketId: z.string().optional().describe('Linear issue identifier (e.g. LIA-52) when a ticket was claimed for this job.'),
+  callbackUrl: z.string().optional().describe('Where the host POSTs the signed `job.settled` event — set by the trigger API only.'),
+  status: JobStatusSchema,
+  step: JobStepSchema.optional(),
+  createdAt: epochMs('When the row was inserted'),
+  startedAt: epochMs('When the container started').optional(),
+  finishedAt: epochMs('When the job settled').optional(),
+  diff: z.object({ files: z.number().int().nonnegative(), additions: z.number().int().nonnegative(), deletions: z.number().int().nonnegative() }).optional(),
+  exitCode: z.number().int().nonnegative().optional().describe("The agent's exit code, once the container has reported."),
+  prUrl: z.string().optional(),
+})
+
+export const LogLineSchema = z.object({
+  t: epochMs('When the line was logged'),
+  stream: z.enum(['sys', 'out', 'tool', 'err']),
+  text: z.string(),
+})
+
+/** `GET /api/jobs/{id}?logs=1` — the job plus its log lines. */
+export const JobDetailSchema = JobSchema.extend({ logs: z.array(LogLineSchema) })
+
+export const ErrorSchema = z.object({ error: z.string().describe('What went wrong, written for the caller.') })
+
+/** The `409` from a `ticketId` that already has a job. */
+export const ConflictSchema = ErrorSchema.extend({
+  job: z.object({ id: z.uuid(), status: JobStatusSchema }).optional().describe('The job holding the ticket, when it still exists.'),
+})
+
+/*
+ * The schemas must describe exactly the domain types the store returns. This
+ * is the strict identity check (optional and extra keys count), so a field
+ * added to either side without the other fails `tsc` rather than drifting
+ * the published spec.
+ */
+type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
+const _jobParity: Same<z.output<typeof JobSchema>, Job> = true
+const _detailParity: Same<z.output<typeof JobDetailSchema>, JobDetail> = true
+void _jobParity
+void _detailParity
+
+/** The parsed body, or a `BadRequest` carrying the schema's first message. */
 function parsePayload(body: unknown): TriggerPayload {
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequest('body must be a JSON object')
-  const b = body as Record<string, unknown>
-  const repo = optionalString(b.repo, 'repo')
-  if (!repo) throw new BadRequest('repo is required — a tracked repo path or name')
-  const instructions = optionalString(b.instructions, 'instructions')
-  if (!instructions) throw new BadRequest('instructions is required')
-  const ticketId = optionalString(b.ticketId, 'ticketId')
-  if (ticketId && ticketId.length > 64) throw new BadRequest('ticketId is too long')
-  const callbackUrl = optionalString(b.callbackUrl, 'callbackUrl')
-  if (callbackUrl) {
-    let u: URL
-    try {
-      u = new URL(callbackUrl)
-    } catch {
-      throw new BadRequest('callbackUrl must be an absolute URL')
-    }
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new BadRequest('callbackUrl must be http or https')
-  }
-  return {
-    repo,
-    instructions,
-    baseBranch: optionalString(b.baseBranch, 'baseBranch'),
-    blueprintId: optionalString(b.blueprintId, 'blueprintId'),
-    ticketId,
-    callbackUrl,
-  }
+  const parsed = TriggerPayloadSchema.safeParse(body)
+  if (!parsed.success) throw new BadRequest(parsed.error.issues[0]?.message ?? 'invalid payload')
+  return parsed.data
 }
 
 /**

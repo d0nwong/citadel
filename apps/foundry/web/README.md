@@ -189,14 +189,13 @@ curl -s -X POST http://localhost:3777/api/jobs \
   }'
 ```
 
-| field | | |
-|---|---|---|
-| `repo` | required | a tracked repo (Repos page): its path (`~` allowed) or its basename when unique |
-| `instructions` | required | the job's task, verbatim |
-| `baseBranch` | optional | default: the base of this repo's last job, else origin's default branch |
-| `blueprintId` | optional | default: the seeded "Plan → Execute" (a bare job if that row is gone); `"none"` for one bare step |
-| `ticketId` | optional | claims the ticket the way the scanner does; a second trigger for it is a `409` naming the holder |
-| `callbackUrl` | optional | `http(s)` URL to POST the `job.settled` event to |
+The full contract — every field, status and the callback below — is published as an
+OpenAPI 3.1 document at `GET /api/openapi.json` and rendered by Scalar at
+`GET /api/reference` (both unauthenticated: they reveal shape, not data). The component
+schemas are generated from the zod objects the handlers parse with
+(`features/jobs/server/job-api.ts`, `job-events.ts`), so the spec cannot promise a field
+the parser rejects; the path skeleton is hand-written in `server/openapi.ts`, and
+`openapi.test.ts` fails if a route file lands under `routes/api/` without a spec entry.
 
 `202` returns the `Job` as soon as its row exists — the runner's cap and queue pump take it
 from there. Errors are `{ error }` with `400` (payload), `401` (token), `409` (ticket) or
@@ -220,6 +219,8 @@ x-foundry-signature: sha256=<hex HMAC-SHA256 of the raw body, keyed with FOUNDRY
 
 { "event": "job.settled", "job": { …the same Job shape GET returns… } }
 ```
+
+The reference page shows it as a `callbacks` entry under `POST /api/jobs`.
 
 Signed, not authenticated: the token never leaves the host, and the receiver verifies with
 the secret it already holds to call us (GitHub-style, so any existing webhook receiver
