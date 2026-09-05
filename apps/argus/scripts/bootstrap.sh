@@ -66,12 +66,20 @@ tool() {
   fi
 }
 
-# The repo paths accio assumes live in scripts/lib/manifest.ts and nowhere else; read
-# them from there rather than keeping a second copy in shell.
-const_from_manifest() { sed -n "s/^export const $1 = \"\(.*\)\";/\1/p" "$ROOT/scripts/lib/manifest.ts"; }
-# The bitbucket slugs pr-facts resolves landings against are the default clone remotes.
-slug_from_pr_facts() { sed -n "s/^ *$1: {.*slug: \"\([^\"]*\)\".*/\1/p" "$ROOT/skills/log-change/scripts/pr-facts.ts"; }
-expand_tilde() { printf '%s\n' "${1/#\~/$HOME}"; }
+# The checkouts the skills read are named by the feature manifests (`fe_repo` /
+# `be_repo` in each */.doc-workspace/feature-manifest.json) — per-product data, not
+# setup. This prints one "app<TAB>role<TAB>path" line per named checkout, ~ expanded.
+manifest_repos() {
+  have bun || return 0
+  (cd "$ROOT" && bun -e '
+    const files = [...new Bun.Glob("**/.doc-workspace/feature-manifest.json").scanSync({ cwd: ".", dot: true })].filter((f) => !f.includes("node_modules")).sort();
+    for (const f of files) {
+      const m = await Bun.file(f).json();
+      for (const role of ["fe_repo", "be_repo"]) {
+        if (m[role]) console.log([m.app ?? f, role.slice(0, 2).toUpperCase(), m[role].replace(/^~/, process.env.HOME)].join("\t"));
+      }
+    }')
+}
 
 # ------------------------------------------------------------------ phases
 
@@ -95,37 +103,26 @@ cmd_prereqs() {
   tool gh     "office-hours and prototyping open PRs on github.com"              "brew install gh" opt
 }
 
-# accio, pr-facts and feature-docs read the FE and BE working trees at fixed paths.
-# This verifies they are git checkouts with an origin and offers to clone them when
-# missing; it never checks out or changes a branch — the FE tree is shared and its
-# branch is whatever the user left it on.
+# The sweep's landings scan, stale pass and feature-docs read the product checkouts
+# the manifests name. This only reports them: cloning a client's repo is yours (the
+# remote, the credentials and the branch are none of this script's business), exactly
+# as Foundry's bootstrap leaves "clone your repos under ~/git" to you. It never runs a
+# git write command in any of them — the FE tree is shared and its branch is whatever
+# you left it on.
 cmd_repos() {
-  info "alden checkouts"
-  local fe_path be_path
-  fe_path="$(expand_tilde "$(const_from_manifest DEFAULT_FE_REPO)")"
-  be_path="$(expand_tilde "$(const_from_manifest DEFAULT_BE_REPO)")"
-  [ -n "$fe_path" ] && [ -n "$be_path" ] || die "could not read DEFAULT_FE_REPO / DEFAULT_BE_REPO from scripts/lib/manifest.ts"
-  repo "$fe_path" "${ARGUS_FE_REMOTE:-https://bitbucket.org/$(slug_from_pr_facts fe).git}"
-  repo "$be_path" "${ARGUS_BE_REMOTE:-https://bitbucket.org/$(slug_from_pr_facts be).git}"
-}
-
-# $1 path  $2 remote to clone from when the path is missing
-repo() {
-  local path="$1" remote="$2" origin
-  if [ -d "$path/.git" ] || git -C "$path" rev-parse --git-dir >/dev/null 2>&1; then
-    origin="$(git -C "$path" remote get-url origin 2>/dev/null || true)"
-    if [ -n "$origin" ]; then ok "$path ${c_dim}(origin $origin, on $(git -C "$path" branch --show-current 2>/dev/null || echo '?'))${c_0}"
-    else warn "$path is a git checkout with no origin — git -C $path remote add origin <url>"; FAIL=1; fi
-    return 0
-  fi
-  if [ -e "$path" ]; then warn "$path exists but is not a git checkout"; FAIL=1; return 0; fi
-  if [ "$CHECK" = 1 ]; then warn "$path missing — git clone $remote $path"; FAIL=1; return 0; fi
-  warn "$path missing"
-  if confirm "clone $remote there?"; then
-    mkdir -p "$(dirname "$path")"
-    git clone "$remote" "$path" || { warn "clone failed — check the remote and your bitbucket credentials"; FAIL=1; return 0; }
-    ok "cloned $path ${c_dim}(on its default branch — nothing here ever switches it)${c_0}"
-  else FAIL=1; fi
+  info "product checkouts (named by the feature manifests)"
+  have bun || { warn "bun missing — run the prereqs phase first"; FAIL=1; return 0; }
+  local app role path origin n=0
+  while IFS=$'\t' read -r app role path; do
+    [ -n "$path" ] || continue; n=$((n + 1))
+    if git -C "$path" rev-parse --git-dir >/dev/null 2>&1; then
+      origin="$(git -C "$path" remote get-url origin 2>/dev/null || true)"
+      if [ -n "$origin" ]; then ok "$app $role: $path ${c_dim}(on $(git -C "$path" branch --show-current 2>/dev/null || echo '?'))${c_0}"
+      else warn "$app $role: $path has no origin — git -C $path remote add origin <url>"; FAIL=1; fi
+    elif [ -e "$path" ]; then warn "$app $role: $path exists but is not a git checkout"; FAIL=1
+    else warn "$app $role: $path missing — clone the $role repo there (left to you; pr-facts, accio and feature-docs read it)"; FAIL=1; fi
+  done < <(manifest_repos)
+  [ "$n" -gt 0 ] || ok "no manifest names a checkout"
 }
 
 # bun install only when it would change something: node_modules missing, or the
@@ -178,9 +175,9 @@ cmd_state() {
   info "derived state"
   if [ -f "$ROOT/.state/openapi.json" ]; then ok ".state/openapi.json present ${c_dim}(accio sync rebuilds it)${c_0}"; return 0; fi
   have bun || { warn "bun missing — run the prereqs phase first"; FAIL=1; return 0; }
-  local fe_path; fe_path="$(expand_tilde "$(const_from_manifest DEFAULT_FE_REPO)")"
-  if ! git -C "$fe_path" rev-parse --git-dir >/dev/null 2>&1; then
-    warn ".state/openapi.json missing and $fe_path is not a checkout — run the repos phase first"; FAIL=1; return 0
+  local fe_path; fe_path="$(manifest_repos | awk -F'\t' '$1 == "alden-portal" && $2 == "FE" { print $3 }')"
+  if [ -z "$fe_path" ] || ! git -C "$fe_path" rev-parse --git-dir >/dev/null 2>&1; then
+    warn ".state/openapi.json missing and the alden-portal FE checkout (${fe_path:-unnamed}) is not there — see the repos phase"; FAIL=1; return 0
   fi
   if [ "$CHECK" = 1 ]; then warn ".state/openapi.json missing — bun run accio sync"; FAIL=1; return 0; fi
   (cd "$ROOT" && bun run --silent accio sync) || { warn "accio sync failed"; FAIL=1; return 0; }
@@ -286,7 +283,7 @@ bootstrap — take a brand-new Mac to a running sweep
 
   phases, runnable on their own:
     prereqs    host tooling: git, bun, claude (gh optional)
-    repos      ~/git/alden-portal-fe and ~/git/alden-connect-portal-be exist with an origin
+    repos      the product checkouts the feature manifests name are present (report only)
     deps       bun install, when node_modules is missing or older than bun.lock
     skills     bun run sync-skills — every skills/<name>/ linked into ~/.claude/skills
     state      bun run accio sync, when .state/openapi.json is absent
@@ -294,9 +291,10 @@ bootstrap — take a brand-new Mac to a running sweep
     check      is the Linear MCP server authenticated? prints the /mcp steps if not
 
 Secrets stay yours: this script never prints a token, and the Linear login is a
-browser flow inside a Claude session that it can only point you at.
+browser flow inside a Claude session that it can only point you at. So are the product
+repos: nothing here knows a remote or clones one — the manifests say where a checkout
+should be, and you put it there.
 
-  ARGUS_FE_REMOTE / ARGUS_BE_REMOTE   override the clone URLs the repos phase offers
   LIAMAI_ENV                          the shared credentials file (default ~/.config/liamai/env)
 USAGE
 }

@@ -197,13 +197,13 @@ ground truth, join, and surface only the judgement calls.
 Same shape as Foundry's: phases that run alone (`prereqs`, `repos`, `deps`, `skills`,
 `state`, `env`, `check`), `--check` to report without changing anything, a prompt before
 every install, a no-op when a step is already done. It installs git / bun / `claude`,
-verifies (or offers to clone) the two alden checkouts at the paths `accio` expects and
-never switches their branches, runs `bun install`, links the skills globally, rebuilds
-`.state/` from the FE tree, and puts `SLACK_TOKEN` in the shared credentials file
-`~/.config/liamai/env` — the one file argus, Foundry and Pensieve all read, so each secret
-is typed once per Mac (`foundry auth` writes the same file). The one thing it can only
-point you at is the Linear MCP login, which is `/mcp` → linear → Authenticate inside a
-Claude session opened in this directory.
+reports whether the product checkouts the feature manifests name are where they should
+be (cloning them is yours — nothing here knows a remote), runs `bun install`, links the
+skills globally, rebuilds `.state/` from the FE tree, and puts `SLACK_TOKEN` in the shared
+credentials file `~/.config/liamai/env` — the one file argus, Foundry and Pensieve all
+read, so each secret is typed once per Mac (`foundry auth` writes the same file). The one
+thing it can only point you at is the Linear MCP login, which is `/mcp` → linear →
+Authenticate inside a Claude session opened in this directory.
 
 ```sh
 ./scripts/bootstrap.sh            # everything, asking first
