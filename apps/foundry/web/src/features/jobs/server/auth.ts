@@ -18,7 +18,8 @@ export function tokenMatches(expected: string, header: string | null): boolean {
 }
 
 /**
- * The trigger API's secret: `foundry auth --api` writes it to ~/.foundry/env,
+ * The trigger API's secret: `foundry auth --api` writes it to the shared
+ * ~/.config/liamai/env (Pensieve sends points with it),
  * read fresh per request like every other credential there so a rotation
  * needs no restart. `process.env` is the fallback for headless setups and
  * tests. Undefined means the API is not configured — and stays shut.

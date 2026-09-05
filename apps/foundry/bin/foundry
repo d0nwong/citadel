@@ -5,6 +5,12 @@ set -euo pipefail
 IMAGE="${FOUNDRY_IMAGE:-foundry/forge:latest}"
 STATE="${FOUNDRY_HOME:-$HOME/.foundry}"
 ENVFILE="$STATE/env"
+# The credentials more than one liamai tool uses (argus, Pensieve) live in one
+# shared file rather than in ~/.foundry/env; LIAMAI_ENV overrides its path.
+# Same contract in every repo: KEY=value lines, no quotes, mode 600 in a 700
+# directory, rewritten one key at a time.
+SHARED_ENV="${LIAMAI_ENV:-$HOME/.config/liamai/env}"
+SHARED_KEYS="SLACK_TOKEN LINEAR_API_KEY FOUNDRY_API_TOKEN"
 RUNS="$STATE/runs"
 LABEL="foundry.forge"
 # Resolve symlinks before deriving the repo root. $BASH_SOURCE is the path used
@@ -44,11 +50,16 @@ require_forge() { exists "$1" || die "no forge named '$1' (see: foundry ls)"; }
 ensure_up() { running "$1" || { info "starting $1"; docker start "$(cname "$1")" >/dev/null; }; }
 
 load_env() {
-  local servers
+  local servers f
   CRED_ARGS=()
-  [ -f "$ENVFILE" ] || return 0
-  # shellcheck disable=SC1090
-  set -a; . "$ENVFILE"; set +a
+  # ~/.foundry/env first, the shared file second, so a key in both resolves
+  # to the shared value (migrate_env clears the overlap on first run anyway).
+  for f in "$ENVFILE" "$SHARED_ENV"; do
+    if [ -f "$f" ]; then
+      # shellcheck disable=SC1090
+      set -a; . "$f"; set +a
+    fi
+  done
   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && CRED_ARGS+=(-e "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
   [ -n "${ANTHROPIC_API_KEY:-}"        ] && CRED_ARGS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
   # The MCP gateway (infra/, `foundry auth --linear` / `--slack`): forges get
@@ -58,7 +69,7 @@ load_env() {
     CRED_ARGS+=(-e "FOUNDRY_MCP_TOKEN=$FOUNDRY_MCP_TOKEN" -e "FOUNDRY_MCP_URL=http://host.docker.internal:$(mcp_port)")
     servers=""
     [ -n "${LINEAR_API_KEY:-}" ] && servers="linear"
-    [ -n "${SLACK_MCP_TOKEN:-}" ] && servers="${servers:+$servers,}slack"
+    [ -n "${SLACK_TOKEN:-}" ] && servers="${servers:+$servers,}slack"
     [ -n "$servers" ] && CRED_ARGS+=(-e "FOUNDRY_MCP_SERVERS=$servers")
   fi
   return 0
@@ -90,17 +101,26 @@ cmd_doctor() {
   if docker image inspect "$IMAGE" >/dev/null 2>&1; then
     ok "image $IMAGE ($(docker image inspect -f '{{.Size}}' "$IMAGE" | awk '{printf "%.1f GB", $1/1e9}'))"
   else warn "image $IMAGE not built yet — run: foundry build"; fi
-  if [ -f "$ENVFILE" ]; then
-    load_env
-    if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then ok "auth: CLAUDE_CODE_OAUTH_TOKEN in $ENVFILE"
-    elif [ -n "${ANTHROPIC_API_KEY:-}" ];   then ok "auth: ANTHROPIC_API_KEY in $ENVFILE"
-    else warn "$ENVFILE has no credential — run: foundry auth"; fi
+  load_env
+  if   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then ok "auth: CLAUDE_CODE_OAUTH_TOKEN in $ENVFILE"
+  elif [ -n "${ANTHROPIC_API_KEY:-}" ];        then ok "auth: ANTHROPIC_API_KEY in $ENVFILE"
+  elif [ -f "$ENVFILE" ]; then warn "$ENVFILE has no credential — run: foundry auth"
   else warn "no $ENVFILE — run: foundry auth"; fi
+  # The shared file: names only, never a value.
+  if [ -f "$SHARED_ENV" ]; then
+    local have="" miss="" k
+    for k in $SHARED_KEYS; do
+      if [ -n "${!k:-}" ]; then have="${have:+$have, }$k"; else miss="${miss:+$miss, }$k"; fi
+    done
+    if [ -n "$have" ]; then ok "shared: $have in $SHARED_ENV"
+    else warn "$SHARED_ENV has no key yet — run: foundry auth --slack / --linear / --api"; fi
+    [ -z "$miss" ] || say "  ${c_dim}not set: $miss${c_0}"
+  else warn "no $SHARED_ENV — run: foundry auth --slack / --linear / --api"; fi
   command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1 \
     && ok "gh authed (available to forges created with --github)" || warn "gh not authed on host"
   local upstreams=""
   [ -n "${LINEAR_API_KEY:-}" ] && upstreams="linear"
-  [ -n "${SLACK_MCP_TOKEN:-}" ] && upstreams="${upstreams:+$upstreams, }slack"
+  [ -n "${SLACK_TOKEN:-}" ] && upstreams="${upstreams:+$upstreams, }slack"
   if [ -n "$upstreams" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
     if curl -fsS -m 3 "http://localhost:$(mcp_port)/_readyz" >/dev/null 2>&1; then
       ok "mcp gateway ready on :$(mcp_port) ($upstreams)"
@@ -156,18 +176,19 @@ auth_api_key() {
 }
 
 # The trigger API's bearer token (web/README.md, "Trigger a job over HTTP").
-# Minted once, like FOUNDRY_MCP_TOKEN; --rotate replaces it.
+# Minted once, like FOUNDRY_MCP_TOKEN; --rotate replaces it. Pensieve sends
+# points with it, so it is a shared key and lands in the shared file.
 auth_api() {
   load_env
   if [ -n "${FOUNDRY_API_TOKEN:-}" ] && [ "${1:-}" != "--rotate" ]; then
-    ok "FOUNDRY_API_TOKEN already set in $ENVFILE"
+    ok "FOUNDRY_API_TOKEN already set in $(env_file_for FOUNDRY_API_TOKEN)"
     say "${c_dim}foundry auth --api --rotate replaces it (every caller must then be updated)${c_0}"
     return
   fi
   need openssl
   local tok; tok=$(openssl rand -hex 24)
   write_env FOUNDRY_API_TOKEN "$tok"
-  ok "stored FOUNDRY_API_TOKEN in $ENVFILE — the web server reads it on every request, no restart needed"
+  ok "stored FOUNDRY_API_TOKEN in $(env_file_for FOUNDRY_API_TOKEN) — the web server reads it on every request, no restart needed"
   say "${c_dim}callers send it as  Authorization: Bearer $tok${c_0}"
 }
 
@@ -184,12 +205,12 @@ auth_upstream() {
       say "https://docs.slack.dev/ai/slack-mcp-server/ — it stays on the host, behind the MCP gateway${c_0}"
       ;;
     *)
-      say "${c_dim}the key lands in $ENVFILE and stays on the host, behind the MCP gateway${c_0}"
+      say "${c_dim}the key lands in $(env_file_for "$var") and stays on the host, behind the MCP gateway${c_0}"
       ;;
   esac
   local key; read -rsp "$var: " key; echo >&2
   [ -n "$key" ] || die "empty key"
-  write_env "$var" "$key"; ok "stored $var in $ENVFILE"
+  write_env "$var" "$key"; ok "stored $var in $(env_file_for "$var")"
   load_env
   if [ -z "${FOUNDRY_MCP_TOKEN:-}" ]; then
     need openssl
@@ -236,19 +257,20 @@ menu_pick() {
 }
 
 # Rebuild MENU_ROWS/MENU_ACTIONS from the current env: the Claude credential
-# first, then every gateway upstream with whether its key is stored.
+# first, then every gateway upstream with whether its key is stored — and in
+# which of the two files, since that is no longer the same answer for all.
 auth_menu_rows() {
   MENU_ROWS=(); MENU_ACTIONS=()
   local st name var
-  if   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then st="${c_grn}✓${c_0} CLAUDE_CODE_OAUTH_TOKEN"
-  elif [ -n "${ANTHROPIC_API_KEY:-}" ];        then st="${c_grn}✓${c_0} ANTHROPIC_API_KEY"
+  if   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then st="${c_grn}✓${c_0} CLAUDE_CODE_OAUTH_TOKEN ${c_dim}$(env_where CLAUDE_CODE_OAUTH_TOKEN)${c_0}"
+  elif [ -n "${ANTHROPIC_API_KEY:-}" ];        then st="${c_grn}✓${c_0} ANTHROPIC_API_KEY ${c_dim}$(env_where ANTHROPIC_API_KEY)${c_0}"
   else st="${c_red}✗${c_0} not configured"; fi
   MENU_ROWS+=("$(printf '%-8s %s' claude "$st")"); MENU_ACTIONS+=(claude)
-  if [ -n "${FOUNDRY_API_TOKEN:-}" ]; then st="${c_grn}✓${c_0} FOUNDRY_API_TOKEN"
+  if [ -n "${FOUNDRY_API_TOKEN:-}" ]; then st="${c_grn}✓${c_0} FOUNDRY_API_TOKEN ${c_dim}$(env_where FOUNDRY_API_TOKEN)${c_0}"
   else st="${c_red}✗${c_0} not configured"; fi
   MENU_ROWS+=("$(printf '%-8s %s' api "$st")"); MENU_ACTIONS+=(api)
   while IFS=$'\t' read -r name var; do
-    if [ -n "${!var:-}" ]; then st="${c_grn}✓${c_0} $var"
+    if [ -n "${!var:-}" ]; then st="${c_grn}✓${c_0} $var ${c_dim}$(env_where "$var")${c_0}"
     else st="${c_red}✗${c_0} not configured"; fi
     MENU_ROWS+=("$(printf '%-8s %s' "$name" "$st")"); MENU_ACTIONS+=("upstream:$name")
   done < <(mcp_upstreams)
@@ -291,11 +313,57 @@ cmd_auth() {
   done
 }
 
+# Which file a key belongs in: the shared file for the keys other liamai
+# tools read too, ~/.foundry/env for foundry's own.
+env_file_for() {
+  case " $SHARED_KEYS " in
+    *" $1 "*) printf '%s' "$SHARED_ENV" ;;
+    *)        printf '%s' "$ENVFILE" ;;
+  esac
+}
+
+# The same, with $HOME shortened — for the auth menu's status column.
+env_where() { local f; f=$(env_file_for "$1"); printf '%s' "${f/#$HOME/~}"; }
+
+# Rewrite one key in one file and leave every other line alone. The file is
+# chosen by the key, so a caller cannot put a shared key in the wrong place;
+# the shared file's directory is created 700 on first use.
 write_env() {
-  local k="$1" v="$2" tmp; tmp=$(mktemp)
-  [ -f "$ENVFILE" ] && grep -v "^$k=" "$ENVFILE" > "$tmp" || true
+  local k="$1" v="$2" f tmp; f=$(env_file_for "$k"); tmp=$(mktemp)
+  [ -f "$f" ] && grep -v "^$k=" "$f" > "$tmp" || true
   printf '%s=%s\n' "$k" "$v" >> "$tmp"
-  mv "$tmp" "$ENVFILE"; chmod 600 "$ENVFILE"
+  mkdir -p "$(dirname "$f")"
+  if [ "$f" = "$SHARED_ENV" ]; then chmod 700 "$(dirname "$f")"; fi
+  mv "$tmp" "$f"; chmod 600 "$f"
+}
+
+# Drop one key from one file; the other lines stay as they were.
+remove_env() {
+  local k="$1" f="$2" tmp; tmp=$(mktemp)
+  grep -v "^$k=" "$f" > "$tmp" || true
+  mv "$tmp" "$f"; chmod 600 "$f"
+}
+
+# One-time hand-over after upgrading: any shared key still sitting in
+# ~/.foundry/env moves to the shared file and leaves the old one. A value the
+# shared file already holds wins — it is what argus and Pensieve are using —
+# so then only the old line is dropped. Runs before every command and is a
+# no-op grep once the old file is clean. This is the one place the Slack
+# key's former name may appear: it is what gets renamed.
+migrate_env() {
+  [ -f "$ENVFILE" ] || return 0
+  local old new v moved=""
+  for old in SLACK_MCP_TOKEN $SHARED_KEYS; do
+    v=$(grep "^$old=" "$ENVFILE" | tail -1 | cut -d= -f2- || true)
+    [ -n "$v" ] || continue
+    new=$old
+    if [ "$old" = SLACK_MCP_TOKEN ]; then new=SLACK_TOKEN; fi
+    grep -q "^$new=." "$SHARED_ENV" 2>/dev/null || write_env "$new" "$v"
+    remove_env "$old" "$ENVFILE"
+    moved="${moved:+$moved, }$old"
+  done
+  [ -z "$moved" ] || ok "moved $moved from $ENVFILE to $SHARED_ENV ${c_dim}(one-time; that file is shared with argus and Pensieve)${c_0}"
+  return 0
 }
 
 cmd_build() {
@@ -593,6 +661,10 @@ foundry — Claude Code forges on OrbStack
     foundry auth --claude|--api-key   store a Claude credential for all forges
     foundry auth --linear|--slack     store that upstream's key behind the MCP gateway
     foundry auth --api [--rotate]     mint the bearer token for POST /api/jobs (web/README.md)
+                                      SLACK_TOKEN, LINEAR_API_KEY, FOUNDRY_API_TOKEN land in
+                                      ~/.config/liamai/env (LIAMAI_ENV) — shared with argus and
+                                      Pensieve; the Claude credential and FOUNDRY_MCP_TOKEN stay
+                                      in ~/.foundry/env
     foundry build [--no-cache]        build the forge image
 
   forges
@@ -620,6 +692,7 @@ foundry — Claude Code forges on OrbStack
 USAGE
 }
 
+migrate_env
 case "${1:-}" in
   version|--version|-v) shift; cmd_version "$@" ;;
   setup)    shift; cmd_setup "$@" ;;

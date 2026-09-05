@@ -28,8 +28,9 @@ services:
 
   # MCP gateway. Holds the real third-party credentials (Linear, Slack) so
   # forges only ever see a gateway token. Profile `mcp` is switched on by
-  # infra.sh when ~/.foundry/env carries at least one upstream key
-  # (`foundry auth --linear` / `--slack`); the config is committed and
+  # infra.sh when the shared ~/.config/liamai/env carries at least one
+  # upstream key (`foundry auth --linear` / `--slack`) and ~/.foundry/env the
+  # gateway token; the config is committed and
   # secret-free — mcp-proxy expands ${VARS} from this env. An upstream whose
   # key is absent simply fails to mount and the rest keep serving.
   mcp:
@@ -39,7 +40,7 @@ services:
     restart: unless-stopped
     environment:
       LINEAR_API_KEY: ${LINEAR_API_KEY:-}
-      SLACK_MCP_TOKEN: ${SLACK_MCP_TOKEN:-}
+      SLACK_TOKEN: ${SLACK_TOKEN:-}
       FOUNDRY_MCP_TOKEN: ${FOUNDRY_MCP_TOKEN:-}
     volumes:
       - ./mcp/config.json:/config/config.json:ro

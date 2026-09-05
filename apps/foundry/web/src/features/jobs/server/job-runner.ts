@@ -100,7 +100,7 @@ async function preflight(
   if (cred.FOUNDRY_MCP_TOKEN) {
     credEnv.FOUNDRY_MCP_TOKEN = cred.FOUNDRY_MCP_TOKEN
     credEnv.FOUNDRY_MCP_URL = MCP_URL
-    const servers = [cred.LINEAR_API_KEY && 'linear', cred.SLACK_MCP_TOKEN && 'slack'].filter(Boolean)
+    const servers = [cred.LINEAR_API_KEY && 'linear', cred.SLACK_TOKEN && 'slack'].filter(Boolean)
     if (servers.length > 0) credEnv.FOUNDRY_MCP_SERVERS = servers.join(',')
   }
 
