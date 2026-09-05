@@ -148,8 +148,8 @@ ticket touches.
   the BE change is on `origin/dev`, it is a Pending bullet like any other. Once it is
   there *and deployed to the server the spec is exported from* (`dev-alden-portal`, per
   `orval.config.ts`), the regen stops being something to wait on and becomes the ticket's
-  **first Scope bullet** (`Generated client — regenerate against dev@<sha>`), with the
-  export / Orval / commit mechanics as the first Technical Note. Landed-but-not-deployed
+  **first Scope bullet** (`Generated client — regenerate against dev@<sha>`), with a
+  Technical Note that says "regen per FORMAT.md" and names the hook. Landed-but-not-deployed
   stays Pending — an export from a stale server looks done and isn't. Worked shape in
   FORMAT.md.
 - **The ticket is the current task, not its history.** Background says what the code does
@@ -212,6 +212,10 @@ ticket touches.
   just annoy the next reader; it disqualifies the ticket from pickup (the sweep only
   nominates tickets that clear this bar: Pending absent, no blocked-by relation, every AC
   concrete).
+- **Technical Notes are what the code won't tell you.** At most eight bullets; a fact the
+  implementer would find by opening a Scope file is not a note, and a fact the feature's
+  arch or product doc already states is an MM / BR citation, not a paragraph. Whole body
+  under about 800 words. Budget and examples in FORMAT.md, "Length budget".
 - Line numbers age fast: cite them only for a range you actually read, and prefer
   `function()` / component names as the durable anchor next to them.
 - Don't invent design decisions. If the design doesn't cover a case, the ticket says so.

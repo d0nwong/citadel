@@ -86,6 +86,21 @@ Verified at FE <branch>@<sha>, BE dev@<sha>.
   sweep never ticks a box from its own reading of the code; "appears satisfied" is a report
   line, not a tick.
 
+## Length budget
+
+- **Technical Notes are what the code won't tell you.** At most eight bullets, each a
+  fact the implementer could not learn by opening the files Scope names: a payload that
+  arrives wrapped, a mapper that returns null, a field that exists twice under two
+  meanings, a status code that lies. What the files themselves show — a function's current
+  body, a type's current shape — is not a note.
+- **Cite, don't restate.** Anything the feature's `arch.md` or `product.md` already says
+  is a reference by its MM / BR number, never a paragraph. The docs are where the long
+  version lives; the ticket carries the pointer and the AC it matters to.
+- **Recurring mechanics live here, once.** The regen steps in the section below are the
+  copy; a Technical Note says "regen per FORMAT.md against `dev@<sha>`" and names the hook.
+- **Target under 800 words** for the whole body. The worked example below is about
+  910 including its sub-issue position line and twelve ACs; most tickets land lower.
+
 ## Parent tickets with sub-issues
 
 A parent gets sub-issues only when the work is several deliverables that land separately.
@@ -134,10 +149,11 @@ fact lives in a different section in each:
   ```
 
   Nobody else owns the regen, so it is not "waiting" — it is step one of the ticket. The
-  mechanics are the first Technical Note, not a Scope line: confirm the change is live on
+  mechanics live here and nowhere else: confirm the change is live on
   `https://dev-alden-portal.uc.r.appspot.com/api-docs/swagger-ui-init.js`, export the
-  `swaggerDoc` object to `./openapi.json`, run Orval, commit `src/http/generated/`; the
-  generated hook or type the FE consumes is named there beside the AC it serves.
+  `swaggerDoc` object to `./openapi.json`, run Orval, commit `src/http/generated/`. A
+  Technical Note says "regen per FORMAT.md against `dev@<sha>`" and names the generated
+  hook or type the FE consumes beside the AC it serves.
   Landed-but-not-deployed stays Pending: an export from a stale server looks done and
   isn't. Delete the Pending bullet when you move it; the journal owns the history.
 
@@ -148,30 +164,24 @@ Title: `Swap the Usage page's dummy transport for the usage endpoint` (LIA-78)
 ```markdown
 Step 8 of 8 of LIA-71 — blocked by LIA-73 (the `getUsage` seam it replaces) and LIA-81
 (the `entityIds` and month-paging parameters `getUsage` has to honour). The BE endpoint it
-reads is live and deployed, so nothing gates it; worked last, after steps 3–7, so the DTO
-reconciliation covers every consumer; blocks nothing.
+reads is live and deployed, so nothing gates it; worked last, after steps 3–7; blocks
+nothing.
 
 ## Summary
 
 Points the Usage page at the per-entity current-cycle endpoint and the entity roster. The
-mock was already entering at the transport layer, so the change is the body of `getUsage`
-and `getUsageClients`, the reconciliation of the hand-written DTOs against the generated
-types, the credit maths in the mapper, and the deletion of the mock — the table, drawer and
-grouping components stay where they are.
+mock already enters at the transport layer, so the change is the two transports, the DTO
+reconciliation, the mapper's credit maths and the deletion of the mock; the table, drawer
+and grouping components stay.
 
 ## Background
 
-The Usage page renders a hand-written fixture (`get-usage-mock.ts`) shaped around capacity
-and modelling hours, and its client roster is built from the same fixture so the two sides
-agree on ids. The backend now serves one entity's open-cycle tasks, subtasks and credit
-rollup on `GET /api/v1/invoices/entity/{entityId}/current-cycle` (invoicing router) and
-the entity roster on `GET /api/v1/entity`. Credits are the page's only unit: the fixture's
-capacity allowances, modelling hours and the `Σ quantity × multiplier` fallback have no
-server counterpart and go.
-
-The Active tab is the cycle in progress, not a rendered invoice, so it includes tasks still
-open — the figures here legitimately differ from what the cycle bills (invoicing BR-26h),
-and the column has to say which figure it shows.
+The Usage page renders a hand-written fixture (`get-usage-mock.ts`) and builds its client
+roster from the same fixture so the two sides agree on ids. The backend now serves one
+entity's open-cycle tasks, subtasks and credit rollup on
+`GET /api/v1/invoices/entity/{entityId}/current-cycle` and the roster on
+`GET /api/v1/entity`; credits are the page's only unit, so the fixture's capacity
+allowances, modelling hours and `Σ quantity × multiplier` fallback go.
 
 ## Scope / Out of Scope
 
@@ -208,8 +218,9 @@ Out of scope:
       subtask's is its own; no quantity × multiplier fallback anywhere
 - [ ] AC6 — Each bar segment is one configured asset type sized `quantity × creditWeight ×
       multiplier`, with multiplier 1 when the task has no active size multiplier
-- [ ] AC7 — The Credit column header carries a one-line note naming the figure it shows and
-      that it is usage counted here, not what the cycle bills
+- [ ] AC7 — The Credit column header carries a one-line note saying the figure is usage
+      counted here, not what the cycle bills (the generator skips a project whose parent
+      tasks are all still open — invoicing BR-26h)
 - [ ] AC8 — The rollover band and its legend draw `credits.availableRollover`, so an expired
       rollover shows no band (product BR-103, BR-107)
 - [ ] AC9 — Subtask rows read `{assetType.name} Subtask`, or `Subtask` when the type is null
@@ -222,90 +233,37 @@ Out of scope:
 
 ## Pending
 
-- **BE — `billableQuantity`, or per-asset-type credits, on the wire** — the server prices a
-  task as `creditWeight × (billableQuantity ?? quantity) × sizeMultiplier` but publishes
-  `assetTypes[].quantity` alone, so AC6's segments and AC10's slices can disagree with
-  `tasks[].credits` on a task with an edited billable quantity. Owner: BE. Meanwhile: build
-  on `quantity`; AC2 and AC5 stay on the server's `credits`, and AC7's note covers the
-  difference.
-- **Product — which task statuses the Active tab lists** — AC4 states the endpoint's set
-  (non-archived, status neither `not_started` nor `completed`, plus completed-in-cycle); the
-  page today shows every status. Owner: product. Meanwhile: implement AC4 as written;
-  widening it is one filter in the mapper.
+- **BE — `billableQuantity` on the wire** — the server prices off
+  `billableQuantity ?? quantity` but publishes `quantity` alone, so AC6 and AC10 can
+  disagree with `tasks[].credits` on an edited task. Owner: BE. Meanwhile: build on
+  `quantity`; AC7's note covers the gap.
+- **Product — which task statuses the Active tab lists** — AC4 states the endpoint's set;
+  the page today shows every status. Owner: product. Meanwhile: implement AC4; widening it
+  is one mapper filter.
 
 ## Technical Notes
 
-- Regen: confirm `EntityCurrentBillingCycleResponse` is on
-  `https://dev-alden-portal.uc.r.appspot.com/api-docs/swagger-ui-init.js`, export
-  `swaggerDoc` to `./openapi.json`, run Orval, commit `src/http/generated/`.
-  `orval.config.ts` exports from `dev-alden-portal`, so a landed-but-undeployed change
-  produces a stale client that looks correct. The roster hook `useGetEntities`
-  (`src/hooks/entity/use-get-entities.ts`) already exists; the current-cycle hook will be
-  new — AC1, AC3.
-- `src/http/usage/get-usage.ts` returns `getUsageMock(params)` unconditionally;
-  `get-usage-clients.ts` folds `MOCK_USAGE_ENTITIES` into `UsageClientDto[]` and says in its
-  own comment that it avoids `GET /api/v1/entity` only because the usage side was still the
-  fixture. Both move together — AC1, AC3.
-- `use-usage.ts` unwraps `{success, data}` with a plain `usageQuery.data?.data`; nothing
-  under the usage tree imports `unwrapOrvalHookPayload`. Right for the mock, wrong for a
-  generated Orval hook whose payload arrives double-wrapped — the unwrap is work here if the
-  transport goes over the hook. With N requests per client, `useQueries` (or one `queryFn`
-  that fans out) replaces the single `useQuery` — AC1, AC2.
-- `map-usage-response.ts`: `mapUsageActiveRow` returns `null` on an empty `clientName`, so
-  identity is joined from the roster before mapping — AC3. `mapUsageTaskRow` derives
-  `capacityCount` as `Σ quantity × multiplier` when null; replace with
-  `credits + Σ subTasks[].credits` — AC5. `collectAssetTypeColumns` de-dupes on
-  `assetTypeId`, which is the key `entity.assetEntities[].id` carries (the asset type's id,
-  not the join row's; `asset_entity` is not unique on `(assetTypeId, entityId)`, so two
-  configured rows can collapse into one column) — AC6.
-- `usage-capacity-bar.tsx` `buildCapacitySegments` values a segment as
-  `count × task.multiplier`; the server's rule is
-  `creditWeight × (billableQuantity ?? quantity) × sizeMultiplier`
-  (`be:src/controllers/v1/taskController.ts`). `entity.assetEntities[].creditWeight` and
-  `tasks[].multiplierTask.multiplier` are on the wire, `billableQuantity` is not
-  (Pending) — AC6.
-- `use-usage-active-tasks.ts` `buildStackedMeter` reads `row.rolloverCredits` (banked) for
-  the band; the payload publishes both `entity.invoiceField.rolloverCredits` and
-  `credits.availableRollover`, the latter zeroed by `isRolloverCreditsWindowOpen` once four
-  calendar months (UTC, inclusive) pass after `rolloverCreditsStartDate`
-  (`be:src/services/invoiceService.ts` `computeRolloverAndOverage`) — AC8.
-- The same hook's `assetTypeCapacities` reduce sums `count × multiplier` into `capacityUsed`
-  over `capacityTotal` from `assetTypeCapacities[]`; the donut becomes the per-type segment
-  sums with no total. `usage-asset-type-radial.tsx` reads
-  `UsageAssetTypeCapacityRow.percentUsed` / `isOverCapacity`; both go.
-  `usage-capacity-drawer.tsx`'s heading and `UsageCapacityDrawerTrigger`'s `sr-only` text
-  still say Capacity — AC10.
-- `usage-capacity-drawer.tsx` carries the Modelling hours `UsageProjectStackedMeter` as
-  commented JSX; `UsageModellingHoursDto`, `modellingHoursUsed` / `modellingHoursAvailable`,
-  `mapModellingHours` and the hook's `modellingHours` meter exist only for it — AC12.
-- Nested subtasks: `currentBillingCycleTaskSelect`'s `subTasks.studio` select in
-  `getEntityCurrentBillingCycle` reaches only `studio.department.assetType.{id, name}`,
-  surfaced as `subTasks[].assetType`; no `Studios.name` on the wire — AC9.
-- `tasks[].name` is a JSON column (`Tasks.name Json`) typed `object` in the swagger; reduce
-  it to a string the way the dashboard task table does. `multiplierTask` is nullable.
-  `assignedUsers[]` is a list with `isPrimary`; `userName` is the primary assignee's
-  `firstName lastName`. `SubTaskStatus.submitted` has no entry in `STATUS_CONFIG`, so
-  `normalizeUsageTaskStatus` renders it Not Started (admin-usage arch MM-8) — add a
-  mapping — AC4, AC9.
-- Open question: the FE's `contactName` (client-side contact on a task) has no counterpart
-  on the wire; nothing renders it since the contact line left the Task cell, so it stays
-  null until backend says otherwise.
-- Error shape: a missing entity throws a bare `Error("Entity N not found")` in
-  `getEntityCurrentBillingCycle`, so the FE sees a 500 where the swagger block documents
-  404 (admin-invoicing arch MM-29); a null client `billingCycleDay` is a real 400. The route
-  guard is `checkJwtInternalStudioLead`, wider than the page's owner gate — no auth work —
-  AC11.
-- Task set and credits: the endpoint returns non-archived tasks with status not in
-  {`not_started`, `completed`} plus tasks with `completedDate` inside
-  `currentOpenBillingCycleRange`; `tasks[].credits` is the parent's asset half and
-  `projectsBar[].totalCredit` the only server-side sum, at the `projects` grain (one level
-  below the entity) — the group header does not come from it. The invoice adds subtask
-  credits the same way (invoicing BR-26f/BR-26g); what cannot reconcile row for row is the
-  task set, since a project whose parent tasks are all open is skipped by the generator
-  (BR-26h) — that is what AC7's note states — AC4, AC5, AC7.
-- Generated types will be the awkward part: the spec is derived from Joi schemas and
-  neighbouring DTOs mark most fields optional, so the mapper may need `undefined` handling
-  the hand-written DTO did not.
+- Regen per FORMAT.md against `dev@5ca2ed71`; the roster hook `useGetEntities` already
+  exists, the current-cycle hook is new — AC1, AC3.
+- Orval hook payloads arrive double-wrapped; `use-usage.ts` unwraps once
+  (`usageQuery.data?.data`, no `unwrapOrvalHookPayload`). One request per entity means
+  `useQueries` replaces the single `useQuery` — AC1, AC2.
+- `mapUsageActiveRow` returns `null` on an empty `clientName`: join the roster's name and
+  code onto each response before mapping — AC3.
+- The payload carries both `invoiceField.rolloverCredits` (banked) and
+  `credits.availableRollover` (zero once the four-month window closes);
+  `buildStackedMeter` reads the banked one today (arch MM-11) — AC8.
+- `assetEntities[].id` is the asset type's id, and the join is not unique per entity and
+  type, so two configured rows can collapse into one column; `collectAssetTypeColumns`
+  keys on `assetTypeId` already (arch MM-3, MM-5) — AC6, AC10.
+- `tasks[].name` is JSON (`object` in the swagger): reduce it as the dashboard task table
+  does. `multiplierTask` is nullable; `assignedUsers[]` carries `isPrimary`;
+  `SubTaskStatus.submitted` has no `STATUS_CONFIG` entry (arch MM-8) — AC4, AC5, AC9.
+- A missing entity is a bare `Error` in `getEntityCurrentBillingCycle`, so the FE sees 500
+  where the swagger says 404 (admin-invoicing arch MM-29); a null `billingCycleDay` is a
+  real 400 — AC11.
+- Open question: `contactName` has no counterpart on the wire and nothing renders it; it
+  stays null.
 
 Verified at FE `staging@3c520fc4c`, BE `dev@5ca2ed71`.
 ```
@@ -321,6 +279,7 @@ Verified at FE `staging@3c520fc4c`, BE `dev@5ca2ed71`.
 - Pending names which ACs each unlanded item blocks and what to build meanwhile, so the
   ticket says exactly how much can proceed. Out of scope is doing real work too — it kills
   three assumptions (writes, layout, an hours quantity) that would otherwise land in review.
-- Every Technical Note is openable — a file, the exact function, the current behaviour,
-  the target — and ends by naming the AC it serves. The one thing nobody knew is written
-  as a question, not a guess.
+- Technical Notes are eight bullets, none of which the agent could learn from the files
+  Scope names; everything the arch doc already says is an MM citation. Each is openable —
+  a file, the exact function — and ends by naming the AC it serves. The one thing nobody
+  knew is written as a question, not a guess.
