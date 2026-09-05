@@ -1,5 +1,57 @@
 # Changelog
 
+## [1.4.0](https://github.com/d0nwong/foundry/compare/foundry-v1.3.0...foundry-v1.4.0) (2026-09-05)
+
+
+### Features
+
+* **infra:** add Slack to the MCP gateway, with an interactive foundry auth ([f9d67e6](https://github.com/d0nwong/foundry/commit/f9d67e6dd199d31d3f76ae8b7624201326a2550d))
+* **infra:** add Slack to the MCP gateway, with an interactive foundry auth ([812ad91](https://github.com/d0nwong/foundry/commit/812ad9190a612b0a824ed290be38fe120f29f3b7))
+* **jobs:** add rerun-as-new-job button (LIA-26) ([8a495e1](https://github.com/d0nwong/foundry/commit/8a495e1cf042e47b7f9f962253a0739844218a82))
+* **jobs:** add rerun-as-new-job button (LIA-26) ([686650c](https://github.com/d0nwong/foundry/commit/686650c3549e000b50717ca5551de10cdc1cc072))
+* **scripts:** bootstrap a new machine with shell setup scripts ([61040ef](https://github.com/d0nwong/foundry/commit/61040efa61dd4ac696ab497dbc38e915736065b8))
+* **scripts:** bootstrap a new machine with shell setup scripts ([ffaad62](https://github.com/d0nwong/foundry/commit/ffaad62e09fd027e2dd48a92bc8065ebefd87bf8))
+* **web:** add per-repo notes and a ledger-derived base branch default ([335ce61](https://github.com/d0nwong/foundry/commit/335ce61a79d1cdcdbf42a79de0527d04ed1721bd))
+* **web:** add per-repo notes and a ledger-derived base branch default ([a69ef2b](https://github.com/d0nwong/foundry/commit/a69ef2bbb88802924a4a625b0aab6c2c6f5557b2))
+* **web:** address PR comments with a follow-up job ([5a32ba8](https://github.com/d0nwong/foundry/commit/5a32ba82fda4abc536c75ebae868c1669778ad8d))
+* **web:** address PR comments with a follow-up job ([2ce967e](https://github.com/d0nwong/foundry/commit/2ce967e16d174aa43cf402ff00e68338a3f18846))
+* **web:** collapsible sections and sticky step bars in the job sheet ([b35bfb2](https://github.com/d0nwong/foundry/commit/b35bfb2acf36a527e91d73595125869ccc5cc227))
+* **web:** collapsible sections and sticky step bars in the job sheet ([89c3070](https://github.com/d0nwong/foundry/commit/89c30701d840232effb2f79568fdf65a00f65d4f))
+* **web:** infinite scroll for jobs list (LIA-16) ([bb2bf9f](https://github.com/d0nwong/foundry/commit/bb2bf9f7f15e2381bed65d9a3efefe435c4958aa))
+* **web:** link Bitbucket PRs to their Linear ticket ([38eeb32](https://github.com/d0nwong/foundry/commit/38eeb320030e45e64bc79a315bdc912a3d5988d7))
+* **web:** link Bitbucket PRs to their Linear ticket ([3be4086](https://github.com/d0nwong/foundry/commit/3be4086c4220c616daf53f58e25f9b8b97de9aee))
+* **web:** scan Linear for agent-ready tickets and ignite jobs ([80f71ab](https://github.com/d0nwong/foundry/commit/80f71ab2b95b01a569c254576ed50fb85e69cef3))
+* **web:** scan Linear for agent-ready tickets and ignite jobs ([c8ca720](https://github.com/d0nwong/foundry/commit/c8ca72001afb459c8018f6de14e8c78a17e76344))
+* **web:** seed two blueprints and default new jobs to Plan → Execute ([7e18ef7](https://github.com/d0nwong/foundry/commit/7e18ef73b76d51a4b3b868e125f47d8a39e5f8c5))
+* **web:** seed versioned blueprints and default new jobs to Plan → Execute ([50e9219](https://github.com/d0nwong/foundry/commit/50e921953d7a1800160b4c278ecc41f172427ea2))
+* **web:** store forge session logs as JSONL files instead of db rows ([cd23ab2](https://github.com/d0nwong/foundry/commit/cd23ab2db6fc339e7bdad06b38d3f14b6ffa79a1))
+* **web:** store forge session logs as JSONL files instead of db rows ([49c5e0e](https://github.com/d0nwong/foundry/commit/49c5e0eafea2f6701743d8ac68a7c1eec47fe0c2))
+* **web:** trigger jobs over HTTP with a signed completion webhook ([945421a](https://github.com/d0nwong/foundry/commit/945421a5da2097cfe2e7a6b27252bcd796cb8a7b))
+* **web:** trigger jobs over HTTP with a signed completion webhook ([942590f](https://github.com/d0nwong/foundry/commit/942590f75734705271f254aeab8f22234e305a10))
+* **web:** version blueprints so prompts can be improved incrementally ([7a2b5b9](https://github.com/d0nwong/foundry/commit/7a2b5b9f889df93fc04d9118793dfd3a0eacf16c))
+
+
+### Bug Fixes
+
+* **cli:** resolve symlinks when deriving ROOT ([02e5823](https://github.com/d0nwong/foundry/commit/02e58231e389f887edb0b50e68aa3cfa55ae9cd3))
+* **cli:** resolve symlinks when deriving ROOT ([a39759c](https://github.com/d0nwong/foundry/commit/a39759cfc40cd63aa1ebff96a2c434f5be7dc916))
+* guarantee forge PRs a template-shaped description ([f83c2d8](https://github.com/d0nwong/foundry/commit/f83c2d872a050dc2d12a199b38d79c5f04d14fe0))
+* guarantee forge PRs a template-shaped description ([cf978c8](https://github.com/d0nwong/foundry/commit/cf978c8cf6a9cc2f3a5e4537f5687c8d58937678))
+* **image:** put pnpm on the forge PATH via corepack ([e353781](https://github.com/d0nwong/foundry/commit/e3537815e254e4c0993f3953188bd25a4c2261b9))
+* **image:** put pnpm on the forge PATH via corepack ([63920a4](https://github.com/d0nwong/foundry/commit/63920a4b497dca1fa76d1e429742b03e36165e5d))
+* keep repo workflow skills from derailing headless forge jobs ([3130080](https://github.com/d0nwong/foundry/commit/31300802413a42e68e2c74564818dfede2ffaa0c))
+* keep repo workflow skills from derailing headless forge jobs ([8e80350](https://github.com/d0nwong/foundry/commit/8e80350d74e4bc60a2a8c194082a4cf7ba061629))
+* **web:** capitalize Forge in ignite dialog description ([aac3edb](https://github.com/d0nwong/foundry/commit/aac3edb0759e80b662056ee23bafe556a179b3a4))
+* **web:** compose forge PR bodies from the repo PR template ([2a4d12f](https://github.com/d0nwong/foundry/commit/2a4d12f2b4928c525bccffe7bb4ca0fa634d6524))
+* **web:** give each job a unique branch name ([718c2b4](https://github.com/d0nwong/foundry/commit/718c2b4204fb5d1e40def97cbf23f9eabb525104))
+* **web:** give each job a unique branch name ([392c5b9](https://github.com/d0nwong/foundry/commit/392c5b9fa1b28b58d441f3b74b35bdbe127e3aae))
+* **web:** hide scrollbars in the job detail drawer ([2530d5b](https://github.com/d0nwong/foundry/commit/2530d5b6fda7639b3719e353a995bb350aab64c0))
+* **web:** keep job logs visible when task description is long ([d17f7ab](https://github.com/d0nwong/foundry/commit/d17f7abf01b7e72b5a8eca15cf3ed87eb1ce18fb))
+* **web:** link Bitbucket PRs to Linear tickets named in the task text ([410be1a](https://github.com/d0nwong/foundry/commit/410be1aaaa2e209f3df7def020c07ebcb963965f))
+* **web:** link Bitbucket PRs to Linear tickets named in the task text ([7495ac1](https://github.com/d0nwong/foundry/commit/7495ac10f116bc5d7a3f404174a44e15c40f9fca))
+* **web:** rename "forge a job" copy to "ignite" ([fd96676](https://github.com/d0nwong/foundry/commit/fd96676ecd193968feb42332fbe3b394530257ab))
+* **web:** rename "forge a job" copy to "ignite" ([d0d1a85](https://github.com/d0nwong/foundry/commit/d0d1a85cb5857adcea7df2a504f2f31fc29f1314))
+
 ## [1.3.0](https://github.com/d0nwong/foundry/compare/foundry-v1.2.0...foundry-v1.3.0) (2026-08-24)
 
 
