@@ -14,6 +14,14 @@
  * same key with the same body answers the job made the first time, the same
  * key with a different body is refused. Callers are services and a cockpit
  * that retries on timeout, so one intent must never queue two jobs.
+ *
+ * A `ticketId` alone is enough (LIA-92): the host fetches the Linear issue
+ * with its own key, composes the brief the scanner composes, and — once the
+ * row exists — claims the ticket in Linear (assignee + In Progress). The
+ * order is the scanner's invariant: row insert, then the Linear write, then
+ * ignition. A Linear write that fails costs an `err` line, never the job.
+ * Foundry only fetches and composes here; it never judges whether the ticket
+ * is ready — the caller decided that by sending it.
  */
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
@@ -25,17 +33,28 @@ import { trackedRepos } from '@/features/repos/server/repo-scan'
 import { tilde } from '@/features/repos/types'
 import { defaultBranchOf } from '@/features/scanner/server/repo-map'
 import { apiToken, tokenMatches } from './auth'
+import { appendLogs } from './job-logs'
 import * as store from './job-store'
+import { claimTicket, fetchIssue, linearApiKey, ticketBrief } from './linear-link'
+import type { LinearIssue } from './linear-link'
 import type { Job, JobDetail, NewJobInput } from '../types'
 
-/** Injectable edges, so the tests need neither ~/.foundry/env nor docker. */
+/** Injectable edges, so the tests need neither ~/.foundry/env, docker nor Linear. */
 export interface ApiDeps {
   token: () => Promise<string | undefined>
+  /** The host's LINEAR_API_KEY, read fresh per request; undefined means Linear is not configured. */
+  linearKey: () => Promise<string | undefined>
+  linear: {
+    fetchIssue: (apiKey: string, identifier: string) => Promise<LinearIssue | null>
+    claimTicket: (apiKey: string, issue: Pick<LinearIssue, 'id' | 'teamId'>) => Promise<void>
+  }
   ignite: (jobId: string) => Promise<void>
 }
 
 const realDeps = (): ApiDeps => ({
   token: apiToken,
+  linearKey: linearApiKey,
+  linear: { fetchIssue, claimTicket },
   ignite: async (id) => {
     const { startJob } = await import('./job-runner')
     return startJob(id)
@@ -96,37 +115,52 @@ const requiredString = (name: string, hint: string) =>
     .trim()
     .min(1, hint)
 
-/** The request body of `POST /api/jobs`. */
-export const TriggerPayloadSchema = z.object(
-  {
-    repo: requiredString('repo', 'repo is required — a tracked repo path or name').describe(
-      'A tracked repo (Repos page): its path (`~` allowed) or its basename when that is unique.',
-    ),
-    instructions: requiredString('instructions', 'instructions is required').describe(
-      "The job's task, verbatim. The first line is the fallback commit subject and PR title, and its first three words name the branch.",
-    ),
-    baseBranch: optionalString('baseBranch').describe(
-      "Default: the base of this repo's last job, else origin's default branch.",
-    ),
-    blueprintId: optionalString('blueprintId').describe(
-      'A blueprint id, or `"none"` for one bare step. Default: the seeded "Plan → Execute" (a bare job if that row is gone).',
-    ),
-    ticketId: optionalString('ticketId', (s) => s.max(64, 'ticketId is too long')).describe(
-      'Claims the ticket the way the scanner does — a second trigger for it is a `409` naming the holder.',
-    ),
-    callbackUrl: z
-      .url({
-        protocol: /^https?$/,
-        error: (issue) =>
-          typeof issue.input === 'string' && URL.canParse(issue.input)
-            ? 'callbackUrl must be http or https'
-            : 'callbackUrl must be an absolute URL',
-      })
-      .optional()
-      .describe('Where to POST the signed `job.settled` event. http(s) only.'),
-  },
-  { error: 'body must be a JSON object' },
-)
+/** The message for a body with neither `instructions` nor a `ticketId` to compose them from. */
+const INSTRUCTIONS_REQUIRED = 'instructions is required — or a ticketId to compose them from'
+
+/**
+ * The request body of `POST /api/jobs`. `instructions` and `ticketId` are
+ * each optional but one must be present: with only a `ticketId`, the brief is
+ * composed from the Linear issue. The either-or is a check on the object, so
+ * it cannot be expressed in the generated JSON Schema — openapi.ts adds it by
+ * hand as an `anyOf` of the two `required` lists.
+ */
+export const TriggerPayloadSchema = z
+  .object(
+    {
+      repo: requiredString('repo', 'repo is required — a tracked repo path or name').describe(
+        'A tracked repo (Repos page): its path (`~` allowed) or its basename when that is unique.',
+      ),
+      instructions: optionalString('instructions').describe(
+        "The job's task, verbatim. The first line is the fallback commit subject and PR title, and its first three words name the branch. May be omitted with a `ticketId`: the brief is then `<KEY>: <title>`, the issue URL, and its description.",
+      ),
+      baseBranch: optionalString('baseBranch').describe(
+        "Default: the base of this repo's last job, else origin's default branch.",
+      ),
+      blueprintId: optionalString('blueprintId').describe(
+        'A blueprint id, or `"none"` for one bare step. Default: the seeded "Plan → Execute" (a bare job if that row is gone).',
+      ),
+      ticketId: optionalString('ticketId', (s) => s.max(64, 'ticketId is too long')).describe(
+        'A Linear issue identifier (`LIA-52`). Claims the ticket: the row is the claim (a second trigger for it is a `409` naming the holder), and once it exists the issue is assigned to the host key\'s user and moved to In Progress. Without `instructions`, the brief is composed from the issue.',
+      ),
+      callbackUrl: z
+        .url({
+          protocol: /^https?$/,
+          error: (issue) =>
+            typeof issue.input === 'string' && URL.canParse(issue.input)
+              ? 'callbackUrl must be http or https'
+              : 'callbackUrl must be an absolute URL',
+        })
+        .optional()
+        .describe('Where to POST the signed `job.settled` event. http(s) only.'),
+    },
+    { error: 'body must be a JSON object' },
+  )
+  .check((ctx) => {
+    if (ctx.value.instructions === undefined && ctx.value.ticketId === undefined) {
+      ctx.issues.push({ code: 'custom', input: ctx.value, path: ['instructions'], message: INSTRUCTIONS_REQUIRED })
+    }
+  })
 
 export type TriggerPayload = z.output<typeof TriggerPayloadSchema>
 
@@ -235,8 +269,14 @@ export async function resolveRepo(ref: string): Promise<{ id: string; path: stri
   throw new BadRequest(`repo "${ref}" is not tracked — known: ${known}`)
 }
 
-/** The payload turned into what the store takes, defaults filled the way the ignite dialog fills them. */
-async function toInput(p: TriggerPayload, idempotency?: NewJobInput['idempotency']): Promise<NewJobInput> {
+/**
+ * The payload turned into what the store takes, defaults filled the way the
+ * ignite dialog fills them — everything but `task`, which the handler fills
+ * in after this: the instructions when the caller sent them, the composed
+ * ticket brief otherwise. Resolving here first means an untracked repo or a
+ * bad blueprint is a 400 before any Linear round trip.
+ */
+async function toInput(p: TriggerPayload, idempotency?: NewJobInput['idempotency']): Promise<Omit<NewJobInput, 'task'>> {
   const repo = await resolveRepo(p.repo)
 
   const baseBranch = p.baseBranch ?? (await store.lastBaseBranchByRepo()).get(repo.id) ?? (await defaultBranchOf(repo.path))
@@ -252,7 +292,6 @@ async function toInput(p: TriggerPayload, idempotency?: NewJobInput['idempotency
   }
 
   return {
-    task: p.instructions,
     repo: { kind: 'local', name: repo.name, path: repo.path },
     baseBranch,
     forge: 'orbstack',
@@ -306,16 +345,44 @@ export async function handleTriggerJob(request: Request, deps: ApiDeps = realDep
   }
 
   let payload: TriggerPayload
-  let input: NewJobInput
+  let base: Omit<NewJobInput, 'task'>
   try {
     payload = parsePayload(body)
-    input = await toInput(payload, idempotency)
+    base = await toInput(payload, idempotency)
   } catch (e) {
     if (e instanceof BadRequest) return json(400, { error: e.message })
     throw e
   }
 
-  const job = await store.createJobIdempotent(input, payload.ticketId)
+  // The ticket is fetched BEFORE the insert, so an id Linear does not know
+  // (or a Linear that cannot be reached) inserts nothing — there would be no
+  // brief to run and no issue to claim. The claim itself waits until after.
+  let ticket: { key: string; issue: LinearIssue } | undefined
+  if (payload.ticketId) {
+    const key = await deps.linearKey()
+    if (!key) {
+      if (payload.instructions === undefined) {
+        return json(503, { error: 'Linear not configured — run: foundry auth --linear (or send instructions)' })
+      }
+      // Instructions in hand, the job can run; the claim is logged as skipped below.
+    } else {
+      let issue: LinearIssue | null
+      try {
+        issue = await deps.linear.fetchIssue(key, payload.ticketId)
+      } catch (e) {
+        return json(502, { error: `Linear: ${e instanceof Error ? e.message : String(e)}` })
+      }
+      if (!issue) return json(400, { error: `ticket ${payload.ticketId} is not a Linear issue` })
+      ticket = { key, issue }
+    }
+  }
+
+  // The schema guarantees instructions or a ticketId; without instructions,
+  // the 503 above guarantees the ticket was fetched.
+  const task = payload.instructions ?? (ticket ? ticketBrief(ticket.issue) : undefined)
+  if (task === undefined) throw new Error('unreachable: no instructions and no fetched ticket to compose them from')
+
+  const job = await store.createJobIdempotent({ ...base, task }, payload.ticketId)
   if (job === null) {
     // A unique index refused the row. The key's, if a concurrent first request
     // with this key won the race — then the winner is this request's answer,
@@ -332,11 +399,39 @@ export async function handleTriggerJob(request: Request, deps: ApiDeps = realDep
     })
   }
 
+  // Only now — the row is the claim — mirror it to Linear, before ignition
+  // and awaited, so the 202 tells the truth about the ticket. A failed write
+  // leaves the queued row standing with an `err` line: the job is what the
+  // caller asked for, the Linear state is a courtesy they can fix by hand.
+  if (payload.ticketId) await mirrorClaim(deps, job.id, payload.ticketId, ticket)
+
   // Fire and forget, exactly as the ignite dialog does: the row is the
   // answer, and the runner's cap/pump take it from here. Only the request
   // that inserted the row ignites — a replay or a race loser never does.
   void deps.ignite(job.id)
   return json(202, job)
+}
+
+/** Assign + In Progress on Linear for a ticket the row just claimed, or a log line saying why not. */
+async function mirrorClaim(
+  deps: ApiDeps,
+  jobId: string,
+  ticketId: string,
+  ticket: { key: string; issue: LinearIssue } | undefined,
+): Promise<void> {
+  if (!ticket) {
+    await appendLogs(jobId, [
+      { stream: 'err', text: `Linear claim for ${ticketId} skipped — no LINEAR_API_KEY (run: foundry auth --linear)` },
+    ])
+    return
+  }
+  try {
+    await deps.linear.claimTicket(ticket.key, ticket.issue)
+    await appendLogs(jobId, [{ stream: 'sys', text: `claimed ${ticketId} in Linear — assigned to you, moved to In Progress` }])
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    await appendLogs(jobId, [{ stream: 'err', text: `Linear claim for ${ticketId} failed: ${msg} — job stays queued` }])
+  }
 }
 
 /** `GET /api/jobs/:id` — the `Job`, plus its log lines with `?logs=1`. */

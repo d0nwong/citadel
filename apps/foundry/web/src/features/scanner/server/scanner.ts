@@ -15,7 +15,8 @@ import path from 'node:path'
 import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
 import { claimTicketJob, getJobByTicketId, listOpenJobs } from '@/features/jobs/server/job-store'
-import { readFoundryEnv, startJob } from '@/features/jobs/server/job-runner'
+import { startJob } from '@/features/jobs/server/job-runner'
+import { linearApiKey, ticketBrief } from '@/features/jobs/server/linear-link'
 import { assessReadiness } from './readiness'
 import { makeLinearPort } from './linear-scan'
 import { readScannerConfig } from './repo-map'
@@ -98,10 +99,9 @@ export async function scanTick(deps: TickDeps): Promise<void> {
         const wanted = mapping.blueprintId ?? DEFAULT_BLUEPRINT_ID
         const blueprintId = (await getBlueprintRow(wanted)) ? wanted : undefined
 
-        // The ticket body IS the job brief — every section, behind the key,
-        // title and URL. `branchSlug` and the PR↔ticket linker both key off
-        // the leading identifier for free.
-        const task = `${c.identifier}: ${c.title}\n${c.url}\n\n${c.body}`
+        // The ticket body IS the job brief — the same composition the trigger
+        // API makes from a bare `ticketId` (linear-link.ts, scanner BR-9).
+        const task = ticketBrief({ identifier: c.identifier, title: c.title, url: c.url, description: c.body })
 
         const job = await deps.claimTicketJob(
           {
@@ -167,8 +167,7 @@ async function repairClaim(
 export async function runTick(): Promise<void> {
   // Read fresh every tick, like job launches do — `foundry auth --linear`
   // takes effect without a restart.
-  const cred = await readFoundryEnv()
-  const key = cred.LINEAR_API_KEY ?? process.env.LINEAR_API_KEY
+  const key = await linearApiKey()
   if (!key) {
     console.error('[scanner] no LINEAR_API_KEY (run `foundry auth --linear`) — skipping scan')
     return

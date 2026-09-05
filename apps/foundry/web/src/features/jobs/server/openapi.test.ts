@@ -84,11 +84,11 @@ test('AC3 — POST /api/jobs documents the body, every status, and the job.settl
     parameters: Array<{ name: string; in: string; required: boolean; schema: Record<string, unknown> }>
   }
   expect(create.requestBody.content['application/json']!.schema.$ref).toBe('#/components/schemas/TriggerPayload')
-  expect(Object.keys(create.responses).sort()).toEqual(['200', '202', '400', '401', '409', '422', '503'])
+  expect(Object.keys(create.responses).sort()).toEqual(['200', '202', '400', '401', '409', '422', '502', '503'])
   for (const status of ['200', '202']) {
     expect(create.responses[status]!.content!['application/json']!.schema.$ref).toBe('#/components/schemas/Job')
   }
-  for (const status of ['400', '401', '422', '503']) {
+  for (const status of ['400', '401', '422', '502', '503']) {
     expect(create.responses[status]!.content!['application/json']!.schema.$ref).toBe('#/components/schemas/Error')
   }
   // The idempotency header (LIA-91) is a parameter, optional, capped where the handler caps it.
@@ -118,12 +118,17 @@ test('AC4 — what the document marks invalid, the parser rejects with the same 
   const doc = await openapiDocument()
   const payload = schemas(doc).TriggerPayload as {
     required: Array<string>
+    anyOf: Array<{ required: Array<string> }>
     properties: Record<string, { anyOf?: Array<{ maxLength?: number }>; format?: string }>
   }
 
-  expect(payload.required).toEqual(['repo', 'instructions'])
+  // `instructions` or `ticketId` (LIA-92): the either-or the parser checks,
+  // published as the two `required` lists it would accept.
+  expect(payload.required).toEqual(['repo'])
+  expect(payload.anyOf).toEqual([{ required: ['instructions'] }, { required: ['ticketId'] }])
   expect(TriggerPayloadSchema.safeParse({ instructions: 'x' }).error?.issues[0]?.message).toMatch(/^repo is required/)
   expect(TriggerPayloadSchema.safeParse({ repo: 'x' }).error?.issues[0]?.message).toMatch(/^instructions is required/)
+  expect(TriggerPayloadSchema.safeParse({ repo: 'x', ticketId: 'LIA-1' }).success).toBe(true)
 
   expect(payload.properties.ticketId!.anyOf?.some((s) => s.maxLength === 64)).toBe(true)
   expect(TriggerPayloadSchema.safeParse({ repo: 'x', instructions: 'y', ticketId: 'a'.repeat(65) }).error?.issues[0]?.message).toBe(
