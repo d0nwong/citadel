@@ -143,6 +143,9 @@ export async function lastBaseBranchByRepo(): Promise<Map<string, string>> {
  * Shared insert behind `createJob` and `claimTicketJob`. With a `ticketId` the
  * insert doubles as the scanner's claim on the ticket: `jobs_ticket_id_unique`
  * is the arbiter, and losing the race comes back as null rather than an error.
+ * An idempotency key (LIA-91) rides the same mechanism on
+ * `jobs_idempotency_key_unique`: two concurrent first requests with one key
+ * insert one row, and the loser is told null so it can re-read the winner.
  */
 async function insertJob(input: NewJobInput, ticketId?: string): Promise<Job | null> {
   const task = input.task.trim()
@@ -179,10 +182,13 @@ async function insertJob(input: NewJobInput, ticketId?: string): Promise<Job | n
     blueprint: bp ? toSnapshot(bp) : null,
     ticketId: ticketId ?? null,
     callbackUrl: input.callbackUrl ?? null,
+    idempotencyKey: input.idempotency?.key ?? null,
+    idempotencyFingerprint: input.idempotency?.fingerprint ?? null,
   })
-  const [row] = ticketId
-    ? await insert.onConflictDoNothing({ target: jobs.ticketId }).returning()
-    : await insert.returning()
+  // No conflict target on purpose: a row may lose on either unique index
+  // (ticket or key), and null means the same thing for both — someone else
+  // won. The caller re-reads by key, then by ticket, to learn which.
+  const [row] = ticketId || input.idempotency ? await insert.onConflictDoNothing().returning() : await insert.returning()
   if (!row) return null
 
   // Logs are a file now, so this line cannot ride in the insert's transaction —
@@ -201,6 +207,15 @@ export async function createJob(input: NewJobInput): Promise<Job> {
 }
 
 /**
+ * The trigger API's insert (LIA-91): a plain create, or the scanner's ticket
+ * claim when the caller named one. Null means a unique index refused the row —
+ * the key's or the ticket's — and the API decides which by re-reading.
+ */
+export async function createJobIdempotent(input: NewJobInput, ticketId?: string): Promise<Job | null> {
+  return insertJob(input, ticketId)
+}
+
+/**
  * The ticket scanner's atomic claim (LIA-52): inserting the row under the
  * unique index IS the claim on the ticket, taken before any Linear write.
  * `null` means another tick — or an earlier run — already holds it.
@@ -212,6 +227,16 @@ export async function claimTicketJob(input: NewJobInput, ticketId: string): Prom
 export async function getJobByTicketId(ticketId: string): Promise<JobRow | undefined> {
   const [row] = await db.select().from(jobs).where(eq(jobs.ticketId, ticketId))
   return row
+}
+
+/**
+ * The job an `Idempotency-Key` already made, with the fingerprint of the body
+ * that made it so the API can tell a replay from a reuse of the key.
+ */
+export async function findJobByIdempotencyKey(key: string): Promise<{ job: Job; fingerprint: string } | undefined> {
+  const [row] = await db.select().from(jobs).where(eq(jobs.idempotencyKey, key))
+  if (!row) return undefined
+  return { job: toJob(row), fingerprint: row.idempotencyFingerprint ?? '' }
 }
 
 /**

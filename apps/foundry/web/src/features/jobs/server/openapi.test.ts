@@ -7,7 +7,7 @@ import { expect, test } from 'bun:test'
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Validator } from '@seriousme/openapi-schema-validator'
-import { TriggerPayloadSchema } from './job-api'
+import { IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX, TriggerPayloadSchema } from './job-api'
 import { EventPayloadSchema } from './job-events'
 import { EVENT_HEADER, SETTLED_EVENT, SIGNATURE_HEADER } from './job-webhook'
 import { openapiDocument } from './openapi'
@@ -81,13 +81,19 @@ test('AC3 — POST /api/jobs documents the body, every status, and the job.settl
     responses: Record<string, { content?: Record<string, { schema: { $ref: string } }> }>
     callbacks: Record<string, Record<string, { post: Record<string, unknown> }>>
     security: Array<Record<string, unknown>>
+    parameters: Array<{ name: string; in: string; required: boolean; schema: Record<string, unknown> }>
   }
   expect(create.requestBody.content['application/json']!.schema.$ref).toBe('#/components/schemas/TriggerPayload')
-  expect(Object.keys(create.responses).sort()).toEqual(['202', '400', '401', '409', '503'])
-  expect(create.responses['202']!.content!['application/json']!.schema.$ref).toBe('#/components/schemas/Job')
-  for (const status of ['400', '401', '503']) {
+  expect(Object.keys(create.responses).sort()).toEqual(['200', '202', '400', '401', '409', '422', '503'])
+  for (const status of ['200', '202']) {
+    expect(create.responses[status]!.content!['application/json']!.schema.$ref).toBe('#/components/schemas/Job')
+  }
+  for (const status of ['400', '401', '422', '503']) {
     expect(create.responses[status]!.content!['application/json']!.schema.$ref).toBe('#/components/schemas/Error')
   }
+  // The idempotency header (LIA-91) is a parameter, optional, capped where the handler caps it.
+  const idem = create.parameters.find((p) => p.in === 'header' && p.name === IDEMPOTENCY_HEADER)
+  expect(idem).toMatchObject({ required: false, schema: { type: 'string', minLength: 1, maxLength: IDEMPOTENCY_KEY_MAX } })
   expect(create.responses['409']!.content!['application/json']!.schema.$ref).toBe('#/components/schemas/Conflict')
   expect(create.security).toEqual([{ installToken: [] }])
 

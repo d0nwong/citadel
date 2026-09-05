@@ -14,6 +14,8 @@ import { z } from 'zod'
 import {
   ConflictSchema,
   ErrorSchema,
+  IDEMPOTENCY_HEADER,
+  IDEMPOTENCY_KEY_MAX,
   JobDetailSchema,
   JobSchema,
   TriggerPayloadSchema,
@@ -102,14 +104,36 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
             'Inserts the queued row and returns it; the runner\'s cap and queue pump take it from there.',
             'Lead `instructions` with a one-line summary — the first line is the fallback commit subject and PR title, and its first three words name the branch.',
             'A leading `LIA-123:` also gets the PR linked to the ticket on Bitbucket origins.',
+            `Send an \`${IDEMPOTENCY_HEADER}\` to make the call safe to retry: a replay with the same key and body answers \`200\` with the job made the first time and queues nothing.`,
           ].join(' '),
           security: [{ installToken: [] }],
+          parameters: [
+            {
+              name: IDEMPOTENCY_HEADER,
+              in: 'header',
+              required: false,
+              description: [
+                'A caller-chosen key, unique per intent (a retrying client keeps the key; a cockpit uses the id of the thing being sent).',
+                'The same key with the same body is a replay: `200` with the existing job, nothing new queued. The same key with a different body is `422`.',
+                'Bodies are compared as the raw bytes sent, so the same JSON serialised differently counts as different.',
+              ].join(' '),
+              schema: { type: 'string', minLength: 1, maxLength: IDEMPOTENCY_KEY_MAX },
+            },
+          ],
           requestBody: jsonBody('TriggerPayload'),
           responses: {
+            '200': jsonResponse(
+              `Replayed. \`${IDEMPOTENCY_HEADER}\` already made this job, and the body is the one it was made with — its current state, as \`GET /api/jobs/{id}\` returns it. Nothing new was queued.`,
+              'Job',
+            ),
             '202': jsonResponse('Queued. The job as soon as its row exists — poll `GET /api/jobs/{id}` or wait for the callback.', 'Job'),
-            '400': jsonResponse('Malformed JSON, a field the schema rejects, an untracked or ambiguous `repo`, or an unknown `blueprintId`.', 'Error'),
+            '400': jsonResponse(
+              `Malformed JSON, a field the schema rejects, an untracked or ambiguous \`repo\`, an unknown \`blueprintId\`, or an \`${IDEMPOTENCY_HEADER}\` that is empty or longer than ${IDEMPOTENCY_KEY_MAX} characters.`,
+              'Error',
+            ),
             '401': errorResponses.unauthorized,
-            '409': jsonResponse('`ticketId` already has a job. The holder is named when it still exists.', 'Conflict'),
+            '409': jsonResponse('`ticketId` already has a job under a different (or no) idempotency key. The holder is named when it still exists.', 'Conflict'),
+            '422': jsonResponse(`\`${IDEMPOTENCY_HEADER}\` was already used with a different body. Nothing was queued.`, 'Error'),
             '503': errorResponses.notConfigured,
           },
           callbacks: {
