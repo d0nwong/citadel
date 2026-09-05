@@ -153,6 +153,10 @@ cmd_link() {
 
 # infra/.env is created by infra.sh on first up; web/.env is created by nobody,
 # which is fine until you move a port and the fallback URL points at nothing.
+# The shared credential file — ~/.config/liamai/env, LIAMAI_ENV overrides it,
+# the same file argus's and Pensieve's bootstraps know — is reported by key
+# name, never by value, and created empty when absent so every writer finds
+# the same 600 file. Filling it stays with `foundry auth`.
 cmd_envfiles() {
   info "config files"
   local f
@@ -163,6 +167,19 @@ cmd_envfiles() {
     elif [ "$CHECK" = 1 ]; then warn "$f/.env missing — cp $f/.env.example $f/.env"
     else cp "$example" "$target"; ok "created $f/.env from .env.example ${c_dim}(gitignored)${c_0}"; fi
   done
+  local shared="${LIAMAI_ENV:-$HOME/.config/liamai/env}" k miss=""
+  if [ -f "$shared" ]; then
+    for k in SLACK_TOKEN LINEAR_API_KEY FOUNDRY_API_TOKEN; do
+      if grep -q "^$k=." "$shared"; then ok "$k set in $shared"; else miss="${miss:+$miss, }$k"; fi
+    done
+    [ -z "$miss" ] || say "  ${c_dim}not set: $miss — foundry auth --slack / --linear / --api${c_0}"
+  elif [ "$CHECK" = 1 ]; then
+    warn "$shared missing — foundry auth --slack / --linear / --api"
+  else
+    mkdir -p "$(dirname "$shared")"; chmod 700 "$(dirname "$shared")"
+    (umask 077; : > "$shared"); chmod 600 "$shared"
+    ok "created empty $shared ${c_dim}(600 — foundry auth --slack / --linear / --api fill it)${c_0}"
+  fi
 }
 
 # The scanner's project -> repo map. Nothing creates it, and an absent file is
@@ -242,12 +259,13 @@ bootstrap — take a brand-new Mac to a working foundry
     prereqs    host tooling: orbstack, bun, claude, gh, php/bb, tailscale
     identity   git user.name / user.email — every forge inherits it
     link       symlink bin/foundry onto PATH
-    envfiles   infra/.env and web/.env from their .env.example
+    envfiles   infra/.env and web/.env from their .env.example; the shared
+               ~/.config/liamai/env (LIAMAI_ENV), reported by key name, created empty
     scanner    a starting ~/.foundry/scanner.json
     foundry    hand over to `foundry setup`, then mint FOUNDRY_API_TOKEN
 
 Credentials themselves stay with `foundry auth` — this script never touches
-~/.foundry/env.
+~/.foundry/env, and only ever creates ~/.config/liamai/env empty.
 USAGE
 }
 

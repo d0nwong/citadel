@@ -78,7 +78,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
         'Anything that can make an HTTP request — CI, a Slack bot, another agent, a shell script — can queue a job here with the instructions in the body.',
         'Everything after the insert is the same pipeline the ignite dialog uses: blueprints, repo notes, branch naming, push and PR.',
         '',
-        '**Auth.** One install-wide bearer token, `FOUNDRY_API_TOKEN` in `~/.foundry/env`, minted by `foundry auth --api` (`--rotate` replaces it).',
+        '**Auth.** One install-wide bearer token, `FOUNDRY_API_TOKEN` in `~/.config/liamai/env`, minted by `foundry auth --api` (`--rotate` replaces it).',
         'With none configured the API answers `503` rather than opening up: the dev server listens on the LAN, and a job runs Claude against your repos and pushes with your credentials.',
         '',
         '**Errors** are `{ error }` with a message written for the caller.',

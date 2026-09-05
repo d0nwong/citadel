@@ -15,7 +15,8 @@ flowchart LR
         web["Web UI<br/>(web/, bun · :3777)"]
         pg[("Postgres<br/>(infra/, :5432)")]
         mcp["MCP gateway<br/>(infra/, mcp-proxy · :9090)"]
-        auth["~/.foundry/env<br/>CLAUDE_CODE_OAUTH_TOKEN"]
+        auth["~/.foundry/env<br/>CLAUDE_CODE_OAUTH_TOKEN · FOUNDRY_MCP_TOKEN"]
+        shared["~/.config/liamai/env<br/>SLACK_TOKEN · LINEAR_API_KEY · FOUNDRY_API_TOKEN<br/>(shared with argus, Pensieve)"]
         jobs["~/.foundry/jobs/&lt;id&gt;/<br/>workspace clones"]
         joblogs["~/.foundry/logs/&lt;id&gt;.jsonl<br/>job session logs"]
     end
@@ -38,8 +39,10 @@ flowchart LR
     forge -- "--github (opt-in token)" --> remote
     forge -. "gateway token" .-> mcp
     jobforge -. "gateway token" .-> mcp
+    shared -- "upstream keys" --> mcp
+    shared -- "API token · LINEAR_API_KEY" --> web
     mcp -- "LINEAR_API_KEY (host only)" --> linear
-    mcp -- "SLACK_MCP_TOKEN (host only)" --> slack
+    mcp -- "SLACK_TOKEN (host only)" --> slack
 
     caller -- "POST /api/jobs<br/>FOUNDRY_API_TOKEN" --> web
     web -. "job.settled webhook<br/>HMAC-signed" .-> caller
@@ -78,10 +81,11 @@ and a starting `~/.foundry/scanner.json`, then hands over to `foundry setup` and
 the trigger-API token. Every phase is a no-op when it's already done, and each runs on
 its own (`./scripts/bootstrap.sh prereqs|identity|link|envfiles|scanner|foundry`).
 
-It never touches `~/.foundry/env` — credentials stay with `foundry auth`, below — and
-three things stay yours to do: `gh auth login`, `./scripts/setup-bb.sh` for Bitbucket,
-and cloning the repos you want jobs to target under `~/git`, which is the only
-directory the Repos page scans.
+It never writes a credential — those stay with `foundry auth`, below; the shared
+`~/.config/liamai/env` is only created empty when it is missing — and three things
+stay yours to do: `gh auth login`, `./scripts/setup-bb.sh` for Bitbucket, and cloning
+the repos you want jobs to target under `~/git`, which is the only directory the
+Repos page scans.
 
 `setup-bb.sh` installs the `bb` phar and walks you through an Atlassian API token.
 It exists because `bb auth` stores whatever you type without checking it — including
@@ -140,6 +144,18 @@ can't read. So the `claude` row runs `claude setup-token` and stores the long-li
 token in `~/.foundry/env` (chmod 600), injected into every forge as
 `CLAUDE_CODE_OAUTH_TOKEN`. Use `foundry auth --api-key` for a plain API key instead.
 
+#### Two credential files
+
+`foundry auth` keeps foundry-only secrets — the Claude credential and the gateway's
+`FOUNDRY_MCP_TOKEN` — in `~/.foundry/env`, and the keys other liamai tools use too —
+`SLACK_TOKEN`, `LINEAR_API_KEY`, `FOUNDRY_API_TOKEN` — in `~/.config/liamai/env`, which
+argus and Pensieve read as well (`LIAMAI_ENV` overrides the path). Both are `KEY=value`
+files, mode 600, rewritten one key at a time, and every reader here — the CLI,
+`infra.sh`, the web server — reads both, the shared file winning on a clash.
+`foundry doctor` and the `foundry auth` picker say which file each key is in. On the
+first `foundry` command after upgrading, any shared key still in `~/.foundry/env` is
+moved over once, with an `ok` line saying so.
+
 ### MCP gateway (Linear, Slack)
 
 Forges never hold third-party credentials. Instead the infra stack runs an MCP
@@ -149,8 +165,8 @@ servers at `host.docker.internal:9090/{linear,slack}/mcp`, behind a per-install
 gateway token.
 
 ```sh
-foundry auth --linear          # stores LINEAR_API_KEY + a generated FOUNDRY_MCP_TOKEN in ~/.foundry/env
-foundry auth --slack           # optional: a Slack user token (xoxp-…), so tickets' Slack links resolve
+foundry auth --linear          # LINEAR_API_KEY -> ~/.config/liamai/env, plus a generated FOUNDRY_MCP_TOKEN -> ~/.foundry/env
+foundry auth --slack           # optional: SLACK_TOKEN, a Slack user token (xoxp-…), so tickets' Slack links resolve
 bun run infra:up               # now also starts foundry-mcp (mcp.foundry.local)
 foundry recreate <name>        # existing forges pick the gateway up on next start
 ```
@@ -162,7 +178,7 @@ the Slack thread the ticket links to. The Slack token comes from a Slack app of
 your workspace with MCP access enabled (one manual OAuth exchange mints the
 `xoxp-…` token; see [Slack's MCP server docs](https://docs.slack.dev/ai/slack-mcp-server/)).
 Adding another upstream is one more `mcpServers` entry in
-`infra/mcp/config.json` plus its secret in `~/.foundry/env`; see `infra/README.md`.
+`infra/mcp/config.json` plus its secret in one of the two env files; see `infra/README.md`.
 
 ## Daily use
 
@@ -290,7 +306,7 @@ describes them. Purging a job from the ledger deletes its file with the row.
 
 Anything that can make a request — CI, a Slack bot, another agent, a shell script — can
 queue a job with the instructions in the body. `foundry auth --api` mints the bearer token
-(it lands in `~/.foundry/env`, read per request, so rotation needs no restart):
+(it lands in `~/.config/liamai/env`, read per request, so rotation needs no restart):
 
 ```sh
 curl -s -X POST http://localhost:3777/api/jobs \

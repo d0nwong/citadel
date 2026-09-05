@@ -1,6 +1,6 @@
 /**
  * The trigger API against the real store and database, with the two edges
- * that would touch the world stubbed: the token (no ~/.foundry/env) and
+ * that would touch the world stubbed: the token (no env file) and
  * ignition (no docker). Needs the local Postgres from `bun run infra:up`.
  * Rows are keyed TEST-… / a TEST repo path and swept below.
  */

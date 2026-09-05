@@ -47,7 +47,7 @@ needs the user's credentials; the container gets none of them.
 
 ```
 Ignite ─► insert row (queued, with a per-job callback token)
-       ─► preflight: docker, image, ~/.foundry/env credential, repo, base, origin
+       ─► preflight: docker, image, ~/.foundry/env + ~/.config/liamai/env, repo, base, origin
        ─► clone the repo to ~/.foundry/jobs/<id>/work, branch from origin/<base>
               branch name: foundry/<first 3 words of the task>-<job short id>
        ─► docker run foundry/forge:latest forge-run   (image/forge-run.sh, bind-mounted)
@@ -146,7 +146,7 @@ Ignite ─► insert row (queued, with a per-job callback token)
   of the PR body *and* the job's own task text — magic words (`Closes LIA-24`),
   a pasted `linear.app/…/issue/LIA-24` link, or (task text only) a bare id like
   `LIA-24: fix the thing` — and creates the attachment through Linear's API
-  with `LINEAR_API_KEY` from `~/.foundry/env` — host-side, like `bb` itself, so
+  with `LINEAR_API_KEY` from `~/.config/liamai/env` — host-side, like `bb` itself, so
   the key never enters a forge. No key means no link and no complaint, no
   ticket id named anywhere means the same, and one id's failure is logged
   without sinking the others: the PR is already open by then. It is a
@@ -170,7 +170,7 @@ Ignite ─► insert row (queued, with a per-job callback token)
 another agent, or a `curl`. Everything after the insert is the pipeline above: blueprints,
 repo notes, branch naming, push and PR all apply exactly as they do to a dialog job.
 
-**Auth.** One install-wide bearer token, `FOUNDRY_API_TOKEN` in `~/.foundry/env`, minted by
+**Auth.** One install-wide bearer token, `FOUNDRY_API_TOKEN` in `~/.config/liamai/env`, minted by
 `foundry auth --api` (`--rotate` replaces it). It is read fresh per request like every other
 credential there. With none configured the route answers `503` rather than opening up —
 the dev server listens on the LAN so containers can call back, and this endpoint runs
@@ -336,7 +336,7 @@ src/
       server/job-api.ts       node-only: the trigger API — bearer auth, payload -> NewJobInput
       server/job-webhook.ts   node-only: the signed job.settled POST to a job's callbackUrl
       server/auth.ts          node-only: constant-time bearer checks, FOUNDRY_API_TOKEN
-      server/foundry-env.ts   node-only: ~/.foundry/env, read fresh per use
+      server/foundry-env.ts   node-only: ~/.foundry/env + ~/.config/liamai/env, read fresh per use
       server/forge-pr.ts      node-only: bb / gh pr create, by origin host
       types.ts
     scanner/
