@@ -58,6 +58,16 @@ const errorResponses = {
   notConfigured: jsonResponse('The trigger API has no token configured — `foundry auth --api` on the host.', 'Error'),
 }
 
+/**
+ * `instructions` or `ticketId`: a check on the zod object, which the JSON
+ * Schema generator cannot see — so the either-or is added here, as the two
+ * `required` lists the parser would accept.
+ */
+const TriggerPayloadComponent = {
+  ...component(TriggerPayloadSchema, 'input'),
+  anyOf: [{ required: ['instructions'] }, { required: ['ticketId'] }],
+}
+
 /** The install version, from the root package.json release-please bumps; the spec version tracks it. */
 async function installVersion(): Promise<string> {
   try {
@@ -104,6 +114,8 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
             'Inserts the queued row and returns it; the runner\'s cap and queue pump take it from there.',
             'Lead `instructions` with a one-line summary — the first line is the fallback commit subject and PR title, and its first three words name the branch.',
             'A leading `LIA-123:` also gets the PR linked to the ticket on Bitbucket origins.',
+            'Or send a `ticketId` alone: the host fetches the Linear issue with its own key, composes the brief from it (`<KEY>: <title>`, the URL, the description), and once the row exists assigns the issue to that key\'s user and moves it to In Progress — the row first, then Linear, then ignition, and a Linear write that fails is an `err` line in the job\'s log, never a status change.',
+            'Foundry never judges whether the ticket is ready; the caller decided that by sending it.',
             `Send an \`${IDEMPOTENCY_HEADER}\` to make the call safe to retry: a replay with the same key and body answers \`200\` with the job made the first time and queues nothing.`,
           ].join(' '),
           security: [{ installToken: [] }],
@@ -128,13 +140,17 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
             ),
             '202': jsonResponse('Queued. The job as soon as its row exists — poll `GET /api/jobs/{id}` or wait for the callback.', 'Job'),
             '400': jsonResponse(
-              `Malformed JSON, a field the schema rejects, an untracked or ambiguous \`repo\`, an unknown \`blueprintId\`, or an \`${IDEMPOTENCY_HEADER}\` that is empty or longer than ${IDEMPOTENCY_KEY_MAX} characters.`,
+              `Malformed JSON, a field the schema rejects, neither \`instructions\` nor \`ticketId\`, an untracked or ambiguous \`repo\`, an unknown \`blueprintId\`, a \`ticketId\` Linear does not know, or an \`${IDEMPOTENCY_HEADER}\` that is empty or longer than ${IDEMPOTENCY_KEY_MAX} characters. Nothing was queued.`,
               'Error',
             ),
             '401': errorResponses.unauthorized,
             '409': jsonResponse('`ticketId` already has a job under a different (or no) idempotency key. The holder is named when it still exists.', 'Conflict'),
             '422': jsonResponse(`\`${IDEMPOTENCY_HEADER}\` was already used with a different body. Nothing was queued.`, 'Error'),
-            '503': errorResponses.notConfigured,
+            '502': jsonResponse('Linear could not be reached to fetch the `ticketId` before the insert. Nothing was queued; retry with the same idempotency key.', 'Error'),
+            '503': jsonResponse(
+              'Not configured on the host: no trigger API token (`foundry auth --api`), or — for a `ticketId` without `instructions` — no Linear key to compose the brief with (`foundry auth --linear`). With `instructions` present, a missing Linear key only costs the claim, logged as an `err` line on the job.',
+              'Error',
+            ),
           },
           callbacks: {
             jobSettled: {
@@ -236,7 +252,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
         },
       },
       schemas: {
-        TriggerPayload: component(TriggerPayloadSchema, 'input'),
+        TriggerPayload: TriggerPayloadComponent,
         Job: component(JobSchema, 'output'),
         JobDetail: component(JobDetailSchema, 'output'),
         Error: component(ErrorSchema, 'output'),

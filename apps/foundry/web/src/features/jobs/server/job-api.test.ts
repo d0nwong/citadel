@@ -1,8 +1,8 @@
 /**
- * The trigger API against the real store and database, with the two edges
- * that would touch the world stubbed: the token (no env file) and
- * ignition (no docker). Needs the local Postgres from `bun run infra:up`.
- * Rows are keyed TEST-… / a TEST repo path and swept below.
+ * The trigger API against the real store and database, with the three edges
+ * that would touch the world stubbed: the token (no env file), Linear (no
+ * key, no network) and ignition (no docker). Needs the local Postgres from
+ * `bun run infra:up`. Rows are keyed TEST-… / a TEST repo path and swept below.
  */
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
@@ -13,19 +13,63 @@ import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
 import { deleteLogs } from './job-logs'
 import { handleGetJob, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX } from './job-api'
+import { ticketBrief } from './linear-link'
 import type { ApiDeps } from './job-api'
-import type { Job } from '../types'
+import type { LinearIssue } from './linear-link'
+import type { Job, LogLine } from '../types'
 
 const rand = randomUUID().slice(0, 8)
 const REPO_PATH = `/tmp/foundry-test-${rand}/api-repo`
 const REPO_NAME = 'api-repo'
 const SECRET = `test-secret-${rand}`
+const LINEAR_KEY = `lin_api_test_${rand}`
+
+/**
+ * The stubbed Linear: every TEST- id is a known issue except the two suffixes
+ * below, which stand in for an id Linear does not know and a Linear that is
+ * down. `claimFails` flips the claim mutation into a throw for AC6.
+ */
+const UNKNOWN = `TEST-${rand}-UNKNOWN`
+const DOWN = `TEST-${rand}-DOWN`
+const issueFor = (identifier: string): LinearIssue => ({
+  id: `uuid-${identifier}`,
+  identifier,
+  title: 'do the thing',
+  url: `https://linear.app/liamai/issue/${identifier}/slug`,
+  description: '## Summary\n\nEvery detail here.',
+  teamId: 'team-1',
+})
+let claimFails = false
+/** Claims and ignitions in the order they happened — the claim must come first. */
+const trace: Array<string> = []
+const claimed: Array<{ key: string; id: string; teamId: string }> = []
 
 const ignited: Array<string> = []
 const deps: ApiDeps = {
   token: async () => SECRET,
-  ignite: async (id) => void ignited.push(id),
+  linearKey: async () => LINEAR_KEY,
+  linear: {
+    fetchIssue: async (_key, identifier) => {
+      if (identifier === UNKNOWN) return null
+      if (identifier === DOWN) throw new Error('fetch failed')
+      return issueFor(identifier)
+    },
+    claimTicket: async (key, issue) => {
+      if (claimFails) throw new Error('issueUpdate refused')
+      claimed.push({ key, id: issue.id, teamId: issue.teamId })
+      trace.push(`claim ${issue.id}`)
+    },
+  },
+  ignite: async (id) => {
+    ignited.push(id)
+    trace.push(`ignite ${id}`)
+  },
 }
+/** The same deps with no LINEAR_API_KEY configured. */
+const noLinear: ApiDeps = { ...deps, linearKey: async () => undefined }
+
+const logsOf = async (id: string) =>
+  ((await (await handleGetJob(id, get(id, '?logs=1'), deps)).json()) as { logs: Array<LogLine> }).logs
 
 const post = (body: unknown, token: string | null = SECRET, headers: Record<string, string> = {}) =>
   new Request('http://foundry.test/api/jobs', {
@@ -84,6 +128,7 @@ test('bad payloads → 400 with a reason', async () => {
     ['not json', /invalid json/],
     [[], /JSON object/],
     [valid({ instructions: '   ' }), /instructions is required/],
+    [{ repo: REPO_NAME }, /instructions is required/], // AC7 — neither instructions nor ticketId
     [{ instructions: 'x' }, /repo is required/],
     [valid({ repo: 42 }), /repo must be a string/],
     [valid({ ticketId: 'T'.repeat(65) }), /ticketId is too long/],
@@ -128,17 +173,115 @@ test('repo by ~ path and blueprintId "none" → a bare job', async () => {
   expect(job.repo).toMatchObject({ path: REPO_PATH })
 })
 
-test('ticketId claims once; the second trigger is a 409 naming the holder', async () => {
+test('ticketId claims once; the second trigger is a 409 naming the holder, and claims nothing in Linear', async () => {
   const ticketId = `TEST-${rand}`
   const first = await handleTriggerJob(post(valid({ ticketId })), deps)
   expect(first.status).toBe(202)
   const job = (await first.json()) as Job
   expect(job.ticketId).toBe(ticketId)
+  const claimsAfterFirst = claimed.length
 
   const second = await handleTriggerJob(post(valid({ ticketId })), deps)
   expect(second.status).toBe(409)
   const body = (await second.json()) as { job?: { id: string; status: string } }
   expect(body.job).toEqual({ id: job.id, status: 'queued' })
+  expect(claimed.length).toBe(claimsAfterFirst)
+})
+
+/* ------------------------------------------------------------------ */
+/* LIA-92 — the brief and the Linear claim from a ticketId             */
+/* ------------------------------------------------------------------ */
+
+test('LIA-92 AC1/AC2 — ticketId without instructions composes the brief, claims the ticket in Linear, then ignites', async () => {
+  const ticketId = `TEST-${rand}-A1`
+  const res = await handleTriggerJob(post({ repo: REPO_NAME, ticketId, baseBranch: 'main' }), deps)
+  expect(res.status).toBe(202)
+  const job = (await res.json()) as Job
+
+  // Scanner BR-9: `<KEY>: <title>\n<url>\n\n<description>`.
+  expect(job.task).toBe(ticketBrief(issueFor(ticketId)))
+  expect(job.task).toBe(`${ticketId}: do the thing\nhttps://linear.app/liamai/issue/${ticketId}/slug\n\n## Summary\n\nEvery detail here.`)
+  expect(job.ticketId).toBe(ticketId)
+  expect(job.status).toBe('queued')
+
+  // The claim used the host key and the issue's uuid/team, and came before ignition.
+  expect(claimed).toContainEqual({ key: LINEAR_KEY, id: `uuid-${ticketId}`, teamId: 'team-1' })
+  expect(trace.indexOf(`claim uuid-${ticketId}`)).toBeLessThan(trace.indexOf(`ignite ${job.id}`))
+
+  const logs = await logsOf(job.id)
+  expect(logs.some((l) => l.stream === 'sys' && /queued on orbstack .* — claim for /.test(l.text))).toBe(true)
+  expect(logs.some((l) => l.stream === 'sys' && l.text.includes(`claimed ${ticketId} in Linear`))).toBe(true)
+  expect(logs.some((l) => l.text.includes('scanner claim'))).toBe(false)
+})
+
+test('LIA-92 AC3 — ticketId with instructions keeps the instructions as task and still claims in Linear', async () => {
+  const ticketId = `TEST-${rand}-A3`
+  const res = await handleTriggerJob(post(valid({ ticketId })), deps)
+  expect(res.status).toBe(202)
+  const job = (await res.json()) as Job
+  expect(job.task).toBe(valid().instructions)
+  expect(claimed).toContainEqual({ key: LINEAR_KEY, id: `uuid-${ticketId}`, teamId: 'team-1' })
+  expect((await logsOf(job.id)).some((l) => l.stream === 'sys' && l.text.includes(`claimed ${ticketId} in Linear`))).toBe(true)
+})
+
+test('LIA-92 AC4 — no LINEAR_API_KEY: 503 without instructions; 202 with them, the skipped claim logged as err', async () => {
+  const before = await rowCount()
+  const ignitedBefore = ignited.length
+
+  const refused = await handleTriggerJob(post({ repo: REPO_NAME, ticketId: `TEST-${rand}-A4` }), noLinear)
+  expect(refused.status).toBe(503)
+  expect(((await refused.json()) as { error: string }).error).toContain('foundry auth --linear')
+  expect(await rowCount()).toBe(before)
+  expect(ignited.length).toBe(ignitedBefore)
+
+  const ticketId = `TEST-${rand}-A4B`
+  const accepted = await handleTriggerJob(post(valid({ ticketId })), noLinear)
+  expect(accepted.status).toBe(202)
+  const job = (await accepted.json()) as Job
+  expect(job.task).toBe(valid().instructions)
+  expect(ignited).toContain(job.id)
+  expect(claimed.some((c) => c.id === `uuid-${ticketId}`)).toBe(false)
+  const logs = await logsOf(job.id)
+  expect(logs.some((l) => l.stream === 'err' && l.text.includes(`Linear claim for ${ticketId} skipped`) && l.text.includes('foundry auth --linear'))).toBe(true)
+})
+
+test('LIA-92 AC5 — a ticketId Linear does not know is a 400 naming it, and inserts nothing', async () => {
+  const before = await rowCount()
+  const ignitedBefore = ignited.length
+  for (const body of [{ repo: REPO_NAME, ticketId: UNKNOWN }, valid({ ticketId: UNKNOWN })]) {
+    const res = await handleTriggerJob(post(body), deps)
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toContain(UNKNOWN)
+  }
+  expect(await rowCount()).toBe(before)
+  expect(ignited.length).toBe(ignitedBefore)
+})
+
+test('LIA-92 — Linear unreachable while fetching the ticket is a 502, and inserts nothing', async () => {
+  const before = await rowCount()
+  const res = await handleTriggerJob(post({ repo: REPO_NAME, ticketId: DOWN }), deps)
+  expect(res.status).toBe(502)
+  expect(((await res.json()) as { error: string }).error).toMatch(/^Linear: fetch failed/)
+  expect(await rowCount()).toBe(before)
+})
+
+test('LIA-92 AC6 — a Linear claim that fails after the insert leaves the job queued, answers 202, logs err', async () => {
+  const ticketId = `TEST-${rand}-A6`
+  claimFails = true
+  try {
+    const res = await handleTriggerJob(post({ repo: REPO_NAME, ticketId, baseBranch: 'main' }), deps)
+    expect(res.status).toBe(202)
+    const job = (await res.json()) as Job
+    expect(job.status).toBe('queued')
+    expect(ignited).toContain(job.id)
+
+    const [row] = await db.select().from(jobs).where(eq(jobs.id, job.id))
+    expect(row?.status).toBe('queued')
+    const logs = await logsOf(job.id)
+    expect(logs.some((l) => l.stream === 'err' && l.text.includes(`Linear claim for ${ticketId} failed: issueUpdate refused`))).toBe(true)
+  } finally {
+    claimFails = false
+  }
 })
 
 test('AC1 — a replay with the same key and body answers 200 with the first job, ignited once', async () => {

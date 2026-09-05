@@ -166,9 +166,10 @@ Ignite ─► insert row (queued, with a per-job callback token)
 
 ## Trigger a job over HTTP
 
-`POST /api/jobs` queues a job with the instructions in the body — for CI, a Slack bot,
-another agent, or a `curl`. Everything after the insert is the pipeline above: blueprints,
-repo notes, branch naming, push and PR all apply exactly as they do to a dialog job.
+`POST /api/jobs` queues a job with the instructions in the body — or from a Linear
+`ticketId` alone — for CI, a Slack bot, another agent, or a `curl`. Everything after the
+insert is the pipeline above: blueprints, repo notes, branch naming, push and PR all apply
+exactly as they do to a dialog job.
 
 **Auth.** One install-wide bearer token, `FOUNDRY_API_TOKEN` in `~/.config/liamai/env`, minted by
 `foundry auth --api` (`--rotate` replaces it). It is read fresh per request like every other
@@ -198,11 +199,30 @@ the parser rejects; the path skeleton is hand-written in `server/openapi.ts`, an
 `openapi.test.ts` fails if a route file lands under `routes/api/` without a spec entry.
 
 `202` returns the `Job` as soon as its row exists — the runner's cap and queue pump take it
-from there. Errors are `{ error }` with `400` (payload or key), `401` (token), `409`
-(ticket), `422` (key reused with another body) or `503` (no token configured). The first
-line of `instructions` is the fallback commit subject and PR title, and its first three
-words name the branch, so lead with a one-line summary; a leading `LIA-123:` also gets the
-PR linked to the ticket on Bitbucket origins.
+from there. Errors are `{ error }` with `400` (payload, key, or a `ticketId` Linear does
+not know), `401` (token), `409` (ticket), `422` (key reused with another body), `502`
+(Linear unreachable while fetching the ticket) or `503` (no token configured — or no
+Linear key when the brief has to be composed). The first line of `instructions` is the
+fallback commit subject and PR title, and its first three words name the branch, so lead
+with a one-line summary; a leading `LIA-123:` also gets the PR linked to the ticket on
+Bitbucket origins.
+
+**From a ticket alone.** `instructions` may be omitted when `ticketId` is given (LIA-92) —
+`repo` stays required, the caller says where the work lands. The host fetches the Linear
+issue with its own `LINEAR_API_KEY` and composes the brief the scanner composes: `<KEY>:
+<title>`, the issue URL, a blank line, then the description with every section. Either way
+the ticket is then **claimed in Linear** — assigned to the key's user and moved to the
+team's started state (the one named "In Progress" when there are several) — in the
+scanner's order: the row insert first (the unique `ticket_id` index is the claim, hence the
+`409`), the Linear write second, ignition last. The claim is awaited before the `202` and
+recorded as a `sys` line in the job's log; if the write fails the job stays queued, the
+failure is an `err` line, and the ticket's state is yours to fix by hand — never a status
+change on the job. The fetch happens *before* the insert, so an unknown `ticketId` (`400`)
+or an unreachable Linear (`502`) queues nothing. With no Linear key configured, a request
+that omits `instructions` is `503` naming `foundry auth --linear`; one that supplies them is
+`202` with an `err` line that the claim was skipped. Foundry only fetches and composes here
+— it never judges whether the ticket is ready (no Pending-section or blocked-by check on
+this path); the caller decided that by sending it.
 
 **Retries.** Send an `Idempotency-Key` header (1–128 characters, else `400`) and the call is
 safe to repeat: a replay with the same key and the same body answers `200` with the job the
@@ -346,15 +366,16 @@ src/
       server/job-logs.ts      node-only: ~/.foundry/logs/<id>.jsonl, append + read
       server/job-runner.ts    node-only: preflight, clone, docker run, push, settle
       server/job-events.ts    node-only: callback auth + stream-json -> the JSONL log
-      server/job-api.ts       node-only: the trigger API — bearer auth, payload -> NewJobInput
+      server/job-api.ts       node-only: the trigger API — bearer auth, payload -> NewJobInput, ticket brief + claim
       server/job-webhook.ts   node-only: the signed job.settled POST to a job's callbackUrl
+      server/linear-link.ts   node-only: the host's Linear edge — issue fetch, brief, claim, PR link
       server/auth.ts          node-only: constant-time bearer checks, FOUNDRY_API_TOKEN
       server/foundry-env.ts   node-only: ~/.foundry/env + ~/.config/liamai/env, read fresh per use
       server/forge-pr.ts      node-only: bb / gh pr create, by origin host
       types.ts
     scanner/
       server/scanner.ts       node-only: the ready-ticket tick + env-gated interval
-      server/linear-scan.ts   node-only: agent-ready candidates, claim mutation
+      server/linear-scan.ts   node-only: agent-ready candidates + repair check; claims via linear-link
       server/repo-map.ts      node-only: ~/.foundry/scanner.json, project -> repo
       server/readiness.ts     pure: blocked-by + Pending-section guard
       server/*.test.ts        bun test — claim race, guard cases, one full tick

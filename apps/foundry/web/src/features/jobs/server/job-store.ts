@@ -140,9 +140,10 @@ export async function lastBaseBranchByRepo(): Promise<Map<string, string>> {
 }
 
 /**
- * Shared insert behind `createJob` and `claimTicketJob`. With a `ticketId` the
- * insert doubles as the scanner's claim on the ticket: `jobs_ticket_id_unique`
- * is the arbiter, and losing the race comes back as null rather than an error.
+ * Shared insert behind `createJob`, `claimTicketJob` and `createJobIdempotent`.
+ * With a `ticketId` the insert doubles as the claim on the ticket — for the
+ * scanner and the trigger API alike: `jobs_ticket_id_unique` is the arbiter,
+ * and losing the race comes back as null rather than an error.
  * An idempotency key (LIA-91) rides the same mechanism on
  * `jobs_idempotency_key_unique`: two concurrent first requests with one key
  * insert one row, and the loser is told null so it can re-read the winner.
@@ -195,7 +196,7 @@ async function insertJob(input: NewJobInput, ticketId?: string): Promise<Job | n
   // it is written once the row is real. Losing it on a failed insert is right:
   // there would be no job for it to describe.
   const via = bp ? ` via blueprint "${bp.name}" (${bp.steps.length} steps)` : ''
-  const claim = ticketId ? ` — scanner claim for ${ticketId}` : ''
+  const claim = ticketId ? ` — claim for ${ticketId}` : ''
   await appendLogs(row.id, [{ stream: 'sys', text: `queued on ${row.forge}${via}${claim}` }])
   return toJob(row)
 }
@@ -207,9 +208,10 @@ export async function createJob(input: NewJobInput): Promise<Job> {
 }
 
 /**
- * The trigger API's insert (LIA-91): a plain create, or the scanner's ticket
- * claim when the caller named one. Null means a unique index refused the row —
- * the key's or the ticket's — and the API decides which by re-reading.
+ * The trigger API's insert (LIA-91): a plain create, or the same ticket claim
+ * the scanner takes when the caller named one (LIA-92 mirrors it to Linear
+ * afterwards). Null means a unique index refused the row — the key's or the
+ * ticket's — and the API decides which by re-reading.
  */
 export async function createJobIdempotent(input: NewJobInput, ticketId?: string): Promise<Job | null> {
   return insertJob(input, ticketId)

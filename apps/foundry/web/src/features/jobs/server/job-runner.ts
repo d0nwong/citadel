@@ -20,7 +20,7 @@ import { FOUNDRY_HOME, appendLogs } from './job-logs'
 import * as store from './job-store'
 import type { JobRow } from './job-store'
 import { notifyCallback } from './job-webhook'
-import { linkPrToTicket } from './linear-link'
+import { linearApiKey, linkPrToTicket } from './linear-link'
 
 const exec = promisify(execFile)
 
@@ -75,9 +75,6 @@ async function docker(args: Array<string>, timeout = 30_000): Promise<string> {
   })
   return stdout.trim()
 }
-
-/** Re-exported for the scanner, which reads LINEAR_API_KEY the same way launches do. */
-export { readFoundryEnv }
 
 /* ------------------------------------------------------------------ */
 /* Preflight                                                          */
@@ -490,8 +487,7 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
  */
 async function linkTicket(id: string, prUrl: string, title: string, body: string, task: string): Promise<void> {
   try {
-    const cred = await readFoundryEnv()
-    const key = cred.LINEAR_API_KEY ?? process.env.LINEAR_API_KEY
+    const key = await linearApiKey()
     if (!key) return // Linear was never configured; nothing to link to.
 
     const res = await linkPrToTicket(key, { prUrl, title, body, task })

@@ -4,11 +4,14 @@
  * whole edge with plain objects.
  *
  * Auth rides the same personal API key `linkTicket` uses (raw key, no
- * `Bearer`), through the exported `gql` helper. Runs on the HOST only:
- * LINEAR_API_KEY never enters a forge — containers reach Linear through the
- * MCP gateway and nowhere else.
+ * `Bearer`), through the exported `gql` helper. The claim itself — viewer,
+ * started state, the `issueUpdate` — lives in `linear-link.ts` since LIA-92,
+ * shared with the trigger API; this port only adds the candidate scan and
+ * the repair path's state check. Runs on the HOST only: LINEAR_API_KEY never
+ * enters a forge — containers reach Linear through the MCP gateway and
+ * nowhere else.
  */
-import { gql } from '@/features/jobs/server/linear-link'
+import { claimIssue, gql, startedStateId, viewerId } from '@/features/jobs/server/linear-link'
 
 export interface CandidateIssue {
   /** Linear's uuid — what mutations address. */
@@ -99,33 +102,9 @@ export function makeLinearPort(apiKey: string, opts?: { team?: string; label?: s
       }))
     },
 
-    async viewerId() {
-      const data = await gql<{ viewer: { id: string } }>(apiKey, 'query { viewer { id } }', {})
-      return data.viewer.id
-    },
-
-    async startedStateId(teamId: string) {
-      const data = await gql<{ team: { states: { nodes: Array<{ id: string; name: string; type: string }> } } }>(
-        apiKey,
-        'query($teamId: String!) { team(id: $teamId) { states { nodes { id name type } } } }',
-        { teamId },
-      )
-      const states = data.team.states.nodes
-      const started = states.find((s) => s.type === 'started' && s.name.toLowerCase() === 'in progress')
-        ?? states.find((s) => s.type === 'started')
-      if (!started) throw new Error('team has no started-type state to move the ticket into')
-      return started.id
-    },
-
-    async claimIssue(issueId: string, assigneeId: string, stateId: string) {
-      await gql<{ issueUpdate: { success: boolean } }>(
-        apiKey,
-        `mutation($id: String!, $assigneeId: String!, $stateId: String!) {
-          issueUpdate(id: $id, input: { assigneeId: $assigneeId, stateId: $stateId }) { success }
-        }`,
-        { id: issueId, assigneeId, stateId },
-      )
-    },
+    viewerId: () => viewerId(apiKey),
+    startedStateId: (teamId) => startedStateId(apiKey, teamId),
+    claimIssue: (issueId, assigneeId, stateId) => claimIssue(apiKey, issueId, assigneeId, stateId),
 
     async issueStateType(issueId: string) {
       const data = await gql<{ issue: { state: { type: string } | null } }>(

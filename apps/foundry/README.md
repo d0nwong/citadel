@@ -316,7 +316,9 @@ curl -s -X POST http://localhost:3777/api/jobs \
 
 `202` comes back with the job the moment its row exists; `GET /api/jobs/<id>` follows it
 to a PR URL, or pass a `callbackUrl` and the host POSTs you a signed `job.settled` event
-instead. The full contract is the OpenAPI document at `/api/openapi.json`, rendered at
+instead. A Linear `ticketId` with no `instructions` is enough too: the host composes the
+brief from the issue and, once the row exists, assigns the ticket to you and moves it to
+In Progress. The full contract is the OpenAPI document at `/api/openapi.json`, rendered at
 `/api/reference`; `web/README.md` has the prose around it.
 
 ### Repo notes
