@@ -109,3 +109,6 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+
+This checkout is also **argus, the blackboard**: `reports/`, `reports/points.json`, `decisions/`, `digests/` and every `<app>/features/<dir>/{docs,journal}` are the record of what happened in the products (README.md "Layout").
+To answer a question about any of it — a point, a ticket, a day, a rule id, a feature — load the `ask` skill (`skills/ask/SKILL.md`): it retrieves with `bun run accio point|ticket|journal|find` and answers read-only, citing paths.
