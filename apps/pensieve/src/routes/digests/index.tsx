@@ -20,7 +20,7 @@ function DigestsPage() {
             <Link to="/digests/$day" params={{ day: d.day }} className="group flex flex-col gap-1 py-3 sm:flex-row sm:items-baseline sm:gap-4">
               <span className="mono w-28 shrink-0 text-ink-faint">{d.day}</span>
               <span className="display text-[19px] text-ink group-hover:text-thread">{prettyDay(d.day)}</span>
-              {d.lede && <span className="min-w-0 truncate text-[13px] text-ink-faint">{d.lede}</span>}
+              {d.lede && <span className="min-w-0 truncate text-sm text-ink-faint">{d.lede}</span>}
             </Link>
           </li>
         ))}

@@ -103,7 +103,7 @@ function DocPage() {
               <ol className="flex flex-col gap-1 border-l border-rule-soft">
                 {headings.map((h) => (
                   <li key={h.id} className={cn(h.level === 1 ? 'pl-3' : 'pl-3')}>
-                    <a href={`#${h.id}`} className="block text-[12.5px] leading-snug text-ink-dim hover:text-thread">
+                    <a href={`#${h.id}`} className="block text-sm leading-snug text-ink-dim hover:text-thread">
                       {h.text}
                     </a>
                   </li>

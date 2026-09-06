@@ -27,7 +27,7 @@ function InboxPage() {
       <section className="rise" style={{ animationDelay: '60ms' }}>
         <div className="mb-3 flex items-baseline justify-between gap-4">
           <h2 className="kicker">Sweep report</h2>
-          <div className="flex items-baseline gap-4 text-[12.5px]">
+          <div className="flex items-baseline gap-4 text-sm">
             {openPoints !== null && (
               <Link to="/points" className="inline-flex items-center gap-1 text-thread hover:underline">
                 {openPoints === 0 ? 'nothing needs you' : `${openPoints} point${openPoints === 1 ? '' : 's'} need${openPoints === 1 ? 's' : ''} you`}
@@ -57,7 +57,7 @@ function InboxPage() {
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="kicker">Latest digest{digest ? ` · ${prettyDay(digest.day, { weekday: false })}` : ''}</h2>
           {digest && (
-            <Link to="/digests/$day" params={{ day: digest.day }} className="inline-flex items-center gap-1 text-[12.5px] text-ink-faint hover:text-thread">
+            <Link to="/digests/$day" params={{ day: digest.day }} className="inline-flex items-center gap-1 text-sm text-ink-faint hover:text-thread">
               open <ArrowUpRight className="size-3" />
             </Link>
           )}

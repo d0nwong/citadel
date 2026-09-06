@@ -54,6 +54,11 @@
   --font-body: var(--font-body);
   --font-mono: var(--font-mono);
 
+  /* The app's one text size: everything that is not a heading is `text-sm` (Tailwind's
+     default is 0.875rem). Headings keep their own sizes; the kicker / mono labels are CSS. */
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5;
+
   /* shadcn semantic tokens → Tailwind utilities (bg-background, text-muted-foreground, …).
      Values come from the paper-and-ink variables in `:root` below, so the chat blocks
      under src/components/ai read as this app, not as a second design system. */

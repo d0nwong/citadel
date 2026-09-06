@@ -111,7 +111,7 @@ function JournalPage() {
             value={search.q ?? ''}
             onChange={(e) => set({ q: e.target.value || undefined })}
             placeholder="search slug, summary, pr, ticket…"
-            className="ml-auto w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 font-mono text-[12px] text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none sm:w-72"
+            className="ml-auto w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 font-mono text-sm text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none sm:w-72"
           />
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -142,7 +142,7 @@ function JournalPage() {
           <ol className="divide-y divide-rule-soft border-t border-rule md:border-t-0">
             {entries.map((e) => (
               <li key={e.id} className="py-3">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   <FeatureLink feature={e.feature} app={e.app} />
                   <PrLink pr={e.pr} url={e.url} />
                   {e.merge && <span className="mono text-ink-faint">{e.merge.slice(0, 9)}</span>}
@@ -154,7 +154,7 @@ function JournalPage() {
                 <Link to="/journal/$" params={{ _splat: e.id }} className="mt-1 block text-[16px] leading-snug text-ink hover:text-thread">
                   {e.summary ?? e.slug}
                 </Link>
-                {e.hold && <p className="mt-1 text-[13px] italic text-st-hold">hold: {e.hold}</p>}
+                {e.hold && <p className="mt-1 text-sm italic text-st-hold">hold: {e.hold}</p>}
               </li>
             ))}
           </ol>

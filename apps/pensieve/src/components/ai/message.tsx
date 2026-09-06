@@ -77,7 +77,7 @@ export const MessageResponse = memo(function MessageResponse({
   return (
     <Md
       doc={text}
-      className={cn('size-full max-w-none text-[15px] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0', className)}
+      className={cn('size-full max-w-none text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0', className)}
     />
   )
 })
