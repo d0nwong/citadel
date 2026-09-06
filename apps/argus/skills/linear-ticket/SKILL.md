@@ -76,8 +76,9 @@ touches. These are the docs `skills/feature-docs` produces per `DOC-PROTOCOL.md`
 **4. Resolve the destination.** `list_teams` → team; `list_projects`, `list_issue_labels`
 for the rest. Reuse `defaults.json` beside this skill if present (`{"teamId":…,
 "teamKey":…, "projectId":…, "labelIds":[…]}`); if it's absent or the team is ambiguous,
-ask once and write the answer there so the next run is silent. Leave status, assignee,
-estimate and cycle alone unless the user names them.
+ask once and write the answer there so the next run is silent. Every ticket this skill
+creates is assigned to the user (`assignee: "me"` on `save_issue`), sub-issues included;
+leave status, estimate and cycle alone unless the user names them.
 
 **Slack-derived alden-portal tickets** (a Slack thread, or a digest ✋ item, that
 becomes work in `~/git/alden-portal-fe` or `~/git/alden-connect-portal-be`):
@@ -96,8 +97,9 @@ becomes work in `~/git/alden-portal-fe` or `~/git/alden-connect-portal-be`):
 outward-facing: get an explicit go-ahead before creating, unless the user already said
 "file it" / "just create it".
 
-**6. Create.** `save_issue` with `title`, `team`, `description` (the markdown body), plus
-`project`/`labels` (the rule above included) — and no `id`, which is what makes it a create. Report back
+**6. Create.** `save_issue` with `title`, `team`, `description` (the markdown body),
+`assignee: "me"`, plus `project`/`labels` (the rule above included) — and no `id`, which is
+what makes it a create. Report back
 the issue key and URL, nothing else.
 
 Splitting into sub-issues is a three-pass create, because relations need keys that don't
