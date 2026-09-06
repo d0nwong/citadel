@@ -55,7 +55,10 @@ export const ADAPTER_CONFIG = {
   // Belt and braces under `default`: these never even reach the permission check.
   disallowedTools: ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task'],
   settingSources: ['project'],
-  maxTurns: 12,
+  // One turn per model round-trip, so every tool call is one: a question about a point that
+  // reads the report, a journal entry and a doc or two is 15–25. When the cap is hit the CLI
+  // still prints its result (finish reason `length`) and then exits 1 — see `askStream`.
+  maxTurns: 40,
   emitDiff: false,
 } satisfies ClaudeCodeTextConfig
 
@@ -390,9 +393,13 @@ export async function* askStream(input: AskInput, opts: AskRunOptions = {}): Asy
         return
       }
     }
+    // The adapter's own RUN_FINISHED: the engine consumes it and emits its own at the end of
+    // a run that ends well, so this is the only place it can be seen when the run does not.
+    let adapterFinish: Extract<StreamChunk, { type: EventType.RUN_FINISHED }> | undefined
     const recorder = defineChatMiddleware({
       name: 'ask-session',
       async onChunk(_ctx, chunk) {
+        if (chunk.type === EventType.RUN_FINISHED) adapterFinish = chunk
         if (chunk.type !== EventType.CUSTOM || chunk.name !== SESSION_ID_EVENT) return
         const id = (chunk.value as { sessionId?: unknown } | undefined)?.sessionId
         if (typeof id === 'string' && id) await store.persistence.stores.metadata.set(input.threadId, SESSION_KEY, id)
@@ -408,14 +415,30 @@ export async function* askStream(input: AskInput, opts: AskRunOptions = {}): Asy
       middleware,
       abortController: opts.abortController,
     })
+    // At `maxTurns` the claude CLI prints its result — the adapter emits RUN_FINISHED with
+    // `finishReason: 'length'` — and then exits 1, which the sandbox runner throws. The
+    // engine answers that with a RUN_ERROR and rethrows, and its own RUN_FINISHED never
+    // comes. The run did finish: the adapter's finish stands in, the error is logged, and
+    // the streaming snapshot on disk is the answer as far as it got.
     let finished: StreamChunk | undefined
-    for await (const chunk of stream) {
-      if (chunk.type === EventType.RUN_FINISHED) {
-        finished = chunk
-        continue
+    const late = (what: unknown) => console.warn(`[ask] ${input.threadId}: the run finished, then the agent process failed —`, what)
+    try {
+      for await (const chunk of stream) {
+        if (chunk.type === EventType.RUN_FINISHED) {
+          finished = chunk
+          continue
+        }
+        if (chunk.type === EventType.RUN_ERROR && adapterFinish) {
+          late(chunk.message)
+          continue
+        }
+        yield chunk
       }
-      yield chunk
+    } catch (e) {
+      if (!adapterFinish) throw e
+      late(e instanceof Error ? e.message : e)
     }
+    if (!finished && adapterFinish) finished = { ...adapterFinish, threadId: input.threadId, runId, timestamp: Date.now() }
     if (finished) yield finished
   } finally {
     release()

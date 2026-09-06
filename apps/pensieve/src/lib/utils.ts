@@ -15,6 +15,13 @@ export function prettyDay(day: string, opts: { weekday?: boolean } = { weekday: 
   })
 }
 
+/** "2026-09-06T09:14:03.000Z" → "6 Sep 2026, 09:14" — a list-row timestamp. */
+export function prettyStamp(iso: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 export function daysSince(day?: string): number | null {
   if (!day) return null
   const d = new Date(`${day}T12:00:00`)

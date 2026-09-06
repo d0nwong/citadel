@@ -11,7 +11,7 @@ export const Route = createFileRoute('/')({
 })
 
 function InboxPage() {
-  const { report, digest, workspace, openPoints } = Route.useLoaderData()
+  const { report, digest, workspace, openPoints, conversations } = Route.useLoaderData()
   return (
     <>
       <PageTitle
@@ -36,6 +36,10 @@ function InboxPage() {
             )}
             <Link to="/reports" className="text-ink-faint hover:text-thread">
               past reports
+            </Link>
+            <Link to="/ask" className="inline-flex items-center gap-1 text-ink-faint hover:text-thread">
+              {conversations === 0 ? 'ask argus' : `${conversations} conversation${conversations === 1 ? '' : 's'}`}
+              <ArrowUpRight className="size-3" />
             </Link>
           </div>
         </div>

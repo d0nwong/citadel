@@ -19,7 +19,8 @@ import type { UIMessage } from '@tanstack/ai'
 export const getInbox = createServerFn({ method: 'GET' }).handler(async () => {
   const ws = await import('#/server/workspace')
   const dec = await import('#/server/decisions')
-  const [reports, digests, points] = await Promise.all([ws.listReports(), ws.listDigests(), ws.readPoints()])
+  const ask = await import('#/server/ask')
+  const [reports, digests, points, conversations] = await Promise.all([ws.listReports(), ws.listDigests(), ws.readPoints(), ask.listConversations()])
   const latestReport = reports[0]
   const latestDigest = digests[0]
   const [report, digest] = await Promise.all([
@@ -34,6 +35,8 @@ export const getInbox = createServerFn({ method: 'GET' }).handler(async () => {
     report: report && latestReport ? { day: latestReport.day, ...report } : null,
     digest: digest && latestDigest ? { day: latestDigest.day, ...digest } : null,
     openPoints,
+    // Ask's stored conversations — the Inbox links to /ask with this count (LIA-103, AC5).
+    conversations: conversations.length,
   }
 })
 

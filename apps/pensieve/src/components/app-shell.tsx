@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { BookOpenText, CircleDot, Inbox, MessagesSquare, ScrollText } from 'lucide-react'
+import { BookOpenText, CircleDot, Inbox, MessageCircleQuestion, MessagesSquare, ScrollText } from 'lucide-react'
 import { cn } from '#/lib/utils'
 
 const NAV = [
@@ -8,6 +8,7 @@ const NAV = [
   { to: '/journal', label: 'Journal', icon: ScrollText, hint: 'one entry per landing' },
   { to: '/digests', label: 'Digests', icon: MessagesSquare, hint: '#dev-team, daily' },
   { to: '/docs', label: 'Docs', icon: BookOpenText, hint: 'product + arch' },
+  { to: '/ask', label: 'Ask', icon: MessageCircleQuestion, hint: 'argus, read-only' },
 ] as const
 
 function Basin({ className }: { className?: string }) {
