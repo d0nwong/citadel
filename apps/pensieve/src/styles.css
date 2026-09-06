@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=JetBrains+Mono:wght@400;500&display=swap');
 @import 'tailwindcss';
+@import 'tw-animate-css';
 @plugin '@tailwindcss/typography';
 
 /* ── Pensieve: the reading room ──────────────────────────────────────────
@@ -52,6 +53,57 @@
   --font-display: var(--font-display);
   --font-body: var(--font-body);
   --font-mono: var(--font-mono);
+
+  /* shadcn semantic tokens → Tailwind utilities (bg-background, text-muted-foreground, …).
+     Values come from the paper-and-ink variables in `:root` below, so the chat blocks
+     under src/components/ai read as this app, not as a second design system. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ── shadcn semantic tokens, mapped onto paper-and-ink ───────────────────
+   Light only: Pensieve has no `.dark` variant, so the `dark:` classes shadcn
+   ships were dropped from the vendored primitives rather than themed. */
+:root {
+  --radius: 0.5rem;
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: #fff;
+  --card-foreground: var(--ink);
+  --popover: #fff;
+  --popover-foreground: var(--ink);
+  --primary: var(--thread);
+  --primary-foreground: var(--paper);
+  --secondary: var(--rule-soft);
+  --secondary-foreground: var(--ink);
+  --muted: var(--rule-soft);
+  --muted-foreground: var(--ink-dim);
+  --accent: var(--thread-wash);
+  --accent-foreground: var(--ink);
+  --destructive: var(--st-hold);
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--thread-soft);
 }
 
 html {
