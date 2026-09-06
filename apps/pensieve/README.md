@@ -137,11 +137,21 @@ final status and PR.
 ## Ask
 
 `askChat` runs one turn of Claude Code (`@tanstack/ai-claude-code`, the `sonnet` alias)
-with the checkout as its working directory and exactly these tools: `Read`, `Grep`,
-`Glob`, `Bash(git log:*)`, `Bash(git show:*)`, under `permissionMode: 'default'` — nothing
-that writes or runs. It sees argus's skills (`sweep`, `slack-digest`, `log-change`, …)
-because argus links them into its own `.claude/skills`. The answer streams back as SSE
-over a Start server function, so `useChat({ fetcher })` reads it directly.
+with the checkout as its working directory, under `permissionMode: 'default'` with a
+read-only allowlist (`src/lib/ask-tools.ts`): `Read`, `Grep`, `Glob`, `Skill`, `git log` /
+`git show` (bare, and `git -C <checkout> …` for the FE and BE checkouts — `FE_REPO` /
+`BE_REPO`, both as `~/…` and as the absolute path, since a `Bash(...)` rule is a literal
+command prefix), `bun run accio …` (its `sync` and `map` verbs denied), and the hosted
+Linear server's read tools (`mcp__linear__get_issue`, `list_issues`, `list_comments`, …);
+every Linear write tool is denied by name. It sees argus's skills (`ask`, `sweep`,
+`slack-digest`, …) because argus links them into its own `.claude/skills`, and its
+`.mcp.json` because `settingSources` is `['project']`. A system prompt is appended to
+Claude Code's own (`ASK_SYSTEM_PROMPT`): the session is told it is a web panel with no
+terminal and no permission dialog, to load the `ask` skill and retrieve with `accio point`
+/ `accio ticket` / `accio journal`, to cite every path, and that it cannot write, edit a
+ticket or send a point — so a denied tool is reported in one sentence, never relayed as a
+request for approval. The answer streams back as SSE over a Start server function, so
+`useChat({ fetcher })` reads it directly.
 
 Every run persists through `withPersistence` from `@tanstack/ai-persistence`, over a store
 that keeps one conversation per file:
@@ -164,8 +174,22 @@ on one thread are serialised on the server as well as in the client.
 `deleteConversation` (removes that one file) and `askStatus` (is a credential available?)
 are the other server functions.
 
+How a run ended is on disk too. A run that ends in error writes `metadata.lastError`
+(message, code, time) — cleared when the next run starts — and a run that stopped at the
+turn cap writes `metadata.finishReason: "length"` together with its whole transcript (the
+persistence middleware saves the final transcript only on a clean finish; Ask saves it
+itself on that path, so the file holds every tool part, not the streaming snapshot). When
+the error is about the credential, the message on screen and in the file ends with a
+diagnosis line: which `claude` binary the run spawned (`command -v claude` from Pensieve's
+environment), the auth mode, and what `claude auth status` said (`askStatus` returns the
+same as `claudePath` and `probe`; the footer shows `host login · claude.ai`). On macOS the
+first credential read after a `claude` update can raise a Keychain dialog that a headless
+subprocess cannot answer — choose Always Allow. `ASK_DEBUG=1` prints TanStack AI's full
+trace for every run; without it, the CLI's non-JSON output lines are printed only when a
+run ends in error.
+
 The pages: `/ask` lists the conversations and mints a thread id for a new one; `/ask/<id>`
-is `createChatHook` from `@tanstack/ai-react/ui` (`src/chat/ask-ui.tsx`) mapped onto the
+is `createChatHook` from `@tanstack/ai-react/ui` (`src/features/ask/`) mapped onto the
 chat blocks, hydrated from `getConversation` in the route loader. The answer streams in
 as it is written, each `Read` / `Grep` / `Glob` call is a collapsed Tool block naming its
 path or pattern, and a second question sent while the first is answered waits in a queue.
@@ -173,7 +197,10 @@ Stop — and a reload mid-answer, which drops the request the same way — ends 
 keeps the partial answer; the next question resumes the same Claude session. With no
 credential the composer is disabled and says what to do. Delete asks once and removes the
 file. Every point on `/points` has an Ask action that opens a conversation already asking
-about that point, with a breadcrumb back to the points.
+about that point, with a breadcrumb back to the points; the question starts with `/ask`,
+which loads argus's `ask` skill explicitly (a `/skill` prefix expands under `claude -p`),
+so the first tool call is `accio point`. Every other page refreshes when dragged down from
+the top (touch or mouse): the route loaders re-run, nothing else moves.
 
 ## Layout
 
@@ -184,7 +211,8 @@ src/server/foundry.ts     the Foundry client — POST /api/jobs, GET /api/jobs/:
 src/server/ask.ts         Ask — the Claude Code adapter config, the per-file conversation store, the run
 src/test/                 bun test preload: vitest shim for the persistence conformance suite
 src/lib/api.ts            server functions — the client/server bridge
-src/chat/ask-ui.tsx       Ask's chat, bound once: createChatHook over the blocks, askChat as transport
+src/lib/ask-tools.ts      Ask's tool names — the allow / deny lists and what the page renders as a Tool block
+src/features/ask/         Ask's chat as a feature slice — model/ (state, the bound createChatHook), components/ (widgets), lib/ (helpers); routes import its index only
 src/routes/               file routes (routeTree.gen.ts is generated by `tsr`)
 src/components/           shell, markdown renderer, small shared bits
 server.ts                 production entry (Bun.serve → dist)

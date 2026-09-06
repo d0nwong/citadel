@@ -31,8 +31,10 @@ export function ToolHeader({
       ) : (
         <WrenchIcon className="size-3.5" />
       )}
-      <span className="font-medium">{title}</span>
-      {state ? <span className="text-muted-foreground">{state}</span> : null}
+      {/* A long title (a `git -C <path> show …` command) would push the state and chevron off a phone. */}
+      <span className="min-w-0 font-medium max-sm:truncate">{title}</span>
+      {/* On a phone the icon says it; the word would take the title's room. */}
+      {state ? <span className="shrink-0 text-muted-foreground max-sm:hidden">{state}</span> : null}
       <ChevronDownIcon className="ml-auto size-3.5" />
     </CollapsibleTrigger>
   )

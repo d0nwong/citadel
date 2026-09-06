@@ -10,7 +10,7 @@ export function PageTitle({ kicker, title, aside }: { kicker?: ReactNode; title:
         {kicker && <p className="kicker mb-2">{kicker}</p>}
         <h1 className="display text-[34px] leading-none sm:text-[40px]">{title}</h1>
       </div>
-      {aside && <div className="text-[13px] text-ink-dim">{aside}</div>}
+      {aside && <div className="text-sm text-ink-dim">{aside}</div>}
     </header>
   )
 }
@@ -19,7 +19,7 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
   return (
     <div className="rise rounded-md border border-dashed border-rule px-6 py-10 text-center">
       <p className="display text-[22px] italic text-ink-dim">{title}</p>
-      {children && <div className="mx-auto mt-2 max-w-md text-[14px] text-ink-faint">{children}</div>}
+      {children && <div className="mx-auto mt-2 max-w-md text-sm text-ink-faint">{children}</div>}
     </div>
   )
 }
@@ -55,7 +55,7 @@ export function Fact({ label, children }: { label: string; children?: ReactNode 
   return (
     <div className="flex flex-col gap-0.5 border-t border-rule-soft py-2 first:border-t-0">
       <dt className="kicker">{label}</dt>
-      <dd className="text-[13.5px] leading-snug text-ink">{children}</dd>
+      <dd className="text-sm leading-snug text-ink">{children}</dd>
     </div>
   )
 }

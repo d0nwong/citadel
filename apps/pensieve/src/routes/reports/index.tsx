@@ -20,7 +20,7 @@ function ReportsPage() {
             <Link to="/reports/$day" params={{ day: r.day }} className="group flex items-baseline gap-4 py-3">
               <span className="mono w-28 shrink-0 text-ink-faint">{r.day}</span>
               <span className="display text-[19px] text-ink group-hover:text-thread">{prettyDay(r.day)}</span>
-              {r.lede && <span className="truncate text-[13px] text-ink-faint">{r.lede}</span>}
+              {r.lede && <span className="truncate text-sm text-ink-faint">{r.lede}</span>}
             </Link>
           </li>
         ))}

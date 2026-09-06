@@ -1,7 +1,7 @@
 /**
  * /ask/$id — one conversation. The loader brings the stored turns (none for a thread the
  * list page just minted) and whether a credential is available; the page hands both to
- * the bound chat from `#/chat/ask-ui` and adds the title, Delete, and a footer with the
+ * the bound chat from `#/features/ask` and adds the title, Delete, and a footer with the
  * thread and Claude session ids.
  *
  * Reload during an answer behaves like Stop: the request drops, the server kills the
@@ -13,13 +13,12 @@
  * known to be available — or left in the composer when it is not — and the kicker is a
  * breadcrumb back to the points. `q` is dropped from the URL once sent.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, createFileRoute, notFound, useNavigate, useRouter } from '@tanstack/react-router'
 import type { UIMessage } from '@tanstack/ai'
 import { ArrowLeftIcon, Trash2Icon } from 'lucide-react'
 import { askStatus, deleteConversation, getConversation } from '#/lib/api'
-import { AskStatusProvider, useAppChat } from '#/chat/ask-ui'
-import { PageTitle } from '#/components/bits'
+import { AskStatusProvider, useAppChat } from '#/features/ask'
 import { Button } from '#/components/ui/button'
 
 type From = 'points'
@@ -38,6 +37,35 @@ export const Route = createFileRoute('/ask/$id')({
   component: AskConversationPage,
   notFoundComponent: () => <p className="text-ink-dim">That is not a conversation id.</p>,
 })
+
+/**
+ * The page fills the viewport from wherever it starts down to the bottom padding of
+ * `<main>`, so the conversation scrolls and the composer stays on screen. Measured rather
+ * than subtracted: above `lg` the shell's nav sits on top and its height is not a constant.
+ * Until measured (and on the server) a lg-sized guess applies.
+ */
+function useFillToBottom() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [height, setHeight] = useState<string>()
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY
+      const bottom = parseFloat(getComputedStyle(el.parentElement ?? el).paddingBottom) || 0
+      setHeight(`calc(100dvh - ${Math.round(top)}px - ${Math.round(bottom)}px)`)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(document.body)
+    window.addEventListener('resize', measure)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
+  return { ref, style: height ? { height } : undefined }
+}
 
 /** The first user turn, one line — the same title the list shows. */
 const firstQuestion = (messages: Array<UIMessage>): string =>
@@ -98,36 +126,47 @@ function AskConversationPage() {
   }
 
   const title = firstQuestion(chat.messages as Array<UIMessage>) || 'New conversation'
+  const fill = useFillToBottom()
 
   return (
-    <div className="flex h-[calc(100dvh-5rem)] flex-col">
-      <PageTitle
-        kicker={
-          from === 'points' ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Link to="/points" className="inline-flex items-center gap-1 hover:text-thread">
-                <ArrowLeftIcon className="size-3" /> Points
+    <div ref={fill.ref} style={fill.style} className="flex h-[calc(100dvh-5rem)] min-h-0 flex-col">
+      {/* On a phone the header is one row — back, the question on one line, a delete icon — so the
+          conversation keeps the screen; from `sm` up it is the page title with its breadcrumb. */}
+      <header className="rise mb-3 flex items-center gap-2 border-b border-rule pb-2 sm:mb-8 sm:flex-wrap sm:items-end sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:pb-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:block">
+          <p className="kicker shrink-0 sm:mb-2">
+            {from === 'points' ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Link to="/points" className="inline-flex items-center gap-1 hover:text-thread">
+                  <ArrowLeftIcon className="size-3" /> <span className="hidden sm:inline">Points</span>
+                </Link>
+                <span aria-hidden className="hidden sm:inline">
+                  ›
+                </span>
+                <Link to="/ask" className="hidden hover:text-thread sm:inline">
+                  Ask
+                </Link>
+              </span>
+            ) : (
+              <Link to="/ask" className="inline-flex items-center gap-1 hover:text-thread">
+                <ArrowLeftIcon className="size-3" /> <span className="hidden sm:inline">Ask</span>
               </Link>
-              <span aria-hidden>›</span>
-              <Link to="/ask" className="hover:text-thread">
-                Ask
-              </Link>
-            </span>
-          ) : (
-            <Link to="/ask" className="inline-flex items-center gap-1 hover:text-thread">
-              <ArrowLeftIcon className="size-3" /> Ask
-            </Link>
-          )
-        }
-        title={<span className="line-clamp-2 text-[24px] leading-tight sm:text-[28px]">{title}</span>}
-        aside={
-          <Button variant="ghost" size="sm" onClick={remove} disabled={deleting} className="text-ink-dim hover:text-st-hold">
-            <Trash2Icon />
-            Delete
-          </Button>
-        }
-      />
-      <AskStatusProvider status={status} threadId={id} draft={q && !status.available ? q : undefined}>
+            )}
+          </p>
+          <h1 className="display min-w-0 truncate text-[17px] leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-[28px]">{title}</h1>
+        </div>
+        <Button variant="ghost" size="sm" onClick={remove} disabled={deleting} className="shrink-0 text-ink-dim hover:text-st-hold" title="Delete">
+          <Trash2Icon />
+          <span className="hidden sm:inline">Delete</span>
+        </Button>
+      </header>
+      <AskStatusProvider
+        status={status}
+        threadId={id}
+        draft={q && !status.available ? q : undefined}
+        finishReason={conversation?.finishReason}
+        lastError={conversation?.lastError}
+      >
         <chat.AppChat />
       </AskStatusProvider>
       <p className="mono mt-2 truncate text-ink-faint" title={conversation?.sessionId ? `session ${conversation.sessionId}` : undefined}>
