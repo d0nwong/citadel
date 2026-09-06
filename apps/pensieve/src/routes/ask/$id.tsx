@@ -13,7 +13,7 @@
  * known to be available — or left in the composer when it is not — and the kicker is a
  * breadcrumb back to the points. `q` is dropped from the URL once sent.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, createFileRoute, notFound, useNavigate, useRouter } from '@tanstack/react-router'
 import type { UIMessage } from '@tanstack/ai'
 import { ArrowLeftIcon, Trash2Icon } from 'lucide-react'
@@ -37,6 +37,35 @@ export const Route = createFileRoute('/ask/$id')({
   component: AskConversationPage,
   notFoundComponent: () => <p className="text-ink-dim">That is not a conversation id.</p>,
 })
+
+/**
+ * The page fills the viewport from wherever it starts down to the bottom padding of
+ * `<main>`, so the conversation scrolls and the composer stays on screen. Measured rather
+ * than subtracted: above `lg` the shell's nav sits on top and its height is not a constant.
+ * Until measured (and on the server) a lg-sized guess applies.
+ */
+function useFillToBottom() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [height, setHeight] = useState<string>()
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY
+      const bottom = parseFloat(getComputedStyle(el.parentElement ?? el).paddingBottom) || 0
+      setHeight(`calc(100dvh - ${Math.round(top)}px - ${Math.round(bottom)}px)`)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(document.body)
+    window.addEventListener('resize', measure)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
+  return { ref, style: height ? { height } : undefined }
+}
 
 /** The first user turn, one line — the same title the list shows. */
 const firstQuestion = (messages: Array<UIMessage>): string =>
@@ -97,9 +126,10 @@ function AskConversationPage() {
   }
 
   const title = firstQuestion(chat.messages as Array<UIMessage>) || 'New conversation'
+  const fill = useFillToBottom()
 
   return (
-    <div className="flex h-[calc(100dvh-5rem)] flex-col">
+    <div ref={fill.ref} style={fill.style} className="flex h-[calc(100dvh-5rem)] min-h-0 flex-col">
       {/* On a phone the header is one row — back, the question on one line, a delete icon — so the
           conversation keeps the screen; from `sm` up it is the page title with its breadcrumb. */}
       <header className="rise mb-3 flex items-center gap-2 border-b border-rule pb-2 sm:mb-8 sm:flex-wrap sm:items-end sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:pb-4">
