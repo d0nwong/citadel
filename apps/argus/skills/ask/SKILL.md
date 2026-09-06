@@ -91,25 +91,54 @@ and Pensieve at `~/git/foundry`, `~/git/pensieve`.
 
 ## 4. Answer
 
-Four headings, in this order, nothing before the first:
+A person is reading this in a chat panel, not an agent. Five parts, in this order,
+nothing before the first, about 130 words in all (the shape Liam chose on 2026-09-06
+from three rendered variants — brief with bullets):
 
-**What it asks** — one line: the decision, verification or lookup being asked for, in the
-asker's terms.
+**The question** — one short paragraph: what was decided or expected, what actually is,
+and the choice being asked for. Dates as "4 Sep", people by first name.
 
-**Evidence** — one bullet per fact, each ending with where it came from: a path (with a
-line when you have one), or the command whose output said it. Facts from the report are
-the sweep's inference and are labelled as such; facts from a journal entry, a doc row, a
-decision file, a ticket body or `git show` are the record. Never restate the report's
-judgement as if it were a fact.
+**What I found** — three or four bullets, one plain fact each, ≤ 20 words, no paths. A
+fact from the report is the sweep's inference and is worded as such ("the sweep flags…");
+a fact from a journal entry, a doc row, a decision file, a ticket body or `git show` is
+the record. Never restate the report's judgement as if it were a fact.
 
-**Recommendation** — one paragraph: what to do and why the evidence supports it, or the
-exact words "the files don't say" when they do not. Name the next concrete action
-(which point to Send or Ignore and with what reason, which Pending bullet to close, which
-doc row is stale) without performing it.
+**My call** — two sentences: what to do, and the next concrete action (which point to
+Send or Ignore and with what reason, who to ask, which entry to supersede). Or the exact
+words "the files don't say". Never perform the action.
 
-**Unknowns** — what was not readable (a denied tool, a missing checkout, a ref older than
-the landing), what the evidence leaves open, and any ticket body you could not read.
+**Not checked** — one line: what was not read (a denied tool, a missing checkout, a ref
+older than the landing, a ticket body).
 
-Cite paths relative to this checkout (`alden/alden-portal/features/admin/usage/docs/product.md:544`)
-and checkout paths with their repo (`alden-portal-fe src/features/usage/…`). Keep the
-whole answer readable in one screen; an answer longer than the evidence it cites is padding.
+**Sources:** — one footer line of short labels separated by ` · `, one per thing read:
+`journal 2026-09-04 decided-history-rolls-up` · `history-tab-content.tsx @ origin/staging`
+· `reports/points.json` · `LIA-71 in Linear`. Paths and line numbers live here and only
+here; the prose above names things the way a colleague would ("the 4 Sep decision",
+"the History tab component").
+
+Not allowed: narrating the work ("this is enough evidence, I have what I need"), lists
+of rule ids in prose (say "the seven usage rules it touches" unless rules were the
+question), bullets that are paragraphs, headings beyond the five, a Recommendation
+longer than the evidence. If the answer needs more than one screen, the question was
+two questions — answer the first and name the second.
+
+Worked example, for "about the point decide/lia-71-history-rollup — what am I deciding,
+what is the evidence, what do you recommend":
+
+> **The question:** on 4 Sep the team decided Usage History rolls up to one row per
+> project per month, with task detail only in edit mode. What shipped is the old
+> drill-down: period → project → task → subtask, tasks always visible. Regression to
+> raise, or the new design?
+>
+> **What I found**
+> - The decision entry is still marked decided; nothing has superseded it.
+> - The code on staging matches the drill-down, not the rollup.
+> - "Task detail only on edit" was never built. The decision itself warned this needed a real gate.
+> - Five LIA-71 landings since; none claims the rollup.
+>
+> **My call:** raise it. Ask Sam whether the rollup was dropped. If the drill-down is now
+> the plan, record that as a decision and update the seven usage rules it touches.
+>
+> **Not checked:** the two history hooks, and the Linear ticket for a later re-scope.
+>
+> Sources: journal 2026-09-04 decided-history-rolls-up · history-tab-content.tsx @ origin/staging · reports/points.json
