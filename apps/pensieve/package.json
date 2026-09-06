@@ -47,6 +47,9 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@tanstack/react-ai-devtools": "^0.2.71",
+    "@tanstack/react-devtools": "^0.10.12",
+    "@tanstack/react-router-devtools": "^1.167.1",
     "@tanstack/router-cli": "latest",
     "@types/bun": "^1.4.0",
     "@types/node": "^22.10.2",

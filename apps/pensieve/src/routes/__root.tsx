@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react'
 import { HeadContent, Scripts, createRootRouteWithContext } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
 import { AppShell } from '#/components/app-shell'
@@ -6,6 +7,9 @@ import appCss from '../styles.css?url'
 interface RouterContext {
   queryClient: QueryClient
 }
+
+/** Dev only; the static `import.meta.env.DEV` keeps the panels out of the production bundle. */
+const Devtools = import.meta.env.DEV ? lazy(() => import('#/components/devtools')) : null
 
 const FAVICON =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='15' r='9' fill='none' stroke='%233a6a90' stroke-width='2'/%3E%3Cpath d='M8 15c3-3 9-3 12 0' fill='none' stroke='%233a6a90' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E"
@@ -34,6 +38,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <AppShell>{children}</AppShell>
+        {Devtools && (
+          <Suspense fallback={null}>
+            <Devtools />
+          </Suspense>
+        )}
         <Scripts />
       </body>
     </html>

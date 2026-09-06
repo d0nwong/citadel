@@ -42,7 +42,18 @@ const available = async (): Promise<AskStatus> => ({ available: true, authMode: 
 class FakeClaude extends BaseTextAdapter<'fake', ClaudeCodeTextProviderOptions, readonly ['text'], DefaultMessageMetadataByModality> {
   readonly name = 'fake'
   calls: Array<{ messages: Array<ModelMessage>; modelOptions: ClaudeCodeTextProviderOptions | undefined; at: number }> = []
-  constructor(private readonly cfg: { sessionId: string; reply?: string; onCall?: () => Promise<void>; delayMs?: number }) {
+  constructor(
+    private readonly cfg: {
+      sessionId: string
+      reply?: string
+      onCall?: () => Promise<void>
+      delayMs?: number
+      /** End with `length` (the CLI's `error_max_turns`) instead of `stop`. */
+      finishReason?: 'stop' | 'length'
+      /** Throw after that, the way the sandbox runner does when the CLI exits 1; or before it. */
+      throwAfter?: 'finish' | 'text'
+    },
+  ) {
     super({}, 'fake')
   }
   async *chatStream(options: TextOptions<ClaudeCodeTextProviderOptions>): AsyncIterable<AdapterYieldChunk> {
@@ -67,7 +78,9 @@ class FakeClaude extends BaseTextAdapter<'fake', ClaudeCodeTextProviderOptions, 
     yield { type: EventType.TEXT_MESSAGE_START, messageId, role: 'assistant', model, timestamp: now() }
     yield { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: this.cfg.reply ?? 'answer', model, timestamp: now() }
     yield { type: EventType.TEXT_MESSAGE_END, messageId, model, timestamp: now() }
-    yield { type: EventType.RUN_FINISHED, threadId, runId, model, timestamp: now(), finishReason: 'stop' }
+    if (this.cfg.throwAfter === 'text') throw new Error('Agent process exited with code 1')
+    yield { type: EventType.RUN_FINISHED, threadId, runId, model, timestamp: now(), finishReason: this.cfg.finishReason ?? 'stop' }
+    if (this.cfg.throwAfter === 'finish') throw new Error('Agent process exited with code 1')
   }
   structuredOutput(): Promise<StructuredOutputResult<unknown>> {
     return Promise.reject(new Error('not supported'))
@@ -288,6 +301,25 @@ describe('AC7 — listConversations and deleteConversation', () => {
 // minute. Off unless ASK_LIVE=1 so `bun test` stays free and offline.
 
 const live = process.env.ASK_LIVE === '1'
+
+describe('the turn cap — the CLI prints its result, then exits 1', () => {
+  test('a run that already finished stays finished: RUN_FINISHED(length) goes out, nothing errors, the transcript is on disk', async () => {
+    const dir = await scratch()
+    const store = conversationStore(dir)
+    const adapter = new FakeClaude({ sessionId: 's', finishReason: 'length', throwAfter: 'finish' })
+    const chunks = await collect(askStream({ threadId: 'cap', messages: [user('read everything')] }, { adapter, middleware: [], store, status: available }))
+    expect(chunks.at(-1)).toMatchObject({ type: EventType.RUN_FINISHED, finishReason: 'length' })
+    expect(chunks.some((c) => c.type === EventType.RUN_ERROR)).toBe(false)
+    const f = await readJson(dir, 'cap')
+    expect(f.messages.map((m) => m.role)).toEqual(['user', 'assistant'])
+  })
+  test('a failure before the result is still a failure', async () => {
+    const store = conversationStore(await scratch())
+    const adapter = new FakeClaude({ sessionId: 's', throwAfter: 'text' })
+    await expect(collect(askStream({ threadId: 'cap2', messages: [user('read everything')] }, { adapter, middleware: [], store, status: available }))).rejects.toThrow('exited with code 1')
+  })
+})
+
 
 describe.skipIf(!live)('live — real adapter over the checkout', () => {
   const git = (...args: Array<string>) => execFileSync('git', ['-C', WORKSPACE_DIR, ...args], { encoding: 'utf8' })

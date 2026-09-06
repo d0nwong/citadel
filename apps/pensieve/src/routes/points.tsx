@@ -6,12 +6,13 @@
  * point shows its Foundry job live until it settles.
  */
 import { useState } from 'react'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUpRight, ChevronRight, EyeOff, LoaderCircle, Send } from 'lucide-react'
+import { ArrowUpRight, ChevronRight, EyeOff, LoaderCircle, MessageCircleQuestion, Send } from 'lucide-react'
 import { decidePoint, jobStatus, listPoints, sendPoint } from '#/lib/api'
 import type { Verdict } from '#/lib/api'
 import { Empty, PageTitle, TicketLink } from '#/components/bits'
+import { newThreadId } from '#/chat/thread-id'
 import { cn, daysSince } from '#/lib/utils'
 import type { Point, PointGroup } from '#/server/workspace'
 
@@ -29,6 +30,16 @@ const GROUPS: Array<{ key: PointGroup; label: string; hint: string }> = [
 ]
 
 const shortId = (id: string) => id.slice(0, 8)
+
+/** The question an Ask conversation opens with — the point named the way the file names it. */
+const pointQuestion = (point: Point) =>
+  `About the sweep point "${point.subject}" (${point.id}) in reports/points.json: what is it asking me to decide, what is the evidence in the checkout, and what would you recommend?`
+
+/** Opens a new conversation about the point, with a breadcrumb back here (see routes/ask/$id). */
+function useAskAbout(point: Point) {
+  const navigate = useNavigate()
+  return () => navigate({ to: '/ask/$id', params: { id: newThreadId() }, search: { q: pointQuestion(point), from: 'points' } })
+}
 
 function age(firstSeen: string) {
   const n = daysSince(firstSeen)
@@ -128,6 +139,7 @@ type Mode = 'idle' | 'ignore' | 'send'
 
 function PointRow({ point, foundryOk, foundryReason }: { point: Point; foundryOk: boolean; foundryReason?: string }) {
   const router = useRouter()
+  const askAbout = useAskAbout(point)
   const [mode, setMode] = useState<Mode>('idle')
   const [reason, setReason] = useState('')
   const [repo, setRepo] = useState(point.repo ?? '')
@@ -175,6 +187,9 @@ function PointRow({ point, foundryOk, foundryReason }: { point: Point; foundryOk
       {point.detail && <p className="mt-1 max-w-[72ch] text-[13.5px] leading-snug text-ink-faint">{point.detail}</p>}
 
       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <ActionButton active={false} onClick={askAbout} icon={MessageCircleQuestion}>
+          Ask
+        </ActionButton>
         <ActionButton active={mode === 'ignore'} onClick={() => open('ignore')} icon={EyeOff}>
           Ignore
         </ActionButton>
@@ -309,6 +324,7 @@ function VerdictError({ v }: { v: Verdict | null }) {
 
 function DecidedRow({ point, foundryUrl }: { point: Point; foundryUrl: string }) {
   const d = point.decision!
+  const askAbout = useAskAbout(point)
   return (
     <li className="py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -322,6 +338,10 @@ function DecidedRow({ point, foundryUrl }: { point: Point; foundryUrl: string })
         </span>
         <span className={cn('display text-[17px] leading-tight', d.action === 'ignored' ? 'text-ink-dim' : 'text-ink')}>{point.subject}</span>
         {point.ticket && <TicketLink ticket={point.ticket} />}
+        <button type="button" onClick={askAbout} className="inline-flex items-center gap-1 text-[12.5px] text-thread hover:underline">
+          <MessageCircleQuestion className="size-3.5" strokeWidth={1.75} />
+          Ask
+        </button>
         <span className="mono ml-auto text-ink-faint">{when(d.at)}</span>
       </div>
       {d.reason && <p className="mt-1 text-[13.5px] italic leading-snug text-ink-dim">{d.reason}</p>}

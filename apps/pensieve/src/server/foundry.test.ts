@@ -6,6 +6,8 @@ process.env.FOUNDRY_API_TOKEN = 'test-token'
 process.env.FOUNDRY_URL = 'http://foundry.test'
 
 const { createJob, getJob, FoundryError } = await import('./foundry')
+// Destructured from a dynamic import, `FoundryError` is a value; this is its instance type.
+type FoundryErr = InstanceType<typeof FoundryError>
 
 type Seen = { url: string; init: RequestInit }
 const fake = (status: number, body: unknown, seen: Seen[] = []) =>
@@ -45,7 +47,7 @@ describe('AC6 — a Foundry error carries its `error` text; 409 names the holdin
   ])('%i', async (status, error) => {
     const p = createJob({ ticketId: 'LIA-1', repo: 'x', idempotencyKey: 'decide/x' }, fake(status, { error }))
     await expect(p).rejects.toBeInstanceOf(FoundryError)
-    await p.catch((e: FoundryError) => {
+    await p.catch((e: FoundryErr) => {
       expect(e.status).toBe(status)
       expect(e.message).toBe(error)
       expect(e.job).toBeUndefined()
@@ -53,7 +55,7 @@ describe('AC6 — a Foundry error carries its `error` text; 409 names the holdin
   })
   test('409', async () => {
     const p = createJob({ ticketId: 'LIA-1', repo: 'x', idempotencyKey: 'decide/x' }, fake(409, { error: 'ticket LIA-1 already has a job', job: { id: job.id, status: 'running' } }))
-    await p.catch((e: FoundryError) => {
+    await p.catch((e: FoundryErr) => {
       expect(e.status).toBe(409)
       expect(e.job).toEqual({ id: job.id, status: 'running' })
     })
@@ -61,8 +63,8 @@ describe('AC6 — a Foundry error carries its `error` text; 409 names the holdin
   test('a network failure is a FoundryError(0) naming the URL', async () => {
     const down = (async () => {
       throw new TypeError('fetch failed')
-    }) as typeof fetch
-    await createJob({ ticketId: 'LIA-1', repo: 'x', idempotencyKey: 'decide/x' }, down).catch((e: FoundryError) => {
+    }) as unknown as typeof fetch
+    await createJob({ ticketId: 'LIA-1', repo: 'x', idempotencyKey: 'decide/x' }, down).catch((e: FoundryErr) => {
       expect(e.status).toBe(0)
       expect(e.message).toContain('http://foundry.test')
     })
@@ -81,7 +83,7 @@ describe('AC4 — GET /api/jobs/:id', () => {
     const spy = (async () => {
       called = true
       return new Response('{}')
-    }) as typeof fetch
+    }) as unknown as typeof fetch
     await expect(getJob('../secrets', spy)).rejects.toBeInstanceOf(FoundryError)
     expect(called).toBe(false)
   })

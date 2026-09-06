@@ -10,9 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AskSpikeRouteImport } from './routes/ask-spike'
 import { Route as BlocksRouteImport } from './routes/blocks'
 import { Route as PointsRouteImport } from './routes/points'
+import { Route as AskIndexRouteImport } from './routes/ask/index'
+import { Route as AskIdRouteImport } from './routes/ask/$id'
 import { Route as DigestsIndexRouteImport } from './routes/digests/index'
 import { Route as DigestsDayRouteImport } from './routes/digests/$day'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
@@ -27,11 +28,6 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AskSpikeRoute = AskSpikeRouteImport.update({
-  id: '/ask-spike',
-  path: '/ask-spike',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const BlocksRoute = BlocksRouteImport.update({
   id: '/blocks',
   path: '/blocks',
@@ -40,6 +36,16 @@ const BlocksRoute = BlocksRouteImport.update({
 const PointsRoute = PointsRouteImport.update({
   id: '/points',
   path: '/points',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AskIndexRoute = AskIndexRouteImport.update({
+  id: '/ask/',
+  path: '/ask/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AskIdRoute = AskIdRouteImport.update({
+  id: '/ask/$id',
+  path: '/ask/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DigestsIndexRoute = DigestsIndexRouteImport.update({
@@ -85,13 +91,14 @@ const ReportsDayRoute = ReportsDayRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/ask-spike': typeof AskSpikeRoute
   '/blocks': typeof BlocksRoute
   '/points': typeof PointsRoute
+  '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/journal/$': typeof JournalSplatRoute
   '/reports/$day': typeof ReportsDayRoute
+  '/ask/': typeof AskIndexRoute
   '/digests/': typeof DigestsIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/journal/': typeof JournalIndexRoute
@@ -99,13 +106,14 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/ask-spike': typeof AskSpikeRoute
   '/blocks': typeof BlocksRoute
   '/points': typeof PointsRoute
+  '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/journal/$': typeof JournalSplatRoute
   '/reports/$day': typeof ReportsDayRoute
+  '/ask': typeof AskIndexRoute
   '/digests': typeof DigestsIndexRoute
   '/docs': typeof DocsIndexRoute
   '/journal': typeof JournalIndexRoute
@@ -114,13 +122,14 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/ask-spike': typeof AskSpikeRoute
   '/blocks': typeof BlocksRoute
   '/points': typeof PointsRoute
+  '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/journal/$': typeof JournalSplatRoute
   '/reports/$day': typeof ReportsDayRoute
+  '/ask/': typeof AskIndexRoute
   '/digests/': typeof DigestsIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/journal/': typeof JournalIndexRoute
@@ -130,13 +139,14 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/ask-spike'
     | '/blocks'
     | '/points'
+    | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
     | '/journal/$'
     | '/reports/$day'
+    | '/ask/'
     | '/digests/'
     | '/docs/'
     | '/journal/'
@@ -144,13 +154,14 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/ask-spike'
     | '/blocks'
     | '/points'
+    | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
     | '/journal/$'
     | '/reports/$day'
+    | '/ask'
     | '/digests'
     | '/docs'
     | '/journal'
@@ -158,13 +169,14 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
-    | '/ask-spike'
     | '/blocks'
     | '/points'
+    | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
     | '/journal/$'
     | '/reports/$day'
+    | '/ask/'
     | '/digests/'
     | '/docs/'
     | '/journal/'
@@ -173,13 +185,14 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AskSpikeRoute: typeof AskSpikeRoute
   BlocksRoute: typeof BlocksRoute
   PointsRoute: typeof PointsRoute
+  AskIdRoute: typeof AskIdRoute
   DigestsDayRoute: typeof DigestsDayRoute
   DocsSplatRoute: typeof DocsSplatRoute
   JournalSplatRoute: typeof JournalSplatRoute
   ReportsDayRoute: typeof ReportsDayRoute
+  AskIndexRoute: typeof AskIndexRoute
   DigestsIndexRoute: typeof DigestsIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
   JournalIndexRoute: typeof JournalIndexRoute
@@ -195,13 +208,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/ask-spike': {
-      id: '/ask-spike'
-      path: '/ask-spike'
-      fullPath: '/ask-spike'
-      preLoaderRoute: typeof AskSpikeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/blocks': {
       id: '/blocks'
       path: '/blocks'
@@ -214,6 +220,20 @@ declare module '@tanstack/react-router' {
       path: '/points'
       fullPath: '/points'
       preLoaderRoute: typeof PointsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ask/': {
+      id: '/ask/'
+      path: '/ask'
+      fullPath: '/ask/'
+      preLoaderRoute: typeof AskIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ask/$id': {
+      id: '/ask/$id'
+      path: '/ask/$id'
+      fullPath: '/ask/$id'
+      preLoaderRoute: typeof AskIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/digests/': {
@@ -277,13 +297,14 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AskSpikeRoute: AskSpikeRoute,
   BlocksRoute: BlocksRoute,
   PointsRoute: PointsRoute,
+  AskIdRoute: AskIdRoute,
   DigestsDayRoute: DigestsDayRoute,
   DocsSplatRoute: DocsSplatRoute,
   JournalSplatRoute: JournalSplatRoute,
   ReportsDayRoute: ReportsDayRoute,
+  AskIndexRoute: AskIndexRoute,
   DigestsIndexRoute: DigestsIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
   JournalIndexRoute: JournalIndexRoute,
