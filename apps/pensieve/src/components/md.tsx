@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { Markdown } from '@tanstack/markdown/react'
-import type { MarkdownDocument } from '@tanstack/markdown'
+import type { MarkdownInput } from '@tanstack/markdown'
 import type { AnchorHTMLAttributes } from 'react'
 import { cn } from '#/lib/utils'
 
@@ -22,7 +22,8 @@ function A({ href, children, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement>)
 
 const components = { a: A }
 
-export function Md({ doc, className }: { doc: MarkdownDocument; className?: string }) {
+/** Renders a parsed document, or a raw markdown string (the chat blocks pass streaming text). */
+export function Md({ doc, className }: { doc: MarkdownInput; className?: string }) {
   return (
     <div className={cn('prose-pensieve', className)}>
       <Markdown components={components}>{doc}</Markdown>
