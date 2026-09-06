@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AskSpikeRouteImport } from './routes/ask-spike'
 import { Route as BlocksRouteImport } from './routes/blocks'
 import { Route as PointsRouteImport } from './routes/points'
 import { Route as DigestsIndexRouteImport } from './routes/digests/index'
@@ -24,6 +25,11 @@ import { Route as ReportsDayRouteImport } from './routes/reports/$day'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AskSpikeRoute = AskSpikeRouteImport.update({
+  id: '/ask-spike',
+  path: '/ask-spike',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BlocksRoute = BlocksRouteImport.update({
@@ -79,6 +85,7 @@ const ReportsDayRoute = ReportsDayRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ask-spike': typeof AskSpikeRoute
   '/blocks': typeof BlocksRoute
   '/points': typeof PointsRoute
   '/digests/$day': typeof DigestsDayRoute
@@ -92,6 +99,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ask-spike': typeof AskSpikeRoute
   '/blocks': typeof BlocksRoute
   '/points': typeof PointsRoute
   '/digests/$day': typeof DigestsDayRoute
@@ -106,6 +114,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/ask-spike': typeof AskSpikeRoute
   '/blocks': typeof BlocksRoute
   '/points': typeof PointsRoute
   '/digests/$day': typeof DigestsDayRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/ask-spike'
     | '/blocks'
     | '/points'
     | '/digests/$day'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ask-spike'
     | '/blocks'
     | '/points'
     | '/digests/$day'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/ask-spike'
     | '/blocks'
     | '/points'
     | '/digests/$day'
@@ -161,6 +173,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AskSpikeRoute: typeof AskSpikeRoute
   BlocksRoute: typeof BlocksRoute
   PointsRoute: typeof PointsRoute
   DigestsDayRoute: typeof DigestsDayRoute
@@ -180,6 +193,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ask-spike': {
+      id: '/ask-spike'
+      path: '/ask-spike'
+      fullPath: '/ask-spike'
+      preLoaderRoute: typeof AskSpikeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/blocks': {
@@ -257,6 +277,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AskSpikeRoute: AskSpikeRoute,
   BlocksRoute: BlocksRoute,
   PointsRoute: PointsRoute,
   DigestsDayRoute: DigestsDayRoute,
