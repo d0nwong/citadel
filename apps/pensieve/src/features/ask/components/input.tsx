@@ -30,9 +30,10 @@ export function AskInput() {
     }
   }
 
-  const kicker = status.available
-    ? ['claude-code', status.authMode === 'api-key' ? 'api key' : 'host login', status.probe.authMethod, 'read-only'].filter(Boolean).join(' · ')
-    : 'unavailable'
+  const authLabel = status.available ? (status.authMode === 'api-key' ? 'api key' : 'host login') : ''
+  const kicker = status.available ? ['claude-code', authLabel, status.probe.authMethod, 'read-only'].filter(Boolean).join(' · ') : 'unavailable'
+  // On a phone the full line wraps the toolbar onto two rows; the short form keeps what matters.
+  const kickerShort = status.available ? `${authLabel} · read-only` : 'unavailable'
 
   return (
     <PromptInput onSubmit={submit} className="mt-4">
@@ -46,7 +47,8 @@ export function AskInput() {
       />
       <PromptInputToolbar>
         <PromptInputTools>
-          <span className="kicker px-2">{kicker}</span>
+          <span className="kicker hidden px-2 sm:inline">{kicker}</span>
+          <span className="kicker px-2 sm:hidden">{kickerShort}</span>
         </PromptInputTools>
         {busy ? (
           // Stop aborts the fetcher's signal, which aborts the request, which kills the claude
