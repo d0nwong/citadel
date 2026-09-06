@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { SquareIcon } from 'lucide-react'
 import { PromptInput, PromptInputSubmit, PromptInputTextarea, PromptInputToolbar, PromptInputTools, preventEmptySubmit } from '#/components/ai/prompt-input'
@@ -11,13 +12,20 @@ export function AskInput() {
   const { status, draft } = useAskContext()
   const busy = chat.isLoading
 
+  // Focus the composer on arrival only where a keyboard is already there: on a phone,
+  // `autoFocus` would open the on-screen keyboard over the conversation being read.
+  const field = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    if (window.matchMedia('(min-width: 640px) and (hover: hover)').matches) field.current?.focus()
+  }, [])
+
   const submit = (e: FormEvent<HTMLFormElement>) => {
     preventEmptySubmit(e)
     if (e.defaultPrevented) return
     e.preventDefault()
     const form = e.currentTarget
-    const field = form.elements.namedItem('message') as HTMLTextAreaElement
-    const text = field.value.trim()
+    const textarea = form.elements.namedItem('message') as HTMLTextAreaElement
+    const text = textarea.value.trim()
     form.reset()
     // Sent while an answer streams, this queues (the hook's default) and shows in <Queue /> (AC6).
     void chat.sendMessage(text)
@@ -38,8 +46,8 @@ export function AskInput() {
   return (
     <PromptInput onSubmit={submit} className="mt-4">
       <PromptInputTextarea
+        ref={field}
         name="message"
-        autoFocus
         defaultValue={draft}
         disabled={!status.available}
         onKeyDown={onKeyDown}
