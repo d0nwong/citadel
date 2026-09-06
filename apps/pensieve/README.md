@@ -9,9 +9,13 @@ file it shows; this app only parses and renders them, so there is never a second
 the workflow state. The exception is `decisions/`: the **Points** page lists the sweep's
 Needs-you points and lets you *ignore* one with a reason or *send* one to
 [Foundry](https://github.com/d0nwong/foundry), and each verdict is one JSON file there
-that the sweep reads back and commits. Nothing else is written from here — not the
-journal, docs, reports or tickets; those still go through Linear, Slack, or the argus
-skills.
+that the sweep reads back and commits. Nothing else is written into the blackboard from
+here — not the journal, docs, reports or tickets; those still go through Linear, Slack,
+or the argus skills.
+
+**Ask** runs Claude Code over the checkout with a read-only tool set and keeps each
+conversation as one file under `PENSIEVE_HOME` (default `~/.pensieve`) — outside the
+blackboard, so the rule above holds. Server half in this step; the pages come next.
 
 ## Stack
 
@@ -28,8 +32,14 @@ two could share a shell later.
 bun install
 cp .env.example .env         # WORKSPACE_DIR defaults to ~/git/argus
 bun run dev                  # http://localhost:3778
-bun test                     # the decisions writer and the Foundry client
+bun test                     # the decisions writer, the Foundry client, Ask's store and run
+ASK_LIVE=1 bun test src/server/ask.test.ts   # + two real claude turns over the checkout
 ```
+
+Ask needs a credential: this machine's `claude login` (the default), or `ANTHROPIC_API_KEY`
+in the environment, which wins when set. With neither, Ask reports itself off with the
+reason. `PENSIEVE_HOME` is where its conversations go; nothing about Ask touches the
+checkout — `git status` there is the same before and after a run.
 
 Sending a point needs Foundry's trigger-API token. `foundry auth --api` writes
 `FOUNDRY_API_TOKEN` to the shared credentials file `~/.config/liamai/env` (override the
@@ -65,13 +75,16 @@ sweep tick:
 
 ```sh
 docker compose up --build    # mounts ~/git/argus at /workspace, read-only — except decisions/
-WORKSPACE_DIR=/some/where FOUNDRY_API_TOKEN=… docker compose up
+WORKSPACE_DIR=/some/where FOUNDRY_API_TOKEN=… ANTHROPIC_API_KEY=… docker compose up
 ```
 
 The blackboard is mounted read-only and `decisions/` is mounted writable over it, so the
 container can write exactly the one directory it owns. Foundry runs on the host, so
 `FOUNDRY_URL` defaults to `http://host.docker.internal:3777` there; the shared credentials
-file is not mounted, so pass `FOUNDRY_API_TOKEN` in the environment.
+file is not mounted, so pass `FOUNDRY_API_TOKEN` in the environment. Ask's state is
+`/data` on the named volume `pensieve-home`, so conversations survive
+`docker compose down && up`; there is no `claude login` inside the container, so pass
+`ANTHROPIC_API_KEY`. The image carries `node`, `git` and the `claude` CLI for it.
 
 ## What it reads
 
@@ -97,7 +110,8 @@ journal entries (`[[YYYY-MM-DD]]` to a day view), and HTML comments — the
 
 ## What it writes
 
-Only `decisions/<group>/<slug>.json`, one per point acted on from `/points`:
+Into the blackboard, only `decisions/<group>/<slug>.json`, one per point acted on from
+`/points`:
 
 ```json
 { "point": "decide/lia-86", "action": "sent", "at": "2026-09-05T10:12:00.000Z",
@@ -120,12 +134,44 @@ names the job already holding the ticket. Send is offered only on a point with a
 `GET /api/jobs/:id` every few seconds while the job is queued or running, then shows its
 final status and PR.
 
+## Ask
+
+`askChat` runs one turn of Claude Code (`@tanstack/ai-claude-code`, the `sonnet` alias)
+with the checkout as its working directory and exactly these tools: `Read`, `Grep`,
+`Glob`, `Bash(git log:*)`, `Bash(git show:*)`, under `permissionMode: 'default'` — nothing
+that writes or runs. It sees argus's skills (`sweep`, `slack-digest`, `log-change`, …)
+because argus links them into its own `.claude/skills`. The answer streams back as SSE
+over a Start server function, so `useChat({ fetcher })` reads it directly.
+
+Every run persists through `withPersistence` from `@tanstack/ai-persistence`, over a store
+that keeps one conversation per file:
+
+```
+$PENSIEVE_HOME/conversations/<threadId>.json
+{ "threadId", "messages": [ …model messages… ], "metadata": { "sessionId" }, "createdAt", "updatedAt" }
+```
+
+The user turn is written when the run starts, the partial answer while it streams, and the
+whole transcript before `RUN_FINISHED` goes out — so a reload at any moment shows what
+there is. `metadata.sessionId` is the Claude session the run reported; the next question
+on the same thread is sent with `--resume <id>`, read on the server, so the client never
+carries it. Files are written to a temp name in the same directory and renamed into
+place. The client sends the full transcript each turn (what `useChat` holds), or `[]` to
+continue the stored one as it stands; a delta would replace the stored thread. Two sends
+on one thread are serialised on the server as well as in the client.
+
+`listConversations` (newest first, titled by the first user turn), `getConversation`,
+`deleteConversation` (removes that one file) and `askStatus` (is a credential available?)
+are the other server functions.
+
 ## Layout
 
 ```
 src/server/workspace.ts   the reader — every blackboard file, as typed shapes (and finds the apps)
 src/server/decisions.ts   the one writer — atomic decision files under decisions/, nowhere else
 src/server/foundry.ts     the Foundry client — POST /api/jobs, GET /api/jobs/:id, the token
+src/server/ask.ts         Ask — the Claude Code adapter config, the per-file conversation store, the run
+src/test/                 bun test preload: vitest shim for the persistence conformance suite
 src/lib/api.ts            server functions — the client/server bridge
 src/routes/               file routes (routeTree.gen.ts is generated by `tsr`)
 src/components/           shell, markdown renderer, small shared bits
