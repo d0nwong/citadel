@@ -410,3 +410,175 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     await Bun.$`rm -rf ${dir}`.quiet();
   });
 });
+
+// ---------------------------------------------------------------- point / ticket (LIA-105)
+
+describe("accio point / accio ticket — one block per Needs-you point, read-only", () => {
+  const { mkdtemp, readdir, stat } = require("node:fs/promises") as typeof import("node:fs/promises");
+  const { tmpdir } = require("node:os") as typeof import("node:os");
+  const { join } = require("node:path") as typeof import("node:path");
+
+  /** a throwaway workspace with two apps, one report, two points, one decision, and two tiny git checkouts */
+  async function fixture() {
+    const root = await mkdtemp(join(tmpdir(), "accio-point-"));
+    const w = (rel: string, text: string) => Bun.write(join(root, rel), text);
+    const detail = "09-04's decision asked for one row; `history-tab-content.tsx` shipped a drill-down, and `be:src/services/invoiceService.ts:3583` selects `quantity` alone — see BR-57, MM-99, and `zzz-missing.ts`.";
+    await w("reports/points.json", JSON.stringify({
+      tick: "2026-09-05T06:14:00.000Z", date: "2026-09-05", points: [
+        { id: "decide/lia-71-history-rollup", group: "decide", subject: "LIA-71 History rollup", ask: "decision entry still `decided`, code shipped a different shape", detail, firstSeen: "2026-09-04", ticket: "LIA-71", features: ["admin-usage"] },
+        { id: "decide/lia-71-asset-type-collapse", group: "decide", subject: "LIA-71 asset-type collapse", ask: "accept, or hold?", firstSeen: "2026-09-05", ticket: "LIA-71" },
+        { id: "decide/usage-zero-tests", group: "decide", subject: "Usage zero tests", ask: "ticket it?", firstSeen: "2026-09-04" },
+      ],
+    }));
+    await w("reports/2026-09-05.md", [
+      "# sweep — 2026-09-05", "", "_Tick 06:14_", "", "## Needs you", "", "**Decide**",
+      `- **LIA-71 History rollup** — decision entry still \`decided\`, code shipped a different shape · 1d`,
+      `  ${detail}`,
+      "- **Usage zero tests** — ticket it? · 1d", "", "## Done today", "", "- nothing", "",
+    ].join("\n"));
+    await w("decisions/decide/lia-71-asset-type-collapse.json", JSON.stringify({ point: "decide/lia-71-asset-type-collapse", action: "ignored", reason: "Currently it's correct", at: "2026-09-06T07:29:35.970Z" }));
+    const doc = (id: string, rule: string) => `---\nid: ${id}\ntier: product\n---\n# ${id}\n\n## Business Rules\n\n| ID | Rule | Trigger |\n|---|---|---|\n| BR-57 | ${rule} | x |\n`;
+    await w("alden/alden-portal/features/admin/usage/docs/product.md", doc("admin-usage", "usage's own BR-57"));
+    await w("alden/alden-portal/features/tasks/docs/product.md", doc("tasks", "tasks' unrelated BR-57"));
+    const entry = (date: string, ticket: string, features: string, status: string, summary: string, affects = "[]") =>
+      `---\ndate: ${date}\npr: null\nticket: ${ticket}\nfeatures: ${features}\nscope: both\nstatus: ${status}\naffects: ${affects}\nsummary: ${summary}\n---\nbody\n`;
+    await w("alden/alden-portal/features/admin/usage/journal/2026-09/2026-09-04/2026-09-04-a.md", entry("2026-09-04", "[LIA-71]", "[admin-usage]", "documented", "the usage landing", "[BR-57]"));
+    await w("alden/alden-portal/features/tasks/journal/2026-09-01-b.md", entry("2026-09-01", "[LIA-80]", "[tasks, admin-usage]", "decided", "shares a feature only"));
+    await w("foundry/features/jobs/journal/2026-09-02-c.md", entry("2026-09-02", "[LIA-71]", "[jobs]", "implemented", "another app, same ticket"));
+    await w("alden/alden-portal/features/dashboard/journal/2026-08-30-d.md", entry("2026-08-30", "null", "[dashboard]", "documented", "unrelated"));
+    // the decision the point is about: no ticket of its own, still `decided`, in the feature LIA-71's entries live in
+    await w("alden/alden-portal/features/admin/usage/journal/2026-09-03-e-decided.md", entry("2026-09-03", "null", "[admin-usage, entities]", "decided", "history rolls up by project and month"));
+    // Pensieve has a feature *named* journal — its docs are not journal entries
+    await w("pensieve/features/journal/docs/product.md", "---\nid: journal\ntier: product\n---\n# Journal\n");
+
+    const repo = async (name: string, file: string, msgs: string[]) => {
+      const dir = join(root, "checkouts", name);
+      await Bun.write(join(dir, file), "// v1\n");
+      const g = (...a: string[]) => $`git -C ${dir} -c user.name=t -c user.email=t@t -c commit.gpgsign=false ${a}`.quiet();
+      await g("init", "-q");
+      for (const [i, m] of msgs.entries()) {
+        await Bun.write(join(dir, file), `// v${i + 1}\n`);
+        await g("add", "-A");
+        await g("commit", "-q", "-m", m);
+      }
+      return dir;
+    };
+    const fe = await repo("fe", "src/features/usage/history-tab-content.tsx", ["fe: first", "fe: second"]);
+    const be = await repo("be", "src/services/invoiceService.ts", ["be: first"]);
+    const checkouts = [
+      { side: "FE" as const, name: "alden-portal-fe", path: fe },
+      { side: "BE" as const, name: "alden-connect-portal-be", path: be },
+    ];
+    const snapshot = async () => {
+      const files = (await readdir(root, { recursive: true }) as string[]).filter(f => !f.includes("/.git/") && !f.endsWith("/.git")).sort();
+      return Promise.all(files.map(async f => `${f}@${(await stat(join(root, f))).mtimeMs}`));
+    };
+    return { root, checkouts, snapshot };
+  }
+
+  test("point: record, report line, decision, journal across apps, rules scoped to the feature, files with git log", async () => {
+    const { pointView } = await import("./commands/point.ts");
+    const { root, checkouts, snapshot } = await fixture();
+    const before = await snapshot();
+    const { ok, text } = await pointView("decide/lia-71-history-rollup", { root, checkouts });
+    expect(ok).toBe(true);
+    // AC1 — the record and the report bullet, by file and line
+    expect(text).toContain("# decide/lia-71-history-rollup");
+    expect(text).toContain("**LIA-71 History rollup** — decision entry still `decided`");
+    expect(text).toContain("first seen 2026-09-04 (1d at 2026-09-05) · ticket LIA-71");
+    expect(text).toContain("reports/2026-09-05.md:8");
+    expect(text).toContain("none — no decisions/decide/lia-71-history-rollup.json");
+    // AC2 — every app's journal, keyed by ticket or feature, newest first
+    const journal = text.split("## Journal")[1]!.split("## Rules")[0]!;
+    const order = ["2026-09-04-a.md", "2026-09-02-c.md", "2026-09-01-b.md"].map(n => journal.indexOf(n));
+    expect(order.every(i => i >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(journal).toContain("foundry/features/jobs/journal/2026-09-02-c.md — implemented — another app, same ticket  ⟵ ticket LIA-71");
+    expect(journal).toContain("2026-09-01-b.md — decided — shares a feature only  ⟵ feature admin-usage");
+    expect(journal).not.toContain("2026-08-30-d.md");
+    // AC3 — rule ids resolve to the defining doc line of the point's own feature, or say not found
+    expect(text).toContain("BR-57 → alden/alden-portal/features/admin/usage/docs/product.md:11 (admin-usage) — usage's own BR-57");
+    expect(text).not.toContain("tasks' unrelated BR-57");
+    expect(text).toContain("- MM-99 — not found in docs");
+    // AC4 — path tokens resolve in the checkout the prefix / repo names, with the last commits
+    expect(text).toContain("`history-tab-content.tsx` → alden-portal-fe src/features/usage/history-tab-content.tsx");
+    expect(text).toMatch(/fe: second\n\s+\w+ fe: first/);
+    expect(text).toContain("`be:src/services/invoiceService.ts:3583` → alden-connect-portal-be src/services/invoiceService.ts:3583");
+    expect(text).toContain("`zzz-missing.ts` — unresolved in alden-portal-fe, alden-connect-portal-be");
+    expect(text).toContain("not fetched");
+    // AC5 (shared) — the body is the session's next call
+    expect(text).toContain("- body: mcp__linear__get_issue LIA-71");
+    // AC6 — read-only: nothing created or touched
+    expect(await snapshot()).toEqual(before);
+  });
+
+  test("point: a decided point shows its verdict and says why it left the report", async () => {
+    const { pointView } = await import("./commands/point.ts");
+    const { root, checkouts } = await fixture();
+    const { ok, text } = await pointView("decide/lia-71-asset-type-collapse", { root, checkouts });
+    expect(ok).toBe(true);
+    expect(text).toContain(`ignored — "Currently it's correct" — 2026-09-06T07:29:35.970Z (decisions/decide/lia-71-asset-type-collapse.json)`);
+    expect(text).toContain("not in reports/2026-09-05.md — decided points leave Needs you");
+    // no `features` on this point, yet every open decision in LIA-71's feature is listed — the documented ones are not
+    expect(text).toContain("2026-09-03-e-decided.md — decided — history rolls up by project and month  ⟵ open decision in admin-usage (the feature LIA-71's entries live in)");
+    expect(text).toContain("2026-09-01-b.md — decided — shares a feature only  ⟵ open decision in admin-usage");
+    expect(text).not.toContain("2026-08-30-d.md");
+  });
+
+  test("ticket: open and decided points, the entries carrying it, their rule ids, then the Linear call", async () => {
+    const { ticketView } = await import("./commands/point.ts");
+    const { root, checkouts } = await fixture();
+    const { ok, text } = await ticketView("LIA-71", { root, checkouts });
+    expect(ok).toBe(true);
+    expect(text).toContain("- decide/lia-71-history-rollup — **LIA-71 History rollup** — decision entry still `decided`");
+    expect(text).toContain(`- decided: decide/lia-71-asset-type-collapse — ignored — "Currently it's correct"`);
+    expect(text).not.toContain("usage-zero-tests");
+    expect(text).toContain("## Journal — 2 entries with ticket LIA-71");
+    expect(text).toContain("2026-09-04-a.md — documented — the usage landing");
+    expect(text).toContain("2026-09-02-c.md — implemented — another app, same ticket");
+    expect(text).not.toContain("2026-09-01-b.md");
+    expect(text).toContain("BR-57 → alden/alden-portal/features/admin/usage/docs/product.md:11 (admin-usage)");
+    expect(text).not.toContain("tasks' unrelated");
+    expect(text).toContain("- body: mcp__linear__get_issue LIA-71");
+    expect(text).toContain("- accio point decide/lia-71-history-rollup");
+  });
+
+  test("unknown point / ticket / missing points.json: one line naming what was looked for and where", async () => {
+    const { pointView, ticketView } = await import("./commands/point.ts");
+    const { root, checkouts } = await fixture();
+    const p = await pointView("decide/lia-71-nope", { root, checkouts });
+    expect(p.ok).toBe(false);
+    expect(p.text).toContain("no point `decide/lia-71-nope` in reports/points.json (3 points as of 2026-09-05)");
+    expect(p.text).toContain("near: decide/lia-71-history-rollup");
+    const t = await ticketView("LIA-999", { root, checkouts });
+    expect(t.ok).toBe(false);
+    expect(t.text).toContain("nothing on the blackboard carries LIA-999 — looked in reports/points.json (3 points as of 2026-09-05) and 3 apps' features/**/journal (5 entries)");
+    const empty = await mkdtemp(join(tmpdir(), "accio-empty-"));
+    expect((await pointView("decide/x", { root: empty, checkouts: [] })).text).toContain("no reports/points.json");
+  });
+
+  test("cli: `accio ticket X` is `point --ticket X`; unknown ids exit 1 on stderr", async () => {
+    const bad = await $`bun ${ROOT}/scripts/accio.ts point decide/definitely-not-a-point`.nothrow().quiet();
+    expect(bad.exitCode).toBe(1);
+    expect(bad.stderr.toString()).toContain("no point `decide/definitely-not-a-point` in reports/points.json");
+    const none = await $`bun ${ROOT}/scripts/accio.ts ticket LIA-0`.nothrow().quiet();
+    expect(none.exitCode).toBe(1);
+    expect(none.stderr.toString()).toContain("nothing on the blackboard carries LIA-0");
+    expect(await accio("help")).toContain("accio ticket LIA-nn");
+  });
+
+  test("journal walker: every app's features/**/journal, but a feature named `journal` is not one", async () => {
+    const { appRoots, loadAllJournals } = await import("./lib/journal.ts");
+    const { root } = await fixture();
+    expect((await appRoots(root)).map(a => a.app)).toEqual(["alden/alden-portal", "foundry", "pensieve"]);
+    const entries = await loadAllJournals(root);
+    expect(entries.map(e => e.rel)).toEqual([
+      "alden/alden-portal/features/admin/usage/journal/2026-09/2026-09-04/2026-09-04-a.md",
+      "alden/alden-portal/features/admin/usage/journal/2026-09-03-e-decided.md",
+      "foundry/features/jobs/journal/2026-09-02-c.md",
+      "alden/alden-portal/features/tasks/journal/2026-09-01-b.md",
+      "alden/alden-portal/features/dashboard/journal/2026-08-30-d.md",
+    ]);
+    expect(entries.find(e => e.rel.startsWith("foundry"))).toMatchObject({ app: "foundry", featureDir: "jobs", tickets: ["LIA-71"] });
+  });
+});

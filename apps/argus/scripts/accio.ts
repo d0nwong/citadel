@@ -12,6 +12,8 @@
  *   accio map                      derive/refresh the feature manifest from the route tree
  *   accio sync                     refetch the spec, reanalyze, regenerate docs + index
  *   accio audit                    hold the docs to what code and spec actually back
+ *   accio point <group>/<slug>     everything the blackboard holds about one Needs-you point
+ *   accio ticket LIA-nn            the same, keyed by ticket (then read the body via Linear MCP)
  *
  * Subcommands dispatch by rewriting argv and importing the command module, so each
  * command file also still runs standalone (`bun scripts/commands/sync.ts`).
@@ -24,6 +26,7 @@ const COMMANDS = {
   audit: { module: "./commands/audit.ts", blurb: "check the docs against code and spec" },
   stale: { module: "./commands/stale.ts", blurb: "which features' docs drifted from the code, and why" },
   journal: { module: "./commands/journal.ts", blurb: "day view over per-landing journal entries" },
+  point: { module: "./commands/point.ts", blurb: "one Needs-you point: record, report lines, decision, journal, rules, files" },
 } as const;
 
 const HELP = `accio — summon the API surface
@@ -37,6 +40,10 @@ const HELP = `accio — summon the API surface
   accio audit
   accio stale [--json] [--all]          which features' docs drifted (tiers / fe-core / be-handlers / journal)
   accio journal [YYYY-MM-DD | --day <d> | --since <d>]   day view over landings (default: today)
+  accio point <group>/<slug>            one Needs-you point (reports/points.json id): record, report
+                                        lines, decision, journal entries, rule ids, files + git log
+  accio ticket LIA-nn                   open points + journal entries + rule ids for a ticket; the
+                                        body is read next with the Linear MCP (no key lives here)
 
 Examples
   accio "status select"                 → PUT /api/v1/tasks/{taskId}/status/{status}
@@ -55,7 +62,7 @@ if (!first || first === "help" || first === "--help" || first === "-h") {
   process.exit(first ? 0 : 1);
 }
 
-/** `accio list` is `find --list`; anything not a known verb is a search term. */
+/** `accio list` is `find --list` and `accio ticket X` is `point --ticket X`; anything not a known verb is a search term. */
 let command: keyof typeof COMMANDS = "find";
 let rest = argv;
 if (first in COMMANDS) {
@@ -63,6 +70,9 @@ if (first in COMMANDS) {
   rest = argv.slice(1);
 } else if (first === "list") {
   rest = ["--list", ...argv.slice(1)];
+} else if (first === "ticket") {
+  command = "point";
+  rest = ["--ticket", ...argv.slice(1)];
 }
 
 // spawn rather than import: command files guard on import.meta.main so they stay
