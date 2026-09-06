@@ -7,12 +7,12 @@
  */
 import { createChatHook } from '@tanstack/ai-react/ui'
 import { contexts, options } from './chat-options'
-import { AskLayout } from '../ui/layout'
-import { AskMessage } from '../ui/message'
-import { AskInput } from '../ui/input'
-import { AskQueue } from '../ui/queue'
-import { FallbackPart, OrphanResultPart, TextPart, ThinkingPart } from '../ui/parts'
-import { toolsComponents } from '../ui/tool-call'
+import { AskLayout } from '../components/layout'
+import { AskMessage } from '../components/message'
+import { AskInput } from '../components/input'
+import { AskQueue } from '../components/queue'
+import { FallbackPart, OrphanResultPart, TextPart, ThinkingPart } from '../components/parts'
+import { toolsComponents } from '../components/tool-call'
 
 export const { useAppChat, useChatContext } = createChatHook({
   options,
