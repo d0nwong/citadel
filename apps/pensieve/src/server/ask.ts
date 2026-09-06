@@ -21,6 +21,7 @@ import { execFile } from 'node:child_process'
 import { chat, convertMessagesToModelMessages, defineChatMiddleware, EventType, modelMessagesToUIMessages } from '@tanstack/ai'
 import type { ChatMiddleware, ModelMessage, StreamChunk, UIMessage } from '@tanstack/ai'
 import type { AnyTextAdapter } from '@tanstack/ai'
+import type { DebugOption, Logger } from '@tanstack/ai'
 import { claudeCodeText, SESSION_ID_EVENT } from '@tanstack/ai-claude-code'
 import type { ClaudeCodeTextConfig } from '@tanstack/ai-claude-code'
 import { defineAIPersistence, defineMessageStore, defineMetadataStore, withPersistence } from '@tanstack/ai-persistence'
@@ -28,6 +29,7 @@ import type { AIPersistence, MessageStore, MetadataStore } from '@tanstack/ai-pe
 import { SandboxCapability, defineSandbox, withSandbox } from '@tanstack/ai-sandbox'
 import { localProcessSandbox } from '@tanstack/ai-sandbox-local-process'
 import { WORKSPACE_DIR } from './workspace'
+import { ACCIO_WRITE_VERBS, BASE_TOOLS, HARNESS_WRITE_TOOLS, LINEAR_READ_TOOLS, LINEAR_WRITE_TOOLS, gitReadRules } from '../lib/ask-tools'
 
 // ── configuration ──────────────────────────────────────────────────────────────
 
@@ -38,22 +40,44 @@ export const CONVERSATIONS_DIR = join(PENSIEVE_HOME, 'conversations')
 /** The claude binary's own model alias; the CLI resolves it. */
 export const MODEL = 'sonnet'
 
-/** Exactly the read-only set: files, search, and git history. Nothing that writes or runs. */
-export const ALLOWED_TOOLS = ['Read', 'Grep', 'Glob', 'Bash(git log:*)', 'Bash(git show:*)'] as const
+/**
+ * The product checkouts the `ask` skill reads at their landed refs (`git -C <repo> show
+ * origin/<branch>:<path>`). Same defaults as argus's `scripts/lib/manifest.ts`; `FE_REPO` /
+ * `BE_REPO` override them where the paths differ (the container).
+ */
+export const CHECKOUTS = [process.env.FE_REPO?.trim() || '~/git/alden-portal-fe', process.env.BE_REPO?.trim() || '~/git/alden-connect-portal-be']
+
+const expandHome = (p: string) => (p.startsWith('~/') ? join(homedir(), p.slice(2)) : p)
+
+/**
+ * The allowlist for a set of checkouts. A `Bash(...)` rule is a literal command prefix, so
+ * each checkout gets its rules in both spellings the session will type: `~/git/…` as the
+ * skill writes it, and the absolute path as `accio point` prints it.
+ */
+export function allowedToolsFor(checkouts: ReadonlyArray<string>): Array<string> {
+  const rules = new Set<string>([...BASE_TOOLS, ...LINEAR_READ_TOOLS])
+  for (const c of checkouts) for (const p of new Set([c, expandHome(c)])) for (const r of gitReadRules(p)) rules.add(r)
+  return [...rules]
+}
+
+/** Files, search, git history, the accio read verbs, the `ask` skill, and Linear reads. Nothing that writes. */
+export const ALLOWED_TOOLS = allowedToolsFor(CHECKOUTS)
+
+/** Belt and braces under `default`: these never even reach the permission check. */
+export const DISALLOWED_TOOLS = [...HARNESS_WRITE_TOOLS, ...ACCIO_WRITE_VERBS, ...LINEAR_WRITE_TOOLS]
 
 /**
  * The adapter configuration (`docs/adapters/claude-code.md`). `cwd` is the sandbox's
  * virtual root, which the local-process provider maps onto the argus checkout.
- * `settingSources` stays at `['project']`: argus symlinks its skills into its own
- * `.claude/skills`, and the spike (LIA-100) saw them all reported that way — the host's
+ * `settingSources` stays at `['project']`: it is what loads argus's `.mcp.json` (the Linear
+ * server) and argus symlinks its skills into its own `.claude/skills` — the host's
  * `~/.claude` stays out of the run.
  */
 export const ADAPTER_CONFIG = {
   cwd: '/workspace',
   permissionMode: 'default',
-  allowedTools: [...ALLOWED_TOOLS],
-  // Belt and braces under `default`: these never even reach the permission check.
-  disallowedTools: ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task'],
+  allowedTools: ALLOWED_TOOLS,
+  disallowedTools: DISALLOWED_TOOLS,
   settingSources: ['project'],
   // One turn per model round-trip, so every tool call is one: a question about a point that
   // reads the report, a journal entry and a doc or two is 15–25. When the cap is hit the CLI
@@ -61,6 +85,27 @@ export const ADAPTER_CONFIG = {
   maxTurns: 40,
   emitDiff: false,
 } satisfies ClaudeCodeTextConfig
+
+// Once per process, so the value the running server uses is on record (a dev server keeps
+// an old module loaded across edits; the 08:48 run on 2026-09-06 ran with 12 while the
+// source said 40).
+console.log(
+  `[ask] claude-code · model ${MODEL} · maxTurns ${ADAPTER_CONFIG.maxTurns} · permissionMode ${ADAPTER_CONFIG.permissionMode} · ${ALLOWED_TOOLS.length} allowed · ${DISALLOWED_TOOLS.length} disallowed · checkouts ${CHECKOUTS.join(', ')}`,
+)
+
+/**
+ * Appended to Claude Code's own prompt (`--append-system-prompt`, the adapter's default
+ * mode), so the harness's tool behaviour stays and only the environment facts are added.
+ * The file map and the retrieval recipes live in argus (`CLAUDE.md`, the `ask` skill),
+ * which the run loads with `--setting-sources project`; they are not repeated here.
+ */
+export const ASK_SYSTEM_PROMPT = `You are Ask, a panel inside Pensieve — a web app that reads the argus blackboard. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog, and nobody can grant, allow or approve anything. A tool that is denied stays denied for this run; say what you could not do in one sentence and answer from what you have. Never tell the user to grant, allow or approve anything, and never wait for approval.
+
+To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A point is \`bun run accio point <group>/<slug>\`; a ticket is \`bun run accio ticket LIA-nn\` then mcp__linear__get_issue; a day is \`bun run accio journal <YYYY-MM-DD>\`. Read the product checkouts with Read, Glob, Grep and \`git -C <repo> log\` / \`git -C <repo> show origin/<branch>:<path>\`. Never run git fetch, git branch, git checkout, find, python3, or cat/grep/ls through Bash — each is a denied turn.
+
+Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
+
+You cannot write files, edit tickets or comments, run the sweep, or send a point. Sending a point is the Points page; ticket edits are the sweep's ticket pass. When asked for any of these, say so in one sentence and stop.`
 
 export type AuthMode = 'host' | 'api-key'
 
@@ -87,46 +132,93 @@ export const sandboxMiddleware: ChatMiddleware = { ...withSandbox(sandbox), prov
 
 // ── availability ───────────────────────────────────────────────────────────────
 
-export type AskStatus = { available: true; authMode: AuthMode } | { available: false; reason: string }
-
-/** What a host-login probe can say: logged in, not logged in, or cannot tell. */
-export type LoginProbe = () => Promise<boolean | null>
+/** What `claude auth status` said: logged in or not, and how (`claude.ai`, `console`, …). */
+export interface LoginVerdict {
+  loggedIn: boolean
+  authMethod?: string
+}
 
 /**
- * `claude auth status` prints JSON with `loggedIn`. Advisory only: a missing binary, a
- * timeout, or unparseable output is `null` — "cannot tell", treated as available so the
- * first run's own error is what the user sees.
+ * What the page and the run know about the credential. `claudePath` and `probe` are the
+ * diagnosis inputs (LIA-104): a run that fails to authenticate names them, so the next
+ * "not logged in" is diagnosable rather than retried. `probe.loggedIn` is `null` when the
+ * probe could not tell, or was not consulted (`api-key` mode).
+ */
+export type AskStatus = { available: true; authMode: AuthMode; claudePath: string | null; probe: { loggedIn: boolean | null; authMethod?: string } } | { available: false; reason: string; claudePath: string | null; probe: { loggedIn: boolean | null; authMethod?: string } }
+
+/** What a host-login probe can say: a verdict, or `null` — cannot tell. */
+export type LoginProbe = () => Promise<LoginVerdict | null>
+
+/**
+ * `claude auth status` prints JSON with `loggedIn` and `authMethod`. Advisory only: a
+ * missing binary, a timeout, or unparseable output is `null` — "cannot tell", treated as
+ * available so the first run's own error is what the user sees.
  */
 export const claudeLoginProbe: LoginProbe = () =>
   new Promise((done) => {
     execFile('claude', ['auth', 'status'], { timeout: 8_000, env: process.env }, (err, stdout) => {
       if (err && !stdout) return done(null)
       try {
-        const v = JSON.parse(String(stdout)) as { loggedIn?: unknown }
-        done(typeof v.loggedIn === 'boolean' ? v.loggedIn : null)
+        const v = JSON.parse(String(stdout)) as { loggedIn?: unknown; authMethod?: unknown }
+        if (typeof v.loggedIn !== 'boolean') return done(null)
+        done({ loggedIn: v.loggedIn, ...(typeof v.authMethod === 'string' && v.authMethod ? { authMethod: v.authMethod } : {}) })
       } catch {
         done(null)
       }
     })
   })
 
-let probeCache: { at: number; loggedIn: boolean | null } | undefined
+/**
+ * Where the `claude` the run will spawn lives. The harness runs `claude` from PATH through
+ * its node runner with Pensieve's own environment, so `command -v` in a shell with that
+ * environment is the same lookup. Resolved once per process; `null` when not on PATH.
+ */
+let claudePathCache: Promise<string | null> | undefined
+export const claudePathProbe = (): Promise<string | null> =>
+  (claudePathCache ??= new Promise((done) => {
+    execFile('sh', ['-c', 'command -v claude'], { timeout: 8_000, env: process.env }, (err, stdout) => {
+      const p = String(stdout ?? '').trim()
+      done(!err && p ? p : null)
+    })
+  }))
+
+let probeCache: { at: number; verdict: LoginVerdict | null } | undefined
 const PROBE_TTL_MS = 60_000
 
+export const NOT_LOGGED_IN = 'not logged in — run `claude login` on this machine (if you are logged in, a macOS Keychain dialog may be waiting for the claude process: choose Always Allow), or set ANTHROPIC_API_KEY'
+
 /** Is a credential available for a run? Cheap for the key; the host probe is cached a minute. */
-export async function askStatus(opts: { env?: NodeJS.ProcessEnv; probe?: LoginProbe; now?: number } = {}): Promise<AskStatus> {
+export async function askStatus(opts: { env?: NodeJS.ProcessEnv; probe?: LoginProbe; claudePath?: string | null; now?: number } = {}): Promise<AskStatus> {
   const mode = authMode(opts.env ?? process.env)
-  if (mode === 'api-key') return { available: true, authMode: mode }
+  const claudePath = opts.claudePath !== undefined ? opts.claudePath : await claudePathProbe()
+  if (mode === 'api-key') return { available: true, authMode: mode, claudePath, probe: { loggedIn: null } }
   const now = opts.now ?? Date.now()
+  let verdict: LoginVerdict | null
   if (opts.probe || !probeCache || now - probeCache.at > PROBE_TTL_MS) {
-    const loggedIn = await (opts.probe ?? claudeLoginProbe)()
-    if (!opts.probe) probeCache = { at: now, loggedIn }
-    if (loggedIn === false) return { available: false, reason: 'not logged in — run `claude login` on this machine, or set ANTHROPIC_API_KEY' }
-    return { available: true, authMode: mode }
+    verdict = await (opts.probe ?? claudeLoginProbe)()
+    if (!opts.probe) probeCache = { at: now, verdict }
+  } else {
+    verdict = probeCache.verdict
   }
-  if (probeCache.loggedIn === false) return { available: false, reason: 'not logged in — run `claude login` on this machine, or set ANTHROPIC_API_KEY' }
-  return { available: true, authMode: mode }
+  const probe = verdict ? { loggedIn: verdict.loggedIn, ...(verdict.authMethod ? { authMethod: verdict.authMethod } : {}) } : { loggedIn: null }
+  if (verdict?.loggedIn === false) return { available: false, reason: NOT_LOGGED_IN, claudePath, probe }
+  return { available: true, authMode: mode, claudePath, probe }
 }
+
+/**
+ * One line that makes an auth failure diagnosable from the page and from the conversation
+ * file: which binary, which auth mode, what the login probe said. Two causes fit the
+ * 2026-09-06 08:40 failure (same binary, host mode, worked on retry): a macOS Keychain
+ * access prompt on the first credential read after a `claude` update, which a headless
+ * subprocess cannot answer; or a transient in the CLI's own login check.
+ */
+export function diagnosisLine(status: AskStatus, mode: AuthMode = status.available ? status.authMode : 'host'): string {
+  const said = status.probe.loggedIn === null ? 'unreachable' : status.probe.loggedIn ? `loggedIn: true${status.probe.authMethod ? `, ${status.probe.authMethod}` : ''}` : 'not logged in'
+  return `Ask runs \`claude\` from \`${status.claudePath ?? 'not on PATH'}\` as \`${mode}\`; \`claude auth status\` said \`${said}\`; on macOS a Keychain dialog may be waiting for the claude process — choose Always Allow.`
+}
+
+/** An error message that is about the credential or the binary rather than the question. */
+export const AUTH_ERROR_RE = /not logged in|log ?in|authenticat|keychain|api[ _-]?key|credential|401|403|spawn claude|ENOENT/i
 
 // ── persistence: one file per conversation ─────────────────────────────────────
 
@@ -366,6 +458,70 @@ const errorChunks = (threadId: string, runId: string, message: string, code: str
   { type: EventType.RUN_ERROR, threadId, runId, timestamp: Date.now(), message, code, error: { message, code } },
 ]
 
+/** Where a run's end lands in the conversation file, beside `sessionId`. */
+export const LAST_ERROR_KEY = 'lastError'
+export const FINISH_REASON_KEY = 'finishReason'
+
+export interface LastError {
+  message: string
+  code?: string
+  at: string
+}
+
+const errorMessageOf = (e: unknown): string => (e instanceof Error ? e.message : typeof e === 'string' ? e : JSON.stringify(e))
+const errorCodeOf = (e: unknown): string | undefined => (e && typeof e === 'object' && 'code' in e && typeof e.code === 'string' ? e.code : undefined)
+
+/**
+ * The harness's non-JSON stdout lines and the adapter's errors, per run. The adapter logs
+ * them through TanStack's debug logger at the `provider` category and nowhere else, so a
+ * logger that keeps them is the only way to see what the CLI printed before it died. With
+ * `ASK_DEBUG=1` every category goes to the console instead.
+ */
+function harnessLog(): { debug: DebugOption; lines: Array<string> } {
+  if (process.env.ASK_DEBUG === '1') return { debug: true, lines: [] }
+  const lines: Array<string> = []
+  const NON_JSON = 'provider=claude-code non-json line: '
+  const logger: Logger = {
+    debug: (message) => {
+      if (message.startsWith(NON_JSON)) lines.push(message.slice(NON_JSON.length))
+    },
+    info: () => undefined,
+    warn: (message, meta) => console.warn(`[ask] ${message}`, meta ?? ''),
+    error: (message, meta) => console.error(`[ask] ${message}`, meta ?? ''),
+  }
+  return { debug: { logger, provider: true, errors: true, output: false, middleware: false, tools: false, agentLoop: false, config: false, request: false, sandbox: false }, lines }
+}
+
+/**
+ * At `maxTurns` the claude CLI prints its result — the adapter emits RUN_FINISHED with
+ * `finishReason: 'length'` — and then exits 1. The sandbox runner throws, the adapter
+ * answers with a RUN_ERROR chunk, and the engine takes its error path: the assistant turn
+ * is never assembled onto the transcript and persistence never writes it, so the file
+ * keeps the streaming snapshot (text only, throttled) and the page shows nothing. The run
+ * did finish. Whatever comes after the adapter's own finish — a RUN_ERROR chunk or a
+ * throw — is logged and dropped here, before the engine sees it, so the run ends the way
+ * a clean one does (LIA-104, AC8).
+ */
+export function finishedIsFinished<A extends AnyTextAdapter>(adapter: A, late: (what: unknown) => void): A {
+  const chatStream = async function* (options: Parameters<A['chatStream']>[0]) {
+    let finished = false
+    try {
+      for await (const chunk of adapter.chatStream(options)) {
+        if (chunk.type === EventType.RUN_FINISHED) finished = true
+        else if (finished && chunk.type === EventType.RUN_ERROR) {
+          late(chunk.message)
+          continue
+        }
+        yield chunk
+      }
+    } catch (e) {
+      if (!finished) throw e
+      late(e instanceof Error ? e.message : e)
+    }
+  }
+  return new Proxy(adapter, { get: (target, prop) => (prop === 'chatStream' ? chatStream : Reflect.get(target, prop, target)) })
+}
+
 /**
  * Run one Ask turn. Under the thread's lock: read the stored session id, run `chat()` with
  * the adapter, the sandbox and `withPersistence` (streaming snapshots on, so a page closed
@@ -374,15 +530,22 @@ const errorChunks = (threadId: string, runId: string, message: string, code: str
  * RUN_FINISHED is held back until the run's hooks have completed — the engine emits it
  * before persistence's finish hook writes the final transcript, and a client must be able
  * to reload on RUN_FINISHED and see the whole conversation.
+ *
+ * A run that ends in RUN_ERROR leaves `metadata.lastError` in the file; when the error is
+ * about the credential its message gains the diagnosis line (`diagnosisLine`), on screen
+ * and on disk. A run that ended at the turn cap leaves `metadata.finishReason: 'length'`
+ * and, thanks to `finishedIsFinished`, its whole transcript (LIA-104).
  */
 export async function* askStream(input: AskInput, opts: AskRunOptions = {}): AsyncIterable<StreamChunk> {
   const store = opts.store ?? askStore
   const runId = input.runId ?? `run_${randomBytes(8).toString('hex')}`
   const status = await (opts.status ?? askStatus)()
   if (!status.available) {
-    yield* errorChunks(input.threadId, runId, status.reason, 'ASK_UNAVAILABLE')
+    yield* errorChunks(input.threadId, runId, `${status.reason}\n${diagnosisLine(status)}`, 'ASK_UNAVAILABLE')
     return
   }
+  const mode = authMode(opts.env ?? process.env)
+  const diagnosis = diagnosisLine(status, mode)
   const release = await acquireThread(input.threadId)
   try {
     const sessionId = await readSessionId(store, input.threadId)
@@ -393,52 +556,61 @@ export async function* askStream(input: AskInput, opts: AskRunOptions = {}): Asy
         return
       }
     }
-    // The adapter's own RUN_FINISHED: the engine consumes it and emits its own at the end of
-    // a run that ends well, so this is the only place it can be seen when the run does not.
-    let adapterFinish: Extract<StreamChunk, { type: EventType.RUN_FINISHED }> | undefined
+    const { metadata } = store.persistence.stores
+    const harness = harnessLog()
+    let lastError: LastError | undefined
+    const recordError = async (message: string, code: string | undefined) => {
+      const full = AUTH_ERROR_RE.test(message) && !message.includes(diagnosis) ? `${message}\n${diagnosis}` : message
+      lastError = { message: full, ...(code ? { code } : {}), at: new Date().toISOString() }
+      await metadata.set(input.threadId, LAST_ERROR_KEY, lastError)
+      if (harness.lines.length) console.warn(`[ask] ${input.threadId}: the harness printed, before the error —\n${harness.lines.join('\n')}`)
+      return full
+    }
     const recorder = defineChatMiddleware({
       name: 'ask-session',
+      // A new run starts clean: what the last one left is superseded by this one's end.
+      async onStart() {
+        await metadata.delete(input.threadId, LAST_ERROR_KEY)
+        await metadata.delete(input.threadId, FINISH_REASON_KEY)
+      },
       async onChunk(_ctx, chunk) {
-        if (chunk.type === EventType.RUN_FINISHED) adapterFinish = chunk
+        if (chunk.type === EventType.RUN_ERROR) {
+          const message = await recordError(chunk.message, chunk.code)
+          return message === chunk.message ? undefined : { ...chunk, message, error: { ...chunk.error, message } }
+        }
         if (chunk.type !== EventType.CUSTOM || chunk.name !== SESSION_ID_EVENT) return
         const id = (chunk.value as { sessionId?: unknown } | undefined)?.sessionId
-        if (typeof id === 'string' && id) await store.persistence.stores.metadata.set(input.threadId, SESSION_KEY, id)
+        if (typeof id === 'string' && id) await metadata.set(input.threadId, SESSION_KEY, id)
+      },
+      async onFinish(_ctx, info) {
+        if (info.finishReason === 'length') await metadata.set(input.threadId, FINISH_REASON_KEY, 'length')
+      },
+      // A throw the engine caught (the adapter's RUN_ERROR chunk is the other way in).
+      async onError(_ctx, info) {
+        if (!lastError) await recordError(errorMessageOf(info.error), errorCodeOf(info.error))
       },
     })
     const middleware: Array<ChatMiddleware> = [...(opts.middleware ?? [sandboxMiddleware]), withPersistence(store.persistence, { snapshotStreaming: true }), recorder]
+    const late = (what: unknown) => console.warn(`[ask] ${input.threadId}: the run finished, then the agent process failed —`, what)
     const stream = chat({
-      adapter: opts.adapter ?? askAdapter(),
+      adapter: finishedIsFinished(opts.adapter ?? askAdapter(), late),
       messages: convertMessagesToModelMessages(input.messages),
+      systemPrompts: [ASK_SYSTEM_PROMPT],
       threadId: input.threadId,
       runId,
-      modelOptions: { authMode: authMode(opts.env ?? process.env), ...(sessionId ? { sessionId } : {}) },
+      modelOptions: { authMode: mode, ...(sessionId ? { sessionId } : {}) },
       middleware,
       abortController: opts.abortController,
+      debug: harness.debug,
     })
-    // At `maxTurns` the claude CLI prints its result — the adapter emits RUN_FINISHED with
-    // `finishReason: 'length'` — and then exits 1, which the sandbox runner throws. The
-    // engine answers that with a RUN_ERROR and rethrows, and its own RUN_FINISHED never
-    // comes. The run did finish: the adapter's finish stands in, the error is logged, and
-    // the streaming snapshot on disk is the answer as far as it got.
     let finished: StreamChunk | undefined
-    const late = (what: unknown) => console.warn(`[ask] ${input.threadId}: the run finished, then the agent process failed —`, what)
-    try {
-      for await (const chunk of stream) {
-        if (chunk.type === EventType.RUN_FINISHED) {
-          finished = chunk
-          continue
-        }
-        if (chunk.type === EventType.RUN_ERROR && adapterFinish) {
-          late(chunk.message)
-          continue
-        }
-        yield chunk
+    for await (const chunk of stream) {
+      if (chunk.type === EventType.RUN_FINISHED) {
+        finished = chunk
+        continue
       }
-    } catch (e) {
-      if (!adapterFinish) throw e
-      late(e instanceof Error ? e.message : e)
+      yield chunk
     }
-    if (!finished && adapterFinish) finished = { ...adapterFinish, threadId: input.threadId, runId, timestamp: Date.now() }
     if (finished) yield finished
   } finally {
     release()
@@ -451,18 +623,32 @@ export interface Conversation {
   threadId: string
   messages: Array<UIMessage>
   sessionId?: string
+  /** `'length'` when the last run stopped at the turn cap — the page says so under the answer. */
+  finishReason?: 'length'
+  /** How the last run ended, when it ended in error; cleared when the next run starts. */
+  lastError?: LastError
   createdAt: string
   updatedAt: string
+}
+
+const lastErrorOf = (v: unknown): LastError | undefined => {
+  if (!v || typeof v !== 'object') return undefined
+  const e = v as Record<string, unknown>
+  if (typeof e.message !== 'string') return undefined
+  return { message: e.message, ...(typeof e.code === 'string' ? { code: e.code } : {}), at: typeof e.at === 'string' ? e.at : '' }
 }
 
 export async function getConversation(threadId: string, store = askStore): Promise<Conversation | null> {
   const f = await store.read(threadId)
   if (!f) return null
   const sessionId = f.metadata[SESSION_KEY]
+  const lastError = lastErrorOf(f.metadata[LAST_ERROR_KEY])
   return {
     threadId: f.threadId,
     messages: modelMessagesToUIMessages(f.messages),
     ...(typeof sessionId === 'string' && sessionId ? { sessionId } : {}),
+    ...(f.metadata[FINISH_REASON_KEY] === 'length' ? { finishReason: 'length' as const } : {}),
+    ...(lastError ? { lastError } : {}),
     createdAt: f.createdAt,
     updatedAt: f.updatedAt,
   }

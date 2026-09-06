@@ -12,7 +12,7 @@ import { ArrowUpRight, ChevronRight, EyeOff, LoaderCircle, MessageCircleQuestion
 import { decidePoint, jobStatus, listPoints, sendPoint } from '#/lib/api'
 import type { Verdict } from '#/lib/api'
 import { Empty, PageTitle, TicketLink } from '#/components/bits'
-import { newThreadId } from '#/chat/thread-id'
+import { newThreadId } from '#/features/ask'
 import { cn, daysSince } from '#/lib/utils'
 import type { Point, PointGroup } from '#/server/workspace'
 
@@ -31,9 +31,13 @@ const GROUPS: Array<{ key: PointGroup; label: string; hint: string }> = [
 
 const shortId = (id: string) => id.slice(0, 8)
 
-/** The question an Ask conversation opens with — the point named the way the file names it. */
+/**
+ * The question an Ask conversation opens with — the point named the way the file names
+ * it. `/ask` in front loads argus's `ask` skill explicitly (a `/skill` prefix expands under
+ * `claude -p` — verified in LIA-104), so the session's first tool call is `accio point`.
+ */
 const pointQuestion = (point: Point) =>
-  `About the sweep point "${point.subject}" (${point.id}) in reports/points.json: what is it asking me to decide, what is the evidence in the checkout, and what would you recommend?`
+  `/ask About the sweep point "${point.subject}" (${point.id}) in reports/points.json: what is it asking me to decide, what is the evidence in the checkout, and what would you recommend?`
 
 /** Opens a new conversation about the point, with a breadcrumb back here (see routes/ask/$id). */
 function useAskAbout(point: Point) {
@@ -84,7 +88,7 @@ function PointsPage() {
       />
 
       {!foundry.configured && (
-        <p className="rise mb-6 border-l-2 border-st-hold/50 pl-3 text-[13px] leading-snug text-ink-dim" style={{ animationDelay: '40ms' }}>
+        <p className="rise mb-6 border-l-2 border-st-hold/50 pl-3 text-sm leading-snug text-ink-dim" style={{ animationDelay: '40ms' }}>
           <span className="font-semibold">Send is off.</span> {foundry.reason}. Ignore still works.
         </p>
       )}
@@ -102,7 +106,7 @@ function PointsPage() {
               {g.label}
               <span className="mono ml-2 text-ink-faint">{g.points.length}</span>
             </h2>
-            <span className="hidden text-[12px] italic text-ink-faint sm:block">{g.hint}</span>
+            <span className="hidden text-sm italic text-ink-faint sm:block">{g.hint}</span>
           </div>
           <ul className="divide-y divide-rule-soft">
             {g.points.map((p) => (
@@ -118,7 +122,7 @@ function PointsPage() {
             <ChevronRight className="size-4 transition-transform group-open:rotate-90" strokeWidth={1.75} />
             <span className="display text-[19px]">Decided</span>
             <span className="mono text-ink-faint">{decided.length}</span>
-            <span className="ml-auto hidden text-[12px] italic text-ink-faint sm:block">
+            <span className="ml-auto hidden text-sm italic text-ink-faint sm:block">
               leaves the report on the next tick
             </span>
           </summary>
@@ -183,8 +187,8 @@ function PointRow({ point, foundryOk, foundryReason }: { point: Point; foundryOk
         {point.ticket && <TicketLink ticket={point.ticket} />}
         <span className="mono text-ink-faint">{age(point.firstSeen)}</span>
       </div>
-      <p className="mt-1 text-[15px] leading-snug text-ink-dim">{point.ask}</p>
-      {point.detail && <p className="mt-1 max-w-[72ch] text-[13.5px] leading-snug text-ink-faint">{point.detail}</p>}
+      <p className="mt-1 text-sm leading-snug text-ink-dim">{point.ask}</p>
+      {point.detail && <p className="mt-1 max-w-[72ch] text-sm leading-snug text-ink-faint">{point.detail}</p>}
 
       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
         <ActionButton active={false} onClick={askAbout} icon={MessageCircleQuestion}>
@@ -199,7 +203,7 @@ function PointRow({ point, foundryOk, foundryReason }: { point: Point; foundryOk
               Send to Foundry
             </ActionButton>
           ) : (
-            <span className="inline-flex cursor-not-allowed items-center gap-1.5 text-[13px] text-ink-faint" title={foundryReason}>
+            <span className="inline-flex cursor-not-allowed items-center gap-1.5 text-sm text-ink-faint" title={foundryReason}>
               <Send className="size-3.5" strokeWidth={1.75} />
               Send to Foundry
               <span className="italic">— {foundryReason?.split(' — ')[0] ?? 'off'}</span>
@@ -225,7 +229,7 @@ function PointRow({ point, foundryOk, foundryReason }: { point: Point; foundryOk
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="not worth a ticket / already handled in … / decided otherwise on …"
-            className="w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none"
+            className="w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none"
           />
           <Confirm busy={busy} label="Ignore this point" onCancel={() => open('idle')} />
           <VerdictError v={error} />
@@ -251,7 +255,7 @@ function PointRow({ point, foundryOk, foundryReason }: { point: Point; foundryOk
             placeholder="a repo Foundry tracks — its path, or its name"
             className="mono w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none"
           />
-          <p className="text-[12.5px] leading-snug text-ink-faint">
+          <p className="text-sm leading-snug text-ink-faint">
             Foundry composes the brief from <span className="mono">{point.ticket}</span> and claims it in Linear. The idempotency key is the
             point id, so this cannot queue twice.
           </p>
@@ -278,7 +282,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className={cn('inline-flex items-center gap-1.5 text-[13px] transition-colors', active ? 'text-ink underline underline-offset-4' : 'text-thread hover:underline')}
+      className={cn('inline-flex items-center gap-1.5 text-sm transition-colors', active ? 'text-ink underline underline-offset-4' : 'text-thread hover:underline')}
     >
       <Icon className="size-3.5" strokeWidth={1.75} />
       {children}
@@ -292,12 +296,12 @@ function Confirm({ busy, label, onCancel }: { busy: boolean; label: string; onCa
       <button
         type="submit"
         disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-1 text-[13px] text-paper transition-opacity hover:opacity-90 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-1 text-sm text-paper transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         {busy && <LoaderCircle className="size-3.5 animate-spin" />}
         {label}
       </button>
-      <button type="button" onClick={onCancel} disabled={busy} className="text-[13px] text-ink-faint hover:text-ink disabled:opacity-50">
+      <button type="button" onClick={onCancel} disabled={busy} className="text-sm text-ink-faint hover:text-ink disabled:opacity-50">
         cancel
       </button>
     </div>
@@ -307,7 +311,7 @@ function Confirm({ busy, label, onCancel }: { busy: boolean; label: string; onCa
 function VerdictError({ v }: { v: Verdict | null }) {
   if (!v || v.ok) return null
   return (
-    <p className="text-[13px] leading-snug text-st-hold">
+    <p className="text-sm leading-snug text-st-hold">
       {v.status ? <span className="mono mr-1.5">{v.status}</span> : null}
       {v.error}
       {v.job && (
@@ -338,13 +342,13 @@ function DecidedRow({ point, foundryUrl }: { point: Point; foundryUrl: string })
         </span>
         <span className={cn('display text-[17px] leading-tight', d.action === 'ignored' ? 'text-ink-dim' : 'text-ink')}>{point.subject}</span>
         {point.ticket && <TicketLink ticket={point.ticket} />}
-        <button type="button" onClick={askAbout} className="inline-flex items-center gap-1 text-[12.5px] text-thread hover:underline">
+        <button type="button" onClick={askAbout} className="inline-flex items-center gap-1 text-sm text-thread hover:underline">
           <MessageCircleQuestion className="size-3.5" strokeWidth={1.75} />
           Ask
         </button>
         <span className="mono ml-auto text-ink-faint">{when(d.at)}</span>
       </div>
-      {d.reason && <p className="mt-1 text-[13.5px] italic leading-snug text-ink-dim">{d.reason}</p>}
+      {d.reason && <p className="mt-1 text-sm italic leading-snug text-ink-dim">{d.reason}</p>}
       {d.action === 'sent' && d.job && <JobLine id={d.job.id} url={d.job.url || `${foundryUrl}/`} />}
     </li>
   )
@@ -362,7 +366,7 @@ function JobLine({ id, url }: { id: string; url: string }) {
   })
   const d = q.data
   return (
-    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] text-ink-dim">
+    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-ink-dim">
       <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-thread hover:underline">
         job <span className="mono">{shortId(id)}</span>
         <ArrowUpRight className="size-3" />

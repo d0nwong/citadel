@@ -8,7 +8,7 @@ import { listConversations } from '#/lib/api'
 import { Empty, PageTitle } from '#/components/bits'
 import { Button } from '#/components/ui/button'
 import { prettyStamp } from '#/lib/utils'
-import { newThreadId } from '#/chat/thread-id'
+import { newThreadId } from '#/features/ask'
 
 export const Route = createFileRoute('/ask/')({
   loader: () => listConversations(),
@@ -31,7 +31,7 @@ function AskListPage() {
           </Button>
         }
       />
-      <p className="rise mb-8 max-w-[62ch] text-[14px] leading-snug text-ink-dim">
+      <p className="rise mb-8 max-w-[62ch] text-sm leading-snug text-ink-dim">
         Claude Code with the argus checkout open and nothing but <span className="mono">Read</span>, <span className="mono">Grep</span>,{' '}
         <span className="mono">Glob</span> and <span className="mono">git log</span> — it can read the blackboard, not write it. Each
         conversation keeps its Claude session, so a follow-up question picks up where the last answer left off.

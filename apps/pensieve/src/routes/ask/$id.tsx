@@ -1,7 +1,7 @@
 /**
  * /ask/$id — one conversation. The loader brings the stored turns (none for a thread the
  * list page just minted) and whether a credential is available; the page hands both to
- * the bound chat from `#/chat/ask-ui` and adds the title, Delete, and a footer with the
+ * the bound chat from `#/features/ask` and adds the title, Delete, and a footer with the
  * thread and Claude session ids.
  *
  * Reload during an answer behaves like Stop: the request drops, the server kills the
@@ -18,7 +18,7 @@ import { Link, createFileRoute, notFound, useNavigate, useRouter } from '@tansta
 import type { UIMessage } from '@tanstack/ai'
 import { ArrowLeftIcon, Trash2Icon } from 'lucide-react'
 import { askStatus, deleteConversation, getConversation } from '#/lib/api'
-import { AskStatusProvider, useAppChat } from '#/chat/ask-ui'
+import { AskStatusProvider, useAppChat } from '#/features/ask'
 import { PageTitle } from '#/components/bits'
 import { Button } from '#/components/ui/button'
 
@@ -127,7 +127,13 @@ function AskConversationPage() {
           </Button>
         }
       />
-      <AskStatusProvider status={status} threadId={id} draft={q && !status.available ? q : undefined}>
+      <AskStatusProvider
+        status={status}
+        threadId={id}
+        draft={q && !status.available ? q : undefined}
+        finishReason={conversation?.finishReason}
+        lastError={conversation?.lastError}
+      >
         <chat.AppChat />
       </AskStatusProvider>
       <p className="mono mt-2 truncate text-ink-faint" title={conversation?.sessionId ? `session ${conversation.sessionId}` : undefined}>
