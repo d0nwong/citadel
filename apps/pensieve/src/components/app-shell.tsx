@@ -185,7 +185,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         id="app-nav"
         className={cn(
           'fixed inset-y-0 left-0 z-50 flex w-[250px] shrink-0 flex-col border-r border-rule bg-paper shadow-xl transition-transform duration-200 ease-out',
-          'lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:w-[220px] lg:translate-x-0 lg:shadow-none',
+          'lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:w-[220px] lg:translate-x-0 lg:bg-transparent lg:shadow-none lg:transition-none',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
