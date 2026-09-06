@@ -5,11 +5,20 @@
  * Reasoning → Sources → PromptInput. Submitting the prompt echoes it locally.
  * Not in the nav on purpose; LIA-103 replaces it with the real /ask pages.
  */
-import { useState } from 'react'
-import type { FormEvent } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
-import { Conversation, ConversationContent, ConversationScrollButton } from '#/components/ai/conversation'
-import { Message, MessageContent, MessageResponse } from '#/components/ai/message'
+
+import { createFileRoute } from "@tanstack/react-router";
+import type { FormEvent } from "react";
+import { useState } from "react";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from "#/components/ai/conversation";
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from "#/components/ai/message";
 import {
   PromptInput,
   PromptInputSubmit,
@@ -17,15 +26,30 @@ import {
   PromptInputToolbar,
   PromptInputTools,
   preventEmptySubmit,
-} from '#/components/ai/prompt-input'
-import { Reasoning, ReasoningContent, ReasoningTrigger } from '#/components/ai/reasoning'
-import { Source, Sources, SourcesContent, SourcesTrigger } from '#/components/ai/sources'
-import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '#/components/ai/tool'
-import { PageTitle } from '#/components/bits'
+} from "#/components/ai/prompt-input";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "#/components/ai/reasoning";
+import {
+  Source,
+  Sources,
+  SourcesContent,
+  SourcesTrigger,
+} from "#/components/ai/sources";
+import {
+  Tool,
+  ToolContent,
+  ToolHeader,
+  ToolInput,
+  ToolOutput,
+} from "#/components/ai/tool";
+import { PageTitle } from "#/components/bits";
 
-export const Route = createFileRoute('/blocks')({
+export const Route = createFileRoute("/blocks")({
   component: BlocksPage,
-})
+});
 
 const ASSISTANT_MARKDOWN = `## What the sweep found
 
@@ -51,63 +75,81 @@ const unjournaled = landings.filter((l) => !journal.has(l.sha))
 
 - [x] read reports/points.json
 - [ ] file the missing journal entry
-`
+`;
 
-type Turn = { id: number; from: 'user' | 'assistant'; text: string }
+interface Turn {
+  from: "user" | "assistant";
+  id: number;
+  text: string;
+}
 
 function BlocksPage() {
-  const [turns, setTurns] = useState<Array<Turn>>([])
+  const [turns, setTurns] = useState<Turn[]>([]);
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
-    preventEmptySubmit(e)
-    if (e.defaultPrevented) return
-    e.preventDefault()
-    const form = e.currentTarget
-    const field = form.elements.namedItem('message') as HTMLTextAreaElement
-    const text = field.value.trim()
+    preventEmptySubmit(e);
+    if (e.defaultPrevented) {
+      return;
+    }
+    e.preventDefault();
+    const form = e.currentTarget;
+    const field = form.elements.namedItem("message") as HTMLTextAreaElement;
+    const text = field.value.trim();
     setTurns((t) => [
       ...t,
-      { id: t.length * 2, from: 'user', text },
-      { id: t.length * 2 + 1, from: 'assistant', text: `You said: _${text}_` },
-    ])
-    form.reset()
-  }
+      { id: t.length * 2, from: "user", text },
+      { id: t.length * 2 + 1, from: "assistant", text: `You said: _${text}_` },
+    ]);
+    form.reset();
+  };
 
   return (
     <div className="flex h-[calc(100dvh-5rem)] flex-col">
-      <PageTitle kicker="scratch · LIA-101" title="Chat blocks" aside="shadcn.io/ai on paper and ink" />
+      <PageTitle
+        aside="shadcn.io/ai on paper and ink"
+        kicker="scratch · LIA-101"
+        title="Chat blocks"
+      />
 
       <Conversation className="min-h-0">
         <ConversationContent className="px-0">
           <Message from="user">
-            <MessageContent>What did the last sweep find, and is anything unjournaled?</MessageContent>
+            <MessageContent>
+              What did the last sweep find, and is anything unjournaled?
+            </MessageContent>
           </Message>
 
           <Message from="assistant">
             <Tool>
-              <ToolHeader title="read_file" state="output-complete" />
+              <ToolHeader state="output-complete" title="read_file" />
               <ToolContent>
-                <ToolInput input={{ path: 'reports/points.json' }} />
+                <ToolInput input={{ path: "reports/points.json" }} />
                 <ToolOutput output={{ points: 3, needsYou: 1 }} />
               </ToolContent>
             </Tool>
             <Tool defaultOpen>
-              <ToolHeader title="list_landings" state="output-complete" />
+              <ToolHeader state="output-complete" title="list_landings" />
               <ToolContent>
-                <ToolInput input={{ since: '2026-09-01', app: 'argus' }} />
-                <ToolOutput output={[{ sha: 'de88991', ticket: 'LIA-94' }, { sha: '2ef06fe', ticket: null }]} />
+                <ToolInput input={{ since: "2026-09-01", app: "argus" }} />
+                <ToolOutput
+                  output={[
+                    { sha: "de88991", ticket: "LIA-94" },
+                    { sha: "2ef06fe", ticket: null },
+                  ]}
+                />
               </ToolContent>
             </Tool>
             <Tool>
-              <ToolHeader title="grep_journal" state="input-streaming" />
+              <ToolHeader state="input-streaming" title="grep_journal" />
               <ToolContent>
-                <ToolInput input={{ pattern: '2ef06fe' }} />
+                <ToolInput input={{ pattern: "2ef06fe" }} />
               </ToolContent>
             </Tool>
             <Reasoning>
               <ReasoningTrigger />
               <ReasoningContent>
-                Two of three landings carry a ticket. The workspace change has none, so I should say so rather than guess one.
+                Two of three landings carry a ticket. The workspace change has
+                none, so I should say so rather than guess one.
               </ReasoningContent>
             </Reasoning>
             <MessageContent>
@@ -116,23 +158,38 @@ function BlocksPage() {
             <Sources>
               <SourcesTrigger count={2} />
               <SourcesContent>
-                <Source href="https://linear.app/liamai/issue/LIA-94" title="LIA-94 — points page" />
-                <Source href="https://github.com/d0nwong/pensieve/pull/1" title="pensieve#1" />
+                <Source
+                  href="https://linear.app/liamai/issue/LIA-94"
+                  title="LIA-94 — points page"
+                />
+                <Source
+                  href="https://github.com/d0nwong/pensieve/pull/1"
+                  title="pensieve#1"
+                />
               </SourcesContent>
             </Sources>
           </Message>
 
           {turns.map((t) => (
-            <Message key={t.id} from={t.from}>
-              <MessageContent>{t.from === 'assistant' ? <MessageResponse>{t.text}</MessageResponse> : t.text}</MessageContent>
+            <Message from={t.from} key={t.id}>
+              <MessageContent>
+                {t.from === "assistant" ? (
+                  <MessageResponse>{t.text}</MessageResponse>
+                ) : (
+                  t.text
+                )}
+              </MessageContent>
             </Message>
           ))}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
 
-      <PromptInput onSubmit={submit} className="mt-4">
-        <PromptInputTextarea name="message" placeholder="Ask about the argus checkout…" />
+      <PromptInput className="mt-4" onSubmit={submit}>
+        <PromptInputTextarea
+          name="message"
+          placeholder="Ask about the argus checkout…"
+        />
         <PromptInputToolbar>
           <PromptInputTools>
             <span className="kicker px-2">claude-code · local</span>
@@ -141,5 +198,5 @@ function BlocksPage() {
         </PromptInputToolbar>
       </PromptInput>
     </div>
-  )
+  );
 }

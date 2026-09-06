@@ -10,30 +10,36 @@
  * connection has no `hydrate`, so `persistence: true` here means "keyed by threadId,
  * nothing cached in the browser" and no more.
  */
-import { createChatHookContexts } from '@tanstack/ai-react/ui'
-import type { ChatFetcher } from '@tanstack/ai-react'
-import type { StreamChunk } from '@tanstack/ai'
-import { askChat } from '#/lib/api'
-import { finishReasonOf, noteFinish } from './finish-reason'
+
+import type { StreamChunk } from "@tanstack/ai";
+import type { ChatFetcher } from "@tanstack/ai-react";
+import { createChatHookContexts } from "@tanstack/ai-react/ui";
+import { askChat } from "#/lib/api";
+import { finishReasonOf, noteFinish } from "./finish-reason";
 
 /** `threadId` is the hook's own (the per-call override), so nothing here closes over state. */
-const fetcher: ChatFetcher = ({ messages, threadId }, { signal }) => askChat({ data: { threadId, messages }, signal })
+const fetcher: ChatFetcher = ({ messages, threadId }, { signal }) =>
+  askChat({ data: { messages, threadId }, signal });
 
 export const options = {
+  devtools: { name: "Ask argus" },
   fetcher,
-  persistence: true as const,
-  devtools: { name: 'Ask argus' },
   onChunk: (chunk: StreamChunk) => {
-    if (chunk.type === 'RUN_STARTED' && chunk.threadId) noteFinish(chunk.threadId, undefined)
-    if (chunk.type === 'RUN_FINISHED' && chunk.threadId) noteFinish(chunk.threadId, finishReasonOf(chunk))
+    if (chunk.type === "RUN_STARTED" && chunk.threadId) {
+      noteFinish(chunk.threadId, undefined);
+    }
+    if (chunk.type === "RUN_FINISHED" && chunk.threadId) {
+      noteFinish(chunk.threadId, finishReasonOf(chunk));
+    }
   },
-}
-export type Opts = typeof options
+  persistence: true as const,
+};
+export type Opts = typeof options;
 
 /**
  * Widgets read the chat through these scoped contexts rather than the `useChatContext`
  * that `createChatHook` returns — the documented way around the module-level circularity
  * (the widgets are arguments to the call that defines that hook).
  */
-export const contexts = createChatHookContexts()
-export const useChat = contexts.useChatContext
+export const contexts = createChatHookContexts();
+export const useChat = contexts.useChatContext;

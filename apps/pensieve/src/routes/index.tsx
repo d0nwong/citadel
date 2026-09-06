@@ -1,44 +1,55 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
-import { ArrowUpRight } from 'lucide-react'
-import { getInbox } from '#/lib/api'
-import { Md } from '#/components/md'
-import { Empty, PageTitle } from '#/components/bits'
-import { prettyDay } from '#/lib/utils'
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { ArrowUpRight } from "lucide-react";
+import { Empty, PageTitle } from "#/components/bits";
+import { Md } from "#/components/md";
+import { getInbox } from "#/lib/api";
+import { prettyDay } from "#/lib/utils";
 
-export const Route = createFileRoute('/')({
+export const Route = createFileRoute("/")({
   loader: () => getInbox(),
   component: InboxPage,
-})
+});
 
 function InboxPage() {
-  const { report, digest, workspace, openPoints, conversations } = Route.useLoaderData()
+  const { report, digest, workspace, openPoints, conversations } =
+    Route.useLoaderData();
   return (
     <>
       <PageTitle
-        kicker="Inbox"
-        title={report ? prettyDay(report.day) : 'Nothing drawn yet'}
         aside={
           <span className="mono text-ink-faint" title={workspace}>
-            {workspace.replace(/^\/Users\/[^/]+/, '~')}
+            {workspace.replace(/^\/Users\/[^/]+/, "~")}
           </span>
         }
+        kicker="Inbox"
+        title={report ? prettyDay(report.day) : "Nothing drawn yet"}
       />
 
-      <section className="rise" style={{ animationDelay: '60ms' }}>
+      <section className="rise" style={{ animationDelay: "60ms" }}>
         <div className="mb-3 flex items-baseline justify-between gap-4">
           <h2 className="kicker">Sweep report</h2>
           <div className="flex items-baseline gap-4 text-sm">
             {openPoints !== null && (
-              <Link to="/points" className="inline-flex items-center gap-1 text-thread hover:underline">
-                {openPoints === 0 ? 'nothing needs you' : `${openPoints} point${openPoints === 1 ? '' : 's'} need${openPoints === 1 ? 's' : ''} you`}
+              <Link
+                className="inline-flex items-center gap-1 text-thread hover:underline"
+                to="/points"
+              >
+                {openPoints === 0
+                  ? "nothing needs you"
+                  : `${openPoints} point${openPoints === 1 ? "" : "s"} need${openPoints === 1 ? "s" : ""} you`}
                 <ArrowUpRight className="size-3" />
               </Link>
             )}
-            <Link to="/reports" className="text-ink-faint hover:text-thread">
+            <Link className="text-ink-faint hover:text-thread" to="/reports">
               past reports
             </Link>
-            <Link to="/ask" className="inline-flex items-center gap-1 text-ink-faint hover:text-thread">
-              {conversations === 0 ? 'ask argus' : `${conversations} conversation${conversations === 1 ? '' : 's'}`}
+            <Link
+              className="inline-flex items-center gap-1 text-ink-faint hover:text-thread"
+              to="/ask"
+            >
+              {conversations === 0
+                ? "ask argus"
+                : `${conversations} conversation${conversations === 1 ? "" : "s"}`}
               <ArrowUpRight className="size-3" />
             </Link>
           </div>
@@ -47,17 +58,26 @@ function InboxPage() {
           <Md doc={report.doc} />
         ) : (
           <Empty title="No sweep report on file">
-            The sweep writes <span className="mono">reports/&lt;day&gt;.md</span> each tick. Run <span className="mono">/sweep</span> in
-            argus and this page fills in.
+            The sweep writes{" "}
+            <span className="mono">reports/&lt;day&gt;.md</span> each tick. Run{" "}
+            <span className="mono">/sweep</span> in argus and this page fills
+            in.
           </Empty>
         )}
       </section>
 
-      <section className="rise mt-12" style={{ animationDelay: '140ms' }}>
+      <section className="rise mt-12" style={{ animationDelay: "140ms" }}>
         <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="kicker">Latest digest{digest ? ` · ${prettyDay(digest.day, { weekday: false })}` : ''}</h2>
+          <h2 className="kicker">
+            Latest digest
+            {digest ? ` · ${prettyDay(digest.day, { weekday: false })}` : ""}
+          </h2>
           {digest && (
-            <Link to="/digests/$day" params={{ day: digest.day }} className="inline-flex items-center gap-1 text-sm text-ink-faint hover:text-thread">
+            <Link
+              className="inline-flex items-center gap-1 text-ink-faint text-sm hover:text-thread"
+              params={{ day: digest.day }}
+              to="/digests/$day"
+            >
               open <ArrowUpRight className="size-3" />
             </Link>
           )}
@@ -65,5 +85,5 @@ function InboxPage() {
         {digest ? <Md doc={digest.doc} /> : <Empty title="No digest on file" />}
       </section>
     </>
-  )
+  );
 }

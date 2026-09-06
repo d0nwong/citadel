@@ -6,16 +6,25 @@
  * means to skip. This rewrites the suite's one `from 'vitest'` to the shim next door,
  * which is `bun:test` plus an `it` whose callback gets a `skip()`.
  */
-import { plugin } from 'bun'
+import { plugin } from "bun";
 
-const shim = new URL('./vitest-shim.ts', import.meta.url).pathname
+const shim = new URL("./vitest-shim.ts", import.meta.url).pathname;
 
 plugin({
-  name: 'vitest-conformance-shim',
+  name: "vitest-conformance-shim",
   setup(build) {
-    build.onLoad({ filter: /@tanstack\/ai-persistence\/dist\/esm\/testkit\/conformance\.js$/ }, async (args) => ({
-      contents: (await Bun.file(args.path).text()).replace(/from\s+['"]vitest['"]/g, `from ${JSON.stringify(shim)}`),
-      loader: 'js',
-    }))
+    build.onLoad(
+      {
+        filter:
+          /@tanstack\/ai-persistence\/dist\/esm\/testkit\/conformance\.js$/,
+      },
+      async (args) => ({
+        contents: (await Bun.file(args.path).text()).replace(
+          /from\s+['"]vitest['"]/g,
+          `from ${JSON.stringify(shim)}`
+        ),
+        loader: "js",
+      })
+    );
   },
-})
+});

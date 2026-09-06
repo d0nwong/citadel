@@ -1,32 +1,49 @@
-import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
-export const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs))
+export const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs));
 
 /** "2026-08-28" → "Thu 28 Aug 2026" — the reading-room date. */
-export function prettyDay(day: string, opts: { weekday?: boolean } = { weekday: true }) {
-  const d = new Date(`${day}T12:00:00`)
-  if (Number.isNaN(d.getTime())) return day
-  return d.toLocaleDateString('en-GB', {
-    weekday: opts.weekday ? 'short' : undefined,
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
+export function prettyDay(
+  day: string,
+  opts: { weekday?: boolean } = { weekday: true }
+) {
+  const d = new Date(`${day}T12:00:00`);
+  if (Number.isNaN(d.getTime())) {
+    return day;
+  }
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    weekday: opts.weekday ? "short" : undefined,
+    year: "numeric",
+  });
 }
 
 /** "2026-09-06T09:14:03.000Z" → "6 Sep 2026, 09:14" — a list-row timestamp. */
 export function prettyStamp(iso: string) {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return iso;
+  }
+  return d.toLocaleString("en-GB", {
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 export function daysSince(day?: string): number | null {
-  if (!day) return null
-  const d = new Date(`${day}T12:00:00`)
-  if (Number.isNaN(d.getTime())) return null
-  return Math.floor((Date.now() - d.getTime()) / 86_400_000)
+  if (!day) {
+    return null;
+  }
+  const d = new Date(`${day}T12:00:00`);
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
+  return Math.floor((Date.now() - d.getTime()) / 86_400_000);
 }
 
-export const LINEAR_ISSUE = 'https://linear.app/liamai/issue/'
+export const LINEAR_ISSUE = "https://linear.app/liamai/issue/";

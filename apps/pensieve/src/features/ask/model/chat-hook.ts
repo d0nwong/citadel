@@ -5,19 +5,34 @@
  * `<chat.AppChat />`. This is the one file that imports every widget; the widgets read the
  * chat through `contexts` in `chat-options`, never through what is returned here.
  */
-import { createChatHook } from '@tanstack/ai-react/ui'
-import { contexts, options } from './chat-options'
-import { AskLayout } from '../components/layout'
-import { AskMessage } from '../components/message'
-import { AskInput } from '../components/input'
-import { AskQueue } from '../components/queue'
-import { FallbackPart, OrphanResultPart, TextPart, ThinkingPart } from '../components/parts'
-import { toolsComponents } from '../components/tool-call'
+import { createChatHook } from "@tanstack/ai-react/ui";
+import { AskInput } from "../components/input";
+import { AskLayout } from "../components/layout";
+import { AskMessage } from "../components/message";
+import {
+  FallbackPart,
+  OrphanResultPart,
+  TextPart,
+  ThinkingPart,
+} from "../components/parts";
+import { AskQueue } from "../components/queue";
+import { toolsComponents } from "../components/tool-call";
+import { contexts, options } from "./chat-options";
 
 export const { useAppChat, useChatContext } = createChatHook({
-  options,
+  components: {
+    input: AskInput,
+    layout: AskLayout,
+    message: AskMessage,
+    queue: AskQueue,
+  },
   context: contexts,
-  components: { layout: AskLayout, message: AskMessage, input: AskInput, queue: AskQueue },
-  partsComponents: { text: TextPart, thinking: ThinkingPart, toolResult: OrphanResultPart, fallback: FallbackPart },
+  options,
+  partsComponents: {
+    fallback: FallbackPart,
+    text: TextPart,
+    thinking: ThinkingPart,
+    toolResult: OrphanResultPart,
+  },
   toolsComponents,
-})
+});

@@ -5,37 +5,70 @@
  * call), so every name that can appear is registered against this one block. A matched
  * tool result reaches it as `result`; only an orphan result reaches the `toolResult` part.
  */
-import type { ToolProps } from '@tanstack/ai-react/ui'
-import { Tool, ToolContent, ToolHeader, ToolInput } from '#/components/ai/tool'
-import { ASK_TOOL_PART_NAMES } from '#/lib/ask-tools'
-import { cn } from '#/lib/utils'
-import type { Opts } from '../model/chat-options'
-import { parseArguments, toolResultText, toolSummary } from '../lib/tool-summary'
+import type { ToolProps } from "@tanstack/ai-react/ui";
+import { Tool, ToolContent, ToolHeader, ToolInput } from "#/components/ai/tool";
+import { ASK_TOOL_PART_NAMES } from "#/lib/ask-tools";
+import { cn } from "#/lib/utils";
+import {
+  parseArguments,
+  toolResultText,
+  toolSummary,
+} from "../lib/tool-summary";
+import type { Opts } from "../model/chat-options";
 
-const OUTPUT_CAP = 6_000
+const OUTPUT_CAP = 6000;
 
 /** Text output as text (a file the session read, a grep listing); anything else as JSON. */
-export function Output({ value, className }: { value: unknown; className?: string }) {
-  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
-  const shown = text.length > OUTPUT_CAP ? `${text.slice(0, OUTPUT_CAP)}\n… ${text.length - OUTPUT_CAP} more characters` : text
-  return <pre className={cn('overflow-x-auto whitespace-pre-wrap rounded-md bg-secondary p-2 font-mono text-sm', className)}>{shown}</pre>
+export function Output({
+  value,
+  className,
+}: {
+  value: unknown;
+  className?: string;
+}) {
+  const text =
+    typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const shown =
+    text.length > OUTPUT_CAP
+      ? `${text.slice(0, OUTPUT_CAP)}\n… ${text.length - OUTPUT_CAP} more characters`
+      : text;
+  return (
+    <pre
+      className={cn(
+        "overflow-x-auto whitespace-pre-wrap rounded-md bg-secondary p-2 font-mono text-sm",
+        className
+      )}
+    >
+      {shown}
+    </pre>
+  );
 }
 
 /** The header names the tool and what it was about; the body is the input and, once there, the output. */
 export function ToolCall({ part, result }: ToolProps<Opts>) {
-  const input: unknown = part.input ?? parseArguments(part.arguments)
-  const summary = toolSummary(part.name, input)
-  const state = result ? (result.state === 'error' ? 'error' : 'output-complete') : part.state
-  const output = result ? (result.error ?? toolResultText(result.content)) : part.output
+  const input: unknown = part.input ?? parseArguments(part.arguments);
+  const summary = toolSummary(part.name, input);
+  const state = result
+    ? result.state === "error"
+      ? "error"
+      : "output-complete"
+    : part.state;
+  const output = result
+    ? (result.error ?? toolResultText(result.content))
+    : part.output;
   return (
     <Tool>
-      <ToolHeader title={summary ? `${part.name} · ${summary}` : part.name} state={state} className="font-mono" />
+      <ToolHeader
+        className="font-mono"
+        state={state}
+        title={summary ? `${part.name} · ${summary}` : part.name}
+      />
       <ToolContent>
         <ToolInput input={input ?? part.arguments} />
-        {output !== undefined && output !== '' && <Output value={output} />}
+        {output !== undefined && output !== "" && <Output value={output} />}
       </ToolContent>
     </Tool>
-  )
+  );
 }
 
 /**
@@ -43,4 +76,5 @@ export function ToolCall({ part, result }: ToolProps<Opts>) {
  * still call and be denied on (the denial arrives as a result on the same part). Anything
  * else warns in dev and renders nothing.
  */
-export const toolsComponents: Record<string, typeof ToolCall> = Object.fromEntries(ASK_TOOL_PART_NAMES.map((n) => [n, ToolCall]))
+export const toolsComponents: Record<string, typeof ToolCall> =
+  Object.fromEntries(ASK_TOOL_PART_NAMES.map((n) => [n, ToolCall]));

@@ -1,7 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=JetBrains+Mono:wght@400;500&display=swap');
-@import 'tailwindcss';
-@import 'tw-animate-css';
-@plugin '@tailwindcss/typography';
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=JetBrains+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
 
 /* ── Pensieve: the reading room ──────────────────────────────────────────
    Warm paper, ink, and one cool thread of silver-blue — the memory being
@@ -27,9 +27,9 @@
   --st-superseded: #8b8478;
   --st-hold: #b1463b;
 
-  --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
-  --font-body: 'Newsreader', 'Iowan Old Style', Georgia, serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font-body: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @theme inline {
@@ -112,21 +112,25 @@
 }
 
 html {
-  background: var(--paper);
-  color: var(--ink);
   font-family: var(--font-body);
   font-size: 17px;
-  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--paper);
   text-rendering: optimizeLegibility;
 }
 
 body {
-  margin: 0;
   min-height: 100dvh;
+  margin: 0;
   /* faint paper grain — a radial wash plus a hairline noise so the ground isn't flat */
   background-image:
-    radial-gradient(1200px 600px at 20% -10%, rgba(58, 106, 144, 0.07), transparent 60%),
+    radial-gradient(
+      1200px 600px at 20% -10%,
+      rgba(58, 106, 144, 0.07),
+      transparent 60%
+    ),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -137,16 +141,16 @@ body {
 /* ── type helpers ─────────────────────────────────────────────────────── */
 .display {
   font-family: var(--font-display);
-  font-variation-settings: 'opsz' 96;
-  letter-spacing: -0.015em;
+  font-variation-settings: "opsz" 96;
   font-weight: 400;
+  letter-spacing: -0.015em;
 }
 .kicker {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
   color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
 }
 .mono {
   font-family: var(--font-mono);
@@ -181,25 +185,25 @@ body {
 .prose-pensieve :where(h1, h2, h3, h4) {
   font-family: var(--font-display);
   font-weight: 500;
-  letter-spacing: -0.01em;
   color: var(--ink);
+  letter-spacing: -0.01em;
   scroll-margin-top: 5rem;
 }
 .prose-pensieve :where(h1) {
+  margin: 0 0 1rem;
   font-size: 1.9rem;
   line-height: 1.15;
-  margin: 0 0 1rem;
 }
 .prose-pensieve :where(h2) {
+  padding-top: 0.9rem;
+  margin: 2.2rem 0 0.7rem;
   font-size: 1.28rem;
   line-height: 1.25;
-  margin: 2.2rem 0 0.7rem;
-  padding-top: 0.9rem;
   border-top: 1px solid var(--rule);
 }
 .prose-pensieve :where(h3) {
-  font-size: 1.05rem;
   margin: 1.6rem 0 0.4rem;
+  font-size: 1.05rem;
 }
 .prose-pensieve :where(p, ul, ol, blockquote, table, pre) {
   margin: 0 0 0.9rem;
@@ -230,63 +234,63 @@ body {
   font-style: italic;
 }
 .prose-pensieve :where(code) {
+  padding: 0.08em 0.35em;
   font-family: var(--font-mono);
   font-size: 0.78em;
   background: var(--paper-2);
   border: 1px solid var(--rule-soft);
   border-radius: 3px;
-  padding: 0.08em 0.35em;
 }
 .prose-pensieve :where(pre) {
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.55;
   background: var(--paper-2);
   border: 1px solid var(--rule-soft);
   border-radius: 4px;
-  padding: 0.85rem 1rem;
-  overflow-x: auto;
 }
 .prose-pensieve :where(pre code) {
-  background: none;
-  border: 0;
   padding: 0;
   font-size: inherit;
+  background: none;
+  border: 0;
 }
 .prose-pensieve :where(blockquote) {
-  border-left: 2px solid var(--thread-soft);
   padding-left: 1rem;
-  color: var(--ink-dim);
   font-style: italic;
+  color: var(--ink-dim);
+  border-left: 2px solid var(--thread-soft);
 }
 .prose-pensieve :where(hr) {
+  margin: 2rem 0;
   border: 0;
   border-top: 1px solid var(--rule);
-  margin: 2rem 0;
 }
 .prose-pensieve :where(table) {
   display: block;
   overflow-x: auto;
-  border-collapse: collapse;
   font-size: 0.9rem;
+  border-collapse: collapse;
 }
 .prose-pensieve :where(th, td) {
-  text-align: left;
-  vertical-align: top;
   padding: 0.4rem 0.75rem;
+  vertical-align: top;
+  text-align: left;
   border-bottom: 1px solid var(--rule-soft);
 }
 .prose-pensieve :where(th) {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
   font-weight: 500;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
-.prose-pensieve :where(input[type='checkbox']) {
-  accent-color: var(--thread);
+.prose-pensieve :where(input[type="checkbox"]) {
   margin-right: 0.4rem;
+  accent-color: var(--thread);
 }
 
 /* digest / report section headings are emoji-led; give them a little breathing room */

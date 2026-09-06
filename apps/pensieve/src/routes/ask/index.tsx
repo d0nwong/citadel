@@ -2,44 +2,57 @@
  * /ask — every stored conversation, newest first, titled by its first question (AC5), and
  * the way to start one: mint a thread id here, and the conversation page does the rest.
  */
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { PlusIcon } from 'lucide-react'
-import { listConversations } from '#/lib/api'
-import { Empty, PageTitle } from '#/components/bits'
-import { Button } from '#/components/ui/button'
-import { prettyStamp } from '#/lib/utils'
-import { newThreadId } from '#/features/ask'
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { PlusIcon } from "lucide-react";
+import { Empty, PageTitle } from "#/components/bits";
+import { Button } from "#/components/ui/button";
+import { newThreadId } from "#/features/ask";
+import { listConversations } from "#/lib/api";
+import { prettyStamp } from "#/lib/utils";
 
-export const Route = createFileRoute('/ask/')({
+export const Route = createFileRoute("/ask/")({
   loader: () => listConversations(),
   component: AskListPage,
-})
+});
 
 function AskListPage() {
-  const conversations = Route.useLoaderData()
-  const navigate = useNavigate()
-  const start = () => navigate({ to: '/ask/$id', params: { id: newThreadId() } })
+  const conversations = Route.useLoaderData();
+  const navigate = useNavigate();
+  const start = () =>
+    navigate({ to: "/ask/$id", params: { id: newThreadId() } });
   return (
     <>
       <PageTitle
-        kicker="Ask"
-        title="Conversations"
         aside={
-          <Button size="sm" onClick={start}>
+          <Button onClick={start} size="sm">
             <PlusIcon />
             New conversation
           </Button>
         }
+        kicker="Ask"
+        title="Conversations"
       />
       {conversations.length === 0 && (
-        <Empty title="No conversations yet">Start one and ask what the last sweep found, or where a feature lives.</Empty>
+        <Empty title="No conversations yet">
+          Start one and ask what the last sweep found, or where a feature lives.
+        </Empty>
       )}
       <ul className="divide-y divide-rule-soft">
         {conversations.map((c, i) => (
-          <li key={c.threadId} className="rise" style={{ animationDelay: `${i * 30}ms` }}>
+          <li
+            className="rise"
+            key={c.threadId}
+            style={{ animationDelay: `${i * 30}ms` }}
+          >
             {/* Phone: the question on two lines with the time under it; from sm up, one row with the time first. */}
-            <Link to="/ask/$id" params={{ id: c.threadId }} className="group flex flex-col gap-0.5 py-3 sm:flex-row sm:items-baseline sm:gap-4">
-              <span className="mono order-last shrink-0 text-ink-faint sm:order-none sm:w-36">{prettyStamp(c.updatedAt)}</span>
+            <Link
+              className="group flex flex-col gap-0.5 py-3 sm:flex-row sm:items-baseline sm:gap-4"
+              params={{ id: c.threadId }}
+              to="/ask/$id"
+            >
+              <span className="mono order-last shrink-0 text-ink-faint sm:order-none sm:w-36">
+                {prettyStamp(c.updatedAt)}
+              </span>
               <span className="display min-w-0 text-ink group-hover:text-thread max-sm:line-clamp-2 max-sm:text-[17px] max-sm:leading-snug sm:truncate sm:text-[19px]">
                 {c.title}
               </span>
@@ -48,5 +61,5 @@ function AskListPage() {
         ))}
       </ul>
     </>
-  )
+  );
 }
