@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useRouter, useRouterState } from '@tanstack/react-router'
-import { BookOpenText, CircleDot, Inbox, MessageCircleQuestion, MessagesSquare, ScrollText } from 'lucide-react'
+import { BookOpenText, CircleDot, Inbox, MenuIcon, MessageCircleQuestion, MessagesSquare, ScrollText, XIcon } from 'lucide-react'
 import { cn } from '#/lib/utils'
 
 // ── pull to refresh ────────────────────────────────────────────────────────────
@@ -146,14 +146,56 @@ const isChatDetail = (pathname: string) => /^\/ask\/[^/]+\/?$/.test(pathname)
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  // Below `lg` the sidebar is a drawer behind a menu button; it closes on navigation and Escape.
+  const [open, setOpen] = useState(false)
+  useEffect(() => setOpen(false), [pathname])
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
+  const wordmark = (
+    <Link to="/" className="flex items-center gap-2.5 text-ink">
+      <Basin className="size-7 text-thread" />
+      <span className="display text-[22px] italic leading-none">Pensieve</span>
+    </Link>
+  )
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-[1180px] flex-col lg:flex-row">
-      <aside className="flex shrink-0 flex-col border-b border-rule lg:sticky lg:top-0 lg:h-dvh lg:w-[220px] lg:border-b-0 lg:border-r">
-        <Link to="/" className="flex items-center gap-2.5 px-5 pb-4 pt-6 text-ink">
-          <Basin className="size-7 text-thread" />
-          <span className="display text-[22px] italic leading-none">Pensieve</span>
-        </Link>
-        <nav className="flex gap-0.5 overflow-x-auto px-3 pb-3 lg:flex-col lg:pb-0">
+      <div className="flex items-center justify-between border-b border-rule px-4 py-2.5 lg:hidden">
+        {wordmark}
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Open navigation"
+          aria-expanded={open}
+          aria-controls="app-nav"
+          className="rounded-md p-1.5 text-ink-dim hover:bg-paper-2 hover:text-ink"
+        >
+          <MenuIcon className="size-5" strokeWidth={1.75} />
+        </button>
+      </div>
+      {open && <button type="button" aria-label="Close navigation" onClick={() => setOpen(false)} className="fixed inset-0 z-40 bg-ink/30 lg:hidden" />}
+      <aside
+        id="app-nav"
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 flex w-[250px] shrink-0 flex-col border-r border-rule bg-paper shadow-xl transition-transform duration-200 ease-out',
+          'lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:w-[220px] lg:translate-x-0 lg:shadow-none',
+          open ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        <div className="flex items-center justify-between px-5 pb-4 pt-6">
+          {wordmark}
+          <button type="button" onClick={() => setOpen(false)} aria-label="Close navigation" className="rounded-md p-1 text-ink-faint hover:text-ink lg:hidden">
+            <XIcon className="size-4" />
+          </button>
+        </div>
+        <nav className="flex flex-col gap-0.5 px-3">
           {NAV.map(({ to, label, icon: Icon, hint }) => {
             const active = to === '/' ? pathname === '/' : pathname.startsWith(to)
             return (
@@ -165,15 +207,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   active ? 'bg-paper-2 text-ink' : 'text-ink-dim hover:bg-paper-2/60 hover:text-ink',
                 )}
               >
-                {active && <span className="absolute -left-3 top-1/2 hidden h-4 w-0.5 -translate-y-1/2 rounded-r bg-thread lg:block" />}
+                {active && <span className="absolute -left-3 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r bg-thread" />}
                 <Icon className={cn('size-4', active ? 'text-thread' : 'text-ink-faint group-hover:text-ink-dim')} strokeWidth={1.75} />
                 <span>{label}</span>
-                <span className="ml-auto hidden font-mono text-[10px] text-ink-faint lg:block">{hint}</span>
+                <span className="ml-auto font-mono text-[10px] text-ink-faint">{hint}</span>
               </Link>
             )
           })}
         </nav>
-        <div className="mt-auto hidden px-5 py-4 lg:block">
+        <div className="mt-auto px-5 py-4">
           <p className="kicker">read-only, but one</p>
           <p className="mt-1 text-sm leading-snug text-ink-faint">
             The sweep writes the blackboard; this room only reads it — except{' '}
@@ -182,7 +224,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <PullToRefresh enabled={!isChatDetail(pathname)}>
-        <main className="min-w-0 px-5 py-8 sm:px-8 lg:px-12 lg:py-10">{children}</main>
+        <main className="min-w-0 px-5 py-6 sm:px-8 lg:px-12 lg:py-10">{children}</main>
       </PullToRefresh>
     </div>
   )
