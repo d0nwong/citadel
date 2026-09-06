@@ -2,21 +2,23 @@
   "name": "pensieve",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "Reading room for the argus blackboard — sweep reports, Slack digests, the change journal and feature docs.",
+  "type": "module",
   "imports": {
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "vite dev --port ${PORT:-3778} --host",
     "build": "vite build",
-    "start": "bun server.ts",
+    "check": "ultracite check",
+    "dev": "vite dev --port ${PORT:-3778} --host",
+    "fix": "ultracite fix",
+    "generate-routes": "tsr generate",
     "serve": "scripts/serve.sh",
     "serve:dev": "scripts/serve.sh dev",
-    "unserve": "scripts/serve.sh stop",
-    "generate-routes": "tsr generate",
+    "start": "bun server.ts",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "unserve": "scripts/serve.sh stop"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.3",
@@ -47,6 +49,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.12",
     "@tanstack/react-ai-devtools": "^0.2.71",
     "@tanstack/react-devtools": "^0.10.12",
     "@tanstack/react-router-devtools": "^1.167.1",
@@ -57,6 +60,7 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
     "typescript": "^5.9.3",
+    "ultracite": "7.11.0",
     "vite": "^8.0.0"
   },
   "packageManager": "bun@1.4.0"

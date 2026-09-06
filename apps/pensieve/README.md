@@ -33,6 +33,7 @@ bun install
 cp .env.example .env         # WORKSPACE_DIR defaults to ~/git/argus
 bun run dev                  # http://localhost:3778
 bun test                     # the decisions writer, the Foundry client, Ask's store and run
+bun run check                # lint + format check (Ultracite / Biome); `bun run fix` applies
 ASK_LIVE=1 bun test src/server/ask.test.ts   # + two real claude turns over the checkout
 ```
 
