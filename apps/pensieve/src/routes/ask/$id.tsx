@@ -19,7 +19,6 @@ import type { UIMessage } from '@tanstack/ai'
 import { ArrowLeftIcon, Trash2Icon } from 'lucide-react'
 import { askStatus, deleteConversation, getConversation } from '#/lib/api'
 import { AskStatusProvider, useAppChat } from '#/features/ask'
-import { PageTitle } from '#/components/bits'
 import { Button } from '#/components/ui/button'
 
 type From = 'points'
@@ -101,32 +100,36 @@ function AskConversationPage() {
 
   return (
     <div className="flex h-[calc(100dvh-5rem)] flex-col">
-      <PageTitle
-        kicker={
-          from === 'points' ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Link to="/points" className="inline-flex items-center gap-1 hover:text-thread">
-                <ArrowLeftIcon className="size-3" /> Points
+      {/* On a phone the header is one row — back, the question on one line, a delete icon — so the
+          conversation keeps the screen; from `sm` up it is the page title with its breadcrumb. */}
+      <header className="rise mb-3 flex items-center gap-2 border-b border-rule pb-2 sm:mb-8 sm:flex-wrap sm:items-end sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:pb-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:block">
+          <p className="kicker shrink-0 sm:mb-2">
+            {from === 'points' ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Link to="/points" className="inline-flex items-center gap-1 hover:text-thread">
+                  <ArrowLeftIcon className="size-3" /> <span className="hidden sm:inline">Points</span>
+                </Link>
+                <span aria-hidden className="hidden sm:inline">
+                  ›
+                </span>
+                <Link to="/ask" className="hidden hover:text-thread sm:inline">
+                  Ask
+                </Link>
+              </span>
+            ) : (
+              <Link to="/ask" className="inline-flex items-center gap-1 hover:text-thread">
+                <ArrowLeftIcon className="size-3" /> <span className="hidden sm:inline">Ask</span>
               </Link>
-              <span aria-hidden>›</span>
-              <Link to="/ask" className="hover:text-thread">
-                Ask
-              </Link>
-            </span>
-          ) : (
-            <Link to="/ask" className="inline-flex items-center gap-1 hover:text-thread">
-              <ArrowLeftIcon className="size-3" /> Ask
-            </Link>
-          )
-        }
-        title={<span className="line-clamp-2 text-[24px] leading-tight sm:text-[28px]">{title}</span>}
-        aside={
-          <Button variant="ghost" size="sm" onClick={remove} disabled={deleting} className="text-ink-dim hover:text-st-hold">
-            <Trash2Icon />
-            Delete
-          </Button>
-        }
-      />
+            )}
+          </p>
+          <h1 className="display min-w-0 truncate text-[17px] leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-[28px]">{title}</h1>
+        </div>
+        <Button variant="ghost" size="sm" onClick={remove} disabled={deleting} className="shrink-0 text-ink-dim hover:text-st-hold" title="Delete">
+          <Trash2Icon />
+          <span className="hidden sm:inline">Delete</span>
+        </Button>
+      </header>
       <AskStatusProvider
         status={status}
         threadId={id}
