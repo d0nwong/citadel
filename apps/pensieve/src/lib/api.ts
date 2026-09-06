@@ -11,6 +11,7 @@ import { createServerFn } from '@tanstack/react-start'
 import type { Decision } from '#/server/decisions'
 import type { FoundryConfig, FoundryJob, JobStatus } from '#/server/foundry'
 import type { PointsFile } from '#/server/workspace'
+import type { UIMessage } from '@tanstack/ai'
 
 export const getInbox = createServerFn({ method: 'GET' }).handler(async () => {
   const ws = await import('#/server/workspace')
@@ -188,4 +189,18 @@ export const jobStatus = createServerFn({ method: 'GET' })
       if (e instanceof fd.FoundryError) return { ok: false, status: e.status, error: e.message }
       throw e
     }
+  })
+
+// ── ask spike (LIA-100, throwaway) ─────────────────────────────────────────────
+
+/**
+ * Run one Claude Code turn over the argus checkout and stream it back as SSE. The
+ * handler returns a raw `Response`, which Start hands to the caller untouched, so
+ * `useChat({ fetcher })` can parse the event stream itself.
+ */
+export const askSpike = createServerFn({ method: 'POST' })
+  .validator((input: { messages: Array<UIMessage> }) => ({ messages: input.messages }))
+  .handler(async ({ data }) => {
+    const spike = await import('#/server/ask-spike')
+    return spike.askSpikeResponse(data.messages)
   })
