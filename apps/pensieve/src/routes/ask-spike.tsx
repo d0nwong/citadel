@@ -1,13 +1,13 @@
 /**
- * /ask-spike — throwaway page for LIA-100. A text input, a raw dump of the messages
- * `useChat` holds, and a log of the `claude-code.session-id` event. No design work
- * here on purpose: the point is to watch text deltas arrive one at a time under
- * `bun server.ts`. Deleted or renamed by LIA-103.
+ * /ask-spike — throwaway page from LIA-100, now over `askChat` (LIA-102): one thread per
+ * page load, persisted under PENSIEVE_HOME, resumed on the second question. A text
+ * input, a raw dump of the messages `useChat` holds, and a log of the
+ * `claude-code.session-id` event. No design work here on purpose. Replaced by LIA-103.
  */
 import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useChat } from '@tanstack/ai-react'
-import { askSpike } from '#/lib/api'
+import { askChat } from '#/lib/api'
 
 export const Route = createFileRoute('/ask-spike')({
   component: AskSpikePage,
@@ -24,9 +24,10 @@ function AskSpikePage() {
   const [session, setSession] = useState<SessionEvent | null>(null)
   const [events, setEvents] = useState<Array<string>>([])
   const [deltas, setDeltas] = useState(0)
+  const [threadId] = useState(() => `spike-${Math.random().toString(36).slice(2, 10)}`)
 
   const { messages, sendMessage, isLoading, status, error, stop, clear } = useChat({
-    fetcher: ({ messages }, { signal }) => askSpike({ data: { messages }, signal }),
+    fetcher: ({ messages }, { signal }) => askChat({ data: { threadId, messages }, signal }),
     onChunk: (chunk) => {
       if (chunk.type === 'TEXT_MESSAGE_CONTENT') setDeltas((n) => n + 1)
       if (chunk.type === 'RUN_FINISHED' || chunk.type === 'RUN_ERROR' || chunk.type === 'RUN_STARTED') {
@@ -80,6 +81,8 @@ function AskSpikePage() {
       </form>
 
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 font-mono text-[12px]">
+        <dt className="text-ink-faint">thread</dt>
+        <dd data-testid="thread-id">{threadId}</dd>
         <dt className="text-ink-faint">status</dt>
         <dd data-testid="status">{status}</dd>
         <dt className="text-ink-faint">text deltas</dt>

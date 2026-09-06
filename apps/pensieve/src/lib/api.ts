@@ -2,15 +2,18 @@
  * Server functions — the only bridge between the client and the workspace on disk.
  * Each handler lazy-imports the fs reader so nothing node-only reaches the client bundle.
  *
- * Everything here reads, except the two verdicts at the bottom (`decidePoint`,
- * `sendPoint`): they write one file each under `decisions/` through server/decisions.ts,
- * the app's only writer. Nothing here is a public API — TanStack Start RPC, same as the
- * rest of the app.
+ * Everything here reads, except the two verdicts (`decidePoint`, `sendPoint`) that write
+ * one file each under `decisions/` through server/decisions.ts — the app's only writer
+ * into the blackboard — and Ask, which writes its conversations under `PENSIEVE_HOME`
+ * (server/ask.ts) and nowhere else. Nothing here is a public API — TanStack Start RPC,
+ * same as the rest of the app.
  */
 import { createServerFn } from '@tanstack/react-start'
+import { z } from 'zod'
+import type { AskStatus, Conversation, ConversationSummary } from '#/server/ask'
 import type { Decision } from '#/server/decisions'
 import type { FoundryConfig, FoundryJob, JobStatus } from '#/server/foundry'
-import type { PointsFile } from '#/server/workspace'
+import type { Json, PointsFile } from '#/server/workspace'
 import type { UIMessage } from '@tanstack/ai'
 
 export const getInbox = createServerFn({ method: 'GET' }).handler(async () => {
@@ -191,16 +194,66 @@ export const jobStatus = createServerFn({ method: 'GET' })
     }
   })
 
-// ── ask spike (LIA-100, throwaway) ─────────────────────────────────────────────
+// ── ask: Claude Code over the checkout, one conversation per file ──────────────
+
+/** Thread ids the file store accepts — see server/ask.ts `THREAD_ID_RE`. */
+const threadId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/, 'not a thread id')
 
 /**
- * Run one Claude Code turn over the argus checkout and stream it back as SSE. The
- * handler returns a raw `Response`, which Start hands to the caller untouched, so
- * `useChat({ fetcher })` can parse the event stream itself.
+ * Run one Ask turn and stream it back as SSE. `messages` is the full transcript (what
+ * `useChat` holds) or `[]` to continue the stored one; the stored Claude session id is
+ * read on the server, so the client never carries it. The handler returns a raw
+ * `Response`, which Start hands to the caller untouched, so `useChat({ fetcher })` can
+ * parse the event stream itself. With no credential it answers a RUN_ERROR chunk.
  */
-export const askSpike = createServerFn({ method: 'POST' })
-  .validator((input: { messages: Array<UIMessage> }) => ({ messages: input.messages }))
+export const askChat = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      threadId,
+      messages: z.array(z.custom<UIMessage>((v) => typeof v === 'object' && v !== null && 'role' in v && 'parts' in v)),
+      runId: z.string().max(128).optional(),
+    }),
+  )
   .handler(async ({ data }) => {
-    const spike = await import('#/server/ask-spike')
-    return spike.askSpikeResponse(data.messages)
+    const ask = await import('#/server/ask')
+    const { toServerSentEventsResponse } = await import('@tanstack/ai')
+    const { getRequest } = await import('@tanstack/react-start/server')
+    // Stop on the page (or a closed tab) aborts the request; that must kill the claude process.
+    const abortController = new AbortController()
+    getRequest().signal.addEventListener('abort', () => abortController.abort(), { once: true })
+    return toServerSentEventsResponse(ask.askStream(data, { abortController }), { abortController })
+  })
+
+/** Is a credential available for a run — the machine's `claude login`, or `ANTHROPIC_API_KEY`? */
+export const askStatus = createServerFn({ method: 'GET' }).handler(async (): Promise<AskStatus> => {
+  const ask = await import('#/server/ask')
+  return ask.askStatus()
+})
+
+/** Every stored conversation, newest first, titled by its first user turn. */
+export const listConversations = createServerFn({ method: 'GET' }).handler(async (): Promise<Array<ConversationSummary>> => {
+  const ask = await import('#/server/ask')
+  return ask.listConversations()
+})
+
+/**
+ * A stored conversation on the wire. `messages` are `UIMessage`s — what `useChat` takes
+ * as `initialMessages` — typed as JSON here because Start's serialisability check balks
+ * at the `unknown` inside `UIMessage`'s structured-output part; the bytes are the same.
+ */
+export type ConversationWire = Omit<Conversation, 'messages'> & { messages: Array<Json> }
+
+export const getConversation = createServerFn({ method: 'GET' })
+  .validator(threadId)
+  .handler(async ({ data }): Promise<ConversationWire | null> => {
+    const ask = await import('#/server/ask')
+    return (await ask.getConversation(data)) as ConversationWire | null
+  })
+
+/** Remove that one file under `PENSIEVE_HOME/conversations/`; answers the remaining list. */
+export const deleteConversation = createServerFn({ method: 'POST' })
+  .validator(threadId)
+  .handler(async ({ data }): Promise<Array<ConversationSummary>> => {
+    const ask = await import('#/server/ask')
+    return ask.deleteConversation(data)
   })
