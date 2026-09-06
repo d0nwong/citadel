@@ -23,7 +23,9 @@
     "web:serve": "./web/serve.sh up",
     "web:unserve": "./web/serve.sh down",
     "web:serve:status": "./web/serve.sh status",
-    "web:serve:url": "./web/serve.sh url"
+    "web:serve:url": "./web/serve.sh url",
+    "web:check": "cd web && bun run check",
+    "web:fix": "cd web && bun run fix"
   },
   "packageManager": "bun@1.4.0"
 }
