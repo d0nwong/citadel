@@ -138,7 +138,7 @@ journal entries (`[[YYYY-MM-DD]]` to a day view), and HTML comments — the
 ## What it writes
 
 Into the blackboard, only `decisions/<group>/<slug>.json`, one per point acted on from
-`/points`:
+`/points` or from the card an Ask proposes (below):
 
 ```json
 { "point": "decide/lia-86", "action": "sent", "at": "2026-09-05T10:12:00.000Z",
@@ -170,14 +170,17 @@ read-only allowlist (`src/lib/ask-tools.ts`): `Read`, `Grep`, `Glob`, `Skill`, `
 `BE_REPO`, both as `~/…` and as the absolute path, since a `Bash(...)` rule is a literal
 command prefix), `bun run accio …` (its `sync` and `map` verbs denied), and the hosted
 Linear server's read tools (`mcp__linear__get_issue`, `list_issues`, `list_comments`, …);
-every Linear write tool is denied by name. It sees argus's skills (`ask`, `sweep`,
+every Linear write tool is denied by name. One tool is bridged into the run from Pensieve
+itself, `propose_decision`, allowed as `mcp__tanstack__propose_decision` (below). It sees
+argus's skills (`ask`, `sweep`,
 `slack-digest`, …) because argus links them into its own `.claude/skills`, and its
 `.mcp.json` because `settingSources` is `['project']`. A system prompt is appended to
 Claude Code's own (`ASK_SYSTEM_PROMPT`): the session is told it is a web panel with no
 terminal and no permission dialog, to load the `ask` skill and retrieve with `accio point`
 / `accio ticket` / `accio journal`, to cite every path, and that it cannot write, edit a
-ticket or send a point — so a denied tool is reported in one sentence, never relayed as a
-request for approval. The answer streams back as SSE over a Start server function, so
+ticket or run the sweep — so a denied tool is reported in one sentence, never relayed as a
+request for approval — and that a verdict on a point is proposed, never performed. The
+answer streams back as SSE over a Start server function, so
 `useChat({ fetcher })` reads it directly.
 
 Every run persists through `withPersistence` from `@tanstack/ai-persistence`, over a store
@@ -185,7 +188,7 @@ that keeps one conversation per file:
 
 ```
 $PENSIEVE_HOME/conversations/<threadId>.json
-{ "threadId", "messages": [ …model messages… ], "metadata": { "sessionId" }, "createdAt", "updatedAt" }
+{ "threadId", "messages": [ …model messages… ], "metadata": { "sessionId", "point"? }, "createdAt", "updatedAt" }
 ```
 
 The user turn is written when the run starts, the partial answer while it streams, and the
@@ -226,7 +229,26 @@ credential the composer is disabled and says what to do. Delete asks once and re
 file. Every point on `/points` has an Ask action that opens a conversation already asking
 about that point, with a breadcrumb back to the points; the question starts with `/ask`,
 which loads argus's `ask` skill explicitly (a `/skill` prefix expands under `claude -p`),
-so the first tool call is `accio point`. Every other page refreshes when dragged down from
+so the first tool call is `accio point`.
+
+A conversation opened from a point carries it: the URL adds `point=<id>` beside `q`, the
+first run stores it as `metadata.point`, and the page shows the point above the transcript
+— subject, ticket, ask — with the same Ignore / Send controls as `/points`
+(`src/features/points/verdict.tsx`, one component for both pages). A point that already
+has a decision shows it and no controls; a conversation with no point shows nothing there.
+
+The model can propose a verdict too. `propose_decision` (`src/server/ask-tools.server.ts`)
+is a TanStack bridged tool, and a bridged tool always executes when the model calls it —
+the harness has no approval gate — so it only checks and never writes: the point is in
+`points.json`, has no decision yet, and for a send has a ticket and a configured Foundry
+(`src/server/verdict.ts`, the same checks and the same error strings `decidePoint` and
+`sendPoint` run before they write). It answers a proposal or `{ ok: false, error }`. The
+chat renders the proposal as a card (`decision-card.tsx`): the verdict, the reason as an
+editable field, the repo for a send, and Confirm, which calls `decidePoint` / `sendPoint`,
+so the file is what the Points page would have written for the same input. The model is
+told to say a verdict is proposed and never that it is done; once a decision file exists
+the card shows the decided line and offers no second Confirm, on reload as well.
+Every other page refreshes when dragged down from
 the top (touch or mouse): the route loaders re-run, nothing else moves.
 
 ## Layout
