@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Answer a question about the argus blackboard, read-only — "tell me about point decide/lia-71-history-rollup", "about the point X, what am I deciding, what is the evidence, what do you recommend", "what does LIA-71 say / where is LIA-71", "what shipped on 2026-09-04 / yesterday", "why is X pending / on hold / ignored", "what rule covers Y / what is BR-57", "what do the docs say about the usage page". Use for any question-shaped prompt about a point, ticket, day, rule id, feature, decision or landing in this checkout, from a terminal, from Pensieve's Ask, or mid-sweep. Retrieves with `accio point` / `accio ticket` / `accio journal` / `accio find` and the Linear read tools, reads the FE/BE checkouts without writing or switching anything, and answers in a fixed shape with every path cited.
+description: Answer a question about the argus blackboard, read-only — "tell me about point decide/lia-71-history-rollup", "about the point X, what am I deciding, what is the evidence, what do you recommend", "what does LIA-71 say / where is LIA-71", "what shipped on 2026-09-04 / yesterday", "why is X pending / on hold / ignored", "what rule covers Y / what is BR-57", "what do the docs say about the usage page". Use for any question-shaped prompt about a point, ticket, day, rule id, feature, decision or landing in this checkout, from a terminal, from Pensieve's Ask, or mid-sweep. Retrieves with `accio point` / `accio ticket` / `accio journal` / `accio find` and the Linear read tools, reads the FE/BE checkouts without writing or switching anything, and answers in a fixed shape with every path cited. Also covers deciding a point — "ignore it", "send it", "do that" after a recommendation — which is proposed for the user's confirmation, never performed.
 ---
 
 # ask — answer a question about the blackboard, read-only
@@ -8,8 +8,8 @@ description: Answer a question about the argus blackboard, read-only — "tell m
 Question: $ARGUMENTS
 
 You are in the argus checkout. It is a blackboard: `reports/<day>.md` is what the sweep
-wants from Liam, `reports/points.json` is that Needs-you section as records with stable
-`<group>/<slug>` ids, `decisions/<group>/<slug>.json` is Liam's Send / Ignore verdict on
+wants from the user, `reports/points.json` is that Needs-you section as records with stable
+`<group>/<slug>` ids, `decisions/<group>/<slug>.json` is the user's Send / Ignore verdict on
 a point, `digests/<day>.md` is Slack made durable, and each `<app>/features/<dir>/` holds
 `journal/` (one entry per landing or decision, frontmatter is the routing) and `docs/`
 (`product.md` + `arch.md`, rules as `| BR-n |` / `| MM-n |` table rows). The README's
@@ -28,7 +28,8 @@ Layout table is the map; you do not need to rediscover it.
 - **Write nothing.** Not to this checkout, not to the product checkouts, not to Linear.
   No `git add/commit/checkout/fetch/pull/stash`, no `save_issue`, no `save_comment`, no
   file edits — even when the answer makes the next edit obvious. Say what the edit would
-  be; the person asking makes it.
+  be; the person asking makes it. A proposal is not a write: the tool in section 5 checks
+  a verdict and answers with it, and the user's Confirm is what writes the file.
 
 ## 1. Classify the question
 
@@ -92,7 +93,7 @@ and Pensieve at `~/git/foundry`, `~/git/pensieve`.
 ## 4. Answer
 
 A person is reading this in a chat panel, not an agent. Five parts, in this order,
-nothing before the first, about 130 words in all (the shape Liam chose on 2026-09-06
+nothing before the first, about 130 words in all (the shape chosen on 2026-09-06
 from three rendered variants — brief with bullets):
 
 **The question** — one short paragraph: what was decided or expected, what actually is,
@@ -104,8 +105,11 @@ a fact from a journal entry, a doc row, a decision file, a ticket body or `git s
 the record. Never restate the report's judgement as if it were a fact.
 
 **My call** — two sentences: what to do, and the next concrete action (which point to
-Send or Ignore and with what reason, who to ask, which entry to supersede). Or the exact
-words "the files don't say". Never perform the action.
+Send or Ignore and with what reason, who to ask, which entry to supersede). When a point
+is in play, that second sentence is the verdict in the terms section 5's tool takes —
+"Ignore `decide/lia-71-history-rollup` — reason: the drill-down is the current design" —
+so that "do that" maps to exactly one call. Or the exact words "the files don't say".
+Never perform the action; section 5 is how a verdict reaches the user.
 
 **Not checked** — one line: what was not read (a denied tool, a missing checkout, a ref
 older than the landing, a ticket body).
@@ -142,3 +146,32 @@ what is the evidence, what do you recommend":
 > **Not checked:** the two history hooks, and the Linear ticket for a later re-scope.
 >
 > Sources: journal 2026-09-04 decided-history-rolls-up · history-tab-content.tsx @ origin/staging · reports/points.json
+
+## 5. Deciding
+
+The verdict on a point is the user's; this section is only how it reaches them.
+
+**When.** The user asks for it — "ignore it", "send it to Foundry" — or takes the
+recommendation section 4 just gave: "do that", "yes", "go ahead". Never on your own
+initiative, and never for a point the answer only mentioned in passing.
+
+**With the tool.** In Pensieve's Ask a tool named `propose_decision` is available. Call it
+once, with `{ point, action: "ignored" | "sent", reason?, repo? }` — `point` is the
+`<group>/<slug>` id from the question or from the conversation's own point, `action` is
+the verdict, `reason` is the My-call sentence in ≤ 140 characters and is **required for
+`ignored`**, `repo` comes from the point record and is required for `sent`. One call per
+verdict: if the ask carries two, propose the first and name the second.
+
+Then one sentence, and stop: "Proposed — confirm it on the card above." That sentence is
+the whole answer; the five parts in section 4 are for a question, not for a verdict. The
+file lands when the user presses Confirm, so never say the point is ignored, sent, decided or
+done, and never call the tool a second time to check whether it was.
+
+If it answers `ok: false`, report its `error` in one sentence and stop. No retry, no
+second spelling of the same call, no substitute action — the error is the answer, and
+the user can still decide on the Points page.
+
+**Without the tool.** In a terminal or mid-sweep no such tool exists. Say in one sentence
+that the decision is made on Pensieve's Points page, or from its Ask, and stop — do not
+write `decisions/<group>/<slug>.json`, do not `POST` to Foundry, and do not ask to be
+allowed to. Rule 3 covers this; the verdict is not yours to record.
