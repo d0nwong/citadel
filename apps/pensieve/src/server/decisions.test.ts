@@ -91,6 +91,39 @@ describe("AC2 / AC4 — atomic write of the decision file", () => {
     expect(raw).toEqual(d);
     expect("reason" in raw).toBe(false);
   });
+  test("verified with no note: no reason key, nothing half-written (LIA-115 AC2)", async () => {
+    const d: Decision = {
+      action: "verified",
+      at: "2026-09-07T10:00:00.000Z",
+      point: "verify/lia-78-appears-implemented",
+      subject: "LIA-78",
+    };
+    const target = await writeDecision(d, dir);
+    expect(target).toBe(join(dir, "verify", "lia-78-appears-implemented.json"));
+    const raw = JSON.parse(await readFile(target, "utf8"));
+    expect(raw).toEqual(d);
+    // A confirmation needs no argument — the key is absent, not empty.
+    expect("reason" in raw).toBe(false);
+    expect((await readdir(join(dir, "verify"))).sort()).toEqual([
+      "lia-78-appears-implemented.json",
+    ]);
+  });
+  test("verified with a note carries it as reason (LIA-115 AC2)", async () => {
+    await writeDecision(
+      {
+        action: "verified",
+        at: "2026-09-07T10:00:00.000Z",
+        point: "verify/lia-71-history-rollup",
+        reason: "correct — the Pending bullet is satisfied",
+        subject: "LIA-71",
+      },
+      dir
+    );
+    const raw = JSON.parse(
+      await readFile(join(dir, "verify", "lia-71-history-rollup.json"), "utf8")
+    );
+    expect(raw.reason).toBe("correct — the Pending bullet is satisfied");
+  });
   test("the sweep would accept what is written (same rules as points.ts parseDecision)", async () => {
     await writeDecision(
       {
@@ -108,6 +141,25 @@ describe("AC2 / AC4 — atomic write of the decision file", () => {
     expect(parseDecision('{"point":"decide/x","action":"ignored"}')).toBeNull(); // reason required
     expect(parseDecision('{"point":"decide/x","action":"maybe"}')).toBeNull();
     expect(parseDecision("nope")).toBeNull();
+
+    // LIA-115 AC7 — the third verb, whose `reason` is optional (argus points.ts:parseDecision).
+    await writeDecision(
+      { action: "verified", at: "t", point: "verify/y", subject: "s" },
+      dir
+    );
+    expect(
+      parseDecision(await readFile(join(dir, "verify", "y.json"), "utf8"))
+    ).toMatchObject({ action: "verified", point: "verify/y" });
+    expect(
+      parseDecision('{"point":"verify/y","action":"verified"}')
+    ).toMatchObject({ action: "verified" });
+    expect(
+      parseDecision('{"point":"verify/y","action":"verified","reason":"why"}')
+    ).toMatchObject({ action: "verified", reason: "why" });
+    // The verb is not restricted to the Verify group by the reader (LIA-114 AC2).
+    expect(
+      parseDecision('{"point":"decide/z","action":"verified"}')
+    ).toMatchObject({ action: "verified", point: "decide/z" });
   });
 });
 

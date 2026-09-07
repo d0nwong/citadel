@@ -208,6 +208,38 @@ export const decidePoint = createServerFn({ method: "POST" })
   });
 
 /**
+ * Confirm a Verify-group point — the user agreeing with an inference the sweep made, which
+ * licenses the sweep's next tick to make the edit the point names (LIA-114/115). Writes
+ * `decisions/verify/<slug>.json` with `action: "verified"`.
+ *
+ * `decidePoint`'s shape with two differences: the note is optional, and it is spread in only
+ * when one was given, so the file carries no empty `reason` key. Foundry is never consulted
+ * — nothing on this path imports `server/foundry`, so a verdict lands with the token unset.
+ */
+export const verifyPoint = createServerFn({ method: "POST" })
+  .validator((input: { note: string; point: string }) => ({
+    note: trimmed(input.note),
+    point: trimmed(input.point),
+  }))
+  .handler(async ({ data }): Promise<Verdict> => {
+    const dec = await import("#/server/decisions");
+    const v = await import("#/server/verdict");
+    const check = await v.checkVerify(data.point, data.note);
+    if (!check.ok) {
+      return { error: check.error, ok: false };
+    }
+    const decision: Decision = {
+      action: "verified",
+      at: new Date().toISOString(),
+      point: check.point.id,
+      ...(check.reason ? { reason: check.reason } : {}),
+      subject: check.point.subject,
+    };
+    await dec.writeDecision(decision);
+    return { decision, ok: true };
+  });
+
+/**
  * One send at a time per point, in this process: a double click reaches Foundry once and
  * writes once. Across processes the idempotency key (the point id) does the same job.
  */

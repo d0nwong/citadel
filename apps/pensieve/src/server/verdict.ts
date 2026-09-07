@@ -1,6 +1,6 @@
 /**
  * Node-only. The checks behind a verdict on a Needs-you point, in one place: what
- * `decidePoint` and `sendPoint` ask before they write, and what the bridged
+ * `decidePoint`, `sendPoint` and `verifyPoint` ask before they write, and what the bridged
  * `propose_decision` tool asks before it answers a proposal (LIA-111).
  *
  * One set of checks means one set of error strings — the sentence Ask reports when a
@@ -51,6 +51,8 @@ export interface Blocked {
 }
 
 export type IgnoreCheck = { ok: true; point: Point; reason: string } | Blocked;
+/** `reason` is absent when the confirmation carried no note — it is optional (LIA-115). */
+export type VerifyCheck = { ok: true; point: Point; reason?: string } | Blocked;
 export type SendCheck =
   | { ok: true; point: Point; repo: string; ticket: string }
   | Blocked;
@@ -113,6 +115,44 @@ export async function checkIgnore(
       ok: true,
       point: found.point,
       reason: why,
+    }
+  );
+}
+
+/**
+ * What `verifyPoint` asks before it writes `action: "verified"` — the user confirming an
+ * inference the sweep made (LIA-115). Two things set it apart from `checkIgnore`:
+ *
+ * The note is optional. An ignore has to say why, because the reason is the whole record of
+ * a dismissal; a confirmation's content is the point's own text, which the sweep already has.
+ *
+ * The group is checked here, not only on the button. `verifyPoint` is a server function and
+ * so reachable without the UI, and `verified` licenses the sweep to make the edit the point
+ * names — a licence that means nothing on a point from another group, whose ask was never an
+ * inference to confirm. The reader accepts the verb anywhere (a hand-written file stays
+ * readable); this writer only mints it where the Verify group's hint promised it.
+ */
+export async function checkVerify(
+  pointId: string,
+  note: string,
+  sources: VerdictSources = workspaceSources()
+): Promise<VerifyCheck> {
+  const found = await locate(pointId, sources);
+  if (!found.ok) {
+    return found;
+  }
+  if (found.point.group !== "verify") {
+    return {
+      error: `verify is for the Verify group — that point is in ${found.point.group}`,
+      ok: false,
+    };
+  }
+  const why = trimmed(note);
+  return (
+    (await decided(pointId, sources)) ?? {
+      ok: true,
+      point: found.point,
+      ...(why ? { reason: why } : {}),
     }
   );
 }

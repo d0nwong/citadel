@@ -1,25 +1,32 @@
 /**
- * The verdict on a Needs-you point, as one component each page renders: the Ignore / Send
- * controls while it is open (`VerdictControls`), and what a decided point looks like
+ * The verdict on a Needs-you point, as one component each page renders: the Ignore / Verify
+ * / Send controls while it is open (`VerdictControls`), and what a decided point looks like
  * afterwards (`DecidedLine`). Lifted out of `/points` so the Ask conversation opened on a
  * point can give the same verdict without going back to the list (LIA-109).
  *
- * Both write through `decidePoint` / `sendPoint` in `lib/api` — `decisions/` stays the
- * app's only write — and invalidate the router afterwards, so whichever loader is on
- * screen re-reads `points.json` + `decisions/` and the point moves to its decided state.
- * That commit is `useVerdictCommit`, which Ask's proposal card reuses (LIA-111): a verdict
- * confirmed on a card and one given here take the same path and write the same file.
+ * All three write through `decidePoint` / `verifyPoint` / `sendPoint` in `lib/api` —
+ * `decisions/` stays the app's only write — and invalidate the router afterwards, so
+ * whichever loader is on screen re-reads `points.json` + `decisions/` and the point moves
+ * to its decided state. That commit is `useVerdictCommit`, which Ask's proposal card reuses
+ * (LIA-111): a verdict confirmed on a card and one given here take the same path and write
+ * the same file.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
-import { ArrowUpRight, EyeOff, LoaderCircle, Send } from "lucide-react";
+import {
+  ArrowUpRight,
+  BadgeCheck,
+  EyeOff,
+  LoaderCircle,
+  Send,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { Verdict } from "#/lib/api";
-import { decidePoint, jobStatus, sendPoint } from "#/lib/api";
+import { decidePoint, jobStatus, sendPoint, verifyPoint } from "#/lib/api";
 import { cn } from "#/lib/utils";
-import type { Point } from "#/server/workspace";
+import type { Point, PointDecision } from "#/server/workspace";
 
 export const shortId = (id: string) => id.slice(0, 8);
 
@@ -78,14 +85,15 @@ export function useVerdictCommit() {
 
 // ── an open point ──────────────────────────────────────────────────────────────
 
-type Mode = "idle" | "ignore" | "send";
+type Mode = "idle" | "ignore" | "verify" | "send";
 
 /**
- * Ignore (with a reason) and Send to Foundry (when the point names a ticket and Foundry is
- * configured), with the form each opens. `lead` goes first in the action row, so a page
- * with its own action there (the Points list's Ask) keeps one row of actions rather than
- * two. `onDecided` runs after the verdict landed and the router was invalidated — the
- * caller's chance to close whatever opened these controls.
+ * Ignore (with a reason), Verify (with an optional note, on a Verify-group point only) and
+ * Send to Foundry (when the point names a ticket and Foundry is configured), with the form
+ * each opens. `lead` goes first in the action row, so a page with its own action there (the
+ * Points list's Ask) keeps one row of actions rather than two. `onDecided` runs after the
+ * verdict landed and the router was invalidated — the caller's chance to close whatever
+ * opened these controls.
  */
 export function VerdictControls({
   point,
@@ -102,6 +110,7 @@ export function VerdictControls({
 }) {
   const [mode, setMode] = useState<Mode>("idle");
   const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
   const [repo, setRepo] = useState(point.repo ?? "");
   const { busy, commit: run, error, setError } = useVerdictCommit();
 
@@ -125,6 +134,9 @@ export function VerdictControls({
     }
     return commit(() => decidePoint({ data: { point: point.id, reason } }));
   };
+  // No pre-flight guard: an empty note is a valid confirmation, unlike an empty reason.
+  const verify = () =>
+    commit(() => verifyPoint({ data: { note, point: point.id } }));
   const send = () => {
     if (!repo.trim()) {
       return setError({
@@ -146,6 +158,15 @@ export function VerdictControls({
         >
           Ignore
         </ActionButton>
+        {point.group === "verify" && (
+          <ActionButton
+            active={mode === "verify"}
+            icon={BadgeCheck}
+            onClick={() => open("verify")}
+          >
+            Verify
+          </ActionButton>
+        )}
         {point.ticket &&
           (foundryOk ? (
             <ActionButton
@@ -192,6 +213,39 @@ export function VerdictControls({
           <Confirm
             busy={busy}
             label="Ignore this point"
+            onCancel={() => open("idle")}
+          />
+          <VerdictError v={error} />
+        </form>
+      )}
+
+      {mode === "verify" && (
+        <form
+          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-thread-soft border-l-2 pl-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void verify();
+          }}
+        >
+          <label className="kicker" htmlFor={`note-${point.id}`}>
+            Note (optional)
+          </label>
+          <textarea
+            autoFocus
+            className="w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-ink text-sm placeholder:text-ink-faint focus:border-thread focus:outline-none"
+            id={`note-${point.id}`}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="anything the edit should know — the point's own text is the instruction"
+            rows={1}
+            value={note}
+          />
+          <p className="text-ink-faint text-sm leading-snug">
+            Confirms the sweep's reading. Its next tick makes the edit this
+            point names and records it against the point id.
+          </p>
+          <Confirm
+            busy={busy}
+            label="Verify this point"
             onCancel={() => open("idle")}
           />
           <VerdictError v={error} />
@@ -316,6 +370,13 @@ export function VerdictError({ v }: { v: Verdict | null }) {
 
 // ── a decided point ────────────────────────────────────────────────────────────
 
+/** One row per verdict — green for a confirmation, blue for a send, grey for a dismissal. */
+const ACTION_CLASS: Record<PointDecision["action"], string> = {
+  ignored: "border-st-superseded/40 text-st-superseded",
+  sent: "border-st-implemented/40 text-st-implemented",
+  verified: "border-st-documented/40 text-st-documented",
+};
+
 /**
  * The verdict on a point that has one: the action, when, why, and — for a sent point — its
  * Foundry job live until it settles. `head` is what the page puts on the first row beside
@@ -340,9 +401,7 @@ export function DecidedLine({
         <span
           className={cn(
             "inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em]",
-            d.action === "sent"
-              ? "border-st-implemented/40 text-st-implemented"
-              : "border-st-superseded/40 text-st-superseded"
+            ACTION_CLASS[d.action]
           )}
         >
           {d.action}

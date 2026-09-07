@@ -567,7 +567,7 @@ export type PointGroup =
 
 /** The sweep's own copy of a verdict, attached when it re-emits a decided point (LIA-88). */
 export interface PointDecision {
-  action: "sent" | "ignored";
+  action: "sent" | "ignored" | "verified";
   at: string;
   job?: { id: string; url: string };
   point: string;
@@ -645,7 +645,9 @@ export async function readPoints(): Promise<PointsFile | null> {
       decision:
         d &&
         typeof d.point === "string" &&
-        (d.action === "sent" || d.action === "ignored")
+        (d.action === "sent" ||
+          d.action === "ignored" ||
+          d.action === "verified")
           ? {
               action: d.action,
               at: String(d.at ?? ""),

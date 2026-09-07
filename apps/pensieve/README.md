@@ -7,7 +7,8 @@ digests**, the per-landing **change journal**, and the dual-tier **feature docs*
 Pensieve is read-only by design, with one exception. The sweep in argus owns every
 file it shows; this app only parses and renders them, so there is never a second writer to
 the workflow state. The exception is `decisions/`: the **Points** page lists the sweep's
-Needs-you points and lets you *ignore* one with a reason or *send* one to
+Needs-you points and lets you *ignore* one with a reason, *verify* one in the Verify group,
+or *send* one to
 [Foundry](https://github.com/d0nwong/foundry), and each verdict is one JSON file there
 that the sweep reads back and commits. Nothing else is written into the blackboard from
 here — not the journal, docs, reports or tickets; those still go through Linear, Slack,
@@ -118,7 +119,7 @@ file is not mounted, so pass `FOUNDRY_API_TOKEN` in the environment. Ask's state
 | Route | Source in argus |
 |---|---|
 | `/` Inbox | `reports/<latest>.md` + `digests/<latest>.md`, and the count of open points |
-| `/points` | `reports/points.json` — Needs-you as data, grouped Decide / Verify / Confirm / On hold / Housekeeping, with `decisions/` laid over it |
+| `/points` | `reports/points.json` — Needs-you as data, grouped Decide / Verify / Confirm / On hold / Housekeeping, with `decisions/` laid over it. Ignore, Send, and — in the Verify group — Verify |
 | `/reports`, `/reports/:day` | `reports/YYYY-MM-DD.md` — one per day, overwritten each tick |
 | `/digests`, `/digests/:day` | `digests/YYYY-MM-DD.md` |
 | `/journal` | every `<app>/features/**/journal/**/*.md` — frontmatter only, filterable by app / day / feature / status / text |
@@ -145,11 +146,22 @@ Into the blackboard, only `decisions/<group>/<slug>.json`, one per point acted o
   "subject": "LIA-86", "job": { "id": "…", "url": "http://localhost:3777/" } }
 ```
 
-`action` is `"ignored"` (with a `reason`) or `"sent"` (with the Foundry `job`). The file is
-written to a temp name in the same directory and renamed into place, so the sweep never
-reads half of one, and it is never edited afterwards by either side. The page merges these
-files with `points.json` itself rather than trusting the sweep's `decision` field alone, so
-a point decided a minute ago shows as decided before the next tick re-emits the file.
+`action` is `"ignored"` (with a `reason`), `"sent"` (with the Foundry `job`), or
+`"verified"` (`reason` optional). The file is written to a temp name in the same directory
+and renamed into place, so the sweep never reads half of one, and it is never edited
+afterwards by either side. The page merges these files with `points.json` itself rather than
+trusting the sweep's `decision` field alone, so a point decided a minute ago shows as decided
+before the next tick re-emits the file.
+
+*Verify* is the Verify group's own verdict — that group is an inference the sweep drew and is
+forbidden from acting on ("report first, edit after the user confirms"), so its hint reads
+*the sweep thinks, you confirm*. Verifying says the reading is right, which licenses the next
+tick to make the edit the point names and record it against the point id (LIA-114). The note
+is optional: the point's own text is the instruction, so a confirmation needs no argument the
+way a dismissal does. The writer mints the verb for the Verify group only — a confirmation
+means nothing on a point whose ask was never an inference — while the reader accepts it
+anywhere, so a hand-written file stays readable. Verify never touches Foundry, so it works
+with `FOUNDRY_API_TOKEN` unset, as Ignore does.
 
 *Send* is one `POST /api/jobs` to Foundry with `{ ticketId, repo }` — no instructions;
 Foundry composes the brief from the ticket and claims it in Linear — and an
@@ -233,9 +245,10 @@ so the first tool call is `accio point`.
 
 A conversation opened from a point carries it: the URL adds `point=<id>` beside `q`, the
 first run stores it as `metadata.point`, and the page shows the point above the transcript
-— subject, ticket, ask — with the same Ignore / Send controls as `/points`
-(`src/features/points/verdict.tsx`, one component for both pages). A point that already
-has a decision shows it and no controls; a conversation with no point shows nothing there.
+— subject, ticket, ask — with the same Ignore / Verify / Send controls as `/points`
+(`src/features/points/verdict.tsx`, one component for both pages, so Verify shows here for
+a Verify-group point exactly as it does on the list). A point that already has a decision
+shows it and no controls; a conversation with no point shows nothing there.
 
 The model can propose a verdict too. `propose_decision` (`src/server/ask-tools.server.ts`)
 is a TanStack bridged tool, and a bridged tool always executes when the model calls it —
