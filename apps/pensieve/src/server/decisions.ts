@@ -1,18 +1,19 @@
 /**
  * The one writer. Pensieve's read-only rule has exactly one exception: `decisions/` in
- * the blackboard, where a Send or Ignore verdict on a Needs-you point lands as one JSON
- * file the sweep reads back (LIA-88) and commits with its next tick. Nothing else in this
- * app writes to disk, and nothing here writes outside `decisions/` — a point id that would
- * resolve elsewhere is refused before any path is built (LIA-94 AC9).
+ * the blackboard, where a Send, Ignore or Verify verdict on a Needs-you point lands as one
+ * JSON file the sweep reads back (LIA-88) and commits with its next tick. Nothing else in
+ * this app writes to disk, and nothing here writes outside `decisions/` — a point id that
+ * would resolve elsewhere is refused before any path is built (LIA-94 AC9).
  *
  * The file contract, shared with argus `skills/sweep/scripts/points.ts`:
  *
  *   decisions/<group>/<slug>.json
- *   { point, action: "sent" | "ignored", reason, at, subject, job? }
+ *   { point, action: "sent" | "ignored" | "verified", reason, at, subject, job? }
  *
- * `reason` is required for `ignored`; `job: { id, url }` only for `sent`. Written to a
- * temp file in the same directory and renamed into place, so the sweep never reads half a
- * file. Never edited afterwards by either side.
+ * `reason` is required for `ignored` and optional for `verified` — a confirmation of the
+ * sweep's own inference needs no argument (LIA-115); `job: { id, url }` only for `sent`.
+ * Written to a temp file in the same directory and renamed into place, so the sweep never
+ * reads half a file. Never edited afterwards by either side.
  */
 
 import { randomBytes } from "node:crypto";
@@ -32,7 +33,7 @@ import { WORKSPACE_DIR } from "./workspace";
 export const DECISIONS_DIR = join(WORKSPACE_DIR, "decisions");
 
 export interface Decision {
-  action: "sent" | "ignored";
+  action: "sent" | "ignored" | "verified";
   /** ISO timestamp of the verdict. */
   at: string;
   job?: { id: string; url: string };
@@ -89,7 +90,11 @@ export function parseDecision(text: string): Decision | null {
   if (typeof d.point !== "string" || !d.point) {
     return null;
   }
-  if (d.action !== "sent" && d.action !== "ignored") {
+  if (
+    d.action !== "sent" &&
+    d.action !== "ignored" &&
+    d.action !== "verified"
+  ) {
     return null;
   }
   if (

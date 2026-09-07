@@ -23,7 +23,7 @@ import type { Decision } from "./decisions";
 import { writeDecision } from "./decisions";
 import type { FoundryConfig } from "./foundry";
 import type { VerdictSources } from "./verdict";
-import { checkIgnore, checkSend, checkVerdict } from "./verdict";
+import { checkIgnore, checkSend, checkVerdict, checkVerify } from "./verdict";
 import type { Point, PointsFile } from "./workspace";
 
 const point = (id: string, extra: Partial<Point> = {}): Point => ({
@@ -42,6 +42,10 @@ const POINTS: Point[] = [
     ticket: "LIA-71",
   }),
   point("verify/no-ticket"),
+  point("verify/appears-implemented", {
+    ask: "LIA-78 appears implemented — confirm and I will edit the ticket",
+    ticket: "LIA-78",
+  }),
 ];
 
 const FOUNDRY_ON: FoundryConfig = {
@@ -149,6 +153,73 @@ describe("checkIgnore — the checks decidePoint makes before it writes", () => 
       ok: false,
     });
     expect(c.ok === false && c.decision?.point).toBe("decide/prototype-page");
+  });
+});
+
+describe("checkVerify — the checks verifyPoint makes before it writes (LIA-115)", () => {
+  test("a Verify-group point with no note passes, and no reason comes back", async () => {
+    const c = await checkVerify("verify/appears-implemented", "", sources);
+    expect(c.ok).toBe(true);
+    if (c.ok) {
+      expect(c.point.id).toBe("verify/appears-implemented");
+      // A confirmation needs no argument, unlike an ignore (AC2).
+      expect(c.reason).toBeUndefined();
+    }
+    expect(await written()).toEqual([]);
+  });
+  test("a note comes back trimmed", async () => {
+    const c = await checkVerify(
+      "verify/appears-implemented",
+      "  correct — the AC is ticked  ",
+      sources
+    );
+    expect(c.ok === true && c.reason).toBe("correct — the AC is ticked");
+  });
+  test("whitespace only is no note, not an empty reason", async () => {
+    const c = await checkVerify("verify/appears-implemented", "   ", sources);
+    expect(c.ok === true && c.reason).toBeUndefined();
+  });
+  test("a point in another group is refused — the verb is minted for Verify only (AC1)", async () => {
+    const c = await checkVerify("decide/prototype-page", "", sources);
+    expect(c.ok).toBe(false);
+    expect(c.ok === false && c.error).toBe(
+      "verify is for the Verify group — that point is in decide"
+    );
+    expect(await written()).toEqual([]);
+  });
+  test.each([["../etc/passwd"], ["verify/UPPER"], [""]])(
+    "refuses %j as a point id",
+    async (id) => {
+      const c = await checkVerify(id, "", sources);
+      expect(c.ok === false && c.error).toBe(`"${id}" is not a point id`);
+    }
+  );
+  test("a point absent from points.json is refused", async () => {
+    const c = await checkVerify("verify/not-a-point", "", sources);
+    expect(c.ok === false && c.error).toBe(
+      "that point is not in reports/points.json"
+    );
+  });
+  test("an already-decided point is refused with the same message as Ignore (AC4)", async () => {
+    await decide("verify/appears-implemented", "verified");
+    const c = await checkVerify("verify/appears-implemented", "", sources);
+    expect(c.ok).toBe(false);
+    expect(c.ok === false && c.error).toBe(
+      "already verified on 2026-09-06 09:30"
+    );
+    expect(c.ok === false && c.decision?.action).toBe("verified");
+  });
+  test("a point already sent is refused too — the verdicts stay exclusive (AC4)", async () => {
+    await decide("verify/appears-implemented", "sent");
+    const c = await checkVerify("verify/appears-implemented", "", sources);
+    expect(c.ok === false && c.error).toBe("already sent on 2026-09-06 09:30");
+  });
+  test("Foundry is never consulted — a verdict lands with the token unset (AC6)", async () => {
+    const c = await checkVerify("verify/appears-implemented", "", {
+      ...sources,
+      foundry: () => Promise.reject(new Error("Foundry must not be read")),
+    });
+    expect(c.ok).toBe(true);
   });
 });
 

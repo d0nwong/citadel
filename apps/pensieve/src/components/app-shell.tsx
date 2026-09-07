@@ -174,7 +174,12 @@ function PullToRefresh({
 
 const NAV = [
   { hint: "latest sweep", icon: Inbox, label: "Inbox", to: "/" },
-  { hint: "send / ignore", icon: CircleDot, label: "Points", to: "/points" },
+  {
+    hint: "send / ignore / verify",
+    icon: CircleDot,
+    label: "Points",
+    to: "/points",
+  },
   {
     hint: "one entry per landing",
     icon: ScrollText,

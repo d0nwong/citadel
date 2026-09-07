@@ -1,7 +1,8 @@
 /**
  * /points — the sweep's Needs-you queue as a list you can act on (LIA-94). Every point
  * without a decision is listed in the report's own order; each can be ignored with a
- * reason, or — when it names a ticket — sent to Foundry. Both write one file under
+ * reason, or — when it names a ticket — sent to Foundry, and a point in the Verify group
+ * can be verified with an optional note (LIA-115). All three write one file under
  * `decisions/` and the point moves to the collapsed Decided list below, where a sent
  * point shows its Foundry job live until it settles.
  */
@@ -105,7 +106,7 @@ function PointsPage() {
           style={{ animationDelay: "40ms" }}
         >
           <span className="font-semibold">Send is off.</span> {foundry.reason}.
-          Ignore still works.
+          Ignore and Verify still work.
         </p>
       )}
 
