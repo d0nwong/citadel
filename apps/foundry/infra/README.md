@@ -47,11 +47,10 @@ missing fails to mount at startup (`panicIfInvalid: false`) and the others keep
 serving.
 
 The service sits behind the `mcp` compose profile, which `infra.sh` switches on by
-itself when `~/.foundry/env` carries the gateway token and the shared
-`~/.config/liamai/env` (`LIAMAI_ENV` overrides the path) at least one upstream key —
-`foundry auth --linear` / `foundry auth --slack` write them. `infra/.env` never holds
-these secrets; `infra.sh` exports both files into compose's environment, the shared
-one last, and mcp-proxy expands the `${…}` references in the config.
+itself when the repo's `.env` carries the gateway token and at least one upstream
+key — `foundry auth --linear` / `foundry auth --slack` write them. `infra/.env` never
+holds these secrets; `infra.sh` exports the repo's `.env` into compose's environment,
+and mcp-proxy expands the `${…}` references in the config.
 
 ```sh
 curl localhost:9090/_readyz                     # {"status":"ok",...} once the configured upstreams mounted
@@ -64,8 +63,7 @@ curl -X POST localhost:9090/linear/mcp \
 To add another upstream, add an entry under `mcpServers` in `mcp/config.json`
 (remote: `url` + `transportType` + `headers`; local: `command` + `args`), reference
 its secret as `${SOME_KEY}` — `foundry auth --<name>` then prompts for exactly that
-name and stores it in `~/.foundry/env`, or in the shared file if you add the key to
-`SHARED_KEYS` in `bin/foundry` — and add `SOME_KEY: ${SOME_KEY:-}` to the service's
+name and stores it in the repo's `.env` — and add `SOME_KEY: ${SOME_KEY:-}` to the service's
 `environment` in `compose.yaml`. Then
 teach the hosts to advertise it: the `FOUNDRY_MCP_SERVERS` lists in `bin/foundry`
 (`load_env`) and `web/…/job-runner.ts` (preflight), and the known-server sweep in
