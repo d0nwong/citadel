@@ -26,15 +26,53 @@ export const isPointId = (id: unknown): id is string =>
  */
 export const REPO_REQUIRED = "a repo is required — choose one Foundry tracks";
 
+/** One row of the repo picker: what is shown, and what `POST /api/jobs` is sent. */
+export interface RepoOption {
+  label: string;
+  name: string;
+  path: string;
+  value: string;
+}
+
 /**
- * The point's repo as one of Foundry's, or nothing. It matches a `name` or a `path` — the
- * sweep fills `point.repo` from a ticket's `[FE]`/`[BE]` tag and either shape can come out
- * — and answers "" for anything Foundry does not track, so a repo it would refuse is never
- * the one already chosen when the Send form opens (LIA-120, AC2/AC3). The answer is always
- * a `name`, which is what `POST /api/jobs` takes verbatim.
+ * Foundry's rows as the picker offers them. A `name` is what the job body carries — it is
+ * shorter and it is what the point's own `repo` says — but Foundry resolves a bare name
+ * only when exactly one tracked repo has it, and answers `400` when two do. So a name two
+ * rows share is offered by its `path`, which always resolves, and labelled with it, since
+ * two identical lines are not a choice.
+ */
+export function repoOptions(repos: FoundryRepo[]): RepoOption[] {
+  const count = new Map<string, number>();
+  for (const r of repos) {
+    count.set(r.name, (count.get(r.name) ?? 0) + 1);
+  }
+  return repos.map((r) => {
+    const shared = (count.get(r.name) ?? 0) > 1;
+    return {
+      label: shared ? `${r.name} — ${r.path}` : r.name,
+      name: r.name,
+      path: r.path,
+      value: shared ? r.path : r.name,
+    };
+  });
+}
+
+/**
+ * The point's repo as one of Foundry's, or nothing. It matches a `path` exactly, or a
+ * `name` when Foundry would resolve that name to one repo — the sweep fills `point.repo`
+ * from a ticket's `[FE]`/`[BE]` tag and either shape can come out. Anything Foundry does
+ * not track, and any name two of its repos share, answers "": a repo Foundry would refuse
+ * is never the one already chosen when the Send form opens (LIA-120, AC2/AC3).
  */
 export function pickRepo(repos: FoundryRepo[], repo?: string): string {
   const want = repo?.trim();
-  const hit = want && repos.find((r) => r.name === want || r.path === want);
-  return hit ? hit.name : "";
+  if (!want) {
+    return "";
+  }
+  const options = repoOptions(repos);
+  const named = options.filter((o) => o.name === want);
+  const hit =
+    options.find((o) => o.path === want) ??
+    (named.length === 1 ? named[0] : undefined);
+  return hit?.value ?? "";
 }

@@ -22,6 +22,7 @@ import { useRouter } from "@tanstack/react-router";
 import {
   ArrowUpRight,
   BadgeCheck,
+  ChevronDown,
   EyeOff,
   LoaderCircle,
   Send,
@@ -30,7 +31,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import type { Verdict } from "#/lib/api";
 import { decidePoint, jobStatus, sendPoint, verifyPoint } from "#/lib/api";
-import { pickRepo, REPO_REQUIRED } from "#/lib/points";
+import { pickRepo, REPO_REQUIRED, repoOptions } from "#/lib/points";
 import { cn } from "#/lib/utils";
 import type { FoundryRepo } from "#/server/foundry";
 import type { Point, PointDecision } from "#/server/workspace";
@@ -81,29 +82,45 @@ export function RepoField({
   repos: FoundryRepo[];
   value: string;
 }) {
-  const picked = repos.find((r) => r.name === value);
+  const options = repoOptions(repos);
+  const picked = options.find((o) => o.value === value);
   return (
     <>
       <label className="kicker" htmlFor={id}>
         Repo the work lands in
       </label>
-      {repos.length > 0 ? (
+      {options.length > 0 ? (
         <>
-          <select
-            autoFocus={autoFocus}
-            className={cn(FIELD_CLASS, className, !value && "text-ink-faint")}
-            id={id}
-            onChange={(e) => onChange(e.target.value)}
-            value={value}
-          >
-            <option value="">choose a repo Foundry tracks…</option>
-            {repos.map((r) => (
-              <option key={r.path} value={r.name}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-          {picked && (
+          {/* Native, so it is a picker on a phone and with a keyboard — but wearing the
+              page's own chevron, since a select styled like the text field it replaced
+              reads as one. */}
+          <div className="relative">
+            <select
+              autoFocus={autoFocus}
+              className={cn(
+                FIELD_CLASS,
+                className,
+                "cursor-pointer appearance-none pr-9 hover:border-thread-soft",
+                !value && "text-ink-faint"
+              )}
+              id={id}
+              onChange={(e) => onChange(e.target.value)}
+              value={value}
+            >
+              <option value="">choose a repo Foundry tracks…</option>
+              {options.map((o) => (
+                <option key={o.path} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-ink-faint"
+              strokeWidth={1.75}
+            />
+          </div>
+          {picked && picked.value !== picked.path && (
             <p className="mono text-ink-faint text-sm">{picked.path}</p>
           )}
         </>
