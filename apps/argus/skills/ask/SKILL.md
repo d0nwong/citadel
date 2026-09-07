@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Answer a question about the argus blackboard, read-only — "tell me about point decide/lia-71-history-rollup", "about the point X, what am I deciding, what is the evidence, what do you recommend", "what does LIA-71 say / where is LIA-71", "what shipped on 2026-09-04 / yesterday", "why is X pending / on hold / ignored", "what rule covers Y / what is BR-57", "what do the docs say about the usage page". Use for any question-shaped prompt about a point, ticket, day, rule id, feature, decision or landing in this checkout, from a terminal, from Pensieve's Ask, or mid-sweep. Retrieves with `accio point` / `accio ticket` / `accio journal` / `accio find` and the Linear read tools, reads the FE/BE checkouts without writing or switching anything, and answers in a fixed shape with every path cited. Also covers deciding a point — "ignore it", "send it", "do that" after a recommendation — which is proposed for the user's confirmation, never performed.
+description: Answer a question about the argus blackboard, read-only — "tell me about point decide/lia-71-history-rollup", "about the point X, what am I deciding, what is the evidence, what do you recommend", "what does LIA-71 say / where is LIA-71", "what shipped on 2026-09-04 / yesterday", "why is X pending / on hold / ignored", "what rule covers Y / what is BR-57", "what do the docs say about the usage page". Use for any question-shaped prompt about a point, ticket, day, rule id, feature, decision or landing in this checkout, from a terminal, from Pensieve's Ask, or mid-sweep. Retrieves with `accio point` / `accio ticket` / `accio journal` / `accio find` and the Linear read tools, reads the FE/BE checkouts without writing or switching anything, and answers in a fixed shape with every path cited. Also covers deciding a point — "ignore it", "send it", "do that" after a recommendation — and filing a new ticket — "file this", "make a ticket for that" — each of which is proposed for the user's confirmation, never performed.
 ---
 
 # ask — answer a question about the blackboard, read-only
@@ -28,8 +28,9 @@ Layout table is the map; you do not need to rediscover it.
 - **Write nothing.** Not to this checkout, not to the product checkouts, not to Linear.
   No `git add/commit/checkout/fetch/pull/stash`, no `save_issue`, no `save_comment`, no
   file edits — even when the answer makes the next edit obvious. Say what the edit would
-  be; the person asking makes it. A proposal is not a write: the tool in section 5 checks
-  a verdict and answers with it, and the user's Confirm is what writes the file.
+  be; the person asking makes it. A proposed verdict is not a write and neither is a
+  proposed ticket: the tools in sections 5 and 6 check one and answer with it, and the
+  user's Confirm or File is what writes the file or the issue.
 
 ## 1. Classify the question
 
@@ -105,11 +106,12 @@ a fact from a journal entry, a doc row, a decision file, a ticket body or `git s
 the record. Never restate the report's judgement as if it were a fact.
 
 **My call** — two sentences: what to do, and the next concrete action (which point to
-Send or Ignore and with what reason, who to ask, which entry to supersede). When a point
-is in play, that second sentence is the verdict in the terms section 5's tool takes —
-"Ignore `decide/lia-71-history-rollup` — reason: the drill-down is the current design" —
-so that "do that" maps to exactly one call. Or the exact words "the files don't say".
-Never perform the action; section 5 is how a verdict reaches the user.
+Send or Ignore and with what reason, who to ask, which entry to supersede, which ticket
+to file). When a point is in play, that second sentence is the verdict in the terms
+section 5's tool takes — "Ignore `decide/lia-71-history-rollup` — reason: the drill-down
+is the current design" — so that "do that" maps to exactly one call. Or the exact words
+"the files don't say". Never perform the action; section 5 is how a verdict reaches the
+user, section 6 how a new ticket does.
 
 **Not checked** — one line: what was not read (a denied tool, a missing checkout, a ref
 older than the landing, a ticket body).
@@ -175,3 +177,34 @@ the user can still decide on the Points page.
 that the decision is made on Pensieve's Points page, or from its Ask, and stop — do not
 write `decisions/<group>/<slug>.json`, do not `POST` to Foundry, and do not ask to be
 allowed to. Rule 3 covers this; the verdict is not yours to record.
+
+## 6. Filing
+
+A new ticket is the user's to file; this section is only how a draft reaches them.
+
+**When.** The user asks for it — "file this", "make a ticket for that" — or accepts an
+answer whose My call named a ticket as the next step: "do that", "yes, file it". Never on
+your own initiative, and never for a ticket that already exists: the sweep's ticket pass
+is the only editor of one, and rule 3 holds.
+
+**With the tool.** In Pensieve's Argus panel a tool named `propose_ticket` is available.
+The draft goes through `skills/linear-ticket/SKILL.md` steps 1 to 4 first — the docs
+cross-check, the code grounding at a pinned sha, the destination from its `defaults.json`
+— with that skill's Title rule, Alden Portal default and no-labels rule applying
+unchanged; its "Inside Pensieve's Argus panel" paragraph is the create. Then call the tool
+once, with `{ title, description, project }`: `title` under 80 characters, `description`
+the five-section body, `project` the project name step 4 resolved. One call per ticket:
+a split into sub-issues is proposed as the parent alone, and the split named in the
+sentence after.
+
+Then one sentence, and stop: "Proposed — File it on the card above." The issue exists
+when the user presses File, so never say the ticket is filed, created or done, and never
+call the tool a second time to check whether it was.
+
+If it answers `ok: false`, report its `error` in one sentence and stop. No retry, no
+second spelling of the same draft, and never `save_issue` in its place — the refusal is
+the answer, and the draft can be filed from a terminal.
+
+**Without the tool.** In a terminal no such tool exists and `linear-ticket` files as
+usual, its steps 5 and 6. Mid-sweep the ticket pass is the only Linear writer: name the
+ticket that would be filed, in one sentence, and stop.
