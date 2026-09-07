@@ -9,6 +9,10 @@
  * the adapter's per-run runner files land in the checkout for the run's duration and are
  * removed in its `finally` — `git status` is unchanged afterwards.
  *
+ * One tool is bridged into the run: `propose_decision` (LIA-111). A bridged tool always
+ * executes when the model calls it, so it only reads and answers a proposal; the write is
+ * Liam's click on the card the chat renders from its tool part.
+ *
  * Auth is decided per request: `ANTHROPIC_API_KEY` in the environment means `'api-key'`
  * (the container); otherwise `'host'` — the machine's `claude login`. With neither,
  * `askStatus()` says so and `askStream()` answers a RUN_ERROR chunk instead of spawning.
@@ -64,12 +68,14 @@ import { localProcessSandbox } from "@tanstack/ai-sandbox-local-process";
 import {
   ACCIO_WRITE_VERBS,
   BASE_TOOLS,
+  bridgedToolRules,
   gitReadRules,
   HARNESS_WRITE_TOOLS,
   LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
 } from "../lib/ask-tools";
 import { isPointId } from "../lib/points";
+import { proposeDecisionTool } from "./ask-tools.server";
 import { WORKSPACE_DIR } from "./workspace";
 
 // ── configuration ──────────────────────────────────────────────────────────────
@@ -99,10 +105,15 @@ const expandHome = (p: string) =>
 /**
  * The allowlist for a set of checkouts. A `Bash(...)` rule is a literal command prefix, so
  * each checkout gets its rules in both spellings the session will type: `~/git/…` as the
- * skill writes it, and the absolute path as `accio point` prints it.
+ * skill writes it, and the absolute path as `accio point` prints it. The bridged tool joins
+ * them under its `mcp__tanstack__` name — without that rule the session's call is denied.
  */
 export function allowedToolsFor(checkouts: readonly string[]): string[] {
-  const rules = new Set<string>([...BASE_TOOLS, ...LINEAR_READ_TOOLS]);
+  const rules = new Set<string>([
+    ...BASE_TOOLS,
+    ...LINEAR_READ_TOOLS,
+    ...bridgedToolRules(),
+  ]);
   for (const c of checkouts) {
     for (const p of new Set([c, expandHome(c)])) {
       for (const r of gitReadRules(p)) {
@@ -113,7 +124,7 @@ export function allowedToolsFor(checkouts: readonly string[]): string[] {
   return [...rules];
 }
 
-/** Files, search, git history, the accio read verbs, the `ask` skill, and Linear reads. Nothing that writes. */
+/** Files, search, git history, the accio read verbs, the `ask` skill, Linear reads and the bridged tool. Nothing that writes. */
 export const ALLOWED_TOOLS = allowedToolsFor(CHECKOUTS);
 
 /** Belt and braces under `default`: these never even reach the permission check. */
@@ -162,7 +173,17 @@ To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A point i
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
-You cannot write files, edit tickets or comments, run the sweep, or send a point. Sending a point is the Points page; ticket edits are the sweep's ticket pass. When asked for any of these, say so in one sentence and stop.`;
+You cannot write files, edit tickets or comments, or run the sweep. To ignore or send a point, call \`propose_decision\` once as the ask skill says; Liam confirms it on the card — say it is proposed in one sentence and never say it is done.`;
+
+/**
+ * The extra system prompt a conversation opened on a point carries (LIA-109 stores it,
+ * LIA-111 acts on it). Without it "ignore it" has no antecedent on the first turn: the
+ * point card above the transcript is the page's, not the session's, and `chat({ context })`
+ * reaches only the tool's `execute`. One line, so the skill's "the conversation's own
+ * point" means something.
+ */
+export const pointPrompt = (point: string) =>
+  `This conversation was opened on the Needs-you point \`${point}\`. "it" in a question or a verdict means that point unless the user names another; \`bun run accio point ${point}\` is its record.`;
 
 export type AuthMode = "host" | "api-key";
 
@@ -665,6 +686,21 @@ async function acquireThread(threadId: string): Promise<() => void> {
   };
 }
 
+/**
+ * The point a run is about. The stored one wins for the same reason `onStart` refuses to
+ * overwrite it: the conversation is about the point it started on, whatever a later request
+ * claims.
+ */
+export function pointOf(
+  stored: unknown,
+  asked: string | undefined
+): string | undefined {
+  if (isPointId(stored)) {
+    return stored;
+  }
+  return isPointId(asked) ? asked : undefined;
+}
+
 const errorChunks = (
   threadId: string,
   runId: string,
@@ -832,6 +868,10 @@ export async function* askStream(
       }
     }
     const { metadata } = store.persistence.stores;
+    const point = pointOf(
+      await metadata.get(input.threadId, POINT_KEY),
+      input.point
+    );
     const harness = harnessLog();
     let lastError: LastError | undefined;
     const recordError = async (message: string, code: string | undefined) => {
@@ -913,13 +953,20 @@ export async function* askStream(
     const stream = chat({
       abortController: opts.abortController,
       adapter: finishedIsFinished(opts.adapter ?? askAdapter(), late),
+      // The tool's `execute` runs here, in this process, through the adapter's MCP bridge —
+      // which is provisioned only because this array is non-empty (LIA-111).
+      context: { threadId: input.threadId, ...(point ? { point } : {}) },
       debug: harness.debug,
       messages: convertMessagesToModelMessages(input.messages),
       middleware,
       modelOptions: { authMode: mode, ...(sessionId ? { sessionId } : {}) },
       runId,
-      systemPrompts: [ASK_SYSTEM_PROMPT],
+      systemPrompts: [
+        ASK_SYSTEM_PROMPT,
+        ...(point ? [pointPrompt(point)] : []),
+      ],
       threadId: input.threadId,
+      tools: [proposeDecisionTool],
     });
     let finished: StreamChunk | undefined;
     for await (const chunk of stream) {

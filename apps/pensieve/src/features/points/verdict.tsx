@@ -7,6 +7,8 @@
  * Both write through `decidePoint` / `sendPoint` in `lib/api` — `decisions/` stays the
  * app's only write — and invalidate the router afterwards, so whichever loader is on
  * screen re-reads `points.json` + `decisions/` and the point moves to its decided state.
+ * That commit is `useVerdictCommit`, which Ask's proposal card reuses (LIA-111): a verdict
+ * confirmed on a card and one given here take the same path and write the same file.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -19,7 +21,7 @@ import { decidePoint, jobStatus, sendPoint } from "#/lib/api";
 import { cn } from "#/lib/utils";
 import type { Point } from "#/server/workspace";
 
-const shortId = (id: string) => id.slice(0, 8);
+export const shortId = (id: string) => id.slice(0, 8);
 
 function when(iso: string) {
   const d = new Date(iso);
@@ -32,6 +34,46 @@ function when(iso: string) {
     minute: "2-digit",
     month: "short",
   });
+}
+
+// ── committing a verdict ───────────────────────────────────────────────────────
+
+/**
+ * The one way a verdict is committed, wherever it is given: a busy guard so a second click
+ * while the first is in flight is the same click, the router invalidated on success so
+ * every loader on screen re-reads `points.json` + `decisions/`, and the refusal held for
+ * display. Shared by the controls below and by Ask's proposal card (LIA-111), so the two
+ * paths cannot drift.
+ */
+export function useVerdictCommit() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<Verdict | null>(null);
+
+  const commit = async (
+    run: () => Promise<Verdict>,
+    onDecided?: (v: Extract<Verdict, { ok: true }>) => void | Promise<void>
+  ) => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const v = await run();
+      if (v.ok) {
+        // The loader re-reads points.json + decisions/, so the point lands in Decided.
+        await router.invalidate();
+        await onDecided?.(v);
+      } else {
+        setError(v);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return { busy, commit, error, setError };
 }
 
 // ── an open point ──────────────────────────────────────────────────────────────
@@ -58,38 +100,21 @@ export function VerdictControls({
   lead?: ReactNode;
   onDecided?: () => void;
 }) {
-  const router = useRouter();
   const [mode, setMode] = useState<Mode>("idle");
   const [reason, setReason] = useState("");
   const [repo, setRepo] = useState(point.repo ?? "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<Verdict | null>(null);
+  const { busy, commit: run, error, setError } = useVerdictCommit();
 
   const open = (m: Mode) => {
     setMode(mode === m ? "idle" : m);
     setError(null);
   };
 
-  async function commit(run: () => Promise<Verdict>) {
-    if (busy) {
-      return; // a second click while the first is in flight is the same click
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const v = await run();
-      if (v.ok) {
-        // The loader re-reads points.json + decisions/, so the point lands in Decided.
-        await router.invalidate();
-        setMode("idle");
-        onDecided?.();
-      } else {
-        setError(v);
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
+  const commit = (verdict: () => Promise<Verdict>) =>
+    run(verdict, () => {
+      setMode("idle");
+      onDecided?.();
+    });
 
   const ignore = () => {
     if (!reason.trim()) {
@@ -269,7 +294,8 @@ function Confirm({
   );
 }
 
-function VerdictError({ v }: { v: Verdict | null }) {
+/** Why a verdict was refused, in the shape both the controls and Ask's card show it. */
+export function VerdictError({ v }: { v: Verdict | null }) {
   if (!v || v.ok) {
     return null;
   }
