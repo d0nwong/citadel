@@ -16,7 +16,6 @@ import type { ToolProps } from "@tanstack/ai-react/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, LoaderCircle } from "lucide-react";
 import { useState } from "react";
-import { Tool, ToolContent, ToolHeader } from "#/components/ai/tool";
 import { TicketLink } from "#/components/bits";
 import {
   DecidedLine,
@@ -27,6 +26,7 @@ import { decidePoint, getPoint, sendPoint } from "#/lib/api";
 import { cn } from "#/lib/utils";
 import { toolResultText } from "../lib/tool-summary";
 import type { Opts } from "../model/chat-options";
+import { Block, Refusal, str } from "./card";
 
 /** What `propose_decision` answers, as the card reads it back off the wire. */
 interface Proposal {
@@ -41,9 +41,6 @@ type Answer =
   | { ok: true; proposal: Proposal }
   | { ok: false; error: string }
   | null;
-
-const str = (v: unknown): string | undefined =>
-  typeof v === "string" && v.trim() ? v : undefined;
 
 /**
  * The tool's output as an answer. It crosses the harness as a JSON string, so anything that
@@ -88,24 +85,6 @@ export function parseAnswer(output: unknown): Answer {
   };
 }
 
-/** The collapsed block a call that answered nothing usable gets — the same shape as any tool call. */
-function Block({
-  state,
-  title,
-  children,
-}: {
-  state: "input-streaming" | "output-error";
-  title: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <Tool>
-      <ToolHeader className="font-mono" state={state} title={title} />
-      {children && <ToolContent>{children}</ToolContent>}
-    </Tool>
-  );
-}
-
 export function DecisionCard({ part, result }: ToolProps<Opts>) {
   const output = result
     ? (result.error ?? toolResultText(result.content))
@@ -118,13 +97,7 @@ export function DecisionCard({ part, result }: ToolProps<Opts>) {
     );
   }
   if (!answer.ok) {
-    return (
-      <Block state="output-error" title="propose_decision">
-        <p className="px-2 pb-1 text-sm text-st-hold leading-snug">
-          {answer.error}
-        </p>
-      </Block>
-    );
+    return <Refusal error={answer.error} tool="propose_decision" />;
   }
   return <Proposed proposal={answer.proposal} />;
 }

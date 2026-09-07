@@ -63,9 +63,10 @@ export const LINEAR_READ_TOOLS = linear([
 
 /**
  * Everything on that server that writes, plus the diff and release tools, by name (no
- * wildcard, so a rule never matches more than it says). Ask stays read-only: ticket edits
- * are the sweep's ticket pass, and a verdict on a point is proposed through the bridged
- * tool below and written only when Liam confirms it.
+ * wildcard, so a rule never matches more than it says). Argus stays read-only: ticket edits
+ * are the sweep's ticket pass, and a verdict on a point or a new ticket is proposed through
+ * a bridged tool below and written only when Liam confirms it. `save_issue` stays here for
+ * that reason — the session drafts a ticket with every read tool and can never file one.
  */
 export const LINEAR_WRITE_TOOLS = linear([
   "save_issue",
@@ -104,17 +105,19 @@ export const LINEAR_WRITE_TOOLS = linear([
   "save_release_note",
 ]);
 
-// ── the bridged tool ───────────────────────────────────────────────────────────
+// ── the bridged tools ───────────────────────────────────────────────────────────
 
 /**
- * Tools Pensieve bridges into the run through `chat({ tools })` (LIA-111). The adapter
+ * Tools Pensieve bridges into the run through `chat({ tools })` (LIA-111, LIA-113). The adapter
  * provisions them as an MCP server named `tanstack`, so the session sees them prefixed —
  * that is the spelling the allowlist needs, since an MCP tool absent from `--allowedTools`
  * is denied under `permissionMode: 'default'`. The adapter strips the prefix on the way
  * back, so the tool-call part the page renders carries the bare name.
  */
 export const PROPOSE_DECISION = "propose_decision";
-export const BRIDGED_TOOLS = [PROPOSE_DECISION] as const;
+/** LIA-113: the same shape for a new Linear issue — it checks a draft, File writes it. */
+export const PROPOSE_TICKET = "propose_ticket";
+export const BRIDGED_TOOLS = [PROPOSE_DECISION, PROPOSE_TICKET] as const;
 export const BRIDGED_MCP_PREFIX = "mcp__tanstack__";
 
 /** The bridged names as the session sees them — what goes on `--allowedTools`. */

@@ -29,7 +29,7 @@ function AskListPage() {
             New conversation
           </Button>
         }
-        kicker="Ask"
+        kicker="Argus"
         title="Conversations"
       />
       {conversations.length === 0 && (

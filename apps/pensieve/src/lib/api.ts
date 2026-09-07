@@ -4,9 +4,10 @@
  *
  * Everything here reads, except the two verdicts (`decidePoint`, `sendPoint`) that write
  * one file each under `decisions/` through server/decisions.ts — the app's only writer
- * into the blackboard — and Ask, which writes its conversations under `PENSIEVE_HOME`
- * (server/ask.ts) and nowhere else. Nothing here is a public API — TanStack Start RPC,
- * same as the rest of the app.
+ * into the blackboard — `fileTicket`, which creates one Linear issue (LIA-113) and is the
+ * app's only writer outside it, and Argus, which writes its conversations under
+ * `PENSIEVE_HOME` (server/ask.ts) and nowhere else. Nothing here is a public API —
+ * TanStack Start RPC, same as the rest of the app.
  */
 
 import type { UIMessage } from "@tanstack/ai";
@@ -17,9 +18,11 @@ import type {
   AskStatus,
   Conversation,
   ConversationSummary,
+  FiledTicket,
 } from "#/server/ask";
 import type { Decision } from "#/server/decisions";
 import type { FoundryConfig, FoundryJob, JobStatus } from "#/server/foundry";
+import type { LinearConfig } from "#/server/linear";
 import type { Json, Point, PointsFile } from "#/server/workspace";
 
 export const getInbox = createServerFn({ method: "GET" }).handler(async () => {
@@ -370,4 +373,134 @@ export const deleteConversation = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<ConversationSummary[]> => {
     const ask = await import("#/server/ask");
     return ask.deleteConversation(data);
+  });
+
+// ── filing a ticket: the other write path ──────────────────────────────────────
+
+/** The card's two questions in one read: may File be pressed, and was it already? */
+export interface TicketPage {
+  config: LinearConfig;
+  issue: FiledTicket | null;
+}
+
+const toolCallId = z.string().min(1).max(256);
+
+/**
+ * What the ticket card asks on mount. It never trusts its own replayed tool output for
+ * whether the issue exists: a tool part is stored with the conversation and replayed on
+ * every reload, so the record in the thread's metadata is the truth (AC3), and
+ * `config.configured` is the one branch behind File's disabled state (AC5).
+ */
+export const getFiledTicket = createServerFn({ method: "GET" })
+  .validator(z.object({ threadId, toolCallId }))
+  .handler(async ({ data }): Promise<TicketPage> => {
+    const ask = await import("#/server/ask");
+    const linear = await import("#/server/linear");
+    const [config, issue] = await Promise.all([
+      linear.linearConfig(),
+      ask.readFiledTicket(ask.askStore, data.threadId, data.toolCallId),
+    ]);
+    return { config, issue: issue ?? null };
+  });
+
+export type FileTicketResult =
+  | { ok: true; issue: FiledTicket; replay?: boolean }
+  | { ok: false; status?: number; error: string };
+
+/**
+ * One File press at a time per card, in this process: a double click reaches Linear once
+ * and records once. Across processes the metadata record does the same job, since a reload
+ * reads it back before offering File again.
+ */
+const filing = new Map<string, Promise<FileTicketResult>>();
+
+const trimmedText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+
+/**
+ * File the drafted issue the card is showing. Exactly one `issueCreate` on team Liamai, in
+ * the card's project, assigned to the key's owner, with no labels; the issue is recorded
+ * under the thread's `ticket:<toolCallId>` key, and a repeat answers that record rather
+ * than creating a second issue (AC3).
+ *
+ * The draft is re-checked here rather than trusted: the card's title and body are editable,
+ * so what is filed is not what `propose_ticket` approved.
+ */
+export const fileTicket = createServerFn({ method: "POST" })
+  .validator(
+    z.object({
+      description: z.string(),
+      project: z.string(),
+      threadId,
+      title: z.string(),
+      toolCallId,
+    })
+  )
+  .handler(async ({ data }): Promise<FileTicketResult> => {
+    const ask = await import("#/server/ask");
+    const stored = await ask.readFiledTicket(
+      ask.askStore,
+      data.threadId,
+      data.toolCallId
+    );
+    if (stored) {
+      return { issue: stored, ok: true, replay: true };
+    }
+    const key = `${data.threadId}:${data.toolCallId}`;
+    const running = filing.get(key);
+    if (running) {
+      return running;
+    }
+    const task = (async (): Promise<FileTicketResult> => {
+      const linear = await import("#/server/linear");
+      const ticket = await import("#/server/ticket");
+      const check = await ticket.checkDraft({
+        description: trimmedText(data.description),
+        project: trimmedText(data.project),
+        title: trimmedText(data.title),
+      });
+      if (!check.ok) {
+        return { error: check.error, ok: false };
+      }
+      const config = await linear.linearConfig();
+      if (!config.configured) {
+        return {
+          error: config.reason ?? "LINEAR_API_KEY is not set",
+          ok: false,
+          status: 503,
+        };
+      }
+      const { draft } = check;
+      if (!draft.teamId) {
+        return {
+          error: `team ${config.team} could not be read from Linear — the key may not reach it`,
+          ok: false,
+          status: 503,
+        };
+      }
+      let issue: FiledTicket;
+      try {
+        const made = await linear.createIssue({
+          description: draft.description,
+          teamId: draft.teamId,
+          title: draft.title,
+          ...(draft.project.id ? { projectId: draft.project.id } : {}),
+          ...(draft.viewerId ? { assigneeId: draft.viewerId } : {}),
+        });
+        issue = { ...made, at: new Date().toISOString() };
+      } catch (e) {
+        if (e instanceof linear.LinearError) {
+          return { error: e.message, ok: false, status: e.status };
+        }
+        throw e;
+      }
+      await ask.writeFiledTicket(
+        ask.askStore,
+        data.threadId,
+        data.toolCallId,
+        issue
+      );
+      return { issue, ok: true };
+    })().finally(() => filing.delete(key));
+    filing.set(key, task);
+    return task;
   });
