@@ -1,11 +1,11 @@
-# ticket-pass — the sweep's Linear worker (steps 6a–6c)
+# ticket-pass — the sweep's Linear worker (steps 6a–6c, 6e)
 
 One subagent per sweep tick, spawned by `skills/sweep/SKILL.md` step 6 after dispatch
 has finished, `model: "opus"`. It is the **only** thing in the loop that writes to
 Linear: it files tickets from the digest's unlinked ✋ items (6a), folds digest items
-into the open tickets they link (6b), and reviews open tickets against docs refreshed
-this tick (6c). Write policy is the sweep's Autonomy section; ticket shape and editing
-rules are the `linear-ticket` skill.
+into the open tickets they link (6b), reviews open tickets against docs refreshed
+this tick (6c), and makes the edits verified points license (6e). Write policy is the
+sweep's Autonomy section; ticket shape and editing rules are the `linear-ticket` skill.
 
 ## Prompt
 
@@ -21,6 +21,10 @@ Fill every `{…}`:
 >   tick (`{prev tick HH:MM}`, or all of today's on the first tick), one per line:
 >   `{LIA-xx} — {line text} — {permalink}`.
 > - Features refreshed this tick: `{ids}`; open Liamai tickets naming them: `{keys}`.
+> - Verified points licensing an edit, from step 3's
+>   `bun skills/sweep/scripts/points.ts --verified`, pasted verbatim:
+>   `{blocks}` — each is `{point id} — {subject} — {ask}`, its detail line, then its
+>   `ticket` / `features` / `reason`. Often empty.
 > - Team `Liamai`; assignee = me. Linear tools are `mcp__linear-server__*` — ToolSearch
 >   them if deferred.
 >
@@ -28,19 +32,22 @@ Fill every `{…}`:
 > `skills/sweep/SKILL.md` before starting. Part A — file tickets from the unlinked ✋
 > items per 6a, drafting each with the `linear-ticket` skill. Part B — fold the linked
 > items into their tickets per 6b. Part C — review the listed open tickets against the
-> refreshed docs per 6c.
+> refreshed docs per 6c. Part D — make the edit each verified point named, per 6e.
 >
 > Write policy is the sweep's Autonomy section, in full. In short: you may file tickets
 > from ✋ items (Alden Portal project, no labels, per 6a), write the ` → LIA-xx` digest
 > marker, and update a ticket's description with verified facts —
 > by editing the section the fact belongs to, never by commenting, never as a dated
 > log. You may NEVER close a ticket, write inference into a ticket, tick or untick an
-> AC, or push git.
+> AC, or push git. The one exception to "never write inference" is a verified point:
+> the user confirmed that inference, so the edit it names is licensed. The close and the
+> AC tick have no exception.
 >
 > Report back three lists, verbatim lines the sweep can paste: **Needs you** (appears-
 > satisfied / appears-redundant, ✋ pings that got no ticket and why, linked items whose
 > claim you could not verify), **Done** (tickets filed with keys; descriptions updated —
-> which ticket, which section, what changed),
+> which ticket, which section, what changed; each edit a verified point licensed, with
+> that point's id),
 > and the commit sha of the digest writeback (or "no writeback").
 
 ## 6a. File tickets from ✋ items
@@ -85,7 +92,8 @@ item, its thread, and the ticket body, and edit the body under Autonomy:
 The thread's technical claims are still claims: a thread saying an endpoint shipped is
 grounds for a *Pending* bullet ("announced on Slack — unverified against `origin/dev`")
 until you verify it against a pinned ref, and only then for deleting one. What you
-cannot verify goes in Needs-you, not the body. Idempotent by construction — a second
+cannot verify goes in Needs-you, not the body — where the user confirms it, and it comes
+back to a later tick as a verified point (6e). Idempotent by construction — a second
 pass over the same item finds nothing left to change — so a re-run is harmless.
 
 ## 6c. Review tickets against refreshed reality
@@ -105,4 +113,33 @@ review triggers whenever the ticket's ground truth moves. Findings follow Autono
 verified facts (a named Pending artifact now exists, a line anchor moved and was
 re-verified against the pinned sha, a BE dependency landed and deployed so its regen is
 now a Scope step) are written into the ticket body; appears-satisfied / appears-redundant
-go in Needs-you.
+go in Needs-you, and come back as a verified point once the user confirms them (6e).
+
+## 6e. Make the edits verified points license
+
+A verified point is the user's answer to an *appears* line an earlier tick reported: they
+read it and confirmed it. That confirmation is the fact Autonomy's "write inference into
+a ticket" rule was waiting for, and it licenses **exactly the edit the point named**. The
+point's own subject, ask and detail are the instruction — there is no separate field
+saying what to do, and nothing to widen it with.
+
+- **A point naming a ticket** — delete the Pending bullet it says is satisfied, rewrite
+  the Background sentence a landing made false, fold in the huddle ask it says shipped.
+  Ordinary body edits under 6b's rules: the section the fact belongs to, no dated
+  paragraph, no comment.
+- **Still never** close or cancel the ticket, and never tick or untick an AC — a verdict
+  on one inference is not a verdict on the ticket. An appears-redundant point the user
+  verified means the body should say what is left of the ask, not that the ticket is
+  closed; say so in **Done**, and leave the close to them.
+- **A point whose ask needs no write** — a closure they accept as it stands — gets no
+  edit, and is not restated as a new Needs-you line. It was answered; raising it again is
+  the loop the verdict exists to end.
+- **Idempotent by inspection, not by a marker.** A decision file is never edited after it
+  is written, so it cannot record that you acted. Read the current ticket body and
+  compare it against the edit the point names: when the bullet is already gone or the
+  sentence already reads right, change nothing and report nothing. That only happens on a
+  tick that died between the edit and the report — the point drops out of the report at
+  step 8, so the normal case is a single pass.
+- **Report each edit in Done with the point id**, e.g. `LIA-79 — deleted the Pending
+  bullet on the retainer cap (verify/lia-79)`. The id is what makes the line traceable
+  back to the file that licensed it.

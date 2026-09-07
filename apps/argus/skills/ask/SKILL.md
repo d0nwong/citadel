@@ -41,7 +41,7 @@ Layout table is the map; you do not need to rediscover it.
 | a date, "today", "yesterday", "what shipped / landed" | day | `bun run accio journal <YYYY-MM-DD>`, then `reports/<day>.md` and `digests/<day>.md` |
 | `BR-n` / `MM-n` | rule | Grep `^\| BR-n \|` in `*/features/*/docs/{product,arch}.md`, scoped to the feature the question is about |
 | a feature, screen, field, endpoint | feature | `bun run accio "<the thing>"`, then that feature's `docs/product.md` (rules) and `docs/arch.md` (endpoints, files) |
-| "why was X ignored / sent", "what did I decide" | decision | `decisions/<group>/<slug>.json`, then `accio point <id>` for what it was about |
+| "why was X ignored / sent / verified", "what did I decide" | decision | `decisions/<group>/<slug>.json`, then `accio point <id>` for what it was about |
 | none of the above | free text | Grep `-ril` the words over `reports/`, `digests/`, `*/features/**/journal`, then classify again from what matched |
 
 A point named only by subject ("the LIA-71 history one"): Grep the subject words in

@@ -9,12 +9,16 @@
  * tick to the next. Pensieve lists the file to offer Send / Ignore per point (LIA-94), and
  * this reads the decisions back (LIA-88): a point whose id has a file under `decisions/`
  * is dropped from the report's Needs-you and kept in points.json with the decision attached.
+ * A third verdict, `verified` (LIA-114), is the user's confirmation of a point's inference:
+ * it drops the point like the other two, and `--verified` lists those points so the tick's
+ * ticket pass and docs dispatch can make the one edit each of them named.
  *
  *   bun skills/sweep/scripts/points.ts                     today's report → reports/points.json
  *   bun skills/sweep/scripts/points.ts reports/2026-09-04.md
  *   bun skills/sweep/scripts/points.ts --dry-run           print, write nothing
  *   bun skills/sweep/scripts/points.ts --titles <file>     Linear titles, for `repo` (see below)
  *   bun skills/sweep/scripts/points.ts --decisions <dir>   read decisions from <dir> (default decisions/)
+ *   bun skills/sweep/scripts/points.ts --verified          the verified points, for the tick's workers
  *
  * Two things are derived rather than asked of the sweep, because deriving is what keeps
  * the two shapes from drifting:
@@ -47,7 +51,7 @@ const MANIFEST = join(ROOT, "alden/alden-portal/.doc-workspace/feature-manifest.
 export type Group = "decide" | "verify" | "confirm" | "hold" | "housekeeping";
 export type Decision = {
   point: string;
-  action: "sent" | "ignored";
+  action: "sent" | "ignored" | "verified";
   reason?: string;
   at?: string;
   subject?: string;
@@ -291,7 +295,8 @@ export function parseDecision(text: string): { decision: Decision } | { error: s
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { error: "not a JSON object" };
   const d = raw as Record<string, unknown>;
   if (typeof d.point !== "string" || !d.point) return { error: "`point` missing or not a string" };
-  if (d.action !== "sent" && d.action !== "ignored") return { error: '`action` must be "sent" or "ignored"' };
+  if (d.action !== "sent" && d.action !== "ignored" && d.action !== "verified")
+    return { error: '`action` must be "sent", "ignored" or "verified"' };
   if (d.action === "ignored" && (typeof d.reason !== "string" || !d.reason.trim()))
     return { error: "`reason` required for an ignored point" };
   return { decision: d as Decision };
@@ -322,6 +327,39 @@ export async function readDecisions(dir = DECISIONS): Promise<{ decisions: Map<s
     if (!prev || String(parsed.decision.at ?? "") >= String(prev.at ?? "")) decisions.set(parsed.decision.point, parsed.decision);
   }
   return { decisions, unreadable };
+}
+
+/**
+ * The points in `file` the cockpit has marked `verified` — the sweep's licensed edits for
+ * this tick (LIA-114). A verified point is the user's confirmation of that point's own
+ * inference, so its `ask` and `detail` are the instruction; there is no separate field.
+ *
+ * The join is against `points.json`, not against `decisions/` alone, and that is what
+ * bounds it: the same tick's step 8 drops the point's bullet from the report, so the next
+ * tick's `points.json` no longer holds the record and this returns nothing for it. The
+ * worker's compare-before-editing is the backstop for a tick that died in between.
+ */
+export function verifiedPoints(file: PointsFile, decisions: Map<string, Decision>): Point[] {
+  return file.points.flatMap((p) => {
+    const decision = decisions.get(p.id);
+    return decision?.action === "verified" ? [{ ...p, decision }] : [];
+  });
+}
+
+/** `verifiedPoints` as the block a sweep pastes into the `ticket-pass` brief. */
+export function formatVerified(points: Point[]): string {
+  return points
+    .map((p) => {
+      const lines = [`${p.id} — ${p.subject} — ${p.ask}`];
+      if (p.detail) lines.push(`  ${p.detail}`);
+      const fields: string[] = [];
+      if (p.ticket) fields.push(`ticket: ${p.ticket}`);
+      if (p.features?.length) fields.push(`features: ${p.features.join(", ")}`);
+      if (p.decision?.reason) fields.push(`reason: ${p.decision.reason}`);
+      if (fields.length) lines.push(`  ${fields.join(" · ")}`);
+      return lines.join("\n");
+    })
+    .join("\n");
 }
 
 /** `[start, end)` line range of the `## <heading>` section, or null. */
@@ -479,12 +517,30 @@ if (import.meta.main) {
     return i === -1 ? undefined : args.splice(i, 2)[1];
   };
   const titles = flag("--titles");
-  const decisions = flag("--decisions");
+  const decisionsDir = flag("--decisions");
   const dryRun = args.includes("--dry-run");
   const report = args.filter((a) => !a.startsWith("--"))[0];
 
+  // --verified reads points.json and decisions/ only: it runs before the tick has written
+  // today's report, so it must not go through `run`, which requires one.
+  if (args.includes("--verified")) {
+    try {
+      if (!(await Bun.file(POINTS).exists())) throw new Error(`no ${relative(ROOT, POINTS)} yet — run a tick first`);
+      const file = (await Bun.file(POINTS).json()) as PointsFile;
+      const { decisions } = await readDecisions(decisionsDir ?? DECISIONS);
+      const points = verifiedPoints(file, decisions);
+      if (points.length) console.log(formatVerified(points));
+      console.error(`points: ${points.length} verified of ${file.points.length} for ${file.date}`);
+    } catch (err) {
+      console.error(`points: ${(err as Error).message}`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
   try {
-    const { file, reportChanged, titlesLoaded, decided, unreadable } = await run({ report, titles, decisions, dryRun });
+    const opts = { report, titles, decisions: decisionsDir, dryRun };
+    const { file, reportChanged, titlesLoaded, decided, unreadable } = await run(opts);
     if (dryRun) console.log(JSON.stringify(file, null, 2));
     const withRepo = file.points.filter((p) => p.repo).length;
     console.error(
