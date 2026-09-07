@@ -33,6 +33,7 @@ const {
   ADAPTER_CONFIG,
   ASK_SYSTEM_PROMPT,
   AUTH_ERROR_RE,
+  pointPrompt,
   diagnosisLine,
   titleOf,
   getConversation,
@@ -43,9 +44,11 @@ const {
 const {
   BASE_TOOLS,
   ACCIO_WRITE_VERBS,
+  BRIDGED_MCP_PREFIX,
   LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
   ASK_TOOL_PART_NAMES,
+  PROPOSE_DECISION,
 } = await import("../lib/ask-tools");
 
 afterAll(() => rm(HOME, { force: true, recursive: true }));
@@ -609,6 +612,23 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
       )
     ).toBe(true);
   });
+  test("LIA-111 — the bridged tool is allowed under its mcp__tanstack__ name, and no bridged name is denied", () => {
+    // Under `permissionMode: 'default'` an MCP tool absent from --allowedTools is denied,
+    // and the session only ever sees the prefixed spelling.
+    expect(ADAPTER_CONFIG.allowedTools).toContain(
+      `${BRIDGED_MCP_PREFIX}${PROPOSE_DECISION}`
+    );
+    expect(ADAPTER_CONFIG.allowedTools).toContain(
+      "mcp__tanstack__propose_decision"
+    );
+    expect(
+      ADAPTER_CONFIG.disallowedTools.filter((t) =>
+        t.startsWith(BRIDGED_MCP_PREFIX)
+      )
+    ).toEqual([]);
+    // The bare name never reaches the CLI: a rule spelled without the prefix matches nothing.
+    expect(ADAPTER_CONFIG.allowedTools).not.toContain(PROPOSE_DECISION);
+  });
   test("the page can render every name a run may call: the allowlist collapsed to tool names, and the denied ones", () => {
     for (const t of [
       "Read",
@@ -618,12 +638,17 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
       "Skill",
       "Edit",
       "Write",
+      // The adapter strips `mcp__tanstack__` on the way back, so the part carries the bare name.
+      PROPOSE_DECISION,
       ...LINEAR_READ_TOOLS,
       ...LINEAR_WRITE_TOOLS,
     ]) {
       expect(ASK_TOOL_PART_NAMES).toContain(t);
     }
     expect(ASK_TOOL_PART_NAMES.some((t) => t.includes("("))).toBe(false);
+    expect(
+      ASK_TOOL_PART_NAMES.some((t) => t.startsWith(BRIDGED_MCP_PREFIX))
+    ).toBe(false);
   });
 });
 
@@ -642,12 +667,42 @@ describe("LIA-104 — the system prompt", () => {
       /never run git fetch/i,
       /cite every path/i,
       /the files don't say/i,
-      /cannot write files, edit tickets or comments, run the sweep, or send a point/i,
-      /Points page/,
-      /sweep's ticket pass/,
+      /cannot write files, edit tickets or comments, or run the sweep/i,
+      /call `propose_decision` once as the ask skill says/,
+      /confirms it on the card/i,
+      /never say it is done/i,
     ]) {
       expect(ASK_SYSTEM_PROMPT).toMatch(re);
     }
+  });
+  test("LIA-111 — a conversation opened on a point tells the run which point it is, and one without says nothing", async () => {
+    const store = conversationStore(await scratch());
+    const withPoint = new FakeClaude({ sessionId: "p1" });
+    await collect(
+      askStream(
+        {
+          messages: [user("ignore it")],
+          point: "decide/lia-71-history-rollup",
+          threadId: "pt1",
+        },
+        { adapter: withPoint, middleware: [], status: available, store }
+      )
+    );
+    expect(withPoint.calls[0].systemPrompts).toEqual([
+      ASK_SYSTEM_PROMPT,
+      pointPrompt("decide/lia-71-history-rollup"),
+    ]);
+    expect(pointPrompt("decide/x")).toContain("decide/x");
+    expect(pointPrompt("decide/x")).toMatch(/"it" in a question or a verdict/);
+
+    const noPoint = new FakeClaude({ sessionId: "p2" });
+    await collect(
+      askStream(
+        { messages: [user("hi")], threadId: "pt2" },
+        { adapter: noPoint, middleware: [], status: available, store }
+      )
+    );
+    expect(noPoint.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
   });
   test("is passed to the adapter on every run", async () => {
     const store = conversationStore(await scratch());

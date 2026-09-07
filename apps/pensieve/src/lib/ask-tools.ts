@@ -64,7 +64,8 @@ export const LINEAR_READ_TOOLS = linear([
 /**
  * Everything on that server that writes, plus the diff and release tools, by name (no
  * wildcard, so a rule never matches more than it says). Ask stays read-only: ticket edits
- * are the sweep's ticket pass, sending a point is the Points page.
+ * are the sweep's ticket pass, and a verdict on a point is proposed through the bridged
+ * tool below and written only when Liam confirms it.
  */
 export const LINEAR_WRITE_TOOLS = linear([
   "save_issue",
@@ -103,6 +104,23 @@ export const LINEAR_WRITE_TOOLS = linear([
   "save_release_note",
 ]);
 
+// ── the bridged tool ───────────────────────────────────────────────────────────
+
+/**
+ * Tools Pensieve bridges into the run through `chat({ tools })` (LIA-111). The adapter
+ * provisions them as an MCP server named `tanstack`, so the session sees them prefixed —
+ * that is the spelling the allowlist needs, since an MCP tool absent from `--allowedTools`
+ * is denied under `permissionMode: 'default'`. The adapter strips the prefix on the way
+ * back, so the tool-call part the page renders carries the bare name.
+ */
+export const PROPOSE_DECISION = "propose_decision";
+export const BRIDGED_TOOLS = [PROPOSE_DECISION] as const;
+export const BRIDGED_MCP_PREFIX = "mcp__tanstack__";
+
+/** The bridged names as the session sees them — what goes on `--allowedTools`. */
+export const bridgedToolRules = (): string[] =>
+  BRIDGED_TOOLS.map((n) => `${BRIDGED_MCP_PREFIX}${n}`);
+
 /** The two git read verbs for one checkout path, spelled exactly as the session will type it. */
 export const gitReadRules = (checkout: string): string[] => [
   `Bash(git -C ${checkout} log:*)`,
@@ -111,12 +129,14 @@ export const gitReadRules = (checkout: string): string[] => [
 
 /**
  * Every tool name the page may see as a tool-call part: the allowlist, the denied names
- * (a denial arrives as a result on the same part), and the harness tools a run can still
- * name. The `Bash(...)` rules collapse to `Bash`.
+ * (a denial arrives as a result on the same part), the harness tools a run can still name,
+ * and the bridged tool bare (the adapter strips its prefix). The `Bash(...)` rules collapse
+ * to `Bash`.
  */
 export const ASK_TOOL_PART_NAMES: readonly string[] = [
   ...new Set([
     ...BASE_TOOLS.map((t) => t.replace(/\(.*$/, "")),
+    ...BRIDGED_TOOLS,
     ...HARNESS_WRITE_TOOLS,
     "LS",
     "TodoWrite",

@@ -187,32 +187,18 @@ export const decidePoint = createServerFn({ method: "POST" })
     reason: trimmed(input.reason),
   }))
   .handler(async ({ data }): Promise<Verdict> => {
-    const ws = await import("#/server/workspace");
     const dec = await import("#/server/decisions");
-    if (!isPointId(data.point)) {
-      return { error: `"${data.point}" is not a point id`, ok: false };
-    }
-    if (!data.reason) {
-      return { error: "a reason is required to ignore a point", ok: false };
-    }
-    const file = await ws.readPoints();
-    const point = file?.points.find((p) => p.id === data.point);
-    if (!point) {
-      return { error: "that point is not in reports/points.json", ok: false };
-    }
-    const existing = await dec.readDecision(point.id);
-    if (existing) {
-      return {
-        error: `already ${existing.action} on ${existing.at.slice(0, 16).replace("T", " ")}`,
-        ok: false,
-      };
+    const v = await import("#/server/verdict");
+    const check = await v.checkIgnore(data.point, data.reason);
+    if (!check.ok) {
+      return { error: check.error, ok: false };
     }
     const decision: Decision = {
       action: "ignored",
       at: new Date().toISOString(),
-      point: point.id,
-      reason: data.reason,
-      subject: point.subject,
+      point: check.point.id,
+      reason: check.reason,
+      subject: check.point.subject,
     };
     await dec.writeDecision(decision);
     return { decision, ok: true };
@@ -236,48 +222,30 @@ export const sendPoint = createServerFn({ method: "POST" })
     repo: trimmed(input.repo),
   }))
   .handler(async ({ data }): Promise<Verdict> => {
-    const dec = await import("#/server/decisions");
-    if (!isPointId(data.point)) {
-      return { error: `"${data.point}" is not a point id`, ok: false };
-    }
-    if (!data.repo) {
-      return {
-        error: "a repo is required — a path Foundry tracks, or its name",
-        ok: false,
-      };
+    const v = await import("#/server/verdict");
+    const check = await v.checkSend(data.point, data.repo);
+    if (!check.ok) {
+      // A file already on disk is the earlier answer — a retry after a timeout that did
+      // in fact land must not ask Foundry again, and must never write a second file.
+      return check.decision
+        ? { decision: check.decision, ok: true, replay: true }
+        : { error: check.error, ok: false };
     }
     const running = inFlight.get(data.point);
     if (running) {
       return running;
     }
+    const { point, repo, ticket } = check;
     const task = (async (): Promise<Verdict> => {
-      const ws = await import("#/server/workspace");
+      const dec = await import("#/server/decisions");
       const fd = await import("#/server/foundry");
-      const file = await ws.readPoints();
-      const point = file?.points.find((p) => p.id === data.point);
-      if (!point) {
-        return { error: "that point is not in reports/points.json", ok: false };
-      }
-      if (!point.ticket) {
-        return {
-          error:
-            "that point names no ticket — file one first (the sweep's ticket pass)",
-          ok: false,
-        };
-      }
-      // A file already on disk is the earlier answer — a retry after a timeout that did
-      // in fact land must not ask Foundry again, and must never write a second file.
-      const existing = await dec.readDecision(point.id);
-      if (existing) {
-        return { decision: existing, ok: true, replay: true };
-      }
       let job: FoundryJob;
       let replay: boolean;
       try {
         ({ job, replay } = await fd.createJob({
           idempotencyKey: point.id,
-          repo: data.repo,
-          ticketId: point.ticket,
+          repo,
+          ticketId: ticket,
         }));
       } catch (e) {
         if (e instanceof fd.FoundryError) {
