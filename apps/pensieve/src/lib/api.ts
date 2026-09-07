@@ -514,7 +514,7 @@ export const fileTicket = createServerFn({ method: "POST" })
       if (!check.ok) {
         return { error: check.error, ok: false };
       }
-      const config = await linear.linearConfig();
+      const config = linear.linearConfig();
       if (!config.configured) {
         return {
           error: config.reason ?? "LINEAR_API_KEY is not set",

@@ -1,12 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
-// The token is read fresh per call; set it before the module is imported so the shared
-// credentials file on this machine plays no part.
+// The token is read fresh per call and the URL at module load; both are pinned before the
+// import so this machine's own .env plays no part.
 process.env.FOUNDRY_API_TOKEN = "test-token";
 process.env.FOUNDRY_URL = "http://foundry.test";
 
-const { createJob, getJob, listRepos, trackedRepos, FoundryError } =
-  await import("./foundry");
+const {
+  createJob,
+  foundryConfig,
+  getJob,
+  listRepos,
+  trackedRepos,
+  FoundryError,
+} = await import("./foundry");
 // Destructured from a dynamic import, `FoundryError` is a value; this is its instance type.
 type FoundryErr = InstanceType<typeof FoundryError>;
 
@@ -30,6 +36,37 @@ const job = {
   id: "0f3a2c1e-1111-4222-8333-444455556666",
   status: "queued",
 };
+
+describe("AC1 — the token comes from the environment, and the reason says where to put it", () => {
+  test("with it set, Send is on and there is no reason to give", () => {
+    expect(foundryConfig()).toEqual({
+      configured: true,
+      url: "http://foundry.test",
+    });
+  });
+  test("without it, the reason names the key, .env and the command that mints it", () => {
+    process.env.FOUNDRY_API_TOKEN = "";
+    try {
+      const config = foundryConfig();
+      expect(config.configured).toBe(false);
+      expect(config.reason).toContain("FOUNDRY_API_TOKEN");
+      expect(config.reason).toContain(".env");
+      expect(config.reason).toContain("foundry auth --api");
+    } finally {
+      process.env.FOUNDRY_API_TOKEN = "test-token";
+    }
+  });
+  test("with no token there is no list to ask for — and no call made", async () => {
+    process.env.FOUNDRY_API_TOKEN = "";
+    try {
+      const seen: Seen[] = [];
+      expect(await trackedRepos(fake(200, [], seen))).toEqual([]);
+      expect(seen).toEqual([]);
+    } finally {
+      process.env.FOUNDRY_API_TOKEN = "test-token";
+    }
+  });
+});
 
 describe("AC3 — one POST /api/jobs with ticketId, repo, no instructions, Idempotency-Key = point id", () => {
   test("202 is created, 200 is a replay; body and headers are exactly the contract", async () => {

@@ -17,10 +17,6 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 ENV_FILE="$ROOT/.env"
-# The shared credentials file — the secrets more than one of argus / Foundry / Pensieve
-# needs (SLACK_TOKEN, LINEAR_API_KEY, FOUNDRY_API_TOKEN), typed once per machine.
-# KEY=value lines, mode 600; `foundry auth` writes it and src/server/foundry.ts reads it.
-SHARED_ENV="${LIAMAI_ENV:-$HOME/.config/liamai/env}"
 FOUNDRY_URL_DEFAULT="http://localhost:3777"
 # Any well-formed id: without a bearer Foundry answers before it ever looks one up.
 PROBE_JOB_ID="00000000-0000-0000-0000-000000000000"
@@ -72,15 +68,15 @@ tool() {
 
 # ------------------------------------------------------------------ .env, by key
 #
-# Never `source` either file: the shared one holds Slack and Linear tokens this script
-# has no business knowing, and one bad line would run as shell. One key at a time, by
-# sed, is enough for everything below.
+# Never `source` .env: it holds two secrets this script has no business knowing the value
+# of, and one bad line would run as shell. One key at a time, by sed, is enough for
+# everything below.
 
-# The last value for a key in a KEY=value file, or "" (absent file included).
+# The last value for a key in .env, or "" (absent file included).
 env_get() {
-  local key="$1" file="${2:-$ENV_FILE}"
-  [ -f "$file" ] || return 0
-  sed -n "s/^$key=//p" "$file" | tail -1
+  local key="$1"
+  [ -f "$ENV_FILE" ] || return 0
+  sed -n "s/^$key=//p" "$ENV_FILE" | tail -1
 }
 
 # What the app will see for a variable: the environment wins (that is Bun's precedence
@@ -109,7 +105,7 @@ env_set() {
     { [ -f "$ENV_FILE" ] && cat "$ENV_FILE"; printf '%s=%s\n' "$key" "$value"; } > "$tmp"
   fi
   mv "$tmp" "$ENV_FILE"
-  # .env may now hold the Foundry token; keep it as private as the file it came from.
+  # .env is where both secrets are typed by hand; keep it readable by its owner alone.
   chmod 600 "$ENV_FILE"
 }
 
@@ -161,12 +157,10 @@ cmd_workspace() {
   done
 }
 
-# .env is gitignored and created by nobody. FOUNDRY_API_TOKEN is copied from the shared
-# credentials file rather than typed: `foundry auth --api` mints it in the Foundry repo
-# and writes it there, and this script only ever reads that one key — never printed,
-# never the others. src/server/foundry.ts reads the shared file itself as a fallback, so
-# the copy is a convenience; when the two diverge the copy would win, and that is worth
-# saying out loud rather than silently rewriting a token someone set by hand.
+# .env is gitignored and created by nobody. Its two secrets are typed by hand — Pensieve
+# reads them from the environment and nowhere else (LIA-142) — so this phase only reports
+# which of them .env is missing, and names the command that mints each. It never writes a
+# secret: a token this script put there would be one nobody had looked at.
 cmd_envfiles() {
   info "config files"
   if [ -f "$ENV_FILE" ]; then
@@ -188,38 +182,31 @@ cmd_envfiles() {
     env_set FOUNDRY_URL "$FOUNDRY_URL_DEFAULT"; ok "FOUNDRY_URL=$FOUNDRY_URL_DEFAULT ${c_dim}(Foundry's dev server)${c_0}"
   fi
 
-  cmd_envfiles_token
+  cmd_envfiles_secrets
 }
 
-# The one secret this script handles. Values are compared, never printed.
-cmd_envfiles_token() {
-  local mine theirs
-  mine="$(env_get FOUNDRY_API_TOKEN)"
-  theirs="$(env_get FOUNDRY_API_TOKEN "$SHARED_ENV")"
-
-  if [ -n "$mine" ]; then
-    if [ -z "$theirs" ] || [ "$mine" = "$theirs" ]; then
-      ok "FOUNDRY_API_TOKEN set in .env"
-    else
-      warn "FOUNDRY_API_TOKEN in .env differs from $SHARED_ENV — .env wins, so a rotated token would not be picked up"
-      say "  ${c_dim}clear the .env line to fall back to the shared file, or rerun \`foundry auth --api\`${c_0}"
-    fi
+# The two secrets, reported and never written. A value is only ever tested for emptiness,
+# so nothing here can print one. --check and a normal run say the same thing.
+# $1 key  $2 what is off without it  $3 how to mint it  $4 where that leaves you
+report_secret() {
+  if [ -n "$(env_get "$1")" ]; then
+    ok "$1 set in .env"
     return 0
   fi
-
-  if [ -n "$theirs" ]; then
-    if [ "$CHECK" = 1 ]; then
-      ok "FOUNDRY_API_TOKEN available from $SHARED_ENV ${c_dim}(rerun without --check to copy it into .env)${c_0}"
-    else
-      env_set FOUNDRY_API_TOKEN "$theirs"
-      ok "FOUNDRY_API_TOKEN copied from $SHARED_ENV ${c_dim}(.env is now mode 600)${c_0}"
-    fi
-    return 0
-  fi
-
-  warn "FOUNDRY_API_TOKEN not set here or in $SHARED_ENV — the Points page can ignore a point but not Send it"
-  say "  ${c_dim}cd ~/git/foundry && foundry auth --api${c_0}   mints it and writes the shared file; then rerun this phase"
+  warn "$1 missing from .env — $2"
+  say "  ${c_dim}$3${c_0}   $4"
   FAIL=1
+}
+
+cmd_envfiles_secrets() {
+  report_secret FOUNDRY_API_TOKEN \
+    "the Points page can ignore a point but not Send it" \
+    "cd ~/git/foundry && foundry auth --api" \
+    "prints the token; paste it into .env"
+  report_secret LINEAR_API_KEY \
+    "a proposal card still checks its project, but File cannot create the issue" \
+    "linear.app -> Settings -> Security & access -> Personal API keys" \
+    "mint one there; paste it into .env"
 }
 
 # Ask's state: one JSON file per conversation, outside the blackboard so the "argus owns
@@ -340,20 +327,19 @@ bootstrap — take a brand-new Mac to a running Pensieve
     prereqs    host tooling: bun, claude, git (tailscale optional)
     workspace  the argus checkout WORKSPACE_DIR names is a git repo with reports/ and
                skills/ — reported, never cloned and never written to
-    envfiles   .env from .env.example; FOUNDRY_URL, and FOUNDRY_API_TOKEN copied from
-               the shared credentials file when it has one
+    envfiles   .env from .env.example; FOUNDRY_URL, and a report on whether .env
+               carries FOUNDRY_API_TOKEN and LINEAR_API_KEY
     home       PENSIEVE_HOME/conversations/, where Ask keeps its threads
     deps       bun install, when node_modules is missing or older than bun.lock
     check      is Foundry answering, and is there a Claude credential? (read-only)
 
-Secrets stay yours: this script never prints a token, never mints one — `foundry auth
---api` in the Foundry repo does that — and never touches a key in the shared file other
-than FOUNDRY_API_TOKEN. So is the blackboard: nothing here clones argus or runs a git
-write command inside it.
+Secrets stay yours: this script never prints a secret, never mints one — `foundry auth
+--api` in the Foundry repo and Linear's own settings page do that — and never writes one
+into .env either; it says which of the two .env is missing and leaves the typing to you.
+So is the blackboard: nothing here clones argus or runs a git write command inside it.
 
   WORKSPACE_DIR                       the argus checkout (default ~/git/argus)
   PENSIEVE_HOME                       Ask's state (default ~/.pensieve)
-  LIAMAI_ENV                          the shared credentials file (default ~/.config/liamai/env)
 USAGE
 }
 

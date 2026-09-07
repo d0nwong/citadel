@@ -1,14 +1,12 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // The project cache lives under PENSIEVE_HOME and the key is read fresh per call; both are
 // pinned to scratch before the module loads, so this machine's own credentials play no part.
 const HOME = await mkdtemp(join(tmpdir(), "pensieve-linear-"));
-const SHARED = join(HOME, "liamai-env");
 process.env.PENSIEVE_HOME = HOME;
-process.env.LIAMAI_ENV = SHARED;
 process.env.LINEAR_API_KEY = "lin_api_test";
 
 const {
@@ -75,32 +73,26 @@ beforeEach(async () => {
   forgetProjects();
   process.env.LINEAR_API_KEY = "lin_api_test";
   await rm(projectsCacheFile(), { force: true });
-  await rm(SHARED, { force: true });
 });
 
-describe("the credential — the environment first, then the shared file", () => {
-  test("the environment wins, and the shared file answers when it is unset", async () => {
-    expect(await linearKey()).toBe("lin_api_test");
+describe("AC2 — the credential is LINEAR_API_KEY in the environment, and nothing else", () => {
+  test("the variable is the whole answer; whitespace around it is not a key", () => {
+    expect(linearKey()).toBe("lin_api_test");
 
-    process.env.LINEAR_API_KEY = "";
-    await writeFile(
-      SHARED,
-      "SLACK_TOKEN=xoxb-1\nLINEAR_API_KEY=lin_api_shared\n",
-      "utf8"
-    );
-    expect(await linearKey()).toBe("lin_api_shared");
+    process.env.LINEAR_API_KEY = "  ";
+    expect(linearKey()).toBeUndefined();
   });
-  test("with neither, linearConfig says so and names the file to put it in", async () => {
+  test("without it, linearConfig says so and names .env, not a shared file", () => {
     process.env.LINEAR_API_KEY = "";
-    expect(await linearKey()).toBeUndefined();
-    const config = await linearConfig();
+    expect(linearKey()).toBeUndefined();
+    const config = linearConfig();
     expect(config.configured).toBe(false);
     expect(config.team).toBe(TEAM_NAME);
     expect(config.reason).toContain("LINEAR_API_KEY is not set");
-    expect(config.reason).toContain(SHARED);
+    expect(config.reason).toContain(".env");
   });
-  test("with one, it is configured and has no reason to give", async () => {
-    expect(await linearConfig()).toEqual({ configured: true, team: TEAM_NAME });
+  test("with it, it is configured and has no reason to give", () => {
+    expect(linearConfig()).toEqual({ configured: true, team: TEAM_NAME });
   });
 });
 

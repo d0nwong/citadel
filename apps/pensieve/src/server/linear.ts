@@ -9,9 +9,10 @@
  * "no labels at filing, ever"), no parent, no relations. One plain issue per call, which
  * is what LIA-113 files and all it files.
  *
- * Config: `LINEAR_API_KEY`, read fresh per request — from the environment first, else from
- * the shared credentials file (`shared-env.ts`) that `scripts/bootstrap.sh` writes, exactly
- * as `FOUNDRY_API_TOKEN` is read. In the container only the environment exists.
+ * Config: `LINEAR_API_KEY`, from the environment and nowhere else, exactly as
+ * `FOUNDRY_API_TOKEN` is read (LIA-142) — `.env` fills it on a Mac, the compose file's
+ * `environment:` in the container. Read per call, so a value set after this module was
+ * pulled in still counts.
  *
  * The team's projects are cached under `PENSIEVE_HOME` because the check that a project is
  * the team's must survive the credential being absent: with no key there is no way to ask
@@ -23,7 +24,6 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { readSharedEnv, sharedEnvFile } from "./shared-env";
 
 export const LINEAR_API_URL = "https://api.linear.app/graphql";
 
@@ -36,7 +36,7 @@ export const TEAM_NAME = "Liamai";
  *
  * `PENSIEVE_HOME` is re-derived from the environment rather than imported from `ask.ts`:
  * that module reads the argus checkout and builds the adapter at load time, and the write
- * path has no business pulling it in. Resolved per call, like `sharedEnvFile()`, so the
+ * path has no business pulling it in. Resolved per call, like the key itself, so the
  * value belongs to whoever set the variable rather than to whoever imported this first.
  */
 export const projectsCacheFile = () =>
@@ -83,22 +83,16 @@ export class LinearError extends Error {
   }
 }
 
-export async function linearKey(): Promise<string | undefined> {
-  const fromEnv = process.env.LINEAR_API_KEY?.trim();
-  if (fromEnv) {
-    return fromEnv;
-  }
-  const shared = (await readSharedEnv()).LINEAR_API_KEY?.trim();
-  return shared || undefined;
-}
+export const linearKey = (): string | undefined =>
+  process.env.LINEAR_API_KEY?.trim() || undefined;
 
-export async function linearConfig(): Promise<LinearConfig> {
-  const key = await linearKey();
-  return key
+export function linearConfig(): LinearConfig {
+  return linearKey()
     ? { configured: true, team: TEAM_NAME }
     : {
         configured: false,
-        reason: `LINEAR_API_KEY is not set — add it to ${sharedEnvFile()} or set it in the environment`,
+        reason:
+          "LINEAR_API_KEY is not set — add it to Pensieve's .env (mint one at linear.app → Settings → Security & access → Personal API keys)",
         team: TEAM_NAME,
       };
 }
@@ -126,11 +120,11 @@ async function graphql<T>(
   variables: Record<string, unknown>,
   fetchImpl: Fetch = fetch
 ): Promise<T> {
-  const key = await linearKey();
+  const key = linearKey();
   if (!key) {
     throw new LinearError(
       503,
-      (await linearConfig()).reason ?? "LINEAR_API_KEY is not set"
+      linearConfig().reason ?? "LINEAR_API_KEY is not set"
     );
   }
   let res: Response;
@@ -267,7 +261,7 @@ export async function knownProjects(
   if (memo && Date.now() - memo.at < CACHE_TTL_MS) {
     return memo.lookup;
   }
-  if (await linearKey()) {
+  if (linearKey()) {
     try {
       const data = await graphql<TeamProjectsData>(
         TEAM_PROJECTS_QUERY,
