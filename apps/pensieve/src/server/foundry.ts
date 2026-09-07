@@ -11,12 +11,11 @@
  * after a timeout answers the job the first call made rather than queueing a second.
  *
  * Config: `FOUNDRY_URL` (default the dev server's `http://localhost:3777`) and
- * `FOUNDRY_API_TOKEN`, read fresh per request — from the environment first, else from the
- * shared credentials file (`shared-env.ts`) that `foundry auth --api` writes (LIA-98). In
- * the container only the environment exists.
+ * `FOUNDRY_API_TOKEN`, from the environment and nowhere else — `.env` is what fills it on a
+ * Mac, the compose file's `environment:` in the container (LIA-142). `foundry auth --api`
+ * prints the token; putting it in `.env` is yours to do. Read per call rather than at module
+ * load so a value set after this module was pulled in still counts.
  */
-
-import { readSharedEnv, sharedEnvFile } from "./shared-env";
 
 export const FOUNDRY_URL = (
   process.env.FOUNDRY_URL || "http://localhost:3777"
@@ -42,14 +41,8 @@ export interface FoundryJob {
   ticketId?: string;
 }
 
-export async function apiToken(): Promise<string | undefined> {
-  const fromEnv = process.env.FOUNDRY_API_TOKEN?.trim();
-  if (fromEnv) {
-    return fromEnv;
-  }
-  const shared = (await readSharedEnv()).FOUNDRY_API_TOKEN?.trim();
-  return shared || undefined;
-}
+export const apiToken = (): string | undefined =>
+  process.env.FOUNDRY_API_TOKEN?.trim() || undefined;
 
 export interface FoundryConfig {
   configured: boolean;
@@ -58,13 +51,13 @@ export interface FoundryConfig {
   url: string;
 }
 
-export async function foundryConfig(): Promise<FoundryConfig> {
-  const token = await apiToken();
-  return token
+export function foundryConfig(): FoundryConfig {
+  return apiToken()
     ? { configured: true, url: FOUNDRY_URL }
     : {
         configured: false,
-        reason: `FOUNDRY_API_TOKEN is not set — run \`foundry auth --api\` (writes ${sharedEnvFile()}) or set it in the environment`,
+        reason:
+          "FOUNDRY_API_TOKEN is not set — run `foundry auth --api` and put the token in Pensieve's .env",
         url: FOUNDRY_URL,
       };
 }
@@ -162,11 +155,11 @@ export async function createJob(
   input: { ticketId: string; repo: string; idempotencyKey: string },
   fetchImpl: Fetch = fetch
 ): Promise<{ job: FoundryJob; replay: boolean }> {
-  const token = await apiToken();
+  const token = apiToken();
   if (!token) {
     throw new FoundryError(
       503,
-      (await foundryConfig()).reason ?? "FOUNDRY_API_TOKEN is not set"
+      foundryConfig().reason ?? "FOUNDRY_API_TOKEN is not set"
     );
   }
   // Key order and spacing are fixed here on purpose: Foundry fingerprints the raw bytes,
@@ -216,11 +209,11 @@ export interface FoundryRepo {
 export async function listRepos(
   fetchImpl: Fetch = fetch
 ): Promise<FoundryRepo[]> {
-  const token = await apiToken();
+  const token = apiToken();
   if (!token) {
     throw new FoundryError(
       503,
-      (await foundryConfig()).reason ?? "FOUNDRY_API_TOKEN is not set"
+      foundryConfig().reason ?? "FOUNDRY_API_TOKEN is not set"
     );
   }
   const { status, body } = await call(
@@ -252,10 +245,10 @@ export async function listRepos(
  * is the same empty answer, because the page does the same thing with all of them: it falls
  * back to the free-text repo field (LIA-120, AC4). A picker is never worth a loader error.
  */
-export const trackedRepos = async (
+export const trackedRepos = (
   fetchImpl: Fetch = fetch
 ): Promise<FoundryRepo[]> =>
-  (await apiToken()) ? listRepos(fetchImpl).catch(() => []) : [];
+  apiToken() ? listRepos(fetchImpl).catch(() => []) : Promise.resolve([]);
 
 /** `GET /api/jobs/:id`. */
 export async function getJob(
@@ -265,11 +258,11 @@ export async function getJob(
   if (!/^[0-9a-f-]{8,64}$/i.test(id)) {
     throw new FoundryError(400, `"${id}" is not a job id`);
   }
-  const token = await apiToken();
+  const token = apiToken();
   if (!token) {
     throw new FoundryError(
       503,
-      (await foundryConfig()).reason ?? "FOUNDRY_API_TOKEN is not set"
+      foundryConfig().reason ?? "FOUNDRY_API_TOKEN is not set"
     );
   }
   const { status, body } = await call(

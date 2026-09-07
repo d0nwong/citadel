@@ -11,8 +11,10 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Foundry runs on the host (bun · :3777); host-gateway is how a container reaches it.
       FOUNDRY_URL: ${FOUNDRY_URL:-http://host.docker.internal:3777}
-      # The shared credentials file (~/.config/liamai/env) is not mounted; pass the token.
+      # Send needs Foundry's trigger-API token; the container has only its environment.
       FOUNDRY_API_TOKEN: ${FOUNDRY_API_TOKEN:-}
+      # … and File on a proposal card needs the Linear key, for the same reason.
+      LINEAR_API_KEY: ${LINEAR_API_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

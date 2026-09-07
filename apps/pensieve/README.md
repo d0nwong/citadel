@@ -40,11 +40,12 @@ only; nothing here clones it or runs a git write command inside it — writes `.
 probes the two things that fail quietly: whether Foundry answers on `FOUNDRY_URL`, and
 whether there is a Claude credential.
 
-It never mints a secret. `FOUNDRY_API_TOKEN` is copied out of the shared credentials
-file `~/.config/liamai/env` — the one file argus, Foundry and Pensieve all read, so each
-secret is typed once per Mac — without being printed; when it isn't there yet, the phase
-says `cd ~/git/foundry && foundry auth --api`, which is what writes it. `claude login` is
-likewise the CLI's own flow, which the script can only detect and point you at.
+It never mints a secret, and never writes one either. `.env` carries two —
+`FOUNDRY_API_TOKEN` and `LINEAR_API_KEY` — and the `envfiles` phase only says which of them
+is missing and names the command that mints it: `cd ~/git/foundry && foundry auth --api`
+for the token, Linear's own personal-API-key page for the key. Pasting them in is yours to
+do, so no secret ever lands in `.env` without someone having looked at it. `claude login`
+is likewise the CLI's own flow, which the script can only detect and point you at.
 
 ```sh
 git clone <this repo> ~/git/pensieve && cd ~/git/pensieve
@@ -69,12 +70,16 @@ in the environment, which wins when set. With neither, Ask reports itself off wi
 reason. `PENSIEVE_HOME` is where its conversations go; nothing about Ask touches the
 checkout — `git status` there is the same before and after a run.
 
-Sending a point needs Foundry's trigger-API token. `foundry auth --api` writes
-`FOUNDRY_API_TOKEN` to the shared credentials file `~/.config/liamai/env` (override the
-path with `LIAMAI_ENV`), which Pensieve reads fresh on every request; setting the variable
-in the environment or `.env` wins over the file. `FOUNDRY_URL` defaults to
+Sending a point needs Foundry's trigger-API token: `foundry auth --api` in the Foundry repo
+prints one, and `FOUNDRY_API_TOKEN` in this repo's `.env` is where Pensieve reads it from —
+the environment and nowhere else, fresh on every request. `FOUNDRY_URL` defaults to
 `http://localhost:3777`. With no token, the Points page still lets you ignore a point —
 Send is shown off, with the reason.
+
+Filing a ticket from a proposal card needs `LINEAR_API_KEY` in the same `.env` — a personal
+API key from linear.app (Settings → Security & access), which files into the Liamai team as
+the key's owner. Without it a proposal is still checked against the last project list
+Pensieve cached, and File is shown off with the reason.
 
 Production, without a container:
 
@@ -108,9 +113,9 @@ WORKSPACE_DIR=/some/where FOUNDRY_API_TOKEN=… ANTHROPIC_API_KEY=… docker com
 
 The blackboard is mounted read-only and `decisions/` is mounted writable over it, so the
 container can write exactly the one directory it owns. Foundry runs on the host, so
-`FOUNDRY_URL` defaults to `http://host.docker.internal:3777` there; the shared credentials
-file is not mounted, so pass `FOUNDRY_API_TOKEN` in the environment. Ask's state is
-`/data` on the named volume `pensieve-home`, so conversations survive
+`FOUNDRY_URL` defaults to `http://host.docker.internal:3777` there, and the container has
+only its environment — pass `FOUNDRY_API_TOKEN` and `LINEAR_API_KEY` through it. Ask's
+state is `/data` on the named volume `pensieve-home`, so conversations survive
 `docker compose down && up`; there is no `claude login` inside the container, so pass
 `ANTHROPIC_API_KEY`. The image carries `node`, `git` and the `claude` CLI for it.
 
