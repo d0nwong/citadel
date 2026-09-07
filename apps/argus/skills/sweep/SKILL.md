@@ -45,13 +45,16 @@ landings drop out on their own, so overlapping windows are harmless.
   (report-only — a hold is waiting on something, list what)
 - today's digest 🔴 / ✋ / 🟠 sections
 - open Linear issues, team `Liamai`, assignee me (`mcp__linear-server__list_issues`;
-  ToolSearch it first if deferred)
+  ToolSearch it first if deferred) — ask `fields` for `project` too; the titles file
+  below needs it
 - Linear activity today: same tool, team `Liamai`, no assignee filter, `updatedAt` ≥
   local midnight — feeds the report's "Linear today" section. Split created-today from
   merely-updated by `createdAt`.
-- write the open tickets' titles to `.state/linear-titles.json` as `{ "LIA-nn": "<title>" }`
-  (gitignored; refresh it again after the ticket pass adds keys). Step 8's `points.ts`
-  reads each point's `repo` off it.
+- write the open tickets' titles and projects to `.state/linear-titles.json` as
+  `{ "LIA-nn": { "title": "<title>", "project": "<project>" } }` (gitignored; refresh it
+  again after the ticket pass adds keys). Step 8's `points.ts` reads each point's `repo`
+  off it — from the project, so a ticket without one gets no `repo`. Its terminal line
+  says when the file carries no project at all; that is this step's bug, not the script's.
 - verified points: `bun skills/sweep/scripts/points.ts --verified` — points the cockpit
   confirmed since the last tick, each licensing exactly the edit its own text names
   (Autonomy): a feature point goes to dispatch (5), a ticket point into the ticket-pass
@@ -322,8 +325,12 @@ them from drifting. The script owns:
   and the decided-point drop, and every suffix is rewritten to agree with it, never
   with tick memory;
 - **`ticket` and `repo`** — `ticket` when the subject or detail names exactly one LIA
-  key; `repo` from that ticket's `[FE]` / `[BE]` title tag in `.state/linear-titles.json`
-  (step 3); no tag, no `repo` — the cockpit asks;
+  key; `repo` from that ticket's entry in `.state/linear-titles.json` (step 3): the
+  Linear project names it — Argus → `argus`, Pensieve → `pensieve`, Foundry → `foundry`,
+  each the basename of a checkout Foundry tracks — and inside Alden Portal, the one
+  project covering two repos, the `[FE]` / `[BE]` title tag picks `alden-portal-fe` or
+  `alden-connect-portal-be`. Both tags, no tag, a project the map does not name, or no
+  ticket → no `repo` — the cockpit asks, since a guessed repo is worse than none;
 - **decisions** — `decisions/<group>/<slug>.json`, matched by the file's `point` id, not
   its path, and only against a point in this tick's report: a decision for a point that
   is gone changes nothing, a reworded subject renders undecided with the stale file left
