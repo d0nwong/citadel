@@ -52,6 +52,14 @@ landings drop out on their own, so overlapping windows are harmless.
 - write the open tickets' titles to `.state/linear-titles.json` as `{ "LIA-nn": "<title>" }`
   (gitignored; refresh it again after the ticket pass adds keys). Step 8's `points.ts`
   reads the `[FE]` / `[BE]` title tag off it to fill each point's `repo`.
+- verified points: `bun skills/sweep/scripts/points.ts --verified` — the points the
+  cockpit confirmed since the last tick, joined against the previous tick's
+  `points.json`. Each licenses exactly the edit its own text names, so the list is an
+  input to dispatch (5) for a point naming a feature and to the ticket-pass brief (6)
+  for one naming a ticket. Read it here, not at step 8: `points.ts` does not run again
+  until then, so nothing later in the tick could still act on it. Empty on most ticks,
+  and self-limiting — step 8 drops each of these bullets from the report, so a point is
+  listed once and is gone from the next tick's `points.json` altogether.
 
 **4. The join.** For each `NOT JOURNALED` landing, before dispatching anything, match it
 against the open tickets and open decisions. The join is never delegated: it is the
@@ -96,7 +104,9 @@ entry it writes is the "why" layer — judgement, not transcription) and gets th
 findings for its landing (ticket or null, decided entry to supersede, digest permalink as
 `source:`). log-change step 6 then drives `feature-docs` for the affected features;
 entries left `implemented` by a previous sweep (audit's "refresh missed" nag) get a
-`feature-docs` run here too.
+`feature-docs` run here too, and so does each **verified point naming a feature rather
+than a ticket** (step 3) — a doc sentence the user confirmed is stale — keyed by feature
+exactly as the join keys landings, with the point's own text saying which sentence.
 
 The general rule for what gets a subagent: a stage earns one when its input is bulky
 (threads, doc trees, diffs) *and* its output is a blackboard write the sweep can re-read
@@ -127,18 +137,23 @@ remainder is picked up next tick.
 
 **6. Ticket pass.** Linear is the sweep's terminal surface — the queue the user actually
 reads — so this stage makes it current, and the `ticket-pass` worker is the **only
-Linear writer in the loop** (the digest links tickets, it never edits them). Three
+Linear writer in the loop** (the digest links tickets, it never edits them). Four
 parts run in **one `ticket-pass` subagent** — 6a file tickets from unlinked ✋ items,
 6b fold digest items into the open tickets they link, 6c review open tickets against
-refreshed docs — all bulky single-use readers of Slack threads and doc trees, per the
-dispatch rule. 6d stays inline because it is a one-line judgement per ticket over a
-list the sweep already holds. The worker's procedure and prompt live in
-`skills/sweep/ticket-pass.md`.
+refreshed docs, 6e make the edit each verified point licensed — all bulky single-use
+readers of Slack threads, doc trees and ticket bodies, per the dispatch rule. 6d stays
+inline because it is a one-line judgement per ticket over a list the sweep already holds.
+The worker's procedure and prompt live in `skills/sweep/ticket-pass.md`.
 
 **Skip the spawn** when there is nothing for it: no unmarked unlinked ✋ items, no
 ticket-linked digest item newer than the previous tick's `_Tick` stamp in
-`reports/<today>.md`, *and* no feature refreshed this tick. Otherwise, **after dispatch has finished** (the worker writes the
-digest file and commits — a parallel writer would trip over dispatch's tree), spawn ONE
+`reports/<today>.md`, no feature refreshed this tick, *and* no verified point from
+step 3 naming a ticket. That last clause is not symmetry with the others: step 8 drops a
+verified point's bullet whether or not the worker ran, so a tick that skips the spawn
+with one outstanding loses that edit for good.
+
+Otherwise, **after dispatch has finished** (the worker writes the digest file and
+commits — a parallel writer would trip over dispatch's tree), spawn ONE
 general-purpose subagent via the Agent tool with **`model: "opus"`** (filing and review
 are judgement calls, and a weaker model files worse tickets), using the prompt in
 `ticket-pass.md` with its `{…}` filled from steps 1–5. Hand it conclusions, not sources.
@@ -192,7 +207,10 @@ current-state rule the digest follows applies to Needs you: each bullet says wha
      unattributed landing.
    - **Verify** — an inference to check: appears-implemented or appears-redundant
      tickets, Pending bullets that only *appear* satisfied, partial matches awaiting a
-     AC edit, 6b/6c findings.
+     AC edit, 6b/6c findings. The confirmation comes back as a `verified` decision, and
+     that file is what licenses the edit the bullet could only report (Autonomy) — so
+     write the ask as the edit you would make, not as a question about whether you read
+     it right.
    - **Confirm with someone** — needs a named teammate; the ask *is* the name.
      Un-ticketed ✋ pings and 🟠 items land here or under Decide, whichever fits.
    - **On hold** — holds waiting on something outside the loop. One line each, no
@@ -221,11 +239,14 @@ current-state rule the digest follows applies to Needs you: each bullet says wha
    the age restarts when it changes — so an open item keeps its subject text verbatim
    from tick to tick; rewording is how a decided point comes back as a new one. ✋
    items that got tickets appear by key, not restated.
-   **Write every open point, decided or not.** Pensieve's Send / Ignore verdicts live in
-   `decisions/<group>/<slug>.json` (LIA-94); you never read them to compose this section.
+   **Write every open point, decided or not.** Pensieve's Send / Ignore / Verify verdicts
+   live in `decisions/<group>/<slug>.json` (LIA-94, LIA-114); you never read them to
+   compose this section.
    `points.ts` reads them and drops each decided point from the file's Needs-you while
    keeping its record in `points.json` with the `decision` attached — so an ignored
-   point stops reappearing and a sent point stops asking, but the match is re-checked
+   point stops reappearing, a sent point stops asking, and a verified point stops asking
+   because this tick already made the edit it licensed (step 3) — the drop records that,
+   it does not stand in for it. The match is re-checked
    every tick against a point you still observe. A point you leave out because "it was
    decided" is a point the script can no longer tell apart from one whose condition
    cleared; the omission is the script's, not yours. The script also owns two lines:
@@ -319,8 +340,8 @@ untouched). `points.json` is Needs-you as data
 — one record per Decide / Verify / Confirm / On-hold / Housekeeping bullet, with `id`
 (`<group>/<slug>` of the subject), `group`, `subject`, `ask`, `detail`, `firstSeen`, and
 `ticket` / `repo` / `features` when the line carries them, and `decision` (the
-`decisions/` file body, copied) on a point the cockpit has sent or ignored — the shape
-Pensieve lists to offer Send / Ignore per point. It is
+`decisions/` file body, copied) on a point the cockpit has sent, ignored or verified —
+the shape Pensieve lists to offer Send / Ignore / Verify per point. It is
 **derived from the report, never hand-written**: the two are the same list in two shapes,
 and deriving one from the other is what keeps them from drifting — the one asymmetry is
 that a decided point is in `points.json` and not in the report, and that too is the
@@ -374,7 +395,12 @@ refer here rather than restating it.
     re-verified against the pinned sha is a fact, not an inference); move a BE
     dependency's client regen into Scope once it is on `origin/dev` *and deployed* to
     the spec's export server (FORMAT.md's codegen rule — nobody else owns the regen, so
-    it is not "waiting").
+    it is not "waiting"); and **the edit a point with a `verified` decision named**
+    (step 3) — the user's confirmation of that point's own inference is the fact the
+    rule was waiting for, so an *appears*-satisfied Pending bullet the cockpit verified
+    is deleted and an *appears*-stale sentence is rewritten. Exactly the edit the point
+    named, once, in the section it belongs to; a verified point whose ask needs no write
+    gets none, and is not restated as a new point.
   - *What doesn't:* anything that is only a semantic match. Say *appears* in the report
     and leave the body alone.
 
@@ -384,7 +410,9 @@ refer here rather than restating it.
   wrongly closed ticket vanishes from the only queue the user reads;
 - write inference into a ticket (appears-satisfied, appears-redundant, bullet-to-landing
   mappings) — report first, edit after the user confirms; a wrong "this may be moot" in
-  a shared ticket is noise the team sees;
+  a shared ticket is noise the team sees. That confirmation is a `verified` decision on
+  the point, and it lifts this rule for the one edit that point named and nothing wider
+  — never a close and never an AC tick, which no verdict licenses;
 - leave a landing as a comment instead of updating the body;
 - tick or untick an AC — the boxes are the implementer's record, and a tick from
   the sweep's own reading is inference in the shared body;

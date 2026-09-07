@@ -333,7 +333,9 @@ describe("LIA-88 AC4 — an unreadable decision file is one Audit line; its poin
     expect(parseDecision("{")).toMatchObject({ error: expect.stringContaining("not valid JSON") });
     expect(parseDecision("[]")).toEqual({ error: "not a JSON object" });
     expect(parseDecision('{"action":"sent"}')).toEqual({ error: "`point` missing or not a string" });
-    expect(parseDecision('{"point":"a/b","action":"maybe"}')).toEqual({ error: '`action` must be "sent" or "ignored"' });
+    expect(parseDecision('{"point":"a/b","action":"maybe"}')).toEqual({
+      error: '`action` must be "sent", "ignored" or "verified"',
+    });
     expect(parseDecision('{"point":"a/b","action":"ignored"}')).toEqual({ error: "`reason` required for an ignored point" });
     expect(parseDecision(JSON.stringify(sent))).toEqual({ decision: sent });
   });
@@ -376,5 +378,127 @@ describe("LIA-88 — readDecisions walks decisions/**/*.json, keyed by `point`, 
     const { decisions, unreadable } = await readDecisions("/nonexistent/argus-decisions");
     expect(decisions.size).toBe(0);
     expect(unreadable).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------- LIA-114 — verified
+
+import { verifiedPoints, formatVerified, type Point } from "./points.ts";
+
+/** the Verify-group point, confirmed: the sweep may now make the edit it only reported */
+const verifiedTicket: Decision = {
+  point: "verify/lia-78",
+  action: "verified",
+  reason: "checked the diff, they are satisfied",
+  at: "2026-09-06T09:00:00.000Z",
+  subject: "LIA-78",
+};
+/** a Decide-group point, confirmed — the verb is not restricted to Verify by the reader */
+const verifiedDocs: Decision = {
+  point: "decide/usage-feature-still-has-zero-tests",
+  action: "verified",
+  at: "2026-09-06T09:01:00.000Z",
+  subject: "Usage feature still has zero tests",
+};
+
+describe("LIA-114 AC1 — a verified point leaves Needs-you and carries the decision, as an ignored one does", () => {
+  const { file, md } = pipeline(REPORT, ctx({ decisions: new Map([[verifiedTicket.point, verifiedTicket]]) }));
+  test("the record keeps its place and gets the file's decision, verbatim", () => {
+    expect(file.points).toHaveLength(8);
+    expect(file.points.find((p) => p.id === "verify/lia-78")!.decision).toEqual(verifiedTicket);
+  });
+  test("its bullet and detail line are gone from the report, and the group with them", () => {
+    expect(md).not.toContain("four ACs appear satisfied");
+    expect(md).not.toContain("**Verify**");
+    expect(md).toContain("**Decide**");
+  });
+  test("a `reason` is optional — a verified file without one parses and applies the same", () => {
+    expect(parseDecision(JSON.stringify(verifiedDocs))).toEqual({ decision: verifiedDocs });
+    const one = pipeline(REPORT, ctx({ decisions: new Map([[verifiedDocs.point, verifiedDocs]]) }));
+    expect(one.file.points.find((p) => p.id === verifiedDocs.point)!.decision).toEqual(verifiedDocs);
+    expect(one.md).not.toContain("Usage feature still has zero tests");
+  });
+});
+
+describe("LIA-114 AC2 — the reader does not restrict `verified` to the Verify group", () => {
+  test("a verified Decide point drops exactly as the verified Verify point does", () => {
+    const { file, md } = pipeline(REPORT, ctx({ decisions: new Map([[verifiedDocs.point, verifiedDocs]]) }));
+    const p = file.points.find((p) => p.id === "decide/usage-feature-still-has-zero-tests")!;
+    expect(p.group).toBe("decide");
+    expect(p.decision!.action).toBe("verified");
+    expect(md).toContain("**Decide**"); // three Decide bullets survive
+    expect(md).toContain("- **LIA-53 looks agent-ready** —");
+  });
+});
+
+describe("LIA-114 AC3 — an action outside the three is still one Audit line, the point undecided", () => {
+  test("parseDecision names the three, and rejects a fourth", () => {
+    expect(parseDecision(JSON.stringify({ point: "a/b", action: "confirmed" }))).toEqual({
+      error: '`action` must be "sent", "ignored" or "verified"',
+    });
+    expect(parseDecision(JSON.stringify({ ...verifiedTicket, action: "verify" }))).toMatchObject({
+      error: expect.stringContaining("`action` must be"),
+    });
+  });
+  test("the unreadable file is one Audit line; its point stays in Needs-you", () => {
+    const unreadable = [{ file: "decisions/verify/lia-78.json", error: '`action` must be "sent", "ignored" or "verified"' }];
+    const { md, file } = pipeline(REPORT, ctx(), unreadable);
+    expect(md).toContain("**Unreadable decision files**\n- `decisions/verify/lia-78.json` — `action` must be");
+    expect(md).toContain("- **LIA-78** — four ACs appear satisfied");
+    expect("decision" in file.points.find((p) => p.id === "verify/lia-78")!).toBe(false);
+  });
+});
+
+describe("LIA-114 AC8 — Housekeeping's decided count includes verified points", () => {
+  test("one of each verdict → one line reading 3", () => {
+    const decisions = new Map([ignored, sent, verifiedDocs].map((d) => [d.point, d] as const));
+    const { md, file } = pipeline(REPORT, ctx({ decisions }));
+    expect(file.points.filter((p) => p.decision)).toHaveLength(3);
+    expect(md).toContain("- 3 points decided (decisions/)\n");
+    expect(md.match(/points? decided/g)).toHaveLength(1);
+  });
+});
+
+describe("LIA-114 — verifiedPoints is the tick's licensed edits, joined against points.json", () => {
+  const file = pipeline(REPORT, ctx()).file;
+  const all = new Map([ignored, sent, verifiedTicket, verifiedDocs].map((d) => [d.point, d] as const));
+
+  test("only the verified verdicts come back, in report order, with the decision attached", () => {
+    const got = verifiedPoints(file, all);
+    expect(got.map((p) => p.id)).toEqual(["decide/usage-feature-still-has-zero-tests", "verify/lia-78"]);
+    expect(got.map((p) => p.decision)).toEqual([verifiedDocs, verifiedTicket]);
+  });
+  test("`sent` and `ignored` license nothing", () => {
+    expect(verifiedPoints(file, new Map([ignored, sent].map((d) => [d.point, d] as const)))).toEqual([]);
+    expect(verifiedPoints(file, new Map())).toEqual([]);
+  });
+  test("a verified decision for a point this tick no longer reports is not an edit", () => {
+    const gone: Decision = { ...verifiedTicket, point: "verify/something-already-dropped" };
+    expect(verifiedPoints(file, new Map([[gone.point, gone]]))).toEqual([]);
+  });
+  test("the join does not mutate the points file", () => {
+    verifiedPoints(file, all);
+    expect(file.points.some((p) => p.decision)).toBe(false);
+  });
+
+  test("formatVerified prints the point's own text as the instruction, fields only when present", () => {
+    const out = formatVerified(verifiedPoints(file, all));
+    expect(out).toBe(
+      [
+        "decide/usage-feature-still-has-zero-tests — Usage feature still has zero tests — ticket it?",
+        "  fe#405 deleted five test files in `admin-usage`; LIA-71 and LIA-78 both touch it.",
+        "  features: admin-usage",
+        "verify/lia-78 — LIA-78 — four ACs appear satisfied by fe#406, not ticked",
+        "  AC1 (fixture deleted), AC8 (rollover band reads `credits.availableRollover`).",
+        "  ticket: LIA-78 · reason: checked the diff, they are satisfied",
+      ].join("\n"),
+    );
+  });
+  test("nothing verified is an empty block, not a blank line", () => {
+    expect(formatVerified([])).toBe("");
+  });
+  test("a point with neither ticket, features nor reason prints its two lines only", () => {
+    const bare: Point = { id: "verify/x", group: "verify", subject: "X", ask: "right?", firstSeen: "2026-09-05" };
+    expect(formatVerified([bare])).toBe("verify/x — X — right?");
   });
 });

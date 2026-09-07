@@ -184,7 +184,7 @@ ground truth, join, and surface only the judgement calls.
 | `digests/` | daily Slack digests (`.state.json` is gitignored cursor state) |
 | `reports/` | one sweep report per day, updated in place each tick — Needs-you / Linear / Audit re-emitted as current state, Done-today appended per tick; never shrunk by a quiet tick |
 | `reports/points.json` | the current Needs-you section as data — one record per point with a stable `<group>/<slug>` id, `firstSeen`, and `ticket` / `repo` when known; derived from the day's report by `skills/sweep/scripts/points.ts` every tick, never hand-edited. What Pensieve lists to Send / Ignore a point (LIA-94) and what decisions are keyed by (LIA-88) |
-| `decisions/<group>/<slug>.json` | one file per Send / Ignore verdict on a Needs-you point, `{ point, action, reason, at, subject, job? }`. Written by Pensieve (LIA-94), only ever read and committed by the sweep: `points.ts` matches each file's `point` against the tick's points, drops a decided point from the report's Needs-you and keeps it in `points.json` with the `decision` attached (LIA-88). A file whose point is gone is history, left alone |
+| `decisions/<group>/<slug>.json` | one file per verdict on a Needs-you point, `{ point, action, reason, at, subject, job? }`, `action` one of `sent` \| `ignored` \| `verified` (`reason` required for `ignored`). Written by Pensieve (LIA-94), only ever read and committed by the sweep: `points.ts` matches each file's `point` against the tick's points, drops a decided point from the report's Needs-you and keeps it in `points.json` with the `decision` attached (LIA-88). `verified` is the user confirming that point's inference, and it licenses the sweep to make the one edit the point named — the next tick's ticket pass or docs refresh (LIA-114). A file whose point is gone is history, left alone |
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
 | `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
 | `alden/alden-portal/.doc-workspace/` | feature manifest + OpenAPI snapshot |
@@ -261,7 +261,10 @@ judgement staying on this side:
    An Ask opened from the point shows the same controls, and the model can propose a
    verdict as a card whose Confirm is the same click. Either way one file lands in
    `decisions/<group>/<slug>.json`, and the point drops out of the next tick's Needs-you.
-   Ignore is a dismissal: the reason is stored and nothing acts on it.
+   Ignore is a dismissal: the reason is stored and nothing acts on it. Verify is not —
+   it confirms the point's inference and licenses the sweep to make the edit that point
+   named. The sweep reads that verdict already (LIA-114); the button that writes it is
+   LIA-115, not landed.
 3. **Foundry executes.** Send is a `POST /api/jobs` with `ticketId`, `repo` and the point
    id as the `Idempotency-Key` — no brief. Foundry composes the brief from the ticket
    body, claims the ticket atomically (job row in its Postgres ledger, unique on ticket
