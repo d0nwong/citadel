@@ -12,9 +12,9 @@
 
 import { join, relative } from "node:path";
 import { normPath } from "../lib/spec.ts";
-import { FEATURES_DIR, STATE, ROOT, DEFAULT_FE_REPO, expand } from "../lib/manifest.ts";
+import { FEATURES_DIR, STATE, ROOT, DEFAULT_FE_REPO, DEFAULT_BE_REPO, expand } from "../lib/manifest.ts";
 import { ATTR_DEPTH, type AccioIndex } from "../lib/index-store.ts";
-import { readStamp } from "../lib/stamps.ts";
+import { readStamp, gitIsAncestor } from "../lib/stamps.ts";
 
 const METHOD_RE = /\b(GET|POST|PUT|PATCH|DELETE)\s+(\/api\/\S+?)(?=[`") \n]|$)/g;
 
@@ -85,15 +85,18 @@ export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promi
     (v ?? "").replace(/^\[|\]$/g, "").split(",")
       .map(x => x.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
 
-  // product docs move only on real re-verification (arch docs regen every sync)
+  // product docs move only on real re-verification (arch docs regen every sync). A product
+  // run reads both repos and stamps both: `last_verified` (FE) and `last_verified_be` (BE).
+  type RepoKind = "fe" | "be";
   const verifiedAt = new Map<string, string>();
-  const verifiedSha = new Map<string, string>();
+  const verifiedSha: Record<RepoKind, Map<string, string>> = { fe: new Map(), be: new Map() };
   for (const f of index.features) {
     const t = await Bun.file(join(FEATURES_DIR, f.dir, "docs/product.md")).text().catch(() => null);
     const d = t?.match(/^last_verified_date:\s*(\S+)/m)?.[1];
     if (d) verifiedAt.set(f.id, d);
-    const s = t?.match(/^last_verified:\s*(?:\S+?@)?([0-9a-f]{7,40})\s*$/m)?.[1];
-    if (s) verifiedSha.set(f.id, s);
+    const fe = readStamp(t), be = readStamp(t, "last_verified_be");
+    if (fe) verifiedSha.fe.set(f.id, fe.sha);
+    if (be) verifiedSha.be.set(f.id, be.sha);
   }
 
   /**
@@ -101,17 +104,26 @@ export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promi
    * day, so `last_verified_date` alone reports every entry filed the same day the docs
    * were refreshed — including the ones that landed after it. When both shas are known,
    * ask git; `undefined` means it could not be decided and the date rule stands.
+   *
+   * Each merge sha is asked in the repo it belongs to: `fe#N` / `direct` (a push straight
+   * to staging) → the FE repo against `last_verified`; `be#N` → the BE repo against
+   * `last_verified_be`. An entry can carry both kinds, and `merge:` does not say which sha
+   * is which — then each sha is routed to whichever repo has the commit.
    */
-  const feRepo = expand(DEFAULT_FE_REPO);
-  const sawIt = (featureId: string, merges: string[]): boolean | undefined => {
-    const at = verifiedSha.get(featureId);
-    if (!at || !merges.length) return undefined;
-    const answers = merges.map(m => {
-      const p = Bun.spawnSync(["git", "-C", feRepo, "merge-base", "--is-ancestor", m, at],
-        { stdout: "ignore", stderr: "ignore" });
-      return p.exitCode === 0 ? true : p.exitCode === 1 ? false : undefined;  // 128 = unknown sha / no repo
-    });
-    return answers.some(a => a === undefined) ? undefined : answers.every(Boolean);
+  const repos: Record<RepoKind, string> = { fe: expand(DEFAULT_FE_REPO), be: expand(DEFAULT_BE_REPO) };
+  const hasCommit = (repo: string, sha: string) =>
+    Bun.spawnSync(["git", "-C", repo, "cat-file", "-e", `${sha}^{commit}`], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+  const sawIt = async (featureId: string, merges: string[], prs: string[]): Promise<boolean | undefined> => {
+    if (!merges.length) return undefined;
+    const kinds = new Set<RepoKind>(prs.map(p => (p.startsWith("be#") ? "be" : "fe")));
+    const only: RepoKind | null = kinds.size === 1 ? [...kinds][0]! : null;
+    const answers: (boolean | null | undefined)[] = [];
+    for (const m of merges) {
+      const kind = only ?? (["fe", "be"] as RepoKind[]).find(k => hasCommit(repos[k], m));
+      const at = kind && verifiedSha[kind].get(featureId);
+      answers.push(at ? await gitIsAncestor(repos[kind!], m, at) : undefined);  // null = unknown sha / no repo
+    }
+    return answers.some(a => a === undefined || a === null) ? undefined : answers.every(Boolean);
   };
 
   const idByDir = new Map(index.features.map(f => [f.dir, f.id]));
@@ -169,9 +181,10 @@ export async function auditJournal(index: AccioIndex, dir = FEATURES_DIR): Promi
     // ran over this change and nobody closed the entry
     if (status === "implemented" && date && !hold) {
       const merges = list(field("merge")).filter(s => /^[0-9a-f]{7,40}$/.test(s));
+      const prs = prField && prField !== "null" ? list(prField) : [];
       for (const f of feats) {
         const v = verifiedAt.get(f);
-        const seen = sawIt(f, merges) ?? (!!v && v >= date.slice(0, 10));
+        const seen = (await sawIt(f, merges, prs)) ?? (!!v && v >= date.slice(0, 10));
         if (v && seen)
           problems.push(`${name}: implemented, but ${f} docs were re-verified ${v} — refresh missed this entry or it should be documented`);
       }

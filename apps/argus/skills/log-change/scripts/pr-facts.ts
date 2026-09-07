@@ -13,6 +13,10 @@
  *
  * Resolution runs against `origin/<ref>`, never a local branch — the FE tree is shared and
  * its local branches go stale without warning (git fetch runs first unless --no-fetch).
+ *
+ * Feature attribution covers both repos: FE files through the accio index's reach sets,
+ * BE files through the manifest's curated `be_files` plus the endpoints whose route lines
+ * the landing changed (inverted through the index's `ops` → owning features).
  */
 
 import { join } from "node:path";
@@ -112,18 +116,90 @@ async function factsOf(repo: Repo, landing: string): Promise<Facts> {
   };
 }
 
-/** changed files → feature ids, via the accio index (frontend only) */
-async function featuresOf(files: string[]): Promise<{ mapped: [string, number][]; unmapped: string[] }> {
-  const idx = await Bun.file(join(ROOT, ".state/accio-index.json")).json().catch(() => null);
-  if (!idx) return { mapped: [], unmapped: files };
-  const counts = new Map<string, number>();
-  const unmapped: string[] = [];
-  for (const f of files) {
-    const hits = idx.features.filter((x: any) => f in x.files).map((x: any) => x.id);
-    if (!hits.length) { unmapped.push(f); continue; }
-    for (const id of hits) counts.set(id, (counts.get(id) ?? 0) + 1);
+type Feats = {
+  mapped: [string, number][];
+  unmapped: string[];
+  /** BE only: endpoints whose route definition changed in the diff, and who owns them */
+  endpoints: { key: string; features: string[]; inSpec: boolean }[];
+};
+const NO_FEATS = (files: string[]): Feats => ({ mapped: [], unmapped: files, endpoints: [] });
+
+const ROUTE_OPEN_RE = /router\.(get|post|put|patch|delete)\(/;
+const ROUTE_RE = /router\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/;
+
+/**
+ * Endpoints whose route line was added or removed by a landing: for every changed file
+ * under src/routers/v1/, read the +/- lines of its diff (context lines would name every
+ * route in a 50-route router), join the express path onto the mount prefix index.ts gives
+ * that router AT THE LANDING SHA, and spell it the way the spec does (`:id` → `{id}`).
+ * v1 itself mounts at /api/v1 (src/routers/index.ts).
+ */
+async function changedRoutes(repo: Repo, landing: string, range: string, files: string[]): Promise<string[]> {
+  const routers = files.filter(f => /^src\/routers\/v1\/[^/]+\.ts$/.test(f) && !f.endsWith("/index.ts"));
+  if (!routers.length) return [];
+  const index = await git(repo, "show", `${landing}:src/routers/v1/index.ts`).catch(() => "");
+  const importOf = new Map<string, string>();            // "./tasksRouter" → taskRouter
+  for (const m of index.matchAll(/^import\s+(\w+)\s+from\s+["']\.\/([^"']+)["']/gm)) importOf.set(m[2]!, m[1]!);
+  const mountOf = new Map<string, string>();             // taskRouter → /tasks
+  for (const m of index.matchAll(/^\s*router\.use\(\s*["']([^"']+)["']\s*,\s*(\w+)\(/gm)) mountOf.set(m[2]!, m[1]!);
+
+  const keys = new Set<string>();
+  for (const file of routers) {
+    const base = file.replace(/^src\/routers\/v1\//, "").replace(/\.ts$/, "");
+    const mount = mountOf.get(importOf.get(base) ?? "");
+    if (mount === undefined) continue;                   // not mounted at this sha (legacy, commented out)
+    const diff = await git(repo, "diff", range, "--", file).catch(() => "");
+    // hunk body only: a leading ` `, `+` or `-` then the source line
+    const rows = lines(diff).filter(l => /^[ +-]/.test(l) && !/^(\+\+\+|---)/.test(l));
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]!;
+      if (!/^[+-]/.test(row)) continue;
+      const src = row.slice(1).replace(/^\s*\/\/.*$/, "");
+      if (!ROUTE_OPEN_RE.test(src)) continue;
+      // `router.get(` and its path may sit on different lines — read on, up to three rows
+      const m = rows.slice(i, i + 4).map(r => r.slice(1)).join(" ").match(ROUTE_RE);
+      if (!m) continue;
+      const path = `/api/v1${mount}${m[2]!.startsWith("/") ? "" : "/"}${m[2]}`
+        .replace(/:(\w+)/g, "{$1}").replace(/\/+$/, "");
+      keys.add(`${m[1]!.toUpperCase()} ${path}`);
+    }
   }
-  return { mapped: [...counts].sort((a, b) => b[1] - a[1]), unmapped };
+  return [...keys].sort();
+}
+
+/**
+ * changed files → feature ids, via the accio index. FE files match the per-feature reach
+ * set; BE files match the curated handler chain (`be_files`, written by feature-docs) and,
+ * for routers, the endpoints whose definition moved — inverted through the index's `ops`
+ * so a route change names the features that call it.
+ */
+async function featuresOf(repo: Repo, f: Facts): Promise<Feats> {
+  const idx = await Bun.file(join(ROOT, ".state/accio-index.json")).json().catch(() => null);
+  if (!idx) return NO_FEATS(f.files);
+  const counts = new Map<string, number>();
+  const bump = (id: string) => counts.set(id, (counts.get(id) ?? 0) + 1);
+  const unmapped: string[] = [];
+  const owns = repo.kind === "fe"
+    ? (x: any, file: string) => file in x.files
+    : (x: any, file: string) => (x.be_files ?? []).includes(file);
+  for (const file of f.files) {
+    const hits = idx.features.filter((x: any) => owns(x, file)).map((x: any) => x.id);
+    if (!hits.length) { unmapped.push(file); continue; }
+    hits.forEach(bump);
+  }
+
+  const endpoints: Feats["endpoints"] = [];
+  if (repo.kind === "be") {
+    const norm = (u: string) => u.replace(/\{[^}]*\}/g, "{p}").replace(/\/+$/, "");
+    const ops = new Map<string, string[]>();
+    for (const [k, v] of Object.entries<any>(idx.ops)) ops.set(norm(k.replace(/^~/, "")), v.features ?? []);
+    for (const key of await changedRoutes(repo, f.landing, f.range, f.files)) {
+      const features = ops.get(norm(key));
+      endpoints.push({ key, features: features ?? [], inSpec: features !== undefined });
+      features?.forEach(bump);
+    }
+  }
+  return { mapped: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])), unmapped, endpoints };
 }
 
 /**
@@ -146,7 +222,7 @@ async function journalled(): Promise<Map<string, string[]>> {
   return seen;
 }
 
-function render(repo: Repo, f: Facts, feats: { mapped: [string, number][]; unmapped: string[] }): string {
+function render(repo: Repo, f: Facts, feats: Feats): string {
   const key = f.pr ? `${repo.kind}#${f.pr}` : "direct";
   const out: string[] = [];
   out.push(`${f.pr ? `PR ${key}` : `direct push (no PR)`} · landed ${f.date} · ${repo.ref} ${f.short}`);
@@ -156,11 +232,18 @@ function render(repo: Repo, f: Facts, feats: { mapped: [string, number][]; unmap
   out.push(`  tickets  ${f.tickets.join(", ") || "none stated in the branch or commit messages"}`);
   out.push(`  range    ${f.range}   (${f.commits.length} commit(s), ${f.files.length} file(s))`);
   out.push("");
+  if (feats.endpoints.length) {
+    out.push("endpoints touched (route lines changed in src/routers/v1):");
+    for (const e of feats.endpoints)
+      out.push(`  ${e.key}`.padEnd(64) + `  ${e.inSpec ? (e.features.join(", ") || "in spec, no feature calls it") : "not in the spec — new route, or spec not re-synced"}`);
+    out.push("");
+  }
   if (feats.mapped.length) {
-    out.push("features touched (accio index):");
-    for (const [id, n] of feats.mapped) out.push(`  ${id.padEnd(22)} ${n} file(s)`);
+    out.push(`features touched (accio index${repo.kind === "be" ? ": be_files + endpoint owners" : ""}):`);
+    const unit = repo.kind === "be" ? "hit(s)" : "file(s)";
+    for (const [id, n] of feats.mapped) out.push(`  ${id.padEnd(22)} ${n} ${unit}`);
     if (feats.unmapped.length) out.push(`  ${"<unmapped>".padEnd(22)} ${feats.unmapped.length} file(s)`);
-    out.push("  (file counts are a hint — `features:` names what the change is ABOUT, not every dir it grazed)");
+    out.push("  (counts are a hint — `features:` names what the change is ABOUT, not every dir it grazed)");
     out.push("");
   }
   out.push("commits:");
@@ -193,6 +276,12 @@ async function since(repo: Repo, date: string) {
     const mark = entries.length ? "journaled" : "NOT JOURNALED";
     console.log(`  ${d}  ${sha!.slice(0, 9)}  ${key.padEnd(8)}  ${mark.padEnd(13)}  ${subject!.slice(0, 72)}`);
     for (const e of entries) console.log(`${" ".repeat(50)}${e}`);
+    // an unjournaled landing is the one a reader has to route somewhere — say where; a
+    // journaled one already names its features in the entry
+    if (!entries.length) {
+      const feats = await featuresOf(repo, await factsOf(repo, sha!));
+      console.log(`${" ".repeat(50)}features: ${feats.mapped.map(([id]) => id).join(", ") || "none mapped"}`);
+    }
   }
 }
 
@@ -209,7 +298,8 @@ if (import.meta.main) {
 
   pr-facts <pr-number>          e.g. 363
   pr-facts <sha>                which landing carried this commit
-  pr-facts --since <date>       landings since <date>, and whether the journal names them
+  pr-facts --since <date>       landings since <date>, whether the journal names them, and
+                                the features an unjournaled one touches
   flags: --be (backend repo) · --ref <ref> · --no-fetch`);
     process.exit(argv.length ? 0 : 1);
   }
@@ -225,6 +315,5 @@ if (import.meta.main) {
     ? await landingOfPr(repo, Number(target))
     : await landingOfSha(repo, target, await chainOf(repo));
   const facts = await factsOf(repo, landing);
-  const feats = kind === "fe" ? await featuresOf(facts.files) : { mapped: [], unmapped: facts.files };
-  console.log(render(repo, facts, feats));
+  console.log(render(repo, facts, await featuresOf(repo, facts)));
 }
