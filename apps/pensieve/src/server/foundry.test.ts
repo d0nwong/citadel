@@ -5,7 +5,8 @@ import { describe, expect, test } from "bun:test";
 process.env.FOUNDRY_API_TOKEN = "test-token";
 process.env.FOUNDRY_URL = "http://foundry.test";
 
-const { createJob, getJob, FoundryError } = await import("./foundry");
+const { createJob, getJob, listRepos, trackedRepos, FoundryError } =
+  await import("./foundry");
 // Destructured from a dynamic import, `FoundryError` is a value; this is its instance type.
 type FoundryErr = InstanceType<typeof FoundryError>;
 
@@ -146,5 +147,69 @@ describe("AC4 — GET /api/jobs/:id", () => {
       FoundryError
     );
     expect(called).toBe(false);
+  });
+});
+
+describe("LIA-120 — GET /api/repos, the set Send offers", () => {
+  const rows = [
+    { name: "argus", path: "/Users/l/git/argus" },
+    { name: "pensieve", path: "/Users/l/git/pensieve" },
+  ];
+
+  test("the rows, on the bearer, with nothing invented", async () => {
+    const seen: Seen[] = [];
+    const repos = await listRepos(
+      fake(200, [...rows, { name: "extra", notes: "private" }, null], seen)
+    );
+    expect(seen[0].url).toBe("http://foundry.test/api/repos");
+    expect(seen[0].init.method).toBe("GET");
+    expect((seen[0].init.headers as Record<string, string>).authorization).toBe(
+      "Bearer test-token"
+    );
+    // A row without both fields is not a repo; nothing beyond name and path survives.
+    expect(repos).toEqual(rows);
+  });
+
+  test("nothing tracked is an empty list, not an error", async () => {
+    expect(await listRepos(fake(200, []))).toEqual([]);
+  });
+
+  test.each([
+    [404, "a Foundry from before LIA-119"],
+    [401, "the wrong token"],
+    [500, "a host in trouble"],
+  ])("%i throws — %s", async (status) => {
+    await expect(listRepos(fake(status, undefined))).rejects.toBeInstanceOf(
+      FoundryError
+    );
+  });
+
+  test("a 200 that is not a list throws rather than passing something else on", async () => {
+    await expect(listRepos(fake(200, { repos: rows }))).rejects.toBeInstanceOf(
+      FoundryError
+    );
+  });
+
+  test("AC4 — trackedRepos answers no list for every failure, so the page falls back", async () => {
+    const page = (status: number) =>
+      (() =>
+        Promise.resolve(
+          new Response("<!doctype html><title>Foundry</title>", {
+            headers: { "content-type": "text/html" },
+            status,
+          })
+        )) as unknown as typeof fetch;
+    // A Foundry from before LIA-119 answers the route as its own web page, and a router
+    // that catches unknown paths answers 200 while doing it — so the status alone is not
+    // the test, and neither answer may reach the field as a repo.
+    expect(await trackedRepos(page(404))).toEqual([]);
+    expect(await trackedRepos(page(200))).toEqual([]);
+
+    const down = (() =>
+      Promise.reject(new TypeError("fetch failed"))) as unknown as typeof fetch;
+    expect(await trackedRepos(down)).toEqual([]);
+
+    // And the happy path is the list itself.
+    expect(await trackedRepos(fake(200, rows))).toEqual(rows);
   });
 });

@@ -12,7 +12,7 @@
  * `bun test` shares one module registry across files, so an env override there would leak.
  */
 
-import { isPointId } from "../lib/points";
+import { isPointId, REPO_REQUIRED } from "../lib/points";
 import type { Decision } from "./decisions";
 import { DECISIONS_DIR, readDecision } from "./decisions";
 import type { FoundryConfig } from "./foundry";
@@ -187,10 +187,7 @@ export async function checkSend(
   }
   const where = trimmed(repo) || trimmed(point.repo);
   if (!where && opts.repoRequired !== false) {
-    return {
-      error: "a repo is required — a path Foundry tracks, or its name",
-      ok: false,
-    };
+    return { error: REPO_REQUIRED, ok: false };
   }
   const already = await decided(pointId, sources);
   if (already) {

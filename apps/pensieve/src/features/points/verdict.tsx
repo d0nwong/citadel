@@ -4,6 +4,11 @@
  * afterwards (`DecidedLine`). Lifted out of `/points` so the Ask conversation opened on a
  * point can give the same verdict without going back to the list (LIA-109).
  *
+ * The repo a Send lands in is a field of its own (`RepoField`), since Ask's proposal card
+ * asks for the same thing on a different surface: a select over the repos Foundry answered
+ * with for this page load, and the free-text box as the fallback for a Foundry that could
+ * not answer with a list (LIA-120).
+ *
  * All three write through `decidePoint` / `verifyPoint` / `sendPoint` in `lib/api` —
  * `decisions/` stays the app's only write — and invalidate the router afterwards, so
  * whichever loader is on screen re-reads `points.json` + `decisions/` and the point moves
@@ -25,7 +30,9 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import type { Verdict } from "#/lib/api";
 import { decidePoint, jobStatus, sendPoint, verifyPoint } from "#/lib/api";
+import { pickRepo, REPO_REQUIRED } from "#/lib/points";
 import { cn } from "#/lib/utils";
+import type { FoundryRepo } from "#/server/foundry";
 import type { Point, PointDecision } from "#/server/workspace";
 
 export const shortId = (id: string) => id.slice(0, 8);
@@ -41,6 +48,77 @@ function when(iso: string) {
     minute: "2-digit",
     month: "short",
   });
+}
+
+// ── the repo a send lands in ───────────────────────────────────────────────────
+
+const FIELD_CLASS =
+  "mono w-full rounded-md border border-rule px-3 py-1.5 text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none";
+
+/**
+ * Where the work lands, as the Send form and Ask's proposal card both ask it: a select over
+ * the repos `GET /api/repos` answered for this page load, or — for a Foundry that could not
+ * answer with a list at all — the free-text box that was here before (LIA-120, AC4).
+ *
+ * The value is always what travels as `repo`: a chosen row contributes its `name`, which
+ * `POST /api/jobs` accepts verbatim, so nothing here has to re-validate a choice Foundry
+ * itself supplied. The chosen row's path is shown under it — the names are short, and which
+ * checkout the job will run in is the thing worth being sure of before pressing Send.
+ */
+export function RepoField({
+  autoFocus,
+  className,
+  id,
+  onChange,
+  repos,
+  value,
+}: {
+  autoFocus?: boolean;
+  /** The field's background — the two surfaces this sits on are not the same paper. */
+  className?: string;
+  id: string;
+  onChange: (repo: string) => void;
+  repos: FoundryRepo[];
+  value: string;
+}) {
+  const picked = repos.find((r) => r.name === value);
+  return (
+    <>
+      <label className="kicker" htmlFor={id}>
+        Repo the work lands in
+      </label>
+      {repos.length > 0 ? (
+        <>
+          <select
+            autoFocus={autoFocus}
+            className={cn(FIELD_CLASS, className, !value && "text-ink-faint")}
+            id={id}
+            onChange={(e) => onChange(e.target.value)}
+            value={value}
+          >
+            <option value="">choose a repo Foundry tracks…</option>
+            {repos.map((r) => (
+              <option key={r.path} value={r.name}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+          {picked && (
+            <p className="mono text-ink-faint text-sm">{picked.path}</p>
+          )}
+        </>
+      ) : (
+        <input
+          autoFocus={autoFocus}
+          className={cn(FIELD_CLASS, className)}
+          id={id}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="a repo Foundry tracks — its path, or its name"
+          value={value}
+        />
+      )}
+    </>
+  );
 }
 
 // ── committing a verdict ───────────────────────────────────────────────────────
@@ -101,17 +179,23 @@ export function VerdictControls({
   foundryReason,
   lead,
   onDecided,
+  repos = [],
 }: {
   point: Point;
   foundryOk: boolean;
   foundryReason?: string;
   lead?: ReactNode;
   onDecided?: () => void;
+  repos?: FoundryRepo[];
 }) {
   const [mode, setMode] = useState<Mode>("idle");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
-  const [repo, setRepo] = useState(point.repo ?? "");
+  // With a list, the point's repo only survives as a choice within it; without one, the
+  // field is free text again and the point's own string is the prefill it always was.
+  const [repo, setRepo] = useState(
+    repos.length > 0 ? pickRepo(repos, point.repo) : (point.repo ?? "")
+  );
   const { busy, commit: run, error, setError } = useVerdictCommit();
 
   const open = (m: Mode) => {
@@ -139,10 +223,7 @@ export function VerdictControls({
     commit(() => verifyPoint({ data: { note, point: point.id } }));
   const send = () => {
     if (!repo.trim()) {
-      return setError({
-        error: "which repo? Foundry needs a tracked path or name",
-        ok: false,
-      });
+      return setError({ error: REPO_REQUIRED, ok: false });
     }
     return commit(() => sendPoint({ data: { point: point.id, repo } }));
   };
@@ -260,15 +341,12 @@ export function VerdictControls({
             void send();
           }}
         >
-          <label className="kicker" htmlFor={`repo-${point.id}`}>
-            Repo the work lands in
-          </label>
-          <input
+          <RepoField
             autoFocus
-            className="mono w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none"
+            className="bg-paper-2/60"
             id={`repo-${point.id}`}
-            onChange={(e) => setRepo(e.target.value)}
-            placeholder="a repo Foundry tracks — its path, or its name"
+            onChange={setRepo}
+            repos={repos}
             value={repo}
           />
           <p className="text-ink-faint text-sm leading-snug">

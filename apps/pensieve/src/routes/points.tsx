@@ -18,6 +18,7 @@ import {
 } from "#/features/points/verdict";
 import { listPoints } from "#/lib/api";
 import { cn, daysSince } from "#/lib/utils";
+import type { FoundryRepo } from "#/server/foundry";
 import type { Point, PointGroup } from "#/server/workspace";
 
 export const Route = createFileRoute("/points")({
@@ -61,7 +62,7 @@ function age(firstSeen: string) {
 }
 
 function PointsPage() {
-  const { file, foundry } = Route.useLoaderData();
+  const { file, foundry, repos } = Route.useLoaderData();
   if (!file) {
     return (
       <>
@@ -141,6 +142,7 @@ function PointsPage() {
                 foundryReason={foundry.reason}
                 key={p.id}
                 point={p}
+                repos={repos}
               />
             ))}
           </ul>
@@ -180,10 +182,12 @@ function PointRow({
   point,
   foundryOk,
   foundryReason,
+  repos,
 }: {
   point: Point;
   foundryOk: boolean;
   foundryReason?: string;
+  repos: FoundryRepo[];
 }) {
   const askAbout = useAskAbout(point);
   return (
@@ -214,6 +218,7 @@ function PointRow({
           </ActionButton>
         }
         point={point}
+        repos={repos}
       />
     </li>
   );

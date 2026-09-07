@@ -79,6 +79,7 @@ export function PointCard({ page }: { page: PointPage | null }) {
           foundryOk={page.foundry.configured}
           foundryReason={page.foundry.reason}
           point={point}
+          repos={page.repos}
         />
       </div>
     </section>
