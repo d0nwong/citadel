@@ -69,6 +69,7 @@ import {
   LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
 } from "../lib/ask-tools";
+import { isPointId } from "../lib/points";
 import { WORKSPACE_DIR } from "./workspace";
 
 // ── configuration ──────────────────────────────────────────────────────────────
@@ -601,6 +602,13 @@ export const askPersistence = askStore.persistence;
 /** Where a thread's Claude session id lives: `metadata[<threadId>].sessionId`. */
 export const SESSION_KEY = "sessionId";
 
+/**
+ * The Needs-you point this conversation is about, when it was opened from one (LIA-109).
+ * Written once, on the first run that names it, and never again: the conversation is about
+ * the point it started on, whatever a later request claims.
+ */
+export const POINT_KEY = "point";
+
 export const readSessionId = async (
   store: ConversationStore,
   threadId: string
@@ -618,6 +626,8 @@ export interface AskInput {
    * the stored thread, so never send one.
    */
   messages: UIMessage[];
+  /** The point the conversation was opened on — stored on the first run, ignored after. */
+  point?: string;
   runId?: string;
   threadId: string;
 }
@@ -878,9 +888,16 @@ export async function* askStream(
         }
       },
       // A new run starts clean: what the last one left is superseded by this one's end.
+      // The point is the exception — it is the thread's own, written once and kept.
       async onStart() {
         await metadata.delete(input.threadId, LAST_ERROR_KEY);
         await metadata.delete(input.threadId, FINISH_REASON_KEY);
+        if (
+          isPointId(input.point) &&
+          (await metadata.get(input.threadId, POINT_KEY)) === null
+        ) {
+          await metadata.set(input.threadId, POINT_KEY, input.point);
+        }
       },
     });
     const middleware: ChatMiddleware[] = [
@@ -929,6 +946,8 @@ export interface Conversation {
   /** How the last run ended, when it ended in error; cleared when the next run starts. */
   lastError?: LastError;
   messages: UIMessage[];
+  /** The Needs-you point this conversation was opened on, when it was (LIA-109). */
+  point?: string;
   sessionId?: string;
   threadId: string;
   updatedAt: string;
@@ -959,9 +978,11 @@ export async function getConversation(
   }
   const sessionId = f.metadata[SESSION_KEY];
   const lastError = lastErrorOf(f.metadata[LAST_ERROR_KEY]);
+  const point = f.metadata[POINT_KEY];
   return {
     messages: modelMessagesToUIMessages(f.messages),
     threadId: f.threadId,
+    ...(isPointId(point) ? { point } : {}),
     ...(typeof sessionId === "string" && sessionId ? { sessionId } : {}),
     ...(f.metadata[FINISH_REASON_KEY] === "length"
       ? { finishReason: "length" as const }

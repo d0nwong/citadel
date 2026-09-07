@@ -9,10 +9,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isPointId } from "../lib/points";
 import type { Decision } from "./decisions";
 import {
   decisionPath,
-  isPointId,
   mergeDecisions,
   parseDecision,
   readDecision,

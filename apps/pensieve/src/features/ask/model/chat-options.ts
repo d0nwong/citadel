@@ -17,9 +17,22 @@ import { createChatHookContexts } from "@tanstack/ai-react/ui";
 import { askChat } from "#/lib/api";
 import { finishReasonOf, noteFinish } from "./finish-reason";
 
-/** `threadId` is the hook's own (the per-call override), so nothing here closes over state. */
-const fetcher: ChatFetcher = ({ messages, threadId }, { signal }) =>
-  askChat({ data: { messages, threadId }, signal });
+/**
+ * `threadId` is the hook's own (the per-call override), so nothing here closes over state.
+ * `data` is the merged body — what the page put in `useAppChat({ body })` — which is how the
+ * point a conversation was opened on reaches the server's first run (LIA-109).
+ */
+const fetcher: ChatFetcher = ({ messages, threadId, data }, { signal }) => {
+  const point = data?.point;
+  return askChat({
+    data: {
+      messages,
+      threadId,
+      ...(typeof point === "string" ? { point } : {}),
+    },
+    signal,
+  });
+};
 
 export const options = {
   devtools: { name: "Ask argus" },

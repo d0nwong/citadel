@@ -12,6 +12,7 @@
 import type { UIMessage } from "@tanstack/ai";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { isPointId, POINT_ID_RE } from "#/lib/points";
 import type {
   AskStatus,
   Conversation,
@@ -19,7 +20,7 @@ import type {
 } from "#/server/ask";
 import type { Decision } from "#/server/decisions";
 import type { FoundryConfig, FoundryJob, JobStatus } from "#/server/foundry";
-import type { Json, PointsFile } from "#/server/workspace";
+import type { Json, Point, PointsFile } from "#/server/workspace";
 
 export const getInbox = createServerFn({ method: "GET" }).handler(async () => {
   const ws = await import("#/server/workspace");
@@ -137,6 +138,37 @@ export const listPoints = createServerFn({ method: "GET" }).handler(
   }
 );
 
+export interface PointPage {
+  foundry: FoundryConfig;
+  point: Point | null;
+}
+
+/**
+ * One point by id, with its decision file laid over it and whether Send is available — what
+ * a conversation opened on a point needs to show it and act on it (LIA-109). `null` when
+ * the id names nothing in the last tick's `points.json`.
+ */
+export const getPoint = createServerFn({ method: "GET" })
+  .validator((id: string) => id)
+  .handler(async ({ data }): Promise<PointPage> => {
+    const ws = await import("#/server/workspace");
+    const dec = await import("#/server/decisions");
+    const fd = await import("#/server/foundry");
+    const foundry = await fd.foundryConfig();
+    if (!isPointId(data)) {
+      return { foundry, point: null };
+    }
+    const [file, decision] = await Promise.all([
+      ws.readPoints(),
+      dec.readDecision(data),
+    ]);
+    const point = file?.points.find((p) => p.id === data) ?? null;
+    return {
+      foundry,
+      point: point && decision ? { ...point, decision } : point,
+    };
+  });
+
 export type Verdict =
   | { ok: true; decision: Decision; replay?: boolean }
   | {
@@ -157,7 +189,7 @@ export const decidePoint = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<Verdict> => {
     const ws = await import("#/server/workspace");
     const dec = await import("#/server/decisions");
-    if (!dec.isPointId(data.point)) {
+    if (!isPointId(data.point)) {
       return { error: `"${data.point}" is not a point id`, ok: false };
     }
     if (!data.reason) {
@@ -205,7 +237,7 @@ export const sendPoint = createServerFn({ method: "POST" })
   }))
   .handler(async ({ data }): Promise<Verdict> => {
     const dec = await import("#/server/decisions");
-    if (!dec.isPointId(data.point)) {
+    if (!isPointId(data.point)) {
       return { error: `"${data.point}" is not a point id`, ok: false };
     }
     if (!data.repo) {
@@ -309,6 +341,8 @@ export const askChat = createServerFn({ method: "POST" })
             typeof v === "object" && v !== null && "role" in v && "parts" in v
         )
       ),
+      /** The point the conversation was opened on; stored on the thread's first run. */
+      point: z.string().regex(POINT_ID_RE).optional(),
       runId: z.string().max(128).optional(),
       threadId,
     })

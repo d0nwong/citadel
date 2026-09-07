@@ -9,9 +9,12 @@
  * The next question resumes the same session — the id is stored server-side, never sent
  * from here (AC3).
  *
- * Opened from a point (`?q=…&from=points`): the question is sent as soon as a credential is
- * known to be available — or left in the composer when it is not — and the kicker is a
- * breadcrumb back to the points. `q` is dropped from the URL once sent.
+ * Opened from a point (`?q=…&from=points&point=<id>`): the question is sent as soon as a
+ * credential is known to be available — or left in the composer when it is not — and the
+ * kicker is a breadcrumb back to the points. The point itself travels with the run and is
+ * stored as the conversation's own (`metadata.point`), so the card above the transcript
+ * survives a reload; `q` and `point` leave the URL once the first answer has landed and
+ * the file carries them (LIA-109).
  */
 
 import type { UIMessage } from "@tanstack/ai";
@@ -23,21 +26,30 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 import { ArrowLeftIcon, Trash2Icon } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "#/components/ui/button";
 import { AskStatusProvider, useAppChat } from "#/features/ask";
-import { askStatus, deleteConversation, getConversation } from "#/lib/api";
+import { PointCard } from "#/features/ask/components/point-card";
+import {
+  askStatus,
+  deleteConversation,
+  getConversation,
+  getPoint,
+} from "#/lib/api";
+import { isPointId } from "#/lib/points";
 
 type From = "points";
 
 export const Route = createFileRoute("/ask/$id")({
   validateSearch: (
     s: Record<string, unknown>
-  ): { q?: string; from?: From } => ({
+  ): { q?: string; from?: From; point?: string } => ({
     ...(typeof s.q === "string" && s.q.trim() ? { q: s.q } : {}),
     ...(s.from === "points" ? { from: "points" as const } : {}),
+    ...(isPointId(s.point) ? { point: s.point } : {}),
   }),
-  loader: async ({ params }) => {
+  loaderDeps: ({ search }) => ({ point: search.point }),
+  loader: async ({ params, deps }) => {
     // The server refuses anything that is not a thread id (path-like, too long); that is a 404 here, not a crash.
     const [conversation, status] = await Promise.all([
       getConversation({ data: params.id }).catch(() => undefined),
@@ -46,7 +58,10 @@ export const Route = createFileRoute("/ask/$id")({
     if (conversation === undefined) {
       throw notFound();
     }
-    return { conversation, status };
+    // The stored point wins: it is what this thread was opened on, whatever the URL says.
+    const pointId = conversation?.point ?? deps.point;
+    const point = pointId ? await getPoint({ data: pointId }) : null;
+    return { conversation, point, status };
   },
   component: AskConversationPage,
   notFoundComponent: () => (
@@ -101,14 +116,25 @@ const firstQuestion = (messages: UIMessage[]): string =>
 
 function AskConversationPage() {
   const { id } = Route.useParams();
-  const { q, from } = Route.useSearch();
-  const { conversation, status } = Route.useLoaderData();
+  const { q, from, point: urlPoint } = Route.useSearch();
+  const { conversation, point, status } = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
 
+  // The point rides with every run of a thread opened on one; the server keeps the first
+  // it is told and ignores the rest, so a later send cannot re-point the conversation.
+  // Hook-level rather than per-send, so the question the composer holds when no credential
+  // was available (`draft`) carries it too.
+  const pointId = conversation?.point ?? urlPoint;
+  const body = useMemo(
+    () => (pointId ? { point: pointId } : undefined),
+    [pointId]
+  );
+
   // `messages` crossed the wire as JSON (see `ConversationWire`); the bytes are UIMessages.
   const chat = useAppChat({
+    body,
     threadId: id,
     initialMessages: (conversation?.messages ?? []) as unknown as UIMessage[],
   });
@@ -116,15 +142,31 @@ function AskConversationPage() {
   // When an answer finishes, re-run the loader: the footer learns the session id and the
   // list / Inbox counts are fresh on the way back. The chat itself is keyed on the thread
   // id, so new loader data never resets it.
+  //
+  // Then the URL sheds what it was seeded with. Only after the invalidate: by then the
+  // reloaded conversation carries `metadata.point`, so dropping `point` from the search
+  // cannot pull the card out from under the page. A run that never started — no credential
+  // — never reaches here, and the question and its point stay in the URL.
   const wasLoading = useRef<boolean>(false);
   useEffect(() => {
     const wasLoadingBefore = wasLoading.current;
     wasLoading.current = chat.isLoading;
     // biome-ignore lint/suspicious/noUnnecessaryConditions: Biome types the ref from its `false` initialiser and misses the assignment above
-    if (wasLoadingBefore && !chat.isLoading) {
-      void router.invalidate();
+    if (!(wasLoadingBefore && !chat.isLoading)) {
+      return;
     }
-  }, [chat.isLoading, router]);
+    void (async () => {
+      await router.invalidate();
+      if (q || urlPoint) {
+        await navigate({
+          params: { id },
+          replace: true,
+          search: (prev) => ({ ...prev, point: undefined, q: undefined }),
+          to: "/ask/$id",
+        });
+      }
+    })();
+  }, [chat.isLoading, router, navigate, id, q, urlPoint]);
 
   // A question that arrived with the URL (a point's Ask) goes out by itself, once. Not on the
   // first effect pass: after a client-side navigation React commits this tree, something below
@@ -230,6 +272,7 @@ function AskConversationPage() {
           <span className="hidden sm:inline">Delete</span>
         </Button>
       </header>
+      <PointCard page={point} />
       <AskStatusProvider
         draft={q && !status.available ? q : undefined}
         finishReason={conversation?.finishReason}

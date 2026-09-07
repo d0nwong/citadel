@@ -365,6 +365,87 @@ describe("AC1 — a run writes the user turn on start and the full transcript be
   });
 });
 
+describe("LIA-109 AC1/AC6/AC7 — the point a conversation was opened on", () => {
+  test("written on the first run that names it, and never overwritten", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    const adapter = new FakeClaude({ sessionId: "sess-P" });
+    await collect(
+      askStream(
+        {
+          messages: [user("what is this point")],
+          point: "decide/lia-71-history-rollup",
+          threadId: "tp1",
+        },
+        { adapter, middleware: [], status: available, store }
+      )
+    );
+    expect((await readJson(dir, "tp1")).metadata.point).toBe(
+      "decide/lia-71-history-rollup"
+    );
+    expect((await getConversation("tp1", store))?.point).toBe(
+      "decide/lia-71-history-rollup"
+    );
+
+    // A later run claiming a different point does not re-point the conversation.
+    await collect(
+      askStream(
+        {
+          messages: [user("and now")],
+          point: "housekeeping/something-else",
+          threadId: "tp1",
+        },
+        { adapter, middleware: [], status: available, store }
+      )
+    );
+    expect((await readJson(dir, "tp1")).metadata.point).toBe(
+      "decide/lia-71-history-rollup"
+    );
+  });
+
+  test("no point given: none stored, and none on the wire (AC6)", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    await collect(
+      askStream(
+        { messages: [user("plain question")], threadId: "tp2" },
+        {
+          adapter: new FakeClaude({ sessionId: "sess-Q" }),
+          middleware: [],
+          status: available,
+          store,
+        }
+      )
+    );
+    expect((await readJson(dir, "tp2")).metadata.point).toBeUndefined();
+    expect((await getConversation("tp2", store))?.point).toBeUndefined();
+  });
+
+  test("a value that is not a point id is neither stored nor returned", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    await collect(
+      askStream(
+        {
+          messages: [user("hi")],
+          point: "../../etc/passwd",
+          threadId: "tp3",
+        },
+        {
+          adapter: new FakeClaude({ sessionId: "sess-R" }),
+          middleware: [],
+          status: available,
+          store,
+        }
+      )
+    );
+    expect((await readJson(dir, "tp3")).metadata.point).toBeUndefined();
+    // Nor one that reached the file some other way — a hand edit, an older shape.
+    await store.persistence.stores.metadata.set("tp3", "point", "not a point");
+    expect((await getConversation("tp3", store))?.point).toBeUndefined();
+  });
+});
+
 describe("AC2 — the second run on a thread resumes the stored session", () => {
   test("full transcript resent: sessionId comes from the store, not the client", async () => {
     const dir = await scratch();
