@@ -20,15 +20,12 @@ that touches the database or a CLI goes through `createServerFn`, so the node-on
 modules never enter the client bundle.
 
 - `features/jobs/server/job-store.ts` — the ledger's queries, plus the write paths
-  the runner uses (`patchJob`, guarded `settleJob`).
+  the runner uses (`patchJob`, guarded `settleJob`). A job queued from a Linear ticket
+  claims it here: the row's unique `ticket_id` insert *is* the claim, taken before any
+  Linear write.
 - `features/jobs/server/job-logs.ts` — the other half of a job's state, on disk:
   `appendLogs` / `readLogs` over `~/.foundry/logs/<id>.jsonl` (see below).
 - `features/jobs/server/job-runner.ts` — the orchestrator (see below).
-- `features/scanner/server/` — the ready-ticket scanner (LIA-52), a second door into
-  the same store/runner path: `scanner.ts` (the tick + the interval), `linear-scan.ts`
-  (the Linear GraphQL port), `repo-map.ts` (`~/.foundry/scanner.json`), `readiness.ts`
-  (the pure blocked-by / Pending guard). The invariant its tests pin down: the job
-  row's unique `ticket_id` insert is the claim, taken *before* any Linear write.
 - `features/repos/server/repo-scan.ts` — scans `~/git` with `node:fs`, reads each repo's
   branch, dirty state and last-commit time via `git`, and keeps the *imported* set in
   the `repos` table. Branch and dirty state are deliberately not stored: they are facts
@@ -115,9 +112,9 @@ Ignite ─► insert row (queued, with a per-job callback token)
 - The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the container's
   server route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
   (`server/job-events.ts`) and hands the pipeline back to the host on commit.
-- The **trigger API** (`src/routes/api/jobs.ts`, `jobs.$id.ts`) is the third door into
-  the pipeline, after the dialog and the scanner, and ends in the same two calls —
-  see "Trigger a job over HTTP" below.
+- The **trigger API** (`src/routes/api/jobs.ts`, `jobs.$id.ts`) is the second door into
+  the pipeline, after the dialog, and ends in the same two calls — see "Trigger a job
+  over HTTP" below.
 - **Logs are files, not rows** (LIA-18). Each job appends `{t, stream, text}` records
   to `~/.foundry/logs/<id>.jsonl`, one JSON object per line, the way Claude Code keeps
   a session under `~/.claude/projects/`. They are append-only, per-job, never joined
@@ -160,9 +157,7 @@ Ignite ─► insert row (queued, with a per-job callback token)
   restart re-adopts jobs whose containers are still running.
 - Knobs: `FOUNDRY_MAX_JOBS` (default 3), `FOUNDRY_TIMEOUT` (seconds, default 1800),
   `FOUNDRY_CALLBACK_BASE`, `FOUNDRY_BB_REVIEWERS=1` to add Bitbucket default
-  reviewers. Old workspaces: `foundry jobs prune [--days 7]`. The ticket scanner:
-  `FOUNDRY_SCANNER=1` to enable, `FOUNDRY_SCANNER_INTERVAL` (seconds, default 300) —
-  see the root README's "Ticket scanner" section for the label contract.
+  reviewers. Old workspaces: `foundry jobs prune [--days 7]`.
 
 ## Trigger a job over HTTP
 
@@ -209,11 +204,11 @@ Bitbucket origins.
 
 **From a ticket alone.** `instructions` may be omitted when `ticketId` is given (LIA-92) —
 `repo` stays required, the caller says where the work lands. The host fetches the Linear
-issue with its own `LINEAR_API_KEY` and composes the brief the scanner composes: `<KEY>:
+issue with its own `LINEAR_API_KEY` and composes the brief from its body: `<KEY>:
 <title>`, the issue URL, a blank line, then the description with every section. Either way
 the ticket is then **claimed in Linear** — assigned to the key's user and moved to the
-team's started state (the one named "In Progress" when there are several) — in the
-scanner's order: the row insert first (the unique `ticket_id` index is the claim, hence the
+team's started state (the one named "In Progress" when there are several) — in claim
+order: the row insert first (the unique `ticket_id` index is the claim, hence the
 `409`), the Linear write second, ignition last. The claim is awaited before the `202` and
 recorded as a `sys` line in the job's log; if the write fails the job stays queued, the
 failure is an `err` line, and the ticket's state is yours to fix by hand — never a status
@@ -373,12 +368,6 @@ src/
       server/foundry-env.ts   node-only: ~/.foundry/env + ~/.config/liamai/env, read fresh per use
       server/forge-pr.ts      node-only: bb / gh pr create, by origin host
       types.ts
-    scanner/
-      server/scanner.ts       node-only: the ready-ticket tick + env-gated interval
-      server/linear-scan.ts   node-only: agent-ready candidates + repair check; claims via linear-link
-      server/repo-map.ts      node-only: ~/.foundry/scanner.json, project -> repo
-      server/readiness.ts     pure: blocked-by + Pending-section guard
-      server/*.test.ts        bun test — claim race, guard cases, one full tick
     blueprints/
       components/             blueprint-inventory, blueprint-editor-dialog
       server/blueprint-store.ts  node-only: CRUD + hand-rolled step validation
@@ -389,7 +378,7 @@ src/
       queries.ts  api.ts  types.ts
     repos/
       components/             repo-inventory, add-repos-dialog
-      server/repo-scan.ts     node-only: fs + git, never a component import
+      server/repo-scan.ts     node-only: fs + git, never a component import; also defaultBranchOf
       queries.ts  api.ts  types.ts
   shared/
     ui/                       shadcn primitives (generated — don't hand-edit)

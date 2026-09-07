@@ -140,10 +140,10 @@ export async function lastBaseBranchByRepo(): Promise<Map<string, string>> {
 }
 
 /**
- * Shared insert behind `createJob`, `claimTicketJob` and `createJobIdempotent`.
- * With a `ticketId` the insert doubles as the claim on the ticket — for the
- * scanner and the trigger API alike: `jobs_ticket_id_unique` is the arbiter,
- * and losing the race comes back as null rather than an error.
+ * Shared insert behind `createJob` and `createJobIdempotent`. With a
+ * `ticketId` the insert doubles as the trigger API's claim on the ticket:
+ * `jobs_ticket_id_unique` is the arbiter, and losing the race comes back as
+ * null rather than an error.
  * An idempotency key (LIA-91) rides the same mechanism on
  * `jobs_idempotency_key_unique`: two concurrent first requests with one key
  * insert one row, and the loser is told null so it can re-read the winner.
@@ -208,24 +208,16 @@ export async function createJob(input: NewJobInput): Promise<Job> {
 }
 
 /**
- * The trigger API's insert (LIA-91): a plain create, or the same ticket claim
- * the scanner takes when the caller named one (LIA-92 mirrors it to Linear
- * afterwards). Null means a unique index refused the row — the key's or the
- * ticket's — and the API decides which by re-reading.
+ * The trigger API's insert (LIA-91): a plain create, or a claim on the ticket
+ * when the caller named one (LIA-92 mirrors it to Linear afterwards). Null
+ * means a unique index refused the row — the key's or the ticket's — and the
+ * API decides which by re-reading.
  */
 export async function createJobIdempotent(input: NewJobInput, ticketId?: string): Promise<Job | null> {
   return insertJob(input, ticketId)
 }
 
-/**
- * The ticket scanner's atomic claim (LIA-52): inserting the row under the
- * unique index IS the claim on the ticket, taken before any Linear write.
- * `null` means another tick — or an earlier run — already holds it.
- */
-export async function claimTicketJob(input: NewJobInput, ticketId: string): Promise<Job | null> {
-  return insertJob(input, ticketId)
-}
-
+/** The job holding a ticket's claim, if any — how the API answers a 409. */
 export async function getJobByTicketId(ticketId: string): Promise<JobRow | undefined> {
   const [row] = await db.select().from(jobs).where(eq(jobs.ticketId, ticketId))
   return row

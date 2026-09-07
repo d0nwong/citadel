@@ -26,7 +26,7 @@ export interface Job {
   blueprint?: BlueprintSnapshot
   /** Set when this job addresses review comments on the source job's PR. */
   sourceJobId?: string
-  /** Linear issue identifier (e.g. LIA-52) when the ticket scanner queued this job. */
+  /** Linear issue identifier (e.g. LIA-52) when the trigger API queued this job from a ticket. */
   ticketId?: string
   /** Where the host POSTs a signed `job.settled` event — set by the trigger API only. */
   callbackUrl?: string

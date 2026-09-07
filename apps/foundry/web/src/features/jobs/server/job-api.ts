@@ -1,9 +1,9 @@
 /**
- * Node-only. The trigger API — the third door into the job pipeline after the
- * ignite dialog and the ticket scanner, and like them it ends in the same two
- * calls: insert the queued row, fire-and-forget the runner. Anything that can
- * make an HTTP request (CI, a Slack bot, another agent, a shell script) can
- * queue a job here with the instructions in the body.
+ * Node-only. The trigger API — the second door into the job pipeline after the
+ * ignite dialog, and like it it ends in the same two calls: insert the queued
+ * row, fire-and-forget the runner. Anything that can make an HTTP request (CI,
+ * a Slack bot, another agent, a shell script) can queue a job here with the
+ * instructions in the body.
  *
  * Authenticated with one install-wide bearer token (`foundry auth --api`).
  * The dev server listens on the LAN so containers can call back, and this
@@ -16,12 +16,12 @@
  * that retries on timeout, so one intent must never queue two jobs.
  *
  * A `ticketId` alone is enough (LIA-92): the host fetches the Linear issue
- * with its own key, composes the brief the scanner composes, and — once the
- * row exists — claims the ticket in Linear (assignee + In Progress). The
- * order is the scanner's invariant: row insert, then the Linear write, then
- * ignition. A Linear write that fails costs an `err` line, never the job.
- * Foundry only fetches and composes here; it never judges whether the ticket
- * is ready — the caller decided that by sending it.
+ * with its own key, composes the brief from its body, and — once the row
+ * exists — claims the ticket in Linear (assignee + In Progress). The order is
+ * the invariant: row insert (the unique `ticket_id` index IS the claim), then
+ * the Linear write, then ignition. A Linear write that fails costs an `err`
+ * line, never the job. Foundry only fetches and composes here; it never judges
+ * whether the ticket is ready — the caller decided that by sending it.
  */
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
@@ -29,9 +29,8 @@ import path from 'node:path'
 import { z } from 'zod'
 import { DEFAULT_BLUEPRINT_ID, STEP_EFFORTS, STEP_MODELS } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
-import { trackedRepos } from '@/features/repos/server/repo-scan'
+import { defaultBranchOf, trackedRepos } from '@/features/repos/server/repo-scan'
 import { tilde } from '@/features/repos/types'
-import { defaultBranchOf } from '@/features/scanner/server/repo-map'
 import { apiToken, tokenMatches } from './auth'
 import { appendLogs } from './job-logs'
 import * as store from './job-store'
@@ -287,7 +286,7 @@ async function toInput(p: TriggerPayload, idempotency?: NewJobInput['idempotency
     if (!(await getBlueprintRow(p.blueprintId))) throw new BadRequest(`blueprint ${p.blueprintId} does not exist`)
     blueprintId = p.blueprintId
   } else {
-    // Same degrade rule as the scanner: a deleted default means a bare job.
+    // A deleted default degrades to a bare job rather than a 400.
     blueprintId = (await getBlueprintRow(DEFAULT_BLUEPRINT_ID)) ? DEFAULT_BLUEPRINT_ID : undefined
   }
 

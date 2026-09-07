@@ -1,8 +1,8 @@
 /**
  * Node-only. The host's edge onto Linear: fetching a ticket and composing its
  * job brief, claiming it (assignee + In Progress), and filing a pull request
- * back onto it. The trigger API (LIA-92) and the ticket scanner share the
- * first two; only the runner's Bitbucket path uses the third.
+ * back onto it. The trigger API (LIA-92) uses the first two; only the
+ * runner's Bitbucket path uses the third.
  *
  * Runs on the HOST for the same reason `bb` does: LINEAR_API_KEY never enters
  * a forge. Containers reach Linear through the MCP gateway and nowhere else.
@@ -150,9 +150,9 @@ export async function fetchIssue(apiKey: string, identifier: string): Promise<Li
 }
 
 /**
- * The ticket IS the job brief (scanner BR-9): every section, behind the key,
- * title and URL. `branchSlug` and the PR↔ticket linker both key off the
- * leading identifier for free.
+ * The ticket IS the job brief: every section, behind the key, title and URL.
+ * `branchSlug` and the PR↔ticket linker both key off the leading identifier
+ * for free.
  */
 export function ticketBrief(issue: Pick<LinearIssue, 'identifier' | 'title' | 'url' | 'description'>): string {
   return `${issue.identifier}: ${issue.title}\n${issue.url}\n\n${issue.description}`
@@ -191,8 +191,8 @@ export async function claimIssue(apiKey: string, issueId: string, assigneeId: st
 
 /**
  * The whole claim for one ticket: assign it to the key's user and move it to
- * the team's started state. Callers that claim many (the scanner) memoise the
- * two lookups per tick and call `claimIssue` themselves.
+ * the team's started state. A caller claiming many at once would memoise the
+ * two lookups and call `claimIssue` itself.
  */
 export async function claimTicket(apiKey: string, issue: Pick<LinearIssue, 'id' | 'teamId'>): Promise<void> {
   const [assigneeId, stateId] = await Promise.all([viewerId(apiKey), startedStateId(apiKey, issue.teamId)])

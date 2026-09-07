@@ -3,8 +3,8 @@
 #
 # `foundry setup` starts one step too late: it *checks* for docker, bun and gh
 # and dies when they are missing, and it never writes the config files that
-# nothing else writes either (web/.env, ~/.foundry/scanner.json, the PATH
-# symlink). This is the step before it — install the host tooling, settle the
+# nothing else writes either (web/.env, the PATH symlink). This is the step
+# before it — install the host tooling, settle the
 # identity and the config, then hand over to `foundry setup` for the parts it
 # already does well (credentials, image, deps, infra, schema).
 #
@@ -15,7 +15,6 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-STATE="${FOUNDRY_HOME:-$HOME/.foundry}"
 BINDIR="${FOUNDRY_BINDIR:-$HOME/.local/bin}"
 
 c_dim=$'\033[2m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_yel=$'\033[33m'; c_bld=$'\033[1m'; c_0=$'\033[0m'
@@ -182,23 +181,6 @@ cmd_envfiles() {
   fi
 }
 
-# The scanner's project -> repo map. Nothing creates it, and an absent file is
-# indistinguishable from an empty one at runtime: every ticket is skipped as
-# unmapped, quietly. A commented skeleton at least shows up in a directory listing.
-cmd_scanner() {
-  info "scanner map"
-  local f="$STATE/scanner.json"
-  if [ -f "$f" ]; then ok "$f exists"; return 0; fi
-  if [ "$CHECK" = 1 ]; then warn "$f missing — the ticket scanner would skip every ticket as unmapped"; return 0; fi
-  mkdir -p "$STATE"
-  cat > "$f" <<JSON
-{
-  "Foundry": { "repoPath": "$ROOT", "baseBranch": "main" }
-}
-JSON
-  ok "wrote $f ${c_dim}(keyed by Linear *project* name — add yours)${c_0}"
-}
-
 # Everything above is the part `foundry setup` does not do; this is the handover.
 # The API token is minted here because setup skips it and the trigger endpoint
 # answers 503 without one.
@@ -210,7 +192,7 @@ cmd_foundry() {
   "$ROOT/bin/foundry" auth --api
 }
 
-cmd_check() { CHECK=1; cmd_prereqs; cmd_identity; cmd_link; cmd_envfiles; cmd_scanner; summary; }
+cmd_check() { CHECK=1; cmd_prereqs; cmd_identity; cmd_link; cmd_envfiles; summary; }
 
 summary() {
   say ""
@@ -228,20 +210,18 @@ cmd_all() {
   cmd_identity
   cmd_link
   cmd_envfiles
-  cmd_scanner
   [ "$FAIL" = 0 ] || die "fix the prerequisites above, then rerun"
   cmd_foundry "$@"
-  cmd_scanner_reminder
+  cmd_left_to_you
   summary
 }
 
-cmd_scanner_reminder() {
+cmd_left_to_you() {
   say ""
   info "left to you"
   say "  ${c_dim}gh auth login${c_0}                       github PRs, and --github forges"
   say "  ${c_dim}./scripts/setup-bb.sh${c_0}               bitbucket PRs — installs bb and verifies the token"
   say "  ${c_dim}clone your repos under ~/git${c_0}        the Repos page only scans there"
-  say "  ${c_dim}edit $STATE/scanner.json${c_0}   Linear project -> repo, for the scanner"
 }
 
 usage() {
@@ -261,7 +241,6 @@ bootstrap — take a brand-new Mac to a working foundry
     link       symlink bin/foundry onto PATH
     envfiles   infra/.env and web/.env from their .env.example; the shared
                ~/.config/liamai/env (LIAMAI_ENV), reported by key name, created empty
-    scanner    a starting ~/.foundry/scanner.json
     foundry    hand over to `foundry setup`, then mint FOUNDRY_API_TOKEN
 
 Credentials themselves stay with `foundry auth` — this script never touches
@@ -291,7 +270,6 @@ case "${1:-}" in
   identity) shift; cmd_identity; summary ;;
   link)     shift; cmd_link;     summary ;;
   envfiles) shift; cmd_envfiles; summary ;;
-  scanner)  shift; cmd_scanner;  summary ;;
   foundry)  shift; cmd_foundry "${PASS[@]+"${PASS[@]}"}" ;;
   check)    shift; cmd_check ;;
   *) die "unknown command '$1' (bootstrap.sh --help)" ;;

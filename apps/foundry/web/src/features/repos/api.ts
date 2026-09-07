@@ -3,7 +3,7 @@ import type { DiscoveredRepo, Repo } from './types'
 
 /**
  * Real data — repos come from scanning the user's filesystem, and the chosen
- * set persists to ~/.foundry/repos.json. The node-only scanner is imported
+ * set persists to ~/.foundry/repos.json. The node-only scan module is imported
  * inside each handler so it never reaches the client bundle.
  */
 
