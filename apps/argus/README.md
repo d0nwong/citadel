@@ -191,7 +191,7 @@ ground truth, join, and surface only the judgement calls.
 | `scripts/bootstrap.sh` | brand-new Mac → running sweep, in phases; `--check` reports without touching anything ("Setting it up") |
 | `scripts/lib/shared-env.ts` | reader for `~/.config/liamai/env`, the credentials file shared with Foundry and Pensieve (`SLACK_TOKEN`, `LINEAR_API_KEY`, `FOUNDRY_API_TOKEN`); scripts read it themselves, nothing is exported shell-wide |
 | `.env.example` | argus needs no `.env`; the file only says where `SLACK_TOKEN` lives and that a local `.env` overrides it |
-| `skills/log-change/scripts/pr-facts.ts` | resolve a landing; `--since` finds unjournaled ones |
+| `skills/log-change/scripts/pr-facts.ts` | resolve a landing in either repo and name the features it touches (FE via the index's reach sets, BE via `be_files` + changed route lines → endpoint owners); `--since` finds unjournaled ones |
 | `skills/sweep/scripts/points.ts` | `reports/<day>.md` → `reports/points.json`, carrying `firstSeen` forward, syncing the report's ages and applying `decisions/` (decided points out of Needs-you, count under Housekeeping, unreadable files under Audit); `--dry-run` prints without writing |
 
 ## Setting it up

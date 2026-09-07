@@ -44,8 +44,13 @@ bun skills/log-change/scripts/pr-facts.ts --since 2026-08-27   # what landed, an
 
 It resolves against `origin/<ref>` (fetching first), and prints the merge sha, the merged
 date, the ticket keys stated in the branch and commit messages, the features the changed
-files map to, the commit list, and a ready-made frontmatter block. `--since` is the
-end-of-day sweep: anything marked `NOT JOURNALED` is a landing with no entry.
+files map to, the commit list, and a ready-made frontmatter block. Attribution works in
+both repos: FE files through the accio index; BE files through the manifest's curated
+`be_files`, plus — for a landing that adds, removes or moves a route line in
+`src/routers/v1/` — the endpoint itself and the features the index says call it (an
+`endpoints touched` block; "not in the spec" there means a new route or a spec not yet
+re-synced). `--since` is the end-of-day sweep: anything marked `NOT JOURNALED` is a
+landing with no entry, and gets a `features:` line naming where it would route.
 
 **2. Confirm the ticket.** The keys `pr-facts` reports are the ones someone *typed* — most
 commits state none, and a branch name like `foundry/does-this-match-1cc8974d` states

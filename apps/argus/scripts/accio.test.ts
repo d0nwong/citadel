@@ -393,6 +393,46 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     await Bun.$`rm -rf ${dir}`.quiet();
   });
 
+  // a `be#N` entry's merge sha lives in the BE repo and is measured against
+  // `last_verified_be` — before LIA-53 it was asked of the FE repo, came back "unknown",
+  // and the same-day date rule nagged about every BE landing that shared a refresh day
+  test.skipIf(!existsSync(`${process.env.HOME}/git/alden-connect-portal-be`) || !existsSync(`${process.env.HOME}/git/alden-portal-fe`))(
+    "audit routes each merge sha to the repo its pr kind names", async () => {
+    const { auditJournal } = await import("./commands/audit.ts");
+    const index = await Bun.file(`${ROOT}/.state/accio-index.json`).json();
+    const dir = `${ROOT}/.state/test-audit-sha-be`;
+    const entry = (pr: string, merge: string) => [
+      "---", "date: 2026-09-01", `pr: ${pr}`, `merge: ${merge}`, "ticket: null",
+      "features: [tasks]", "scope: architecture", "status: implemented",
+      "summary: s", "---",
+    ].join("\n");
+    const be = `${process.env.HOME}/git/alden-connect-portal-be`;
+    const fe = `${process.env.HOME}/git/alden-portal-fe`;
+    const product = await Bun.file(`${ROOT}/alden/alden-portal/features/tasks/docs/product.md`).text();
+    const stamp = (key: string) => product.match(new RegExp(`^${key}:\\s*(?:\\S+?@)?([0-9a-f]{7,40})\\s*$`, "m"))?.[1];
+    const verifiedBe = stamp("last_verified_be"), verifiedFe = stamp("last_verified");
+    expect(verifiedBe).toBeTruthy();
+    expect(verifiedFe).toBeTruthy();
+    // a BE commit the docs could not have seen: on origin/dev but not reachable from the stamp
+    const after = (await Bun.$`git -C ${be} rev-list -1 ${verifiedBe}..origin/dev`.quiet().nothrow())
+      .stdout.toString().trim();
+
+    await Bun.write(`${dir}/tasks/journal/2026-09-01-be-before.md`, entry("be#700", verifiedBe!));
+    if (after) await Bun.write(`${dir}/tasks/journal/2026-09-01-be-after.md`, entry("be#701", after));
+    // one entry, both repos: `merge:` does not say which sha is which, so each is routed
+    // to the repo that has the commit
+    await Bun.write(`${dir}/tasks/journal/2026-09-01-mixed-before.md`, entry("[fe#700, be#700]", `[${verifiedFe}, ${verifiedBe}]`));
+    // a BE sha the FE repo cannot know, under an FE key — undecidable by sha, so the date
+    // rule stands (2026-09-01 is before every stamp date here, hence no nag)
+    await Bun.write(`${dir}/tasks/journal/2026-09-01-wrong-repo.md`, entry("fe#700", verifiedBe!));
+    void fe;
+    const problems = await auditJournal(index, dir);
+    expect(problems.some(x => x.includes("be-before") && x.includes("refresh missed"))).toBe(true);
+    if (after) expect(problems.some(x => x.includes("be-after"))).toBe(false);
+    expect(problems.some(x => x.includes("mixed-before") && x.includes("refresh missed"))).toBe(true);
+    await Bun.$`rm -rf ${dir}`.quiet();
+  });
+
   test("audit catches prose drift: endpoints not in spec, or not called by the feature", async () => {
     const { auditDocs } = await import("./commands/audit.ts");
     const index = await Bun.file(`${ROOT}/.state/accio-index.json`).json();
