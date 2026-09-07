@@ -15,7 +15,9 @@ Tools: the Linear MCP (`.mcp.json`, project scope). Tool names are `mcp__linear_
 `list_projects`, `list_issue_labels`, `list_issue_statuses`, `list_users`, `save_comment`.
 If they aren't loaded, fetch schemas with `ToolSearch("+linear")`. If the server is
 unauthenticated, tell the user to run `/mcp` and pick `linear` → Authenticate; don't try to
-work around it.
+work around it. Inside Pensieve's Argus panel the reads are there but every Linear write
+is denied by name and a tool named `propose_ticket` stands in for the create — the
+paragraph after step 6 is that path; do not ask to be allowed `save_issue` there.
 
 ## Procedure
 
@@ -94,18 +96,34 @@ either, the project is the tag.
 **5. Draft, then show it.** Write the full issue per `FORMAT.md` to
 `<scratchpad>/linear-<slug>.md` and print the title + body in the reply. Filing is
 outward-facing: get an explicit go-ahead before creating, unless the user already said
-"file it" / "just create it".
+"file it" / "just create it". Inside Argus the draft is not written to a file and the
+go-ahead is not a reply: the card is the draft shown, and File on it is the go-ahead.
 
-**6. Create.** `save_issue` with `title`, `team`, `description` (the markdown body),
-`assignee: "me"` and `project` — no `labels` (step 4), and no `id`, which is what makes it
-a create. Report back the issue key and URL, nothing else.
+**6. Create.** In a terminal, `save_issue` with `title`, `team`, `description` (the
+markdown body), `assignee: "me"` and `project` — no `labels` (step 4), and no `id`, which
+is what makes it a create. Report back the issue key and URL, nothing else. Inside Argus
+the create is one `propose_ticket` call, below.
 
-Splitting into sub-issues is a three-pass create, because relations need keys that don't
-exist yet: (1) create the parent, (2) create each sub-issue in execution order with
-`parentId` set to the parent's key, (3) one `save_issue` per dependent sub-issue with
-`blockedBy: ["LIA-yy"]`, then `patch` the parent's Execution order list to swap the
-drafted placeholders for the real keys. Report the parent key followed by the sub-issue
-keys in execution order, so the reply reads as the running order.
+Splitting into sub-issues is a three-pass create and terminal-only, because relations
+need keys that don't exist yet: (1) create the parent, (2) create each sub-issue in
+execution order with `parentId` set to the parent's key, (3) one `save_issue` per
+dependent sub-issue with `blockedBy: ["LIA-yy"]`, then `patch` the parent's Execution
+order list to swap the drafted placeholders for the real keys. Report the parent key
+followed by the sub-issue keys in execution order, so the reply reads as the running
+order.
+
+**Inside Pensieve's Argus panel.** The session there has no Write tool and every Linear
+write is denied by name; `propose_ticket` is available instead. Steps 1 to 4 run as
+written on the panel's tools (accio, pinned `git show`, the Linear reads), and the Title
+rule, the Alden Portal default and no-labels (step 4) apply to the draft unchanged. Then,
+in place of steps 5 and 6, one `propose_ticket` call with `{ title, description, project }`
+— `title` per the Title rule, `description` the five-section body, `project` the project
+name step 4 resolved (`defaults.json` first, then `list_projects`). The tool checks the
+draft and answers a proposal the chat renders as a card; File on the card creates the
+issue, the session never does. One plain issue per call: a ticket that wants sub-issues is
+proposed as its parent alone, and the split is named in the reply for a terminal to do.
+What to say after the call, and what to do when it answers `ok: false`, is the `ask`
+skill's Filing section.
 
 **7. Close the loop.** If the change is an alden-portal product/behavior decision, offer
 `/log-change` with the new key as `ticket` — the journal entry and the ticket are separate
