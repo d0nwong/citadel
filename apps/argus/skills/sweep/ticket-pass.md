@@ -59,6 +59,14 @@ ticketed):
 
 - **Where:** the **Alden Portal** project — the project is the tag. Assignee me, the
   Slack permalink as the body's anchor, title from the item.
+- **One ticket per bullet, one bullet per ask.** The digest splits a multi-ask thread
+  into one ✋ bullet per deliverable (slack-digest step 7); if a bullet still bundles
+  several independent asks, file one ticket per ask (linear-ticket's granularity rule)
+  and write every key into its marker (` → LIA-a, LIA-b`). Never an omnibus: 6d
+  nominates and Foundry executes per ticket, so one ask still waiting on a name would
+  hold its siblings off the cockpit's Send button. An ask already landed gets no ticket —
+  cite the PR in the siblings' Out of Scope; an ask that cannot yet be made concrete
+  gets its own ticket carrying the Pending, so the block stays with it alone.
 - **No labels at filing** — linear-ticket step 4 owns the rule. A filed ticket is a
   queue entry, never a dispatch; readiness is decided per ticket in the cockpit (6d
   nominates, the user sends from Pensieve).

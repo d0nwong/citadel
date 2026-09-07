@@ -190,6 +190,15 @@ headline line, after the headline; the detail line carries none of them. A 🟠 
 names the ask, not the topic ("Billing Entity Name should render `legalName`", not
 "Entity Billing page"). A ✋ headline is the deliverable, with its deadline if stated.
 
+**One ✋ bullet per deliverable.** A thread in which the user accepted several independent
+asks at once (a numbered list of fixes) yields one bullet per ask, in the thread's order,
+each anchored to the same permalink — `ticket-pass` files one ticket per bullet
+(linear-ticket's granularity rule, both directions) and the ` → LIA-xx` marker is per
+line, so a bundled headline would turn five deliverables into one ticket that the one
+unclear ask keeps off the cockpit's Send button. An ask the thread or a journal entry
+says already landed is not an action item: name the PR in a sibling's detail line
+instead of giving it a bullet.
+
 **A section with no items is omitted from the file**, not printed empty; add its
 heading back, in skeleton order, when its first item arrives.
 

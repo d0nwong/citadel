@@ -206,7 +206,10 @@ ticket touches.
   without); the sweep never ticks on its own judgement. Full shape and the reasons in
   FORMAT.md, "Acceptance Criteria".
 - **One ticket, one change.** A thing that spans three surfaces is still one ticket with
-  three in-scope bullets — not three tickets.
+  three in-scope bullets — not three tickets. The converse holds too: several independent
+  changes asked in one message or thread are several tickets, never one omnibus — each is
+  nominated, sent and landed on its own, and a bundled ask that stays Pending would hold
+  the rest.
 - **Sub-issues always carry an execution order and explicit blockers.** Sub-issues are
   the narrow exception to the rule above: separate deliverables that land separately (a
   BE contract, then the FE that consumes it), not three surfaces of one change. When a
