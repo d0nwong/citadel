@@ -3,7 +3,9 @@
  * ignite dialog, and like it it ends in the same two calls: insert the queued
  * row, fire-and-forget the runner. Anything that can make an HTTP request (CI,
  * a Slack bot, another agent, a shell script) can queue a job here with the
- * instructions in the body.
+ * instructions in the body. `GET /api/repos` (LIA-119) is the read half of
+ * its `repo` field: the tracked set, as the names and paths `resolveRepo`
+ * accepts, so a caller can offer a picker instead of guessing.
  *
  * Authenticated with one install-wide bearer token (`foundry auth --api`).
  * The dev server listens on the LAN so containers can call back, and this
@@ -231,6 +233,16 @@ export const ConflictSchema = ErrorSchema.extend({
   job: z.object({ id: z.uuid(), status: JobStatusSchema }).optional().describe('The job holding the ticket, when it still exists.'),
 })
 
+/**
+ * One row of `GET /api/repos` — a tracked repo as `POST /api/jobs` accepts
+ * it. Deliberately nothing live (branch, dirty) and nothing of the host's
+ * (row id, notes): the path is the real one, not `tilde()`'s display form.
+ */
+export const TrackedRepoSchema = z.object({
+  name: z.string().describe("The repo's basename — accepted as `repo` by `POST /api/jobs` when no other tracked repo shares it."),
+  path: z.string().describe('The absolute path of the checkout on the host — always accepted as `repo`.'),
+})
+
 /*
  * The schemas must describe exactly the domain types the store returns. This
  * is the strict identity check (optional and extra keys count), so a field
@@ -444,4 +456,20 @@ export async function handleGetJob(id: string, request: Request, deps: ApiDeps =
   if (withLogs) return json(200, detail)
   const { logs: _logs, ...job } = detail
   return json(200, job)
+}
+
+/**
+ * `GET /api/repos` — the tracked repos, ordered by name (path breaks a tie,
+ * so two checkouts with one basename come back in a stable order). The same
+ * rows `resolveRepo` reads, so every `name` here is one it accepts; an empty
+ * table is `[]`, not an error.
+ */
+export async function handleListRepos(request: Request, deps: ApiDeps = realDeps()): Promise<Response> {
+  const denied = await authorize(request, deps)
+  if (denied) return denied
+
+  const rows = (await trackedRepos())
+    .map(({ name, path: repoPath }) => ({ name, path: repoPath }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path))
+  return json(200, rows)
 }

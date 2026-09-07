@@ -7,7 +7,7 @@ import { expect, test } from 'bun:test'
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Validator } from '@seriousme/openapi-schema-validator'
-import { IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX, TriggerPayloadSchema } from './job-api'
+import { IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX, TrackedRepoSchema, TriggerPayloadSchema } from './job-api'
 import { EventPayloadSchema } from './job-events'
 import { EVENT_HEADER, SETTLED_EVENT, SIGNATURE_HEADER } from './job-webhook'
 import { openapiDocument } from './openapi'
@@ -112,6 +112,29 @@ test('AC3 — POST /api/jobs documents the body, every status, and the job.settl
     required: ['event', 'job'],
     properties: { event: { const: SETTLED_EVENT }, job: { properties: { id: expect.anything(), status: expect.anything() } } },
   })
+})
+
+test('LIA-119 AC5/AC6 — GET /api/repos documents the row schema and exactly its three statuses', async () => {
+  const doc = await openapiDocument()
+  const list = paths(doc)['/api/repos']!.get as {
+    security: Array<Record<string, unknown>>
+    responses: Record<string, { content?: Record<string, { schema: Record<string, unknown> }> }>
+  }
+  expect(list.security).toEqual([{ installToken: [] }])
+  expect(Object.keys(list.responses).sort()).toEqual(['200', '401', '503'])
+  expect(list.responses['200']!.content!['application/json']!.schema).toEqual({
+    type: 'array',
+    items: { $ref: '#/components/schemas/TrackedRepo' },
+  })
+  for (const status of ['401', '503']) {
+    expect(list.responses[status]!.content!['application/json']!.schema.$ref).toBe('#/components/schemas/Error')
+  }
+
+  // The row is `name` and `path` and nothing else — no notes, id, branch or dirty flag.
+  const row = schemas(doc).TrackedRepo as { required: Array<string>; properties: Record<string, unknown> }
+  expect(row.required.sort()).toEqual(['name', 'path'])
+  expect(Object.keys(row.properties).sort()).toEqual(['name', 'path'])
+  expect(Object.keys(TrackedRepoSchema.shape).sort()).toEqual(['name', 'path'])
 })
 
 test('AC4 — what the document marks invalid, the parser rejects with the same reason', async () => {

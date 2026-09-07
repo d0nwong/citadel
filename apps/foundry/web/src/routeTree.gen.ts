@@ -16,6 +16,7 @@ import { Route as ReposRouteImport } from './routes/repos'
 import { Route as ApiJobsRouteImport } from './routes/api/jobs'
 import { Route as ApiOpenapiDotjsonRouteImport } from './routes/api/openapi[.]json'
 import { Route as ApiReferenceRouteImport } from './routes/api/reference'
+import { Route as ApiReposRouteImport } from './routes/api/repos'
 import { Route as ApiJobsIdRouteImport } from './routes/api/jobs.$id'
 import { Route as ApiJobsIdEventsRouteImport } from './routes/api/jobs.$id.events'
 
@@ -54,6 +55,11 @@ const ApiReferenceRoute = ApiReferenceRouteImport.update({
   path: '/api/reference',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiReposRoute = ApiReposRouteImport.update({
+  id: '/api/repos',
+  path: '/api/repos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiJobsIdRoute = ApiJobsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/api/jobs': typeof ApiJobsRouteWithChildren
   '/api/openapi.json': typeof ApiOpenapiDotjsonRoute
   '/api/reference': typeof ApiReferenceRoute
+  '/api/repos': typeof ApiReposRoute
   '/api/jobs/$id': typeof ApiJobsIdRouteWithChildren
   '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/api/jobs': typeof ApiJobsRouteWithChildren
   '/api/openapi.json': typeof ApiOpenapiDotjsonRoute
   '/api/reference': typeof ApiReferenceRoute
+  '/api/repos': typeof ApiReposRoute
   '/api/jobs/$id': typeof ApiJobsIdRouteWithChildren
   '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/api/jobs': typeof ApiJobsRouteWithChildren
   '/api/openapi.json': typeof ApiOpenapiDotjsonRoute
   '/api/reference': typeof ApiReferenceRoute
+  '/api/repos': typeof ApiReposRoute
   '/api/jobs/$id': typeof ApiJobsIdRouteWithChildren
   '/api/jobs/$id/events': typeof ApiJobsIdEventsRoute
 }
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/api/jobs'
     | '/api/openapi.json'
     | '/api/reference'
+    | '/api/repos'
     | '/api/jobs/$id'
     | '/api/jobs/$id/events'
   fileRoutesByTo: FileRoutesByTo
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/api/jobs'
     | '/api/openapi.json'
     | '/api/reference'
+    | '/api/repos'
     | '/api/jobs/$id'
     | '/api/jobs/$id/events'
   id:
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
     | '/api/jobs'
     | '/api/openapi.json'
     | '/api/reference'
+    | '/api/repos'
     | '/api/jobs/$id'
     | '/api/jobs/$id/events'
   fileRoutesById: FileRoutesById
@@ -143,6 +155,7 @@ export interface RootRouteChildren {
   ApiJobsRoute: typeof ApiJobsRouteWithChildren
   ApiOpenapiDotjsonRoute: typeof ApiOpenapiDotjsonRoute
   ApiReferenceRoute: typeof ApiReferenceRoute
+  ApiReposRoute: typeof ApiReposRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -196,6 +209,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiReferenceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/repos': {
+      id: '/api/repos'
+      path: '/api/repos'
+      fullPath: '/api/repos'
+      preLoaderRoute: typeof ApiReposRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/jobs/$id': {
       id: '/api/jobs/$id'
       path: '/$id'
@@ -244,6 +264,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiJobsRoute: ApiJobsRouteWithChildren,
   ApiOpenapiDotjsonRoute: ApiOpenapiDotjsonRoute,
   ApiReferenceRoute: ApiReferenceRoute,
+  ApiReposRoute: ApiReposRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

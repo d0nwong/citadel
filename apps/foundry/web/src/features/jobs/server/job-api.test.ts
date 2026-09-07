@@ -12,7 +12,7 @@ import { jobs, repos } from '@/db/schema'
 import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
 import { deleteLogs } from './job-logs'
-import { handleGetJob, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX } from './job-api'
+import { handleGetJob, handleListRepos, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX } from './job-api'
 import { ticketBrief } from './linear-link'
 import type { ApiDeps } from './job-api'
 import type { LinearIssue } from './linear-link'
@@ -92,6 +92,9 @@ const get = (id: string, query = '', token: string | null = SECRET) =>
   new Request(`http://foundry.test/api/jobs/${id}${query}`, {
     headers: token === null ? {} : { authorization: `Bearer ${token}` },
   })
+
+const listRepos = (token: string | null = SECRET) =>
+  new Request('http://foundry.test/api/repos', { headers: token === null ? {} : { authorization: `Bearer ${token}` } })
 
 /** A trigger payload that is valid by construction; tests override one field at a time. */
 const valid = (extra: Record<string, unknown> = {}) => ({
@@ -376,6 +379,44 @@ test('AC6 — two concurrent first requests with one key make one job; the loser
 
   expect(await rowCount()).toBe(before + 1)
   expect(ignited.slice(ignitedBefore)).toEqual([ja.id])
+})
+
+/* ------------------------------------------------------------------ */
+/* LIA-119 — GET /api/repos                                           */
+/* ------------------------------------------------------------------ */
+
+test('LIA-119 AC1/AC2/AC4/AC6 — GET /api/repos lists name+path ordered by name, and every name triggers a job', async () => {
+  // AC4 — the same gate as the job routes, with the same bodies.
+  const noToken = await handleListRepos(listRepos(), { ...deps, token: async () => undefined })
+  expect(noToken.status).toBe(503)
+  expect(((await noToken.json()) as { error: string }).error).toMatch(/foundry auth --api/)
+  expect((await handleListRepos(listRepos(null), deps)).status).toBe(401)
+  const wrong = await handleListRepos(listRepos('nope'), deps)
+  expect(wrong.status).toBe(401)
+  expect(await wrong.json()).toEqual({ error: 'unauthorized' })
+
+  // AC1 — 200, an array, each row exactly `name` and `path`, ordered by name.
+  const res = await handleListRepos(listRepos(), deps)
+  expect(res.status).toBe(200)
+  expect(res.headers.get('content-type')).toBe('application/json')
+  const rows = (await res.json()) as Array<Record<string, unknown>>
+  expect(Array.isArray(rows)).toBe(true)
+  expect(rows).toContainEqual({ name: REPO_NAME, path: REPO_PATH })
+  // AC6 — nothing of the host's leaks: no id, notes, branch or dirty flag on any row.
+  for (const row of rows) expect(Object.keys(row).sort()).toEqual(['name', 'path'])
+  const names = rows.map((r) => r.name as string)
+  expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)))
+
+  // AC2 — every returned name is one `POST /api/jobs` accepts as `repo`: no `is not tracked` 400.
+  // A shared basename resolves ambiguous (a 400 the caller must answer with the
+  // path, which the list also carries); only the `not tracked` refusal is the bug.
+  for (const name of names) {
+    const trigger = await handleTriggerJob(post(valid({ repo: name, blueprintId: 'none' })), deps)
+    const body = (await trigger.json()) as { error?: string }
+    expect(body.error ?? '').not.toMatch(/not tracked/)
+    expect([202, 400]).toContain(trigger.status)
+    if (trigger.status === 400) expect(body.error).toMatch(/ambiguous/)
+  }
 })
 
 test('GET returns the job, with logs only when asked', async () => {
