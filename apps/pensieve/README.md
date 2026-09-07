@@ -168,10 +168,20 @@ Foundry composes the brief from the ticket and claims it in Linear — and an
 `Idempotency-Key` equal to the point id, so a double click or a retry after a timeout
 answers the job the first call made and writes the file once. A Foundry error (`400`,
 `401`, `409`, `503`, or unreachable) is shown with its message and writes nothing; a `409`
-names the job already holding the ticket. Send is offered only on a point with a
-`ticket`; filing one is the sweep's job, not this page's. After a send the page polls
+names the job already holding the ticket. Send is offered only on a point with a `ticket`;
+filing one is the sweep's job, not this page's. After a send the page polls
 `GET /api/jobs/:id` every few seconds while the job is queued or running, then shows its
 final status and PR.
+
+The repo is picked, not typed. The loader reads `GET /api/repos` server-side — the token
+never leaves the server, so the list travels with the points — and the form is a select
+over what Foundry answered for that page load, opened on the point's own `repo` when that
+names one of them (by name or by path) and on nothing when it does not, since a repo
+Foundry does not track is a `400` waiting to happen. Nothing re-validates the choice: it
+came from Foundry, and `POST /api/jobs` stays the authority. A Foundry that cannot answer
+with a list at all — unreachable, or old enough to have no such route — costs the page
+nothing but the picker: the field is the free-text box it was before, and a repo typed into
+it sends exactly as it always did.
 
 ## Ask
 
@@ -257,8 +267,9 @@ the harness has no approval gate — so it only checks and never writes: the poi
 (`src/server/verdict.ts`, the same checks and the same error strings `decidePoint` and
 `sendPoint` run before they write). It answers a proposal or `{ ok: false, error }`. The
 chat renders the proposal as a card (`decision-card.tsx`): the verdict, the reason as an
-editable field, the repo for a send, and Confirm, which calls `decidePoint` / `sendPoint`,
-so the file is what the Points page would have written for the same input. The model is
+editable field, the repo for a send — the same picker over Foundry's tracked repos, from
+the same list — and Confirm, which calls `decidePoint` / `sendPoint`, so the file is what
+the Points page would have written for the same input. The model is
 told to say a verdict is proposed and never that it is done; once a decision file exists
 the card shows the decided line and offers no second Confirm, on reload as well.
 Every other page refreshes when dragged down from
@@ -269,7 +280,7 @@ the top (touch or mouse): the route loaders re-run, nothing else moves.
 ```
 src/server/workspace.ts   the reader — every blackboard file, as typed shapes (and finds the apps)
 src/server/decisions.ts   the one writer — atomic decision files under decisions/, nowhere else
-src/server/foundry.ts     the Foundry client — POST /api/jobs, GET /api/jobs/:id, the token
+src/server/foundry.ts     the Foundry client — POST /api/jobs, GET /api/jobs/:id, GET /api/repos, the token
 src/server/ask.ts         Ask — the Claude Code adapter config, the per-file conversation store, the run
 src/test/                 bun test preload: vitest shim for the persistence conformance suite
 src/lib/api.ts            server functions — the client/server bridge

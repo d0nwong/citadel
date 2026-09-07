@@ -19,10 +19,12 @@ import { useState } from "react";
 import { TicketLink } from "#/components/bits";
 import {
   DecidedLine,
+  RepoField,
   useVerdictCommit,
   VerdictError,
 } from "#/features/points/verdict";
 import { decidePoint, getPoint, sendPoint } from "#/lib/api";
+import { pickRepo, REPO_REQUIRED } from "#/lib/points";
 import { cn } from "#/lib/utils";
 import { toolResultText } from "../lib/tool-summary";
 import type { Opts } from "../model/chat-options";
@@ -109,7 +111,7 @@ export function DecisionCard({ part, result }: ToolProps<Opts>) {
 function Proposed({ proposal }: { proposal: Proposal }) {
   const queryClient = useQueryClient();
   const [reason, setReason] = useState(proposal.reason ?? "");
-  const [repo, setRepo] = useState(proposal.repo ?? "");
+  const [chosen, setChosen] = useState<string | null>(null);
   const { busy, commit, error, setError } = useVerdictCommit();
 
   const key = ["point", proposal.point];
@@ -120,13 +122,18 @@ function Proposed({ proposal }: { proposal: Proposal }) {
 
   const send = proposal.action === "sent";
   const point = q.data?.point;
+  // Unlike the Points page, the repos arrive with the same query as the point rather than
+  // with the route's loader data, so the field cannot be seeded in a `useState` initialiser
+  // — until it is touched (`chosen` is null) it shows what the proposal's repo picks out of
+  // whatever list has landed, and the moment the list lands the choice appears with it.
+  const repos = q.data?.repos ?? [];
+  const repo =
+    chosen ??
+    (repos.length > 0 ? pickRepo(repos, proposal.repo) : (proposal.repo ?? ""));
 
   const confirm = () => {
     if (send && !repo.trim()) {
-      return setError({
-        error: "which repo? Foundry needs a tracked path or name",
-        ok: false,
-      });
+      return setError({ error: REPO_REQUIRED, ok: false });
     }
     if (!(send || reason.trim())) {
       return setError({
@@ -192,14 +199,11 @@ function Proposed({ proposal }: { proposal: Proposal }) {
 
       {send ? (
         <>
-          <label className="kicker" htmlFor={`card-repo-${proposal.point}`}>
-            Repo the work lands in
-          </label>
-          <input
-            className="mono w-full rounded-md border border-rule bg-paper px-3 py-1.5 text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none"
+          <RepoField
+            className="bg-paper"
             id={`card-repo-${proposal.point}`}
-            onChange={(e) => setRepo(e.target.value)}
-            placeholder="a repo Foundry tracks — its path, or its name"
+            onChange={setChosen}
+            repos={repos}
             value={repo}
           />
           <p className="text-ink-faint text-sm leading-snug">

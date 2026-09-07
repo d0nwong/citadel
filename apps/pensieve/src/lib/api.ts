@@ -21,7 +21,12 @@ import type {
   FiledTicket,
 } from "#/server/ask";
 import type { Decision } from "#/server/decisions";
-import type { FoundryConfig, FoundryJob, JobStatus } from "#/server/foundry";
+import type {
+  FoundryConfig,
+  FoundryJob,
+  FoundryRepo,
+  JobStatus,
+} from "#/server/foundry";
 import type { LinearConfig } from "#/server/linear";
 import type { Json, Point, PointsFile } from "#/server/workspace";
 
@@ -119,24 +124,33 @@ export const getDoc = createServerFn({ method: "GET" })
 export interface PointsPage {
   file: PointsFile | null;
   foundry: FoundryConfig;
+  /** What Send offers as the repo; empty when Foundry could not answer with a list. */
+  repos: FoundryRepo[];
 }
 
-/** `points.json` with `decisions/` laid over it, plus whether Send is available (AC7). */
+/**
+ * `points.json` with `decisions/` laid over it, plus whether Send is available (AC7) and
+ * the repos it may target (LIA-120). The token never reaches the client, so the list has
+ * to travel with the points; `trackedRepos` swallows its own failures, so a Foundry that
+ * cannot answer costs the page nothing but the picker.
+ */
 export const listPoints = createServerFn({ method: "GET" }).handler(
   async (): Promise<PointsPage> => {
     const ws = await import("#/server/workspace");
     const dec = await import("#/server/decisions");
     const fd = await import("#/server/foundry");
-    const [file, onDisk, foundry] = await Promise.all([
+    const [file, onDisk, foundry, repos] = await Promise.all([
       ws.readPoints(),
       dec.readDecisions(),
       fd.foundryConfig(),
+      fd.trackedRepos(),
     ]);
     return {
       file: file
         ? { ...file, points: dec.mergeDecisions(file.points, onDisk) }
         : null,
       foundry,
+      repos,
     };
   }
 );
@@ -144,12 +158,15 @@ export const listPoints = createServerFn({ method: "GET" }).handler(
 export interface PointPage {
   foundry: FoundryConfig;
   point: Point | null;
+  /** As on `PointsPage` — the same list, for the same field on the conversation's card. */
+  repos: FoundryRepo[];
 }
 
 /**
- * One point by id, with its decision file laid over it and whether Send is available — what
- * a conversation opened on a point needs to show it and act on it (LIA-109). `null` when
- * the id names nothing in the last tick's `points.json`.
+ * One point by id, with its decision file laid over it, whether Send is available and the
+ * repos it may target — what a conversation opened on a point needs to show it and act on
+ * it (LIA-109, LIA-120). `null` when the id names nothing in the last tick's `points.json`.
+ * Foundry is asked before the id is, so a card on a stale point still gets the list.
  */
 export const getPoint = createServerFn({ method: "GET" })
   .validator((id: string) => id)
@@ -157,9 +174,12 @@ export const getPoint = createServerFn({ method: "GET" })
     const ws = await import("#/server/workspace");
     const dec = await import("#/server/decisions");
     const fd = await import("#/server/foundry");
-    const foundry = await fd.foundryConfig();
+    const [foundry, repos] = await Promise.all([
+      fd.foundryConfig(),
+      fd.trackedRepos(),
+    ]);
     if (!isPointId(data)) {
-      return { foundry, point: null };
+      return { foundry, point: null, repos };
     }
     const [file, decision] = await Promise.all([
       ws.readPoints(),
@@ -169,6 +189,7 @@ export const getPoint = createServerFn({ method: "GET" })
     return {
       foundry,
       point: point && decision ? { ...point, decision } : point,
+      repos,
     };
   });
 

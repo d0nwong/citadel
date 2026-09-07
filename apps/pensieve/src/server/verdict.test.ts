@@ -14,6 +14,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PROPOSE_DECISION } from "../lib/ask-tools";
+import { REPO_REQUIRED } from "../lib/points";
 import {
   PROPOSAL_NOTE,
   proposeDecision,
@@ -249,9 +250,13 @@ describe("checkSend — the checks sendPoint makes before it reaches Foundry", (
     expect(
       await checkSend("decide/ticketed", "", noRepoSources())
     ).toMatchObject({
-      error: "a repo is required — a path Foundry tracks, or its name",
+      // The one sentence, shared with the form that refuses before it asks (LIA-120, AC3).
+      error: REPO_REQUIRED,
       ok: false,
     });
+    expect(REPO_REQUIRED).toBe(
+      "a repo is required — choose one Foundry tracks"
+    );
   });
   test("repoRequired: false passes with an empty repo — a proposal collects it on the card", async () => {
     const c = await checkSend("decide/ticketed", "", noRepoSources(), {

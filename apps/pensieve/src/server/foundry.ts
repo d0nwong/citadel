@@ -1,9 +1,10 @@
 /**
- * Node-only. The Foundry client — the only outbound call Pensieve makes. Two endpoints of
+ * Node-only. The Foundry client — the only outbound call Pensieve makes. Three endpoints of
  * the trigger API (foundry `web/README.md` "Trigger a job over HTTP"):
  *
  *   POST /api/jobs        { ticketId, repo }, `Idempotency-Key: <point id>` → 202 Job (created) | 200 Job (replay)
  *   GET  /api/jobs/:id    → Job, polled while status is queued | running
+ *   GET  /api/repos       → [{ name, path }], the set `repo` is resolved against (LIA-119)
  *
  * Sending a point never carries `instructions`: Foundry composes the brief from the ticket
  * (LIA-92). The idempotency key is the point id (LIA-91), so a double click or a retry
@@ -196,6 +197,65 @@ export async function createJob(
         : undefined,
   });
 }
+
+/** A repo Foundry tracks, as `GET /api/repos` rows it. `name` is accepted verbatim as `repo`. */
+export interface FoundryRepo {
+  name: string;
+  path: string;
+}
+
+/**
+ * `GET /api/repos` — what a job may target, so Send can offer a list rather than a typed
+ * name (LIA-120). Ordered by name already; the rows carry nothing else.
+ *
+ * Throws like the job calls do, and the caller is expected to catch: a Foundry from before
+ * LIA-119 answers this route with an HTML page rather than an error, so the status is what
+ * decides here, never the absence of a throw. Every failure is the same answer to the page
+ * — no list — and the free-text field is what stands in for it.
+ */
+export async function listRepos(
+  fetchImpl: Fetch = fetch
+): Promise<FoundryRepo[]> {
+  const token = await apiToken();
+  if (!token) {
+    throw new FoundryError(
+      503,
+      (await foundryConfig()).reason ?? "FOUNDRY_API_TOKEN is not set"
+    );
+  }
+  const { status, body } = await call(
+    fetchImpl,
+    "/api/repos",
+    { method: "GET" },
+    token
+  );
+  if (status !== 200) {
+    throw new FoundryError(status, errorOf(body, status));
+  }
+  if (!Array.isArray(body)) {
+    throw new FoundryError(
+      status,
+      `Foundry at ${FOUNDRY_URL} answered /api/repos without a list`
+    );
+  }
+  return body.flatMap((row) => {
+    const r = (row ?? {}) as Record<string, unknown>;
+    return typeof r.name === "string" && typeof r.path === "string"
+      ? [{ name: r.name, path: r.path }]
+      : [];
+  });
+}
+
+/**
+ * The list as a page wants it: what Foundry answered, or nothing at all. Every reason there
+ * is no list — no token, an unreachable host, a `404` from a Foundry older than LIA-119 —
+ * is the same empty answer, because the page does the same thing with all of them: it falls
+ * back to the free-text repo field (LIA-120, AC4). A picker is never worth a loader error.
+ */
+export const trackedRepos = async (
+  fetchImpl: Fetch = fetch
+): Promise<FoundryRepo[]> =>
+  (await apiToken()) ? listRepos(fetchImpl).catch(() => []) : [];
 
 /** `GET /api/jobs/:id`. */
 export async function getJob(
