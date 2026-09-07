@@ -37,7 +37,7 @@ bun skills/log-change/scripts/pr-facts.ts --since <date> --be   # BE → origin/
 The `NOT JOURNALED` marker is what makes the window stateless — already-journaled
 landings drop out on their own, so overlapping windows are harmless.
 
-**3. Open state.** Three greps and one API call:
+**3. Open state.** Greps, one API call, one script:
 
 - open decisions: `grep -rln 'status: decided' alden/alden-portal/features/*/journal/ alden/alden-portal/features/*/*/journal/ 2>/dev/null`
   (both globs — nested features like `admin/invoicing` keep their journal a level deeper)
@@ -51,15 +51,12 @@ landings drop out on their own, so overlapping windows are harmless.
   merely-updated by `createdAt`.
 - write the open tickets' titles to `.state/linear-titles.json` as `{ "LIA-nn": "<title>" }`
   (gitignored; refresh it again after the ticket pass adds keys). Step 8's `points.ts`
-  reads the `[FE]` / `[BE]` title tag off it to fill each point's `repo`.
-- verified points: `bun skills/sweep/scripts/points.ts --verified` — the points the
-  cockpit confirmed since the last tick, joined against the previous tick's
-  `points.json`. Each licenses exactly the edit its own text names, so the list is an
-  input to dispatch (5) for a point naming a feature and to the ticket-pass brief (6)
-  for one naming a ticket. Read it here, not at step 8: `points.ts` does not run again
-  until then, so nothing later in the tick could still act on it. Empty on most ticks,
-  and self-limiting — step 8 drops each of these bullets from the report, so a point is
-  listed once and is gone from the next tick's `points.json` altogether.
+  reads each point's `repo` off it.
+- verified points: `bun skills/sweep/scripts/points.ts --verified` — points the cockpit
+  confirmed since the last tick, each licensing exactly the edit its own text names
+  (Autonomy): a feature point goes to dispatch (5), a ticket point into the ticket-pass
+  brief (6). Read here, because `points.ts` next runs at step 8, after both; that run
+  drops the bullet, so each point is listed once. Usually empty.
 
 **4. The join.** For each `NOT JOURNALED` landing, before dispatching anything, match it
 against the open tickets and open decisions. The join is never delegated: it is the
@@ -89,9 +86,8 @@ What each outcome does:
   to cover 2 of 4 ACs on LIA-xx — edit the ACs?". Dedupe as the digest does: one
   update per landing, not one per tick.
 - **Redundancy match → report only.** "LIA-xx appears redundant after fe#N — close or
-  rescope?" The ticket is edited after the user confirms. Cancelling is closing, and
-  closing is manual (Autonomy): the sweep may have misread the diff, and part of the ask
-  may survive the rewrite.
+  rescope?" The ticket is edited after the user confirms; cancelling is closing, and
+  closing is manual (Autonomy) — part of the ask may survive the rewrite.
 - **Match to an open `decided` entry → pass it to dispatch.** The landing entry must link
   back and flip the decision to `superseded` (log-change step 2b).
 - **No match → journal with `ticket: null`** and ask in the report ("unattributed landing
@@ -102,20 +98,19 @@ for one feature share a folder and every run ends in a commit; parallel writers 
 trip over the tree. Each run is a general-purpose subagent with **`model: "opus"`** (the
 entry it writes is the "why" layer — judgement, not transcription) and gets the join's
 findings for its landing (ticket or null, decided entry to supersede, digest permalink as
-`source:`). log-change step 6 then drives `feature-docs` for the affected features;
-entries left `implemented` by a previous sweep (audit's "refresh missed" nag) get a
-`feature-docs` run here too, and so does each **verified point naming a feature rather
-than a ticket** (step 3) — a doc sentence the user confirmed is stale — keyed by feature
-exactly as the join keys landings, with the point's own text saying which sentence.
+`source:`). log-change step 6 then drives `feature-docs` for the affected features. Two
+more things get a `feature-docs` run here: entries left `implemented` by a previous sweep
+(audit's "refresh missed" nag), and each step-3 verified point that names a feature
+rather than a ticket — a doc sentence the user confirmed is stale; the point's own text
+says which.
 
 The general rule for what gets a subagent: a stage earns one when its input is bulky
 (threads, doc trees, diffs) *and* its output is a blackboard write the sweep can re-read
 afterwards — not because it is a stage. Bulky reading happens in the worker; the sweep
 keeps only conclusions.
 
-**5b. Decisions ahead of code.** Behaviour changes are decided in Slack before they are
-code, and the docs describe code only — so between decision and landing the product doc
-is silently about to be wrong. Every 🔴 item in today's digest that **changes a
+**5b. Decisions ahead of code.** The docs describe code, so a rule decided in Slack is
+silently wrong in them until it lands. Every 🔴 item in today's digest that **changes a
 documented rule** (a Business Rules row, a Mismatch row, a Known Gap) and has no code
 landed yet gets a `log-change` run **at decision time**: `status: decided`, `pr: null`,
 `features:` naming the feature, `affects:` naming the rule ids it will rewrite (read them
@@ -128,77 +123,68 @@ grep: one entry per decision, not per tick. Product direction with no rule behin
 **5c. Stale pass.** `bun run accio stale` — one line per feature whose docs no longer
 describe the code, with why (`tiers`, `fe-core`, `be-handlers`, `journal`). Dispatch
 `feature-docs` for each, **sequentially, at most three per tick**, oldest product stamp
-first, skipping any feature dispatch already refreshed this tick. The `tiers` reason is
-authoritative: `accio sync` only advances an arch stamp when the feature's core files or
-owned endpoints changed since the product tier was read, so a disagreement is a stale
-product doc, never bookkeeping — and `accio audit` fails on it until the product tier
-catches up. Three per tick is a cost cap, not a judgement: the list is state, so the
-remainder is picked up next tick.
+first, skipping any feature already refreshed this tick. `tiers` is authoritative:
+`accio sync` only advances an arch stamp when the feature's core files or owned endpoints
+changed since the product tier was read, so a disagreement is a stale product doc, never
+bookkeeping, and `accio audit` fails on it until the product tier catches up. Three per
+tick is a cost cap, not a judgement: the list is state, so the remainder is picked up
+next tick.
 
 **6. Ticket pass.** Linear is the sweep's terminal surface — the queue the user actually
-reads — so this stage makes it current, and the `ticket-pass` worker is the **only
-Linear writer in the loop** (the digest links tickets, it never edits them). Four
-parts run in **one `ticket-pass` subagent** — 6a file tickets from unlinked ✋ items,
-6b fold digest items into the open tickets they link, 6c review open tickets against
-refreshed docs, 6e make the edit each verified point licensed — all bulky single-use
-readers of Slack threads, doc trees and ticket bodies, per the dispatch rule. 6d stays
-inline because it is a one-line judgement per ticket over a list the sweep already holds.
-The worker's procedure and prompt live in `skills/sweep/ticket-pass.md`.
+reads — so this stage makes it current, through the `ticket-pass` worker (the loop's only
+Linear writer, Autonomy). Four parts run in **one `ticket-pass` subagent** — 6a file
+tickets from unlinked ✋ items, 6b fold digest items into the open tickets they link, 6c
+review open tickets against refreshed docs, 6e make the edit each verified point licensed
+— bulky readers of threads, doc trees and ticket bodies, per the dispatch rule; 6d stays
+inline because it is one judgement per ticket over a list the sweep already holds. The
+worker's procedure and prompt are `skills/sweep/ticket-pass.md`.
 
 **Skip the spawn** when there is nothing for it: no unmarked unlinked ✋ items, no
 ticket-linked digest item newer than the previous tick's `_Tick` stamp in
-`reports/<today>.md`, no feature refreshed this tick, *and* no verified point from
-step 3 naming a ticket. That last clause is not symmetry with the others: step 8 drops a
-verified point's bullet whether or not the worker ran, so a tick that skips the spawn
-with one outstanding loses that edit for good.
+`reports/<today>.md`, no feature refreshed this tick, *and* no step-3 verified point
+naming a ticket (step 8 drops that point's bullet whether or not the worker ran — skip
+it and the edit is lost for good).
 
 Otherwise, **after dispatch has finished** (the worker writes the digest file and
-commits — a parallel writer would trip over dispatch's tree), spawn ONE
-general-purpose subagent via the Agent tool with **`model: "opus"`** (filing and review
-are judgement calls, and a weaker model files worse tickets), using the prompt in
-`ticket-pass.md` with its `{…}` filled from steps 1–5. Hand it conclusions, not sources.
+commits — a parallel writer would trip over dispatch's tree), spawn ONE general-purpose
+subagent via the Agent tool with **`model: "opus"`** (Running it, below), using the
+prompt in `ticket-pass.md` with its `{…}` filled from steps 1–5. Hand it conclusions,
+not sources.
 
-When it returns, don't take the report on faith for anything the blackboard can answer:
-re-read the digest file for the ` → LIA-xx` markers and re-run the step-3 ticket query
-for the new keys — that refreshed list is also what 6d and the report's "Linear today"
-section run over. Only the inference lines (Needs-you) come from the report, because no
-file holds them. A subagent's report is never shown to the user; an unrelayed finding is
-a lost one.
+When it returns, re-read what the blackboard can answer rather than trusting the report:
+the digest file for ` → LIA-xx` markers, and the step-3 ticket query for the new keys —
+that refreshed list is also what 6d and "Linear today" run over. Only the inference lines
+(Needs-you) come from the report, because no file holds them; a subagent's report is
+never shown to the user, so an unrelayed finding is a lost one.
 
-**6d. Nominate ready tickets** (inline, every tick). Over the step-3 open-ticket
-list as refreshed after the worker returned: a ticket qualifies when its Pending section
-is absent, it has no blocked-by relation, and every Acceptance Criterion is concrete — an
+**6d. Nominate ready tickets** (inline, every tick). Over the step-3 open-ticket list as
+refreshed after the worker returned: a ticket qualifies when its Pending section is
+absent, it has no blocked-by relation, and every Acceptance Criterion is concrete — an
 observable outcome with a Technical Note naming where it is met (linear-ticket's "ACs are
-executable" bar).
-A qualifying ticket gets a Decide line whose subject is the ticket key: "**LIA-xx is
-ready** — send to Foundry?". That exact shape is load-bearing — the subject names one
-LIA key, so `points.ts` sets the point's `ticket`, and `repo` follows from the ticket's
-`[FE]` / `[BE]` title tag; a point without `ticket` has no Send button in the cockpit,
-only Ignore. So the bar above is what makes a point sendable: nominate only a ticket that
-clears it, and write the key into the subject when you do.
-The concreteness call is judgement, so nomination stays report-only (Autonomy): sending
-dispatches an agent against the body as written — precisely the decision the report
-exists to surface, not make. The user settles it in Pensieve's Points page (README,
-"Downstream"), and the resulting `decisions/` file drops the point from later ticks.
-Like holds, a ready-but-undecided ticket restates every tick until decided or
-disqualified — the report is a snapshot, not a diff.
+executable" bar). A qualifying ticket gets a Decide line whose subject is the ticket key:
+"**LIA-xx is ready** — send to Foundry?". That shape is load-bearing: a subject naming
+one LIA key is how `points.ts` sets the point's `ticket` (and from it `repo`), and a
+point without `ticket` has no Send button in the cockpit, only Ignore — so nominate only
+a ticket that clears the bar, and write the key into the subject. The concreteness call
+is judgement, so nomination stays report-only (Autonomy): sending dispatches an agent
+against the body as written, precisely the decision the report exists to surface, not
+make — the user settles it in Pensieve (README, "Downstream"). Like holds, an undecided
+nomination restates every tick until decided or disqualified.
 
 **7. Audit.** `bun run accio audit`. Problems it still reports after dispatch go in the
 report, every one, in step 8's Audit shape — never silence one by inventing the missing
-fact. `tiers disagree` lines
-left over are the stale features 5c's per-tick cap did not reach — report them as a count
-with the feature ids ("4 product tiers still behind their arch tier, next tick: …"), not
-as a decision for the user; they clear themselves as 5c works through the list.
+fact. `tiers disagree` lines left over are the stale features 5c's cap did not reach:
+report them as a count with the feature ids ("4 product tiers still behind their arch
+tier, next tick: …"), not as a decision for the user; they clear as 5c works through
+the list.
 
 **8. Report.** One screen, in this order, skipping empty sections. **"One screen" is a
-budget, not a figure of speech: ≤ 1,200 words for a full day.** The 2026-09-01 report
-reached 3,981 and had to be rewritten — almost entirely `Done today`, which had grown to
-87 lines because each tick block was written as an essay. A Done-today block is **1–3
-bullets** naming what changed and the commit that holds it; the journal entry, the docs
-and the diff carry the detail, and the block links to them rather than retelling them.
-Consecutive quiet ticks collapse onto one line (`### 14:19 · 15:18 · 17:17`). The same
-current-state rule the digest follows applies to Needs you: each bullet says what is open
-*now*, not how it got there.
+budget: ≤ 1,200 words for a full day.** The 2026-09-01 report reached 3,981, almost all
+`Done today` written as per-tick essays, and had to be rewritten. A Done-today block is
+**1–3 bullets** naming what changed and the commit that holds it; the journal entry, the
+docs and the diff carry the detail, so link rather than retell. Consecutive quiet ticks
+collapse onto one line (`### 14:19 · 15:18 · 17:17`). Needs you follows the digest's
+current-state rule: each bullet says what is open *now*, not how it got there.
 
 1. **Needs you** — grouped by what is being asked of the user, as bold labels in
    this fixed order, empty groups omitted:
@@ -206,11 +192,10 @@ current-state rule the digest follows applies to Needs you: each bullet says wha
      or rescope, send a ready ticket to Foundry (6d nominations), attribute an
      unattributed landing.
    - **Verify** — an inference to check: appears-implemented or appears-redundant
-     tickets, Pending bullets that only *appear* satisfied, partial matches awaiting a
-     AC edit, 6b/6c findings. The confirmation comes back as a `verified` decision, and
-     that file is what licenses the edit the bullet could only report (Autonomy) — so
-     write the ask as the edit you would make, not as a question about whether you read
-     it right.
+     tickets, Pending bullets that only *appear* satisfied, partial matches awaiting an
+     AC edit, 6b/6c findings. The confirmation comes back as a `verified` decision that
+     licenses the edit the bullet could only report (Autonomy) — so write the ask as the
+     edit you would make, not as "did I read this right?".
    - **Confirm with someone** — needs a named teammate; the ask *is* the name.
      Un-ticketed ✋ pings and 🟠 items land here or under Decide, whichever fits.
    - **On hold** — holds waiting on something outside the loop. One line each, no
@@ -229,31 +214,18 @@ current-state rule the digest follows applies to Needs you: each bullet says wha
 
    The subject is the ticket key or PR when there is one. The ask is a verb phrase or
    a question ("revert, or accept the churn?", "ticket them?", "Foong"). The detail
-   line is the fact, never the history — the journal entry, docs, ticket and diff
-   carry the rest, so link rather than retell. Age is `new` when the subject first
-   appears today, else `Nd` — but you don't compute it: write `new` for anything you
-   believe is new, keep the previous tick's suffix otherwise, and `points.ts` (below)
-   rewrites every suffix from `reports/points.json`'s `firstSeen`, never tick memory.
-   **The subject is the item's identity.** `points.json` derives each point's id from
-   it (`<group>/<slug>`), Pensieve's Send / Ignore decisions are keyed by that id, and
-   the age restarts when it changes — so an open item keeps its subject text verbatim
-   from tick to tick; rewording is how a decided point comes back as a new one. ✋
-   items that got tickets appear by key, not restated.
-   **Write every open point, decided or not.** Pensieve's Send / Ignore / Verify verdicts
-   live in `decisions/<group>/<slug>.json` (LIA-94, LIA-114); you never read them to
-   compose this section.
-   `points.ts` reads them and drops each decided point from the file's Needs-you while
-   keeping its record in `points.json` with the `decision` attached — so an ignored
-   point stops reappearing, a sent point stops asking, and a verified point stops asking
-   because this tick already made the edit it licensed (step 3) — the drop records that,
-   it does not stand in for it. The match is re-checked
-   every tick against a point you still observe. A point you leave out because "it was
-   decided" is a point the script can no longer tell apart from one whose condition
-   cleared; the omission is the script's, not yours. The script also owns two lines:
-   `- N points decided (decisions/)` under Housekeeping (absent when N is 0) and an
-   `**Unreadable decision files**` block under Audit naming any file it could not parse
-   — that point renders undecided until the file is fixed. Rewrite neither; it rewrites
-   both each run.
+   line is the fact, never the history — link the journal entry, doc, ticket or diff
+   rather than retell it. ✋ items that got tickets appear by key, not restated. Three rules come from `points.ts` (below), which owns ids, ages and
+   decisions:
+   - **The subject is the item's identity** — the point's id derives from it, so an
+     open item keeps its subject text verbatim from tick to tick; rewording restarts
+     its age and brings a decided point back as a new one.
+   - **You don't compute ages.** Write `· new` for anything you believe is new, keep
+     the previous tick's suffix otherwise; the script rewrites every suffix.
+   - **Write every open point, decided or not.** You never read `decisions/` to
+     compose this section; the script drops decided points. A point you leave out
+     because "it was decided" is one the script can no longer tell apart from one whose
+     condition cleared.
 2. **Done today** — entries written, docs refreshed, tickets filed (6a) and updated
    (keys + PRs), one `### HH:MM` sub-block per tick that did something.
 3. **Linear today** — every Liamai ticket created or updated since local midnight, one
@@ -266,20 +238,18 @@ current-state rule the digest follows applies to Needs you: each bullet says wha
    `- \`peer-review\` — tiers disagree (product@67e5abc, arch@885f086)` and
    `- fe#402 → admin-usage — implemented, docs re-verified 09-03`.
 
-A quiet tick prints one line to the terminal ("sweep: nothing new") — a terminal
-courtesy, never the file's content.
+**The report is a file**, `reports/<today>.md`, **updated in place, not replaced**, and
+it is the human copy of the one thing on the blackboard that holds an inference — a
+report that only went to the terminal is a report that was lost. Its sections have two
+natures:
 
-**The report is also a file.** `reports/<today>.md` is the durable copy of what you
-print, **updated in place, not replaced**. Its sections have two natures:
-
-- **Needs you, Linear today, Audit are state.** They describe what is open *now*, so
-  each tick re-emits them from this tick's findings, replacing the previous tick's
-  section body. An item still open restates; an item resolved drops out. Nothing is
-  appended — a snapshot that accumulated stale bullets would be worse than none.
-- **Done today is a log.** Append this tick's work as a `### HH:MM` sub-block at the
-  end of the section; never rewrite or drop an earlier tick's block. This is the one
-  place the file remembers the day's sequence, so a reader doesn't need
-  `git log -p reports/` to see it.
+- **Needs you, Linear today, Audit are state.** Each tick re-emits them from this
+  tick's findings, replacing the previous body: an item still open restates, an item
+  resolved drops out, nothing is appended — a snapshot that accumulated stale bullets
+  would be worse than none.
+- **Done today is a log.** Append this tick's `### HH:MM` sub-block at the end; never
+  rewrite or drop an earlier tick's. This is the one place the file remembers the day's
+  sequence, so a reader doesn't need `git log -p reports/`.
 
 Format:
 
@@ -336,35 +306,47 @@ bun skills/sweep/scripts/points.ts        # reports/<today>.md → reports/point
 
 and commit both files, plus `decisions/`, with the tick's other writes (`git add reports/
 decisions/ …` — any decision file Pensieve wrote since the last tick rides in this commit,
-untouched). `points.json` is Needs-you as data
-— one record per Decide / Verify / Confirm / On-hold / Housekeeping bullet, with `id`
-(`<group>/<slug>` of the subject), `group`, `subject`, `ask`, `detail`, `firstSeen`, and
-`ticket` / `repo` / `features` when the line carries them, and `decision` (the
-`decisions/` file body, copied) on a point the cockpit has sent, ignored or verified —
-the shape Pensieve lists to offer Send / Ignore / Verify per point. It is
-**derived from the report, never hand-written**: the two are the same list in two shapes,
-and deriving one from the other is what keeps them from drifting — the one asymmetry is
-that a decided point is in `points.json` and not in the report, and that too is the
-script's doing (Needs you, above). `firstSeen` carries
-over from the previous `points.json` by id, so it survives the day rollover and the
-decided-point drop; the script
-then rewrites the report's `· new` / `· Nd` suffixes to agree. `repo` comes from the
-ticket's `[FE]` / `[BE]` title tag, which the script reads from `.state/linear-titles.json`
-— step 3 writes it. Decisions match by the file's `point` id, not its path, and only
-against a point in this tick's report: a decision for a point that is gone changes
-nothing, and a reworded subject renders undecided with the stale file left where it is.
-The report is the human copy and `points.json` the machine copy of
-the one thing on the blackboard that holds an inference, so a report that only went to
-the terminal is a report that was lost.
+untouched).
+
+**`points.json` is Needs-you as data**, the machine copy of the report: one record per
+Decide / Verify / Confirm / On-hold / Housekeeping bullet, with `id` (`<group>/<slug>` of
+the subject), `group`, `subject`, `ask`, `detail`, `firstSeen`, `ticket` / `repo` /
+`features` when the line carries them, and `decision` (the `decisions/` file body,
+copied) on a point the cockpit has sent, ignored or verified — the shape Pensieve lists
+to offer Send / Ignore / Verify per point. It is **derived from the report, never
+hand-written**: two shapes of one list, and deriving one from the other is what keeps
+them from drifting. The script owns:
+
+- **ages** — `· new` on the day a subject first appears, `· Nd` after. `firstSeen`
+  carries over from the previous `points.json` by id, so it survives the day rollover
+  and the decided-point drop, and every suffix is rewritten to agree with it, never
+  with tick memory;
+- **`ticket` and `repo`** — `ticket` when the subject or detail names exactly one LIA
+  key; `repo` from that ticket's `[FE]` / `[BE]` title tag in `.state/linear-titles.json`
+  (step 3); no tag, no `repo` — the cockpit asks;
+- **decisions** — `decisions/<group>/<slug>.json`, matched by the file's `point` id, not
+  its path, and only against a point in this tick's report: a decision for a point that
+  is gone changes nothing, a reworded subject renders undecided with the stale file left
+  alone, and the match is re-checked every tick against a point you still observe. A
+  matched point is dropped from the report's Needs-you and kept in `points.json` with
+  the `decision` attached — the one asymmetry between the two shapes. So an ignored
+  point stops reappearing, a sent point stops asking, and a verified point stops asking
+  because this tick already made the edit it licensed (step 3) — the drop records that,
+  it does not stand in for it;
+- **two report lines** — `- N points decided (decisions/)` under Housekeeping (absent
+  when N is 0) and an `**Unreadable decision files**` block under Audit naming any file it
+  could not parse (that point renders undecided until the file is fixed). Rewrite
+  neither; it rewrites both each run.
 
 **A quiet tick never shrinks the file.** "Nothing new" is relative to the previous tick;
 the file is read in the morning with no previous tick in view, and Pensieve renders it
-as the day's state. On a quiet tick the update is: new `_Tick …_` line, state sections
-re-emitted (identical), no Done-today block; append `sweep: nothing new` under the tick
-line if you want the quietness recorded, and run `points.ts` all the same — the file gets
-a new `tick` and the same points. The terminal one-liner alone is only correct on
-the first tick of a day when there is genuinely nothing open — meaning step 3 found no
-holds, no ready-ticket nominations, and audit is clean, not merely nothing *new*.
+as the day's state. The quiet update is: new `_Tick …_` line, state sections re-emitted
+(identical), no Done-today block, `sweep: nothing new` under the tick line if you want
+the quietness recorded — and `points.ts` runs all the same, so the file gets a new `tick`
+and the same points. The terminal one-liner ("sweep: nothing new") is a courtesy, never
+the file's content, and on its own it is only correct on the first tick of a day when
+there is genuinely nothing open — step 3 found no holds, no nominations, and audit is
+clean — not merely nothing *new*.
 
 ## Autonomy
 
@@ -395,12 +377,10 @@ refer here rather than restating it.
     re-verified against the pinned sha is a fact, not an inference); move a BE
     dependency's client regen into Scope once it is on `origin/dev` *and deployed* to
     the spec's export server (FORMAT.md's codegen rule — nobody else owns the regen, so
-    it is not "waiting"); and **the edit a point with a `verified` decision named**
-    (step 3) — the user's confirmation of that point's own inference is the fact the
-    rule was waiting for, so an *appears*-satisfied Pending bullet the cockpit verified
-    is deleted and an *appears*-stale sentence is rewritten. Exactly the edit the point
-    named, once, in the section it belongs to; a verified point whose ask needs no write
-    gets none, and is not restated as a new point.
+    it is not "waiting"); and **the edit a point with a `verified` decision named** —
+    the user's confirmation is the fact, so the *appears*-satisfied bullet it names is
+    deleted, the *appears*-stale sentence rewritten: exactly that edit, once, in its
+    section. A verified point whose ask needs no write gets none, and is not restated.
   - *What doesn't:* anything that is only a semantic match. Say *appears* in the report
     and leave the body alone.
 
@@ -410,9 +390,9 @@ refer here rather than restating it.
   wrongly closed ticket vanishes from the only queue the user reads;
 - write inference into a ticket (appears-satisfied, appears-redundant, bullet-to-landing
   mappings) — report first, edit after the user confirms; a wrong "this may be moot" in
-  a shared ticket is noise the team sees. That confirmation is a `verified` decision on
-  the point, and it lifts this rule for the one edit that point named and nothing wider
-  — never a close and never an AC tick, which no verdict licenses;
+  a shared ticket is noise the team sees. The confirmation is a `verified` decision, and
+  it lifts this rule for the one edit that point named, nothing wider — never a close,
+  never an AC tick;
 - leave a landing as a comment instead of updating the body;
 - tick or untick an AC — the boxes are the implementer's record, and a tick from
   the sweep's own reading is inference in the shared body;
@@ -431,9 +411,9 @@ Anything needing the user's judgement goes in the report, not into a file.
 mode; self-paced `/loop` also works. **Two model tiers, on purpose:** the loop session
 runs on Sonnet because the sweep is a scheduler — greps, a join over compact lists, a
 report — and every worker that writes (`slack-digest`, `log-change`, `feature-docs`,
-`ticket-pass`) pins `model: "opus"` in its own spawn spec, so ticket and doc quality
-doesn't depend on which model the session was launched with. To raise the judgement
-tier, change those spawn specs, not the loop flag. The loop only runs while a session is
-alive — fine, because the design is catch-up-safe: the first tick after any gap
-backfills. If it must run with no machine awake, that is `/schedule` (cloud cron), not a
-longer loop.
+`ticket-pass`) pins `model: "opus"` in its own spawn spec — filing, journaling and
+review are judgement calls, and a weaker model files worse tickets — so ticket and doc
+quality doesn't depend on the model the session was launched with. To raise the
+judgement tier, change those spawn specs, not the loop flag. The loop only runs while a
+session is alive, which is fine because the first tick after any gap backfills; if it
+must run with no machine awake, that is `/schedule` (cloud cron), not a longer loop.
