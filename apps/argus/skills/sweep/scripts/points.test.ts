@@ -140,7 +140,8 @@ describe("AC3 — stable ids", () => {
 });
 
 describe("AC4 — ticket and repo", () => {
-  const titles = { "LIA-71": "[FE] Usage History tab", "LIA-78": "[FE][BE] Usage endpoints", "LIA-53": "Pin accio stamps" };
+  // the pre-LIA-121 title-only file: still loads, still fills FE / BE
+  const titles = normaliseTitles({ "LIA-71": "[FE] Usage History tab", "LIA-78": "[FE][BE] Usage endpoints", "LIA-53": "Pin accio stamps" });
   const file = derive(parseNeedsYou(REPORT), ctx({ titles }));
   const byId = Object.fromEntries(file.points.map((p) => [p.id, p]));
   test("exactly one LIA key in subject or detail → ticket", () => {
@@ -158,9 +159,68 @@ describe("AC4 — ticket and repo", () => {
   });
   test("titles accept the MCP array shape", () => {
     expect(normaliseTitles([{ id: "LIA-1", title: "[FE] x" }, { identifier: "LIA-2", title: "y" }])).toEqual({
-      "LIA-1": "[FE] x",
-      "LIA-2": "y",
+      "LIA-1": { title: "[FE] x" },
+      "LIA-2": { title: "y" },
     });
+  });
+});
+
+describe("LIA-121 — repo from the ticket's project, the title tag only inside Alden Portal", () => {
+  const titles = normaliseTitles({
+    "LIA-71": { title: "Usage History tab", project: "Argus" },
+    "LIA-78": { title: "[FE][BE] Usage endpoints", project: "Pensieve" },
+    "LIA-53": { title: "[FE] Pin accio stamps", project: "Marketing" },
+    "LIA-83": { title: "[BE] Netlify preview bounce", project: "Alden Portal" },
+  });
+  const file = derive(parseNeedsYou(REPORT), ctx({ titles }));
+  const byId = Object.fromEntries(file.points.map((p) => [p.id, p]));
+
+  test("AC1 — Argus / Pensieve / Foundry tickets carry their repo, tags or not", () => {
+    expect(byId["decide/lia-71-history-rollup"]!.repo).toBe("argus");
+    expect(byId["verify/lia-78"]!.repo).toBe("pensieve"); // both tags, but the project decides
+    expect(repoOf("anything", "Foundry")).toBe("foundry");
+  });
+  test("AC2 — Alden Portal keeps the tag rule: [FE], [BE], both or neither", () => {
+    expect(byId["hold/lia-83-netlify-preview-bounce"]!.repo).toBe("alden-connect-portal-be");
+    expect(repoOf("[FE] x", "Alden Portal")).toBe("alden-portal-fe");
+    expect(repoOf("[FE][BE] x", "Alden Portal")).toBeUndefined();
+    expect(repoOf("x", "Alden Portal")).toBeUndefined();
+  });
+  test("AC3 — the title-only map and a project-less array still load; no project reads as the tag rule", () => {
+    expect(normaliseTitles({ "LIA-1": "[FE] x", "LIA-2": { title: "y" } })).toEqual({ "LIA-1": { title: "[FE] x" }, "LIA-2": { title: "y" } });
+    expect(repoOf("[FE] x")).toBe("alden-portal-fe");
+    expect(repoOf("[FE] x", undefined)).toBe("alden-portal-fe");
+    const untouched = derive(parseNeedsYou(REPORT), ctx({ titles: normaliseTitles({ "LIA-53": "Pin accio stamps" }) }));
+    expect(untouched.points.every((p) => !("repo" in p) || p.repo)).toBe(true);
+  });
+  test("AC4 — a project the map does not name, and a point with no ticket, carry no repo", () => {
+    expect("repo" in byId["decide/lia-53-looks-agent-ready"]!).toBe(false); // Marketing, even with [FE]
+    expect("repo" in byId["decide/usage-feature-still-has-zero-tests"]!).toBe(false); // two keys → no ticket
+    expect("repo" in byId["confirm/capacity-unit-direction"]!).toBe(false);
+    expect(repoOf("[FE] x", "Marketing")).toBeUndefined();
+  });
+  test("AC5 — every repo written is a checkout basename Foundry can resolve", () => {
+    const written = new Set([
+      repoOf("x", "Argus"),
+      repoOf("x", "Pensieve"),
+      repoOf("x", "Foundry"),
+      repoOf("[FE] x", "Alden Portal"),
+      repoOf("[BE] x", "Alden Portal"),
+    ]);
+    expect([...written].sort()).toEqual(["alden-connect-portal-be", "alden-portal-fe", "argus", "foundry", "pensieve"]);
+    for (const r of written) expect(r).toMatch(/^[a-z0-9-]+$/); // a basename, never a path or a project name
+  });
+  test("the MCP array carries project as a name or as { name }; the map form too", () => {
+    expect(
+      normaliseTitles([
+        { identifier: "LIA-1", title: "a", project: "Argus" },
+        { identifier: "LIA-2", title: "b", project: { name: "Foundry" } },
+        { identifier: "LIA-3", title: "c", project: null },
+      ]),
+    ).toEqual({ "LIA-1": { title: "a", project: "Argus" }, "LIA-2": { title: "b", project: "Foundry" }, "LIA-3": { title: "c" } });
+    expect(normaliseTitles({ "LIA-4": { title: "d", project: { name: "Pensieve" } } })).toEqual({ "LIA-4": { title: "d", project: "Pensieve" } });
+    expect(normaliseTitles(null)).toEqual({});
+    expect(normaliseTitles({ "LIA-5": { title: "e", project: "" } })).toEqual({ "LIA-5": { title: "e" } }); // blank is no project
   });
 });
 

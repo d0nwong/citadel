@@ -44,7 +44,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # slack-digest cursor — disposable local state, digests/*.md are the record
 digests/.state.json
 digests/.state.next.json
-# sweep step 3 drops the open-ticket titles here for points.ts (repo from [FE]/[BE] tags)
+# sweep step 3 drops the open-ticket titles + projects here for points.ts (repo from project, [FE]/[BE] inside Alden Portal)
 .state/linear-titles.json
 # slack-pull's 24h user-id → name cache
 .state/slack-users.json

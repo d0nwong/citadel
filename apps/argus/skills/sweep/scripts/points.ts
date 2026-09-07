@@ -32,9 +32,13 @@
  *             so `· new` / `· Nd` agrees with firstSeen — write `new` and let this fix it.
  *
  * `ticket` is the LIA key when the subject or detail names exactly one. `repo` needs the
- * ticket's title tag (`[FE]` / `[BE]`), which lives in Linear: the sweep drops its step-3
- * open-ticket list at `.state/linear-titles.json` (`{ "LIA-86": "[FE] …" }`, or the MCP's
- * `[{ identifier, title }]` array) and this reads it. No file, no `repo` — the cockpit asks.
+ * ticket's Linear project (one per repo: Argus, Pensieve, Foundry) and, inside Alden Portal
+ * — the one project covering two repos — its title tag (`[FE]` / `[BE]`). Both live in
+ * Linear: the sweep drops its step-3 open-ticket list at `.state/linear-titles.json`
+ * (`{ "LIA-86": { "title": "[FE] …", "project": "Alden Portal" } }`, the older title-only
+ * `{ "LIA-86": "[FE] …" }`, or the MCP's `[{ identifier, title, project }]` array) and this
+ * reads it (LIA-121). No file, or a project the map does not name, no `repo` — the cockpit
+ * asks; a guessed repo would be worse than none.
  */
 
 import { join, basename, relative } from "node:path";
@@ -80,7 +84,15 @@ const GROUPS: Record<string, Group> = {
   "On hold": "hold",
   Housekeeping: "housekeeping",
 };
-const REPOS: Record<string, string> = { FE: "alden-portal-fe", BE: "alden-connect-portal-be" };
+/**
+ * Linear project → the basename of the checkout Foundry tracks (its `resolveRepo` takes a
+ * basename when unique). Explicit on purpose: a project name is not a repo name in
+ * general, and a project missing here yields no `repo` rather than a guess.
+ */
+const PROJECT_REPOS: Record<string, string> = { Argus: "argus", Pensieve: "pensieve", Foundry: "foundry" };
+/** The one project that covers two repos; its tickets say which in a `[FE]` / `[BE]` title tag. */
+const TAGGED_PROJECT = "Alden Portal";
+const TAG_REPOS: Record<string, string> = { FE: "alden-portal-fe", BE: "alden-connect-portal-be" };
 const AGE_RE = / · (new|\d+d)$/;
 const DECIDED_LINE_RE = /^- \d+ points? decided \(decisions\/\)\s*$/;
 const UNREADABLE_HEADER = "**Unreadable decision files**";
@@ -179,19 +191,37 @@ function split(group: Group, body: string): { subject: string; ask: string } {
 
 // ---------------------------------------------------------------- derive
 
-export type Titles = Record<string, string>;
+export type TitleEntry = { title: string; project?: string };
+export type Titles = Record<string, TitleEntry>;
 
-/** Accepts `{ "LIA-86": "[FE] …" }` or the Linear MCP's `[{ identifier, title }]`. */
+/** The MCP gives `project` as a name; a richer `fields`, or a hand-written file, may give `{ name }`. */
+function projectName(project: unknown): string | undefined {
+  if (typeof project === "string") return project || undefined;
+  const name = (project as { name?: unknown } | null)?.name;
+  return typeof name === "string" && name ? name : undefined;
+}
+
+/**
+ * Accepts the map `{ "LIA-86": { title, project } }`, the older title-only map
+ * `{ "LIA-86": "[FE] …" }`, or the Linear MCP's `[{ identifier, title, project }]` array —
+ * `project` optional in every shape, so a file written before LIA-121 still loads.
+ */
 export function normaliseTitles(raw: unknown): Titles {
+  const out: Titles = {};
+  const add = (key: unknown, title: unknown, project: unknown) => {
+    if (typeof key !== "string" || typeof title !== "string") return;
+    const name = projectName(project);
+    out[key] = name ? { title, project: name } : { title };
+  };
   if (Array.isArray(raw)) {
-    const out: Titles = {};
-    for (const r of raw) {
-      const key = r?.identifier ?? r?.id ?? r?.key;
-      if (typeof key === "string" && typeof r?.title === "string") out[key] = r.title;
+    for (const r of raw) add(r?.identifier ?? r?.id ?? r?.key, r?.title, r?.project);
+  } else if (raw && typeof raw === "object") {
+    for (const [key, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v === "string") add(key, v, undefined);
+      else add(key, (v as { title?: unknown })?.title, (v as { project?: unknown })?.project);
     }
-    return out;
   }
-  return raw && typeof raw === "object" ? (raw as Titles) : {};
+  return out;
 }
 
 export function ticketOf(item: Item): string | undefined {
@@ -199,11 +229,18 @@ export function ticketOf(item: Item): string | undefined {
   return keys.size === 1 ? [...keys][0] : undefined;
 }
 
-/** `[FE]` → alden-portal-fe, `[BE]` → alden-connect-portal-be; both or neither → undefined. */
-export function repoOf(title: string | undefined): string | undefined {
+/**
+ * The repo a ticket's point should carry, from its project first — Argus → `argus`,
+ * Pensieve → `pensieve`, Foundry → `foundry` — and from the title tag only inside Alden
+ * Portal: `[FE]` → alden-portal-fe, `[BE]` → alden-connect-portal-be, both or neither →
+ * undefined. No project (a title-only file) reads as Alden Portal, so the tags still
+ * resolve; a project the map does not name yields nothing, whatever the title says.
+ */
+export function repoOf(title: string | undefined, project?: string): string | undefined {
+  if (project !== undefined && project !== TAGGED_PROJECT) return PROJECT_REPOS[project];
   if (!title) return undefined;
   const tags = new Set([...title.matchAll(/\[(FE|BE)\]/g)].map((m) => m[1]!));
-  return tags.size === 1 ? REPOS[[...tags][0]!] : undefined;
+  return tags.size === 1 ? TAG_REPOS[[...tags][0]!] : undefined;
 }
 
 /**
@@ -247,7 +284,8 @@ export function derive(items: Item[], d: Derive): PointsFile {
       point.firstSeen = firstSeen; // key order matches the ticket's suggested shape
     }
     if (ticket) point.ticket = ticket;
-    const repo = repoOf(d.titles[ticket ?? ""]);
+    const entry = ticket ? d.titles[ticket] : undefined;
+    const repo = repoOf(entry?.title, entry?.project);
     if (repo) point.repo = repo;
     const features = featuresOf(item, d.featureIds);
     if (features) point.features = features;
@@ -505,6 +543,8 @@ export async function run(opts: { report?: string; titles?: string; decisions?: 
     file,
     reportChanged: synced !== original,
     titlesLoaded: Object.keys(titles).length > 0,
+    /** false when the titles file is the pre-LIA-121 title-only shape: only `[FE]` / `[BE]` can resolve */
+    titlesCarryProject: Object.values(titles).some((t) => t.project !== undefined),
     decided: file.points.filter((p) => p.decision).length,
     unreadable,
   };
@@ -540,13 +580,18 @@ if (import.meta.main) {
 
   try {
     const opts = { report, titles, decisions: decisionsDir, dryRun };
-    const { file, reportChanged, titlesLoaded, decided, unreadable } = await run(opts);
+    const { file, reportChanged, titlesLoaded, titlesCarryProject, decided, unreadable } = await run(opts);
     if (dryRun) console.log(JSON.stringify(file, null, 2));
     const withRepo = file.points.filter((p) => p.repo).length;
+    const withTicket = file.points.filter((p) => p.ticket).length;
+    const repoLine = !titlesLoaded
+      ? " · no .state/linear-titles.json, repo left absent"
+      : ` · repo on ${withRepo} of ${withTicket} with a ticket` +
+        (titlesCarryProject ? "" : " (titles carry no project — only [FE]/[BE] resolve; step 3 should write it)");
     console.error(
       `points: ${file.points.length} for ${file.date} → ${dryRun ? "(dry run)" : "reports/points.json"}` +
         `${reportChanged ? " · report rewritten (ages / decisions)" : ""}` +
-        `${titlesLoaded ? ` · repo on ${withRepo}` : " · no .state/linear-titles.json, repo left absent"}` +
+        repoLine +
         `${decided ? ` · ${decided} decided` : ""}` +
         `${unreadable.length ? ` · ${unreadable.length} unreadable decision file(s), see Audit` : ""}`,
     );
