@@ -25,6 +25,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+import { isPointId } from "../lib/points";
 import type { Point, PointGroup } from "./workspace";
 import { WORKSPACE_DIR } from "./workspace";
 
@@ -40,13 +41,6 @@ export interface Decision {
   reason?: string;
   subject: string;
 }
-
-/** A point id as `points.ts` derives it: a known group, then a slug of `[a-z0-9-]`. */
-export const POINT_ID_RE =
-  /^(decide|verify|confirm|hold|housekeeping)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-export const isPointId = (id: unknown): id is string =>
-  typeof id === "string" && POINT_ID_RE.test(id);
 
 /**
  * The file a point's decision lives in. Refuses any id that is not a well-formed point

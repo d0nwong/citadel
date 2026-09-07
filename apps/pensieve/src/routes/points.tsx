@@ -6,25 +6,16 @@
  * point shows its Foundry job live until it settles.
  */
 
-import { useQuery } from "@tanstack/react-query";
-import {
-  createFileRoute,
-  useNavigate,
-  useRouter,
-} from "@tanstack/react-router";
-import {
-  ArrowUpRight,
-  ChevronRight,
-  EyeOff,
-  LoaderCircle,
-  MessageCircleQuestion,
-  Send,
-} from "lucide-react";
-import { useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ChevronRight, MessageCircleQuestion } from "lucide-react";
 import { Empty, PageTitle, TicketLink } from "#/components/bits";
 import { newThreadId } from "#/features/ask";
-import type { Verdict } from "#/lib/api";
-import { decidePoint, jobStatus, listPoints, sendPoint } from "#/lib/api";
+import {
+  ActionButton,
+  DecidedLine,
+  VerdictControls,
+} from "#/features/points/verdict";
+import { listPoints } from "#/lib/api";
 import { cn, daysSince } from "#/lib/utils";
 import type { Point, PointGroup } from "#/server/workspace";
 
@@ -41,8 +32,6 @@ const GROUPS: Array<{ key: PointGroup; label: string; hint: string }> = [
   { key: "housekeeping", label: "Housekeeping", hint: "the blackboard itself" },
 ];
 
-const shortId = (id: string) => id.slice(0, 8);
-
 /**
  * The question an Ask conversation opens with — the point named the way the file names
  * it. `/ask` in front loads argus's `ask` skill explicitly (a `/skill` prefix expands under
@@ -58,7 +47,7 @@ function useAskAbout(point: Point) {
     navigate({
       to: "/ask/$id",
       params: { id: newThreadId() },
-      search: { q: pointQuestion(point), from: "points" },
+      search: { q: pointQuestion(point), from: "points", point: point.id },
     });
 }
 
@@ -68,19 +57,6 @@ function age(firstSeen: string) {
     return "";
   }
   return n <= 0 ? "new" : `${n}d`;
-}
-
-function when(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) {
-    return iso;
-  }
-  return d.toLocaleString("en-GB", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function PointsPage() {
@@ -199,8 +175,6 @@ function PointsPage() {
 
 // ── an open point ──────────────────────────────────────────────────────────────
 
-type Mode = "idle" | "ignore" | "send";
-
 function PointRow({
   point,
   foundryOk,
@@ -210,58 +184,7 @@ function PointRow({
   foundryOk: boolean;
   foundryReason?: string;
 }) {
-  const router = useRouter();
   const askAbout = useAskAbout(point);
-  const [mode, setMode] = useState<Mode>("idle");
-  const [reason, setReason] = useState("");
-  const [repo, setRepo] = useState(point.repo ?? "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<Verdict | null>(null);
-
-  const open = (m: Mode) => {
-    setMode(mode === m ? "idle" : m);
-    setError(null);
-  };
-
-  async function commit(run: () => Promise<Verdict>) {
-    if (busy) {
-      return; // a second click while the first is in flight is the same click
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const v = await run();
-      if (v.ok) {
-        // The loader re-reads points.json + decisions/, so the point lands in Decided.
-        await router.invalidate();
-        setMode("idle");
-      } else {
-        setError(v);
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const ignore = () => {
-    if (!reason.trim()) {
-      return setError({
-        ok: false,
-        error: "say why — the reason is what the sweep records",
-      });
-    }
-    return commit(() => decidePoint({ data: { point: point.id, reason } }));
-  };
-  const send = () => {
-    if (!repo.trim()) {
-      return setError({
-        ok: false,
-        error: "which repo? Foundry needs a tracked path or name",
-      });
-    }
-    return commit(() => sendPoint({ data: { point: point.id, repo } }));
-  };
-
   return (
     <li className="py-4">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -277,186 +200,21 @@ function PointRow({
           {point.detail}
         </p>
       )}
-
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-        <ActionButton
-          active={false}
-          icon={MessageCircleQuestion}
-          onClick={askAbout}
-        >
-          Ask
-        </ActionButton>
-        <ActionButton
-          active={mode === "ignore"}
-          icon={EyeOff}
-          onClick={() => open("ignore")}
-        >
-          Ignore
-        </ActionButton>
-        {point.ticket &&
-          (foundryOk ? (
-            <ActionButton
-              active={mode === "send"}
-              icon={Send}
-              onClick={() => open("send")}
-            >
-              Send to Foundry
-            </ActionButton>
-          ) : (
-            <span
-              className="inline-flex cursor-not-allowed items-center gap-1.5 text-ink-faint text-sm"
-              title={foundryReason}
-            >
-              <Send className="size-3.5" strokeWidth={1.75} />
-              Send to Foundry
-              <span className="italic">
-                — {foundryReason?.split(" — ")[0] ?? "off"}
-              </span>
-            </span>
-          ))}
-      </div>
-
-      {mode === "ignore" && (
-        <form
-          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-thread-soft border-l-2 pl-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void ignore();
-          }}
-        >
-          <label className="kicker" htmlFor={`reason-${point.id}`}>
-            Why ignore it
-          </label>
-          <textarea
-            autoFocus
-            className="w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-ink text-sm placeholder:text-ink-faint focus:border-thread focus:outline-none"
-            id={`reason-${point.id}`}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="not worth a ticket / already handled in … / decided otherwise on …"
-            rows={2}
-            value={reason}
-          />
-          <Confirm
-            busy={busy}
-            label="Ignore this point"
-            onCancel={() => open("idle")}
-          />
-          <VerdictError v={error} />
-        </form>
-      )}
-
-      {mode === "send" && (
-        <form
-          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-thread-soft border-l-2 pl-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send();
-          }}
-        >
-          <label className="kicker" htmlFor={`repo-${point.id}`}>
-            Repo the work lands in
-          </label>
-          <input
-            autoFocus
-            className="mono w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none"
-            id={`repo-${point.id}`}
-            onChange={(e) => setRepo(e.target.value)}
-            placeholder="a repo Foundry tracks — its path, or its name"
-            value={repo}
-          />
-          <p className="text-ink-faint text-sm leading-snug">
-            Foundry composes the brief from{" "}
-            <span className="mono">{point.ticket}</span> and claims it in
-            Linear. The idempotency key is the point id, so this cannot queue
-            twice.
-          </p>
-          <Confirm
-            busy={busy}
-            label={`Send ${point.ticket}`}
-            onCancel={() => open("idle")}
-          />
-          <VerdictError v={error} />
-        </form>
-      )}
+      <VerdictControls
+        foundryOk={foundryOk}
+        foundryReason={foundryReason}
+        lead={
+          <ActionButton
+            active={false}
+            icon={MessageCircleQuestion}
+            onClick={askAbout}
+          >
+            Ask
+          </ActionButton>
+        }
+        point={point}
+      />
     </li>
-  );
-}
-
-function ActionButton({
-  active,
-  onClick,
-  icon: Icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: typeof Send;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      className={cn(
-        "inline-flex items-center gap-1.5 text-sm transition-colors",
-        active
-          ? "text-ink underline underline-offset-4"
-          : "text-thread hover:underline"
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      <Icon className="size-3.5" strokeWidth={1.75} />
-      {children}
-    </button>
-  );
-}
-
-function Confirm({
-  busy,
-  label,
-  onCancel,
-}: {
-  busy: boolean;
-  label: string;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <button
-        className="inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-1 text-paper text-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-        disabled={busy}
-        type="submit"
-      >
-        {busy && <LoaderCircle className="size-3.5 animate-spin" />}
-        {label}
-      </button>
-      <button
-        className="text-ink-faint text-sm hover:text-ink disabled:opacity-50"
-        disabled={busy}
-        onClick={onCancel}
-        type="button"
-      >
-        cancel
-      </button>
-    </div>
-  );
-}
-
-function VerdictError({ v }: { v: Verdict | null }) {
-  if (!v || v.ok) {
-    return null;
-  }
-  return (
-    <p className="text-sm text-st-hold leading-snug">
-      {v.status ? <span className="mono mr-1.5">{v.status}</span> : null}
-      {v.error}
-      {v.job && (
-        <>
-          {" "}
-          — held by job <span className="mono">{shortId(v.job.id)}</span> (
-          {v.job.status})
-        </>
-      )}
-    </p>
   );
 }
 
@@ -469,139 +227,39 @@ function DecidedRow({
   point: Point;
   foundryUrl: string;
 }) {
-  const d = point.decision;
   const askAbout = useAskAbout(point);
-  if (!d) {
+  if (!point.decision) {
     return null;
   }
   return (
     <li className="py-3">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span
-          className={cn(
-            "inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em]",
-            d.action === "sent"
-              ? "border-st-implemented/40 text-st-implemented"
-              : "border-st-superseded/40 text-st-superseded"
-          )}
-        >
-          {d.action}
-        </span>
-        <span
-          className={cn(
-            "display text-[17px] leading-tight",
-            d.action === "ignored" ? "text-ink-dim" : "text-ink"
-          )}
-        >
-          {point.subject}
-        </span>
-        {point.ticket && <TicketLink ticket={point.ticket} />}
-        <button
-          className="inline-flex items-center gap-1 text-sm text-thread hover:underline"
-          onClick={askAbout}
-          type="button"
-        >
-          <MessageCircleQuestion className="size-3.5" strokeWidth={1.75} />
-          Ask
-        </button>
-        <span className="mono ml-auto text-ink-faint">{when(d.at)}</span>
-      </div>
-      {d.reason && (
-        <p className="mt-1 text-ink-dim text-sm italic leading-snug">
-          {d.reason}
-        </p>
-      )}
-      {d.action === "sent" && d.job && (
-        <JobLine id={d.job.id} url={d.job.url || `${foundryUrl}/`} />
-      )}
-    </li>
-  );
-}
-
-/** The job's status from Foundry, refreshed every few seconds until it settles. */
-function JobLine({ id, url }: { id: string; url: string }) {
-  const q = useQuery({
-    queryKey: ["job", id],
-    queryFn: () => jobStatus({ data: id }),
-    refetchInterval: (query) => {
-      const d = query.state.data;
-      return d?.ok && (d.job.status === "queued" || d.job.status === "running")
-        ? 5000
-        : false;
-    },
-  });
-  const d = q.data;
-  return (
-    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-ink-dim text-sm">
-      <a
-        className="inline-flex items-center gap-1 text-thread hover:underline"
-        href={url}
-        rel="noreferrer"
-        target="_blank"
-      >
-        job <span className="mono">{shortId(id)}</span>
-        <ArrowUpRight className="size-3" />
-      </a>
-      {!d && (
-        <span className="text-ink-faint">
-          {q.isError ? "status unavailable" : "looking…"}
-        </span>
-      )}
-      {d && !d.ok && (
-        <span className="text-st-hold">
-          {d.status ? <span className="mono mr-1">{d.status}</span> : null}
-          {d.error}
-        </span>
-      )}
-      {d?.ok && (
-        <>
-          <JobStatusPill
-            live={d.job.status === "queued" || d.job.status === "running"}
-            status={d.job.status}
-          />
-          {d.job.step &&
-            (d.job.status === "queued" || d.job.status === "running") && (
-              <span className="mono text-ink-faint">{d.job.step}</span>
-            )}
-          {d.job.prUrl && (
-            <a
-              className="inline-flex items-center gap-1 text-thread hover:underline"
-              href={d.job.prUrl}
-              rel="noreferrer"
-              target="_blank"
+      <DecidedLine
+        foundryUrl={foundryUrl}
+        head={
+          <>
+            <span
+              className={cn(
+                "display text-[17px] leading-tight",
+                point.decision.action === "ignored"
+                  ? "text-ink-dim"
+                  : "text-ink"
+              )}
             >
-              PR <ArrowUpRight className="size-3" />
-            </a>
-          )}
-          {d.job.status === "failed" && d.job.exitCode !== undefined && (
-            <span className="mono text-ink-faint">exit {d.job.exitCode}</span>
-          )}
-        </>
-      )}
-    </p>
-  );
-}
-
-const JOB_CLASS: Record<string, string> = {
-  queued: "text-ink-faint border-rule",
-  running: "text-st-implemented border-st-implemented/40",
-  succeeded: "text-st-documented border-st-documented/40",
-  failed: "text-st-hold border-st-hold/40",
-  cancelled: "text-st-superseded border-st-superseded/40",
-};
-
-function JobStatusPill({ status, live }: { status: string; live: boolean }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em]",
-        JOB_CLASS[status] ?? "border-rule text-ink-dim"
-      )}
-    >
-      {live && (
-        <span className="size-1.5 animate-pulse rounded-full bg-current" />
-      )}
-      {status}
-    </span>
+              {point.subject}
+            </span>
+            {point.ticket && <TicketLink ticket={point.ticket} />}
+            <button
+              className="inline-flex items-center gap-1 text-sm text-thread hover:underline"
+              onClick={askAbout}
+              type="button"
+            >
+              <MessageCircleQuestion className="size-3.5" strokeWidth={1.75} />
+              Ask
+            </button>
+          </>
+        }
+        point={point}
+      />
+    </li>
   );
 }
