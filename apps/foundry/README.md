@@ -53,7 +53,6 @@ flowchart LR
     jobforge -- "edits" --> jobs
     jobforge -. "progress callback<br/>host.docker.internal + per-job token" .-> web
     web -- "commit · push · PR<br/>(gh / bb, host creds)" --> remote
-    web -. "scan agent-ready · claim<br/>LINEAR_API_KEY (host only)" .-> linear
 ```
 
 ## Why containers, not `orb` machines
