@@ -7,7 +7,7 @@ three durable records honest: a daily Slack digest, a per-feature change journal
 Built for a part-time schedule: everything is incremental, idempotent, and catch-up-safe,
 so the first run after days away simply backfills.
 
-## The three systems, as of 2026-09-05
+## The three systems, as of 2026-09-07
 
 Three repos share this work. Each has one job, and the seams between them are files and
 one HTTP API — nothing else.
@@ -15,18 +15,20 @@ one HTTP API — nothing else.
 | | job | today | never |
 |---|---|---|---|
 | **argus** (this repo) | Knows. The blackboard is the single source of truth for everything not in Linear or a repo; the sweep keeps it current, reconciles landings against tickets, and nominates what needs a decision. | Files (`digests/`, `reports/`, `features/*/journal`, `features/*/docs`) plus skills run by `/loop` sessions. Produces a report; holds no queue. | Dispatch work. Close tickets. Run as a daemon. |
-| **Pensieve** (`~/git/pensieve`) | The decision surface. Where you read what argus reports and decide what to act on. | A reading room: renders the report, digests, journal and docs for every app under the blackboard. Writes nothing. | Hold workflow state of its own. Write any blackboard file other than `decisions/`. |
-| **Foundry** (`~/git/foundry`) | Executes. Takes a job over HTTP, runs it in an ephemeral forge, pushes a PR, reports back. | Jobs, blueprints, repos, forges, the trigger API. The `agent-ready` ticket scanner that made it a decider too is being removed (LIA-93). | Read the blackboard. Judge readiness. Choose what runs. |
+| **Pensieve** (`~/git/pensieve`) | The decision surface. Where you read what argus reports and decide what to act on. | Renders the report, digests, journal and docs for every app under the blackboard; the Points page sends a point to Foundry or ignores it; Ask answers over the checkout and proposes a verdict that a click confirms. Writes `decisions/` and nothing else. | Hold workflow state of its own. Write any blackboard file other than `decisions/`. |
+| **Foundry** (`~/git/foundry`) | Executes. Takes a job over HTTP, runs it in an ephemeral forge, pushes a PR, reports back. | Jobs, blueprints, repos, forges, the trigger API. The `agent-ready` ticket scanner that made it a decider too is gone (LIA-93). | Read the blackboard. Judge readiness. Choose what runs. |
 
 One line: **argus knows, you decide in Pensieve, Foundry does.**
 
 The decision now happens on the screen where the report is read: the sweep emits each
 Needs-you point as data, and Pensieve's Points page sends a point to Foundry or ignores it
 with a reason. The `agent-ready` label that used to be the handoff is retired — inert on
-the tickets that carry it, applied by nothing, read by nothing. What is left of the old
-path is Foundry's scanner itself (LIA-93). That work is tickets LIA-87 → LIA-94 across the
-three Linear projects, in the order `PLAN.md` gives; the diagram is `canvas/setup.json`
-(`bun run canvas`, then `?g=setup`). "Downstream" at the bottom is the current contract.
+the tickets that carry it, applied by nothing, read by nothing — and Foundry's scanner is
+gone. From Ask, the model can propose a verdict that the same click confirms; the tool it
+calls never writes. That work landed as waves 1 to 5 of `PLAN.md`, which also holds what
+is still open (a `verified` verdict, and Ask filing a ticket); the diagram is
+`canvas/setup.json` (`bun run canvas`, then `?g=setup`). "Downstream" at the bottom is the
+current contract.
 
 ## The loop at a glance
 
@@ -256,8 +258,10 @@ judgement staying on this side:
    title tag, `repo`.
 2. **You decide in Pensieve.** The Points page shows the point with Send and Ignore.
    Send is present only on a point that names a ticket; Ignore always asks for a reason.
-   Either way one file lands in `decisions/<group>/<slug>.json`, and the point drops out
-   of the next tick's Needs-you.
+   An Ask opened from the point shows the same controls, and the model can propose a
+   verdict as a card whose Confirm is the same click. Either way one file lands in
+   `decisions/<group>/<slug>.json`, and the point drops out of the next tick's Needs-you.
+   Ignore is a dismissal: the reason is stored and nothing acts on it.
 3. **Foundry executes.** Send is a `POST /api/jobs` with `ticketId`, `repo` and the point
    id as the `Idempotency-Key` — no brief. Foundry composes the brief from the ticket
    body, claims the ticket atomically (job row in its Postgres ledger, unique on ticket
