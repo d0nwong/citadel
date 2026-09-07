@@ -45,6 +45,17 @@ export async function trackedRepos(): Promise<Array<{ id: string; path: string; 
   return db.select({ id: reposTable.id, path: reposTable.path, name: reposTable.name }).from(reposTable)
 }
 
+/**
+ * origin's default branch of a checkout — what the trigger API bases a job on
+ * when the caller names no `baseBranch` and the repo has never had one. The
+ * same derivation `scanRepos` does for `defaultBranch`; local-only, no network,
+ * and 'main' when origin/HEAD is unset (as it is in some clones).
+ */
+export async function defaultBranchOf(repoPath: string): Promise<string> {
+  const head = await git(repoPath, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])
+  return head.replace(/^origin\//, '') || 'main'
+}
+
 async function isGitRepo(dir: string) {
   try {
     return (await stat(path.join(dir, '.git'))).isDirectory() || (await stat(path.join(dir, '.git'))).isFile()

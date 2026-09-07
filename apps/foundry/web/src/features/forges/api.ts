@@ -3,7 +3,7 @@ import type { AdapterInfo, Forge } from './types'
 
 /**
  * Real data — the forge inventory comes from docker labels. The node-only
- * scanner is imported inside each handler so it never reaches the client
+ * scan module is imported inside each handler so it never reaches the client
  * bundle, same as jobs and repos.
  */
 

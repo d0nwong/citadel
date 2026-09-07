@@ -76,10 +76,10 @@ git clone <this repo> ~/git/foundry && cd ~/git/foundry
 gh and dies when they are missing. It installs them instead — OrbStack, bun, the
 `claude` CLI, `gh`, `php` + the `bb` phar, `tailscale` — prompting before each one,
 settles `git config --global user.name/user.email` (every forge inherits it), symlinks
-`bin/foundry` onto your PATH, creates `infra/.env` and `web/.env` from their examples
-and a starting `~/.foundry/scanner.json`, then hands over to `foundry setup` and mints
-the trigger-API token. Every phase is a no-op when it's already done, and each runs on
-its own (`./scripts/bootstrap.sh prereqs|identity|link|envfiles|scanner|foundry`).
+`bin/foundry` onto your PATH, creates `infra/.env` and `web/.env` from their examples,
+then hands over to `foundry setup` and mints the trigger-API token. Every phase is a
+no-op when it's already done, and each runs on its own
+(`./scripts/bootstrap.sh prereqs|identity|link|envfiles|foundry`).
 
 It never writes a credential — those stay with `foundry auth`, below; the shared
 `~/.config/liamai/env` is only created empty when it is missing — and three things
@@ -377,44 +377,30 @@ Versions are also how foundry ships improvements to the blueprints it seeds: a
 migration may rewrite one *only* while you have never saved over it. Your first edit
 takes ownership of that blueprint permanently, and later releases leave it alone.
 
-### Ticket scanner
+### From a Linear ticket
 
-Label a Linear ticket **`agent-ready`** and foundry picks it up by itself: on a poll
-interval the web server scans the Liamai team for open labeled tickets, queues a job
-whose brief is the full ticket body (key, title, URL, every section), assigns the
-ticket to you and moves it to In Progress, then ignites the job through the exact
-pipeline the UI uses. The label is the entire contract — the scanner never infers
-readiness from status, assignee or anything else. A human put it there on purpose.
+A ticket becomes a job through the same `POST /api/jobs` above — send a `ticketId`
+and no `instructions` and foundry fetches the issue with the host's `LINEAR_API_KEY`,
+composes the brief from its body (key, title, URL, every section), claims the ticket
+in Linear by assigning it to you and moving it to In Progress, then ignites the
+pipeline the UI uses.
 
-Two sanity checks guard the label rather than replace it: a ticket with an unresolved
-blocked-by relation, or with content under a `## Pending` heading, is skipped with a
-log line — it keeps the label and is retried next scan, so fix the ticket, not the
-scanner. Claiming is race-safe: the job row is inserted under a unique index on the
-ticket id *before* any Linear write, so two ticks (or two servers) can both try and
-exactly one wins; a crash in between is repaired on the next scan. A ticket the
-scanner has run stays claimed even after the job settles — re-running it is the UI's
-rerun button, or purge the job and leave the label on.
+**The deciding happens elsewhere.** Foundry never scans Linear and never judges
+whether a ticket is ready — it has no opinion about labels, status or assignee. A
+human decides in the Pensieve cockpit, which is what sends the ticket id here; this
+side only executes. (Foundry used to poll for an `agent-ready` label and ignite by
+itself; that made two deciders out of one, and the polling is gone. The label no
+longer does anything here.)
 
-Which repo a ticket lands in comes from `~/.foundry/scanner.json`, keyed by the
-ticket's Linear *project* name and read fresh each scan:
+Claiming is race-safe the same way it always was: the job row is inserted under a
+unique index on the ticket id *before* any Linear write, so the same ticket sent twice
+queues one job and the second request gets a `409`. A ticket that has already run
+stays claimed after the job settles — re-running it is the UI's rerun button, or purge
+the job first.
 
-```json
-{
-  "Foundry":  { "repoPath": "/Users/you/git/foundry" },
-  "my-app":   { "repoPath": "/Users/you/git/my-app-fe", "baseBranch": "staging" }
-}
-```
-
-`baseBranch` defaults to the checkout's `origin/HEAD`, and an optional `blueprintId`
-overrides the default Plan → Execute blueprint. Tickets in an unmapped project (or no
-project) are skipped and logged.
-
-Off by default. `FOUNDRY_SCANNER=1` in `web/.env` turns it on;
-`FOUNDRY_SCANNER_INTERVAL` sets the poll in seconds (default 300). The scan uses the
-host's `LINEAR_API_KEY` from `foundry auth --linear` — like every Linear credential
-here, it never enters a forge. New claims stop while `FOUNDRY_MAX_JOBS` jobs are
-open, so labeled tickets queue in Linear — where you can still edit or unlabel them —
-not in the ledger.
+The full request and response contract is the OpenAPI document at
+`/api/openapi.json`, rendered at [`/api/reference`](http://localhost:3777/api/reference);
+`web/README.md` has the prose around it.
 
 ### Reaching it from your other devices
 

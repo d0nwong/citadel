@@ -19,7 +19,7 @@ export const revisionSource = foundry.enum('revision_source', ['seed', 'user'])
 
 /**
  * Repos the user has imported — the curated set a job may target. What the
- * scanner reports about a checkout (branch, dirty, last commit) is deliberately
+ * repo scan reports about a checkout (branch, dirty, last commit) is deliberately
  * not stored: those are facts about the working tree right now, read live.
  */
 export const repos = foundry.table('repos', {
@@ -111,22 +111,23 @@ export const jobs = foundry.table(
      */
     sourceJobId: uuid('source_job_id'),
     /**
-     * Linear issue identifier (e.g. LIA-52) when the ticket scanner ignited
-     * this job. Unique — the insert IS the scanner's claim on the ticket;
-     * NULL for UI-created jobs, and NULLs don't collide.
+     * Linear issue identifier (e.g. LIA-52) when the job was queued from a
+     * ticket over `POST /api/jobs`. Unique — the insert IS the claim on the
+     * ticket, taken before any Linear write; NULL for UI-created jobs, and
+     * NULLs don't collide.
      */
     ticketId: text('ticket_id'),
     /**
      * Where to POST a signed `job.settled` event once the job leaves the open
      * set — set only by the trigger API (a service that would rather not poll).
-     * NULL for UI and scanner jobs.
+     * NULL for UI jobs.
      */
     callbackUrl: text('callback_url'),
     /**
      * The trigger API's `Idempotency-Key` header (LIA-91), unique so a replay
      * finds the job it already made — and so two concurrent first requests
      * insert one row, the same way `ticket_id` arbitrates a claim. NULL for
-     * UI and scanner jobs, and for API calls that sent no header.
+     * UI jobs, and for API calls that sent no header.
      */
     idempotencyKey: text('idempotency_key'),
     /**

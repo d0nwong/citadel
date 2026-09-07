@@ -156,7 +156,7 @@ test('valid trigger → 202, a queued row on the default blueprint, ignited once
   expect(job.baseBranch).toBe('main')
   expect(job.branch).toMatch(new RegExp(`^foundry/test-${rand}-do-${job.id.slice(0, 8)}$`))
   expect(job.callbackUrl).toBe('https://example.test/hook')
-  // The seeded default applies unless the row is gone — the scanner's rule.
+  // The seeded default applies unless the row is gone.
   const seeded = await getBlueprintRow(DEFAULT_BLUEPRINT_ID)
   expect(job.blueprint?.name).toBe(seeded?.name)
   expect(ignited).toEqual([job.id])
@@ -198,7 +198,7 @@ test('LIA-92 AC1/AC2 — ticketId without instructions composes the brief, claim
   expect(res.status).toBe(202)
   const job = (await res.json()) as Job
 
-  // Scanner BR-9: `<KEY>: <title>\n<url>\n\n<description>`.
+  // The brief is the ticket: `<KEY>: <title>\n<url>\n\n<description>`.
   expect(job.task).toBe(ticketBrief(issueFor(ticketId)))
   expect(job.task).toBe(`${ticketId}: do the thing\nhttps://linear.app/liamai/issue/${ticketId}/slug\n\n## Summary\n\nEvery detail here.`)
   expect(job.ticketId).toBe(ticketId)
@@ -211,7 +211,6 @@ test('LIA-92 AC1/AC2 — ticketId without instructions composes the brief, claim
   const logs = await logsOf(job.id)
   expect(logs.some((l) => l.stream === 'sys' && /queued on orbstack .* — claim for /.test(l.text))).toBe(true)
   expect(logs.some((l) => l.stream === 'sys' && l.text.includes(`claimed ${ticketId} in Linear`))).toBe(true)
-  expect(logs.some((l) => l.text.includes('scanner claim'))).toBe(false)
 })
 
 test('LIA-92 AC3 — ticketId with instructions keeps the instructions as task and still claims in Linear', async () => {
