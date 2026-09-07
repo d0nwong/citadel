@@ -16,14 +16,12 @@
  * `.state.next.json`; the agent promotes it (`mv`) only after the digest commit succeeds,
  * so a crashed run replays instead of skipping.
  *
- * Auth: SLACK_TOKEN — from the environment (Bun loads .env) first, else the shared
- * credentials file ~/.config/liamai/env (scripts/lib/shared-env.ts; the same file
- * Foundry's `foundry auth --slack` writes). Needs channels:history + users:read (a user
- * token also needs channels:read).
+ * Auth: SLACK_TOKEN — from the environment and nowhere else. Bun loads the checkout's
+ * .env for every `bun …` script, and `./scripts/bootstrap.sh env` is what writes it
+ * there. Needs channels:history + users:read (a user token also needs channels:read).
  */
 
 import { join } from "node:path";
-import { SHARED_ENV, sharedEnv } from "../../../scripts/lib/shared-env.ts";
 
 export const CHANNEL = "C07KG06L601";
 export const WORKSPACE = "https://alden-studios.slack.com";
@@ -296,10 +294,10 @@ export function render(p: Pull): string {
 // ---------------------------------------------------------------- slack api
 
 async function slack<T>(method: string, params: Record<string, string | number | undefined>): Promise<T> {
-  const token = process.env.SLACK_TOKEN ?? sharedEnv().SLACK_TOKEN;
+  const token = process.env.SLACK_TOKEN;
   if (!token) {
     throw new Error(
-      `SLACK_TOKEN is not set — put it in ${SHARED_ENV} (./scripts/bootstrap.sh env, or foundry auth --slack), or export it / add it to .env`,
+      "SLACK_TOKEN is not set — put it in the argus checkout's .env (./scripts/bootstrap.sh env prompts for it), or export it",
     );
   }
   const qs = new URLSearchParams();
