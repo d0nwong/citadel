@@ -73,24 +73,23 @@ touches. These are the docs `skills/feature-docs` produces per `DOC-PROTOCOL.md`
   table that doesn't exist, a generated hook that isn't generated — each is a pending item
   with the sha you proved it against, not a vague "waiting on backend".
 
-**4. Resolve the destination.** `list_teams` → team; `list_projects`, `list_issue_labels`
-for the rest. Reuse `defaults.json` beside this skill if present (`{"teamId":…,
-"teamKey":…, "projectId":…, "labelIds":[…]}`); if it's absent or the team is ambiguous,
-ask once and write the answer there so the next run is silent. Every ticket this skill
-creates is assigned to the user (`assignee: "me"` on `save_issue`), sub-issues included;
-leave status, estimate and cycle alone unless the user names them.
+**4. Resolve the destination.** `list_teams` → team; `list_projects` for the rest. Reuse
+`defaults.json` beside this skill if present (`{"teamId":…, "teamKey":…, "projectId":…}`);
+if it's absent or the team is ambiguous, ask once and write the answer there so the next
+run is silent. Every ticket this skill creates is assigned to the user (`assignee: "me"`
+on `save_issue`), sub-issues included; leave status, estimate and cycle alone unless the
+user names them.
+
+**No labels at filing, ever.** Filing a ticket queues it; it never dispatches an agent.
+Readiness is a separate, per-ticket decision the user makes in Pensieve's Points page on
+a sweep nomination (workspace README, "Downstream"), so nothing written here signals it.
+`agent-ready` in particular is inert: left on the tickets that already carry it, never
+applied again, and read by nothing. Add a label only when the user names one.
 
 **Slack-derived alden-portal tickets** (a Slack thread, or a digest ✋ item, that
-becomes work in `~/git/alden-portal-fe` or `~/git/alden-connect-portal-be`):
-- always file into the **Alden Portal** project (`defaults.json` → `projectId`) — no
-  label for this, the project is the tag;
-- label `agent-ready` (`defaults.json` → `labels.agentReady`) when the drafted body has
-  **no Pending section**, the ticket has **no blocked-by relation**, and every AC clears
-  the bar in the last rule below. Apply it at filing time without asking — the user's
-  standing rule. Foundry picks the label up and runs an agent on the body as written, so
-  the AC bar is not optional for these: if an AC isn't observable and grounded, the honest
-  move is a Pending bullet or a Technical-Notes question, which withholds the label, not a
-  vague AC that carries it.
+becomes work in `~/git/alden-portal-fe` or `~/git/alden-connect-portal-be`) always file
+into the **Alden Portal** project (`defaults.json` → `projectId`) — no label for this
+either, the project is the tag.
 
 **5. Draft, then show it.** Write the full issue per `FORMAT.md` to
 `<scratchpad>/linear-<slug>.md` and print the title + body in the reply. Filing is
@@ -98,9 +97,8 @@ outward-facing: get an explicit go-ahead before creating, unless the user alread
 "file it" / "just create it".
 
 **6. Create.** `save_issue` with `title`, `team`, `description` (the markdown body),
-`assignee: "me"`, plus `project`/`labels` (the rule above included) — and no `id`, which is
-what makes it a create. Report back
-the issue key and URL, nothing else.
+`assignee: "me"` and `project` — no `labels` (step 4), and no `id`, which is what makes it
+a create. Report back the issue key and URL, nothing else.
 
 Splitting into sub-issues is a three-pass create, because relations need keys that don't
 exist yet: (1) create the parent, (2) create each sub-issue in execution order with
@@ -144,8 +142,8 @@ ticket touches.
   independent validations runs first), that's implementer's judgment — pick the option
   that matches existing patterns in the codebase or ticket, state it, done. Getting this
   wrong in the cautious direction is not free: a mechanism-level question left in Pending
-  is exactly what disqualifies a ticket from `agent-ready` (see below) even though nothing
-  external was actually being waited on.
+  is exactly what makes a ticket unsendable (see below) even though nothing external was
+  actually being waited on.
 - **Backend contract → generated client is Scope once the backend has landed.** Before
   the BE change is on `origin/dev`, it is a Pending bullet like any other. Once it is
   there *and deployed to the server the spec is exported from* (`dev-alden-portal`, per
@@ -206,16 +204,15 @@ ticket touches.
   order is how a human should sequence the work, the blockers are which ones *cannot*
   start yet. Steps that can run in parallel say so (`blocked by: none — can run alongside
   step 2`) rather than being silently numbered as if sequential. A blocked sub-issue
-  therefore never carries `agent-ready` — that falls straight out of the Slack-derived
-  rule in step 4.
-- **ACs are executable, not aspirational.** Once a ticket carries the `agent-ready`
-  label, Foundry runs an agent with the body exactly as written (workspace README,
-  "Downstream" section) and the ACs are its definition of done — so each AC must be
-  observable and grounded in a Technical Note without a round of questions. Anything
-  vaguer belongs in Pending or as an open question in Technical Notes. A vague AC doesn't
-  just annoy the next reader; it disqualifies the ticket from pickup (the sweep only
-  nominates tickets that clear this bar: Pending absent, no blocked-by relation, every AC
-  concrete).
+  is therefore never sendable while its blocker is open — a blocked-by relation is one
+  of the three things the sweep's readiness bar rejects on.
+- **ACs are executable, not aspirational.** Once the user sends a ticket to Foundry,
+  Foundry runs an agent with the body exactly as written (workspace README, "Downstream"
+  section) and the ACs are its definition of done — so each AC must be observable and
+  grounded in a Technical Note without a round of questions. Anything vaguer belongs in
+  Pending or as an open question in Technical Notes. A vague AC doesn't just annoy the
+  next reader; it keeps the ticket out of the sweep's nominations altogether (6d's bar:
+  Pending absent, no blocked-by relation, every AC concrete).
 - **Technical Notes are what the code won't tell you.** At most eight bullets; a fact the
   implementer would find by opening a Scope file is not a note, and a fact the feature's
   arch or product doc already states is an MM / BR citation, not a paragraph. Whole body

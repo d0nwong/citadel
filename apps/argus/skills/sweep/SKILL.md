@@ -150,17 +150,23 @@ section run over. Only the inference lines (Needs-you) come from the report, bec
 file holds them. A subagent's report is never shown to the user; an unrelayed finding is
 a lost one.
 
-**6d. Nominate agent-ready tickets** (inline, every tick). Over the step-3 open-ticket
+**6d. Nominate ready tickets** (inline, every tick). Over the step-3 open-ticket
 list as refreshed after the worker returned: a ticket qualifies when its Pending section
 is absent, it has no blocked-by relation, and every Acceptance Criterion is concrete — an
 observable outcome with a Technical Note naming where it is met (linear-ticket's "ACs are
 executable" bar).
-A qualifying ticket not yet carrying `agent-ready` gets a Needs-you line: "LIA-xx looks
-agent-ready — label it?". The concreteness call is judgement, so nomination is
-report-only (Autonomy): the label is the entire contract with Foundry's ticket pickup
-(README, "Downstream"), so applying it dispatches an agent — precisely the decision the
-report exists to surface, not make. Like holds, a ready-but-unlabeled ticket restates
-every tick until labeled or disqualified — the report is a snapshot, not a diff.
+A qualifying ticket gets a Decide line whose subject is the ticket key: "**LIA-xx is
+ready** — send to Foundry?". That exact shape is load-bearing — the subject names one
+LIA key, so `points.ts` sets the point's `ticket`, and `repo` follows from the ticket's
+`[FE]` / `[BE]` title tag; a point without `ticket` has no Send button in the cockpit,
+only Ignore. So the bar above is what makes a point sendable: nominate only a ticket that
+clears it, and write the key into the subject when you do.
+The concreteness call is judgement, so nomination stays report-only (Autonomy): sending
+dispatches an agent against the body as written — precisely the decision the report
+exists to surface, not make. The user settles it in Pensieve's Points page (README,
+"Downstream"), and the resulting `decisions/` file drops the point from later ticks.
+Like holds, a ready-but-undecided ticket restates every tick until decided or
+disqualified — the report is a snapshot, not a diff.
 
 **7. Audit.** `bun run accio audit`. Problems it still reports after dispatch go in the
 report, every one, in step 8's Audit shape — never silence one by inventing the missing
@@ -182,8 +188,8 @@ current-state rule the digest follows applies to Needs you: each bullet says wha
 1. **Needs you** — grouped by what is being asked of the user, as bold labels in
    this fixed order, empty groups omitted:
    - **Decide** — only the user can settle it: revert or accept, ticket or not, close
-     or rescope, apply `agent-ready` (6d nominations), attribute an unattributed
-     landing.
+     or rescope, send a ready ticket to Foundry (6d nominations), attribute an
+     unattributed landing.
    - **Verify** — an inference to check: appears-implemented or appears-redundant
      tickets, Pending bullets that only *appear* satisfied, partial matches awaiting a
      AC edit, 6b/6c findings.
@@ -337,7 +343,7 @@ re-emitted (identical), no Done-today block; append `sweep: nothing new` under t
 line if you want the quietness recorded, and run `points.ts` all the same — the file gets
 a new `tick` and the same points. The terminal one-liner alone is only correct on
 the first tick of a day when there is genuinely nothing open — meaning step 3 found no
-holds, no agent-ready nominations, and audit is clean, not merely nothing *new*.
+holds, no ready-ticket nominations, and audit is clean, not merely nothing *new*.
 
 ## Autonomy
 
@@ -382,8 +388,6 @@ refer here rather than restating it.
 - leave a landing as a comment instead of updating the body;
 - tick or untick an AC — the boxes are the implementer's record, and a tick from
   the sweep's own reading is inference in the shared body;
-- apply `agent-ready` to an already-open ticket — nomination is report-only; the one
-  pre-authorised exception is 6a's filing-time label on tickets the sweep itself files;
 - write to Linear from any worker other than `ticket-pass` — `slack-digest` only reads
   it, to link items to the tickets they concern;
 - create, edit or delete a file under `decisions/` — Pensieve writes them, the sweep
