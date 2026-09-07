@@ -27,7 +27,9 @@ export type Feature = {
   /** curated folder override under features/ — defaults from the id (see featureDir) */
   dir?: string;
   type: "feature" | "shared";
-  status: "pending" | "in_progress" | "done" | "stale";
+  /** `superseded` is terminal and hand-set: the feature still exists in code but is no
+   * longer the path anyone should take. `superseded_by` says what replaced it. */
+  status: "pending" | "in_progress" | "done" | "stale" | "superseded";
   entry_routes: string[];
   /** machine-owned: refreshed wholesale by `accio map` */
   core_files: string[];
@@ -43,6 +45,8 @@ export type Feature = {
   aliases: string[];
   /** curated component groupings; optional, coverage grows from real questions */
   components?: Component[];
+  /** one line naming what replaced this feature; set with `status: "superseded"` */
+  superseded_by?: string;
   /** set by `accio map` when every entry_route vanished from the route tree */
   orphaned?: boolean;
   docs_sha?: string;

@@ -16,23 +16,22 @@ one HTTP API — nothing else.
 |---|---|---|---|
 | **argus** (this repo) | Knows. The blackboard is the single source of truth for everything not in Linear or a repo; the sweep keeps it current, reconciles landings against tickets, and nominates what needs a decision. | Files (`digests/`, `reports/`, `features/*/journal`, `features/*/docs`) plus skills run by `/loop` sessions. Produces a report; holds no queue. | Dispatch work. Close tickets. Run as a daemon. |
 | **Pensieve** (`~/git/pensieve`) | The decision surface. Where you read what argus reports and decide what to act on. | A reading room: renders the report, digests, journal and docs for every app under the blackboard. Writes nothing. | Hold workflow state of its own. Write any blackboard file other than `decisions/`. |
-| **Foundry** (`~/git/foundry`) | Executes. Takes a job over HTTP, runs it in an ephemeral forge, pushes a PR, reports back. | Jobs, blueprints, repos, forges, the trigger API. Also still carries the `agent-ready` ticket scanner, which makes it a decider as well. | Read the blackboard. Judge readiness. Choose what runs. |
+| **Foundry** (`~/git/foundry`) | Executes. Takes a job over HTTP, runs it in an ephemeral forge, pushes a PR, reports back. | Jobs, blueprints, repos, forges, the trigger API. The `agent-ready` ticket scanner that made it a decider too is being removed (LIA-93). | Read the blackboard. Judge readiness. Choose what runs. |
 
 One line: **argus knows, you decide in Pensieve, Foundry does.**
 
-The gap between today and that line is the scanner and the label: today the handoff is
-"sweep nominates, you label in Linear, Foundry polls the label". The decided target moves
-the decision onto the screen where the report is read — the sweep emits each Needs-you
-point as data, Pensieve lets you send a point to Foundry or ignore it with a reason, and
-the scanner and the label retire. That is tickets LIA-87 → LIA-94 across the three Linear
-projects, in the order `PLAN.md` gives; the diagram is `canvas/setup.json` (`bun run canvas`, then `?g=setup`). The
-"Downstream" section at the bottom describes the label path and is superseded when LIA-89
-lands.
+The decision now happens on the screen where the report is read: the sweep emits each
+Needs-you point as data, and Pensieve's Points page sends a point to Foundry or ignores it
+with a reason. The `agent-ready` label that used to be the handoff is retired — inert on
+the tickets that carry it, applied by nothing, read by nothing. What is left of the old
+path is Foundry's scanner itself (LIA-93). That work is tickets LIA-87 → LIA-94 across the
+three Linear projects, in the order `PLAN.md` gives; the diagram is `canvas/setup.json`
+(`bun run canvas`, then `?g=setup`). "Downstream" at the bottom is the current contract.
 
 ## The loop at a glance
 
-Each sweep tick walks four stages, each feeding the next; a fifth, dashed because it is
-planned and gated on your label, hands ready tickets off to Foundry:
+Each sweep tick walks four stages, each feeding the next; a fifth nominates ready
+tickets, dashed because what happens after it is your call, made in Pensieve:
 
 ```mermaid
 flowchart LR
@@ -40,11 +39,14 @@ flowchart LR
     journal["2 · Journal<br/>one entry per landing<br/>(the why)"]
     docs["3 · Docs<br/>dual-tier product + arch<br/>(the what)"]
     tickets["4 · Linear<br/>file tickets from ✋ items,<br/>annotate + review open ones"]
-    nominate["5 · Nominate<br/>report: 'LIA-xx looks<br/>agent-ready — label it?'"]
-    pickup["Foundry pickup<br/>(planned)"]
+    nominate["5 · Nominate<br/>report: 'LIA-xx is ready<br/>— send to Foundry?'"]
+    decide(["you, in Pensieve"])
+    foundry["Foundry executes<br/>(POST /api/jobs)"]
 
     capture --> journal --> docs --> tickets
-    tickets -.-> nominate -. "you apply the<br/>agent-ready label" .-> pickup
+    tickets -.-> nominate
+    nominate -.-> decide
+    decide -. "Send" .-> foundry
 ```
 
 ## Architecture
@@ -234,48 +236,57 @@ bun run sync-skills      # after adding/removing a skill: make it global (--chec
 Everything commits locally and never pushes; anything needing judgement lands in the
 sweep report, not in a file.
 
-## Downstream: Foundry ticket pickup (planned)
+## Downstream: sending a ticket to Foundry
 
 [Foundry](~/git/foundry) — the orchestration layer for disposable Claude Code forges —
-will consume the queue this workspace maintains: a periodic scanner picks up Linear
-tickets that are ready to be worked on and ignites a job forge per ticket. The design is
-agreed but not yet built; this section is the contract between the two repos.
+executes what this workspace nominates and you approve. It never reads the blackboard and
+never judges readiness; it takes one HTTP call and runs it. This section is the contract
+between the three repos.
 
 **Ready is an explicit signal, not an inference.** A ticket qualifies mechanically when
 its **Pending** section is empty, it has no blocked-by relation, and its Acceptance
 Criteria are concrete (observable outcomes, each grounded in a Technical Note, per the
-linear-ticket house format) — but Foundry
-never acts on that alone. The handoff is three steps, judgement staying on this side:
+linear-ticket house format) — but nothing acts on that alone. The handoff is three steps,
+judgement staying on this side:
 
 1. **Sweep nominates.** Sweep step 6d checks every open ticket against that bar each
-   tick; a ticket that newly qualifies gets a Needs-you line ("LIA-xx looks agent-ready —
-   label it?"). Nomination is inference, so it goes in the report, never into Linear.
-2. **You confirm** by putting the `agent-ready` label on the ticket. The label is the
-   whole API between the repos.
-3. **Foundry executes.** A host-side scanner in Foundry's web server polls for labeled
-   tickets, claims one atomically (job row in its Postgres ledger, unique on ticket key,
-   *before* touching Linear), marks it In Progress, and ignites an ephemeral job forge
-   with the ticket body as the brief; the Acceptance Criteria are its definition of done.
+   tick; a qualifying ticket gets a Needs-you line under Decide ("**LIA-xx is ready** —
+   send to Foundry?"). Nomination is inference, so it goes in the report, never into
+   Linear. `points.ts` carries it into `reports/points.json` with `ticket` and, from the
+   title tag, `repo`.
+2. **You decide in Pensieve.** The Points page shows the point with Send and Ignore.
+   Send is present only on a point that names a ticket; Ignore always asks for a reason.
+   Either way one file lands in `decisions/<group>/<slug>.json`, and the point drops out
+   of the next tick's Needs-you.
+3. **Foundry executes.** Send is a `POST /api/jobs` with `ticketId`, `repo` and the point
+   id as the `Idempotency-Key` — no brief. Foundry composes the brief from the ticket
+   body, claims the ticket atomically (job row in its Postgres ledger, unique on ticket
+   key, *before* touching Linear), marks it In Progress and ignites an ephemeral job
+   forge; the Acceptance Criteria are its definition of done.
 
 ```mermaid
 flowchart LR
-    sweep["/sweep 6c<br/>ticket pass"] -- "nominate in report" --> you(["you"])
-    you -- "agent-ready label" --> linear["Linear — Liamai"]
-    scanner["Foundry scanner<br/>(web/, host-side)"] -- "poll label,<br/>claim in Postgres" --> linear
-    scanner -- "ignite" --> forge["job forge<br/>(ephemeral)"]
+    sweep["/sweep 6d<br/>nominate"] -- "Needs-you point<br/>(ticket + repo)" --> points["reports/points.json"]
+    points --> pensieve["Pensieve<br/>Points page"]
+    pensieve -- "Ignore + reason" --> decisions["decisions/*.json"]
+    pensieve -- "Send: POST /api/jobs" --> foundry["Foundry API"]
+    foundry -- "job id + url" --> pensieve
+    pensieve -. "action: sent, job" .-> decisions
+    foundry -- "claim in Postgres,<br/>ignite" --> forge["job forge<br/>(ephemeral)"]
 ```
 
 Ground rules, mirroring the sweep's own write policy:
 
-- **No label, no pickup.** An unblocked ticket is not the same as the ticket you want
-  worked next; Foundry never guesses the queue order.
-- **Claim before work.** The Postgres insert is the lock — two scan ticks, or you plus
-  the agent, can never double-work a ticket.
-- **Scan after a sweep tick**, so the scanner reads reconciled state rather than tickets
-  a fresh landing already mooted.
+- **No Send, no pickup.** An unblocked ticket is not the same as the ticket you want
+  worked next; nothing downstream guesses the queue order, and no label signals it —
+  `agent-ready` is retired and read by nothing.
+- **Claim before work.** The Postgres insert is the lock — a double click, a retry after
+  a timeout, or you plus the agent can never double-work a ticket; the point id is the
+  idempotency key that makes the retry safe.
+- **Decide after a sweep tick**, so what you send is reconciled state rather than a
+  ticket a fresh landing already mooted.
 - **Own worktree, always.** Job forges work in per-job clones (`~/.foundry/jobs/<id>/`),
   never the shared FE working tree.
 
-When this ships, Foundry's own README (architecture diagram + `web/README.md`) documents
-the scanner's internals; this section stays the source of truth for the label contract
-and the nomination flow.
+Foundry's own README documents the API and the forge internals; this section stays the
+source of truth for the nomination flow and what a Send means.

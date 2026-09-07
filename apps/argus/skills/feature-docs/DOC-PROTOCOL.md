@@ -43,7 +43,8 @@ Create `.doc-workspace/feature-manifest.json` listing each entry, its entry file
 }
 ```
 
-`status` is one of `pending | in_progress | done | stale`. Set `in_progress` before reading files so a crashed run can be resumed unambiguously.
+`status` is one of `pending | in_progress | done | stale | superseded`. Set `in_progress` before reading files so a crashed run can be resumed unambiguously.
+`superseded` is hand-set and terminal — the code is still there but nobody should take this path any more; the entry carries a one-line `superseded_by` saying what replaced it, the docs carry `status: superseded` plus the same pointer under their H1, and Phases 2–4 skip the feature (never refresh, never mark stale).
 
 ---
 
@@ -98,7 +99,7 @@ Hard rules for BOTH tiers:
 id: checkout-and-payments
 tier: product
 feature_name: "Checkout & Payments"
-status: active # active | deprecated | beta
+status: active # active | deprecated | beta | superseded (see the manifest's `status`; arch.md carries it too when set)
 owner: "" # team or person, if known
 aliases: [checkout, payments, "pay flow", stripe] # every name a human might use when asking about this
 related_features: [order-management, user-authentication]

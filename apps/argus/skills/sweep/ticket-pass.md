@@ -31,11 +31,11 @@ Fill every `{…}`:
 > refreshed docs per 6c.
 >
 > Write policy is the sweep's Autonomy section, in full. In short: you may file tickets
-> from ✋ items (Alden Portal project, `agent-ready` at filing time per 6a), write the
-> ` → LIA-xx` digest marker, and update a ticket's description with verified facts —
+> from ✋ items (Alden Portal project, no labels, per 6a), write the ` → LIA-xx` digest
+> marker, and update a ticket's description with verified facts —
 > by editing the section the fact belongs to, never by commenting, never as a dated
 > log. You may NEVER close a ticket, write inference into a ticket, tick or untick an
-> AC, apply `agent-ready` to a ticket you did not file this tick, or push git.
+> AC, or push git.
 >
 > Report back three lists, verbatim lines the sweep can paste: **Needs you** (appears-
 > satisfied / appears-redundant, ✋ pings that got no ticket and why, linked items whose
@@ -50,13 +50,11 @@ fix, review, write, decide-with-follow-up) and **does not already link a ticket*
 Liamai ticket (a linked item is 6b's — the digest linked it because the work is already
 ticketed):
 
-- **Where:** the **Alden Portal** project — the project is the tag, no `digest` /
-  `alden-portal` labels. Assignee me, the Slack permalink as the body's anchor, title
-  from the item.
-- **`agent-ready` at filing time** when the body carries no Pending section and the
-  ticket has no blocked-by relation (linear-ticket's "Slack-derived alden-portal
-  tickets" rule). This is the one place the sweep applies the label itself; every
-  already-open ticket is nomination-only (step 6d).
+- **Where:** the **Alden Portal** project — the project is the tag. Assignee me, the
+  Slack permalink as the body's anchor, title from the item.
+- **No labels at filing** — linear-ticket step 4 owns the rule. A filed ticket is a
+  queue entry, never a dispatch; readiness is decided per ticket in the cockpit (6d
+  nominates, the user sends from Pensieve).
 - **Pure reply/ack pings get no ticket** — they stay in the report; a queue buried in
   micro-tasks stops being read.
 - **Dedupe is a writeback:** after filing, append ` → LIA-xx` to the item's headline line in the
