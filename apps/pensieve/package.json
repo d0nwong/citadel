@@ -8,6 +8,7 @@
     "#/*": "./src/*"
   },
   "scripts": {
+    "bootstrap": "scripts/bootstrap.sh",
     "build": "vite build",
     "check": "ultracite check",
     "dev": "vite dev --port ${PORT:-3778} --host",
