@@ -18,6 +18,7 @@ import {
   IDEMPOTENCY_KEY_MAX,
   JobDetailSchema,
   JobSchema,
+  TrackedRepoSchema,
   TriggerPayloadSchema,
 } from './job-api'
 import { EventPayloadSchema } from './job-events'
@@ -89,6 +90,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
       description: [
         'Anything that can make an HTTP request — CI, a Slack bot, another agent, a shell script — can queue a job here with the instructions in the body.',
         'Everything after the insert is the same pipeline the ignite dialog uses: blueprints, repo notes, branch naming, push and PR.',
+        '`GET /api/repos` lists what a job may target — every `name` it returns is accepted verbatim as `repo`.',
         '',
         '**Auth.** One install-wide bearer token, `FOUNDRY_API_TOKEN` in `~/.config/liamai/env`, minted by `foundry auth --api` (`--rotate` replaces it).',
         'With none configured the API answers `503` rather than opening up: the dev server listens on the LAN, and a job runs Claude against your repos and pushes with your credentials.',
@@ -99,6 +101,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
     servers: [{ url: '/', description: 'The Foundry web server this document was fetched from.' }],
     tags: [
       { name: 'jobs', description: 'Trigger and follow jobs.' },
+      { name: 'repos', description: 'What a job may target — the curated set the Repos page maintains.' },
       {
         name: 'internal',
         description: 'Served on the same origin, but for the forge container only: the per-job token is minted by the runner and never leaves the job.',
@@ -218,6 +221,27 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
           },
         },
       },
+      '/api/repos': {
+        get: {
+          operationId: 'listRepos',
+          tags: ['repos'],
+          summary: 'List the tracked repos',
+          description: [
+            'The repos a job may target, ordered by `name` — the same set `POST /api/jobs` resolves `repo` against, so every `name` here is accepted verbatim (a `path` always is; a `name` is, when no other tracked repo shares it).',
+            'Nothing live and nothing of the host\'s: no checked-out branch, dirty flag, default branch, row id or notes.',
+            'Read-only — repos are added and removed on the Repos page.',
+          ].join(' '),
+          security: [{ installToken: [] }],
+          responses: {
+            '200': {
+              description: 'The tracked repos, ordered by `name`. `[]` when none are tracked.',
+              content: { 'application/json': { schema: { type: 'array', items: ref('TrackedRepo') } } },
+            },
+            '401': errorResponses.unauthorized,
+            '503': errorResponses.notConfigured,
+          },
+        },
+      },
       '/api/jobs/{id}/events': {
         post: {
           operationId: 'reportJobEvent',
@@ -257,6 +281,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
         JobDetail: component(JobDetailSchema, 'output'),
         Error: component(ErrorSchema, 'output'),
         Conflict: component(ConflictSchema, 'output'),
+        TrackedRepo: component(TrackedRepoSchema, 'output'),
         SettledEvent: component(SettledEventSchema, 'output'),
         EventPayload: component(EventPayloadSchema, 'input'),
         Ack: component(AckSchema, 'output'),

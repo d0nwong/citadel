@@ -234,6 +234,16 @@ on purge — the cockpit sends the point id, so a decision can be re-sent withou
 `GET /api/jobs/<id>` (same bearer) returns the job — status, step, branch, `prUrl`,
 `exitCode`, `diff` — and `?logs=1` adds its log lines.
 
+**What a job may target.** `GET /api/repos` (same bearer) lists the tracked repos as
+`[{ name, path }]` rows ordered by `name` — the very set `repo` is resolved against, so
+every `name` it returns is accepted verbatim by `POST /api/jobs` (a `path` always is; a
+`name` is, when no other tracked repo shares it), and a client can offer a picker instead
+of a free-text box. `[]` when nothing is tracked, never a `404`. The rows carry nothing
+live and nothing of the host's — no checked-out branch, dirty flag or default branch (the
+scan is slow, and a job derives its own base), no row id, and no `notes` (those are the
+host's standing prompt, not a caller's business). Read-only: adding, scanning and removing
+repos stay on the Repos page.
+
 **Completion webhook.** With a `callbackUrl`, the host POSTs it once when the job leaves
 the open set — succeeded, failed or cancelled, whichever path settled it (a preflight
 failure, the `docker wait` watcher and a restart's orphan sweep included, since every
