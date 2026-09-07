@@ -189,9 +189,9 @@ const NAV = [
   },
   { hint: "product + arch", icon: BookOpenText, label: "Docs", to: "/docs" },
   {
-    hint: "argus, read-only",
+    hint: "the blackboard, read-only",
     icon: MessageCircleQuestion,
-    label: "Ask",
+    label: "Argus",
     to: "/ask",
   },
 ] as const;

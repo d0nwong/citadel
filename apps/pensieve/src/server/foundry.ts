@@ -11,19 +11,15 @@
  *
  * Config: `FOUNDRY_URL` (default the dev server's `http://localhost:3777`) and
  * `FOUNDRY_API_TOKEN`, read fresh per request — from the environment first, else from the
- * shared credentials file `~/.config/liamai/env` (`LIAMAI_ENV` overrides the path) that
- * `foundry auth --api` writes (LIA-98). In the container only the environment exists.
+ * shared credentials file (`shared-env.ts`) that `foundry auth --api` writes (LIA-98). In
+ * the container only the environment exists.
  */
 
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { readSharedEnv, sharedEnvFile } from "./shared-env";
 
 export const FOUNDRY_URL = (
   process.env.FOUNDRY_URL || "http://localhost:3777"
 ).replace(/\/+$/, "");
-export const SHARED_ENV_FILE =
-  process.env.LIAMAI_ENV || join(homedir(), ".config", "liamai", "env");
 
 export type JobStatus =
   | "queued"
@@ -43,24 +39,6 @@ export interface FoundryJob {
   status: JobStatus;
   step?: string;
   ticketId?: string;
-}
-
-/** `KEY=value` lines, the shape `foundry auth` writes. No file is an empty map. */
-export async function readSharedEnv(
-  file = SHARED_ENV_FILE
-): Promise<Record<string, string | undefined>> {
-  const out: Record<string, string | undefined> = {};
-  try {
-    for (const line of (await readFile(file, "utf8")).split("\n")) {
-      const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim());
-      if (m) {
-        out[m[1]] = m[2];
-      }
-    }
-  } catch {
-    /* absent — the caller reports "not configured" */
-  }
-  return out;
 }
 
 export async function apiToken(): Promise<string | undefined> {
@@ -85,7 +63,7 @@ export async function foundryConfig(): Promise<FoundryConfig> {
     ? { configured: true, url: FOUNDRY_URL }
     : {
         configured: false,
-        reason: `FOUNDRY_API_TOKEN is not set — run \`foundry auth --api\` (writes ${SHARED_ENV_FILE}) or set it in the environment`,
+        reason: `FOUNDRY_API_TOKEN is not set — run \`foundry auth --api\` (writes ${sharedEnvFile()}) or set it in the environment`,
         url: FOUNDRY_URL,
       };
 }

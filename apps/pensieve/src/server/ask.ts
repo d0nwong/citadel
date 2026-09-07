@@ -9,9 +9,10 @@
  * the adapter's per-run runner files land in the checkout for the run's duration and are
  * removed in its `finally` — `git status` is unchanged afterwards.
  *
- * One tool is bridged into the run: `propose_decision` (LIA-111). A bridged tool always
- * executes when the model calls it, so it only reads and answers a proposal; the write is
- * Liam's click on the card the chat renders from its tool part.
+ * Two tools are bridged into the run: `propose_decision` (LIA-111) and `propose_ticket`
+ * (LIA-113). A bridged tool always executes when the model calls it, so each only reads and
+ * answers a proposal; the write is Liam's click on the card the chat renders from its tool
+ * part — `decisions/` for a verdict, Linear's `issueCreate` for a ticket.
  *
  * Auth is decided per request: `ANTHROPIC_API_KEY` in the environment means `'api-key'`
  * (the container); otherwise `'host'` — the machine's `claude login`. With neither,
@@ -75,7 +76,7 @@ import {
   LINEAR_WRITE_TOOLS,
 } from "../lib/ask-tools";
 import { isPointId } from "../lib/points";
-import { proposeDecisionTool } from "./ask-tools.server";
+import { proposeDecisionTool, proposeTicketTool } from "./ask-tools.server";
 import { WORKSPACE_DIR } from "./workspace";
 
 // ── configuration ──────────────────────────────────────────────────────────────
@@ -167,13 +168,13 @@ console.log(
  * The file map and the retrieval recipes live in argus (`CLAUDE.md`, the `ask` skill),
  * which the run loads with `--setting-sources project`; they are not repeated here.
  */
-export const ASK_SYSTEM_PROMPT = `You are Ask, a panel inside Pensieve — a web app that reads the argus blackboard. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog, and nobody can grant, allow or approve anything. A tool that is denied stays denied for this run; say what you could not do in one sentence and answer from what you have. Never tell the user to grant, allow or approve anything, and never wait for approval.
+export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus blackboard. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog, and nobody can grant, allow or approve anything. A tool that is denied stays denied for this run; say what you could not do in one sentence and answer from what you have. Never tell the user to grant, allow or approve anything, and never wait for approval.
 
 To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A point is \`bun run accio point <group>/<slug>\`; a ticket is \`bun run accio ticket LIA-nn\` then mcp__linear__get_issue; a day is \`bun run accio journal <YYYY-MM-DD>\`. Read the product checkouts with Read, Glob, Grep and \`git -C <repo> log\` / \`git -C <repo> show origin/<branch>:<path>\`. Never run git fetch, git branch, git checkout, find, python3, or cat/grep/ls through Bash — each is a denied turn.
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
-You cannot write files, edit tickets or comments, or run the sweep. To ignore or send a point, call \`propose_decision\` once as the ask skill says; Liam confirms it on the card — say it is proposed in one sentence and never say it is done.`;
+You cannot write files, edit tickets or comments, or run the sweep. To ignore or send a point, call \`propose_decision\` once as the ask skill says; Liam confirms it on the card — say it is proposed in one sentence and never say it is done. To file a new ticket, draft it per the linear-ticket skill and call \`propose_ticket\` once; Liam files it on the card — say it is proposed, never that it is filed.`;
 
 /**
  * The extra system prompt a conversation opened on a point carries (LIA-109 stores it,
@@ -630,6 +631,58 @@ export const SESSION_KEY = "sessionId";
  */
 export const POINT_KEY = "point";
 
+/**
+ * Where a filed ticket lives: `metadata[<threadId>]["ticket:<toolCallId>"]`. One key per
+ * proposal, which is what makes File idempotent per card (LIA-113 AC3): a second click, or
+ * a click after a reload replayed the tool part, answers the issue the first press filed
+ * rather than creating another.
+ */
+export const ticketKey = (toolCallId: string) => `ticket:${toolCallId}`;
+
+/** What a press of File recorded: the issue Linear made, and when. */
+export interface FiledTicket {
+  at: string;
+  id: string;
+  identifier: string;
+  url: string;
+}
+
+const asFiledTicket = (v: unknown): FiledTicket | undefined => {
+  if (!v || typeof v !== "object") {
+    return;
+  }
+  const t = v as Record<string, unknown>;
+  return typeof t.identifier === "string" && typeof t.url === "string"
+    ? {
+        at: typeof t.at === "string" ? t.at : "",
+        id: typeof t.id === "string" ? t.id : "",
+        identifier: t.identifier,
+        url: t.url,
+      }
+    : undefined;
+};
+
+export const readFiledTicket = async (
+  store: ConversationStore,
+  threadId: string,
+  toolCallId: string
+): Promise<FiledTicket | undefined> =>
+  asFiledTicket(
+    await store.persistence.stores.metadata.get(threadId, ticketKey(toolCallId))
+  );
+
+export const writeFiledTicket = (
+  store: ConversationStore,
+  threadId: string,
+  toolCallId: string,
+  ticket: FiledTicket
+): Promise<void> =>
+  store.persistence.stores.metadata.set(
+    threadId,
+    ticketKey(toolCallId),
+    ticket
+  );
+
 export const readSessionId = async (
   store: ConversationStore,
   threadId: string
@@ -953,8 +1006,8 @@ export async function* askStream(
     const stream = chat({
       abortController: opts.abortController,
       adapter: finishedIsFinished(opts.adapter ?? askAdapter(), late),
-      // The tool's `execute` runs here, in this process, through the adapter's MCP bridge —
-      // which is provisioned only because this array is non-empty (LIA-111).
+      // Each tool's `execute` runs here, in this process, through the adapter's MCP bridge —
+      // which is provisioned only because `tools` below is non-empty (LIA-111).
       context: { threadId: input.threadId, ...(point ? { point } : {}) },
       debug: harness.debug,
       messages: convertMessagesToModelMessages(input.messages),
@@ -966,7 +1019,7 @@ export async function* askStream(
         ...(point ? [pointPrompt(point)] : []),
       ],
       threadId: input.threadId,
-      tools: [proposeDecisionTool],
+      tools: [proposeDecisionTool, proposeTicketTool],
     });
     let finished: StreamChunk | undefined;
     for await (const chunk of stream) {

@@ -40,6 +40,9 @@ const {
   listConversations,
   deleteConversation,
   fileNameOf,
+  readFiledTicket,
+  ticketKey,
+  writeFiledTicket,
 } = ask;
 const {
   BASE_TOOLS,
@@ -49,6 +52,7 @@ const {
   LINEAR_WRITE_TOOLS,
   ASK_TOOL_PART_NAMES,
   PROPOSE_DECISION,
+  PROPOSE_TICKET,
 } = await import("../lib/ask-tools");
 
 afterAll(() => rm(HOME, { force: true, recursive: true }));
@@ -629,6 +633,21 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
     // The bare name never reaches the CLI: a rule spelled without the prefix matches nothing.
     expect(ADAPTER_CONFIG.allowedTools).not.toContain(PROPOSE_DECISION);
   });
+  test("LIA-113 (AC6) — propose_ticket is allowed under its prefix, and save_issue is still denied", () => {
+    expect(ADAPTER_CONFIG.allowedTools).toContain(
+      `${BRIDGED_MCP_PREFIX}${PROPOSE_TICKET}`
+    );
+    expect(ADAPTER_CONFIG.allowedTools).toContain(
+      "mcp__tanstack__propose_ticket"
+    );
+    // The session drafts a ticket with every read tool and can never file one itself:
+    // the bridged tool proposes, and File on the card is the only write.
+    expect(ADAPTER_CONFIG.disallowedTools).toContain("mcp__linear__save_issue");
+    expect(ADAPTER_CONFIG.allowedTools).not.toContain(
+      "mcp__linear__save_issue"
+    );
+    expect(ADAPTER_CONFIG.allowedTools).not.toContain(PROPOSE_TICKET);
+  });
   test("the page can render every name a run may call: the allowlist collapsed to tool names, and the denied ones", () => {
     for (const t of [
       "Read",
@@ -640,6 +659,7 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
       "Write",
       // The adapter strips `mcp__tanstack__` on the way back, so the part carries the bare name.
       PROPOSE_DECISION,
+      PROPOSE_TICKET,
       ...LINEAR_READ_TOOLS,
       ...LINEAR_WRITE_TOOLS,
     ]) {
@@ -671,6 +691,10 @@ describe("LIA-104 — the system prompt", () => {
       /call `propose_decision` once as the ask skill says/,
       /confirms it on the card/i,
       /never say it is done/i,
+      // LIA-113: the panel's name, and the one way a new ticket leaves the session.
+      /^You are Argus, a panel inside Pensieve/,
+      /draft it per the linear-ticket skill and call `propose_ticket` once/,
+      /never that it is filed/i,
     ]) {
       expect(ASK_SYSTEM_PROMPT).toMatch(re);
     }
@@ -1164,4 +1188,45 @@ describe.skipIf(!live)("live — real adapter over the checkout", () => {
     expect(fingerprint()).toBe(before);
     console.log("[live] session", events[0].sessionId, "skills", names);
   }, 240_000);
+});
+
+describe("LIA-113 (AC3) — a filed ticket is recorded per tool call, so File cannot file twice", () => {
+  const issue = {
+    at: "2026-09-07T09:00:00.000Z",
+    id: "i_1",
+    identifier: "LIA-200",
+    url: "https://linear.app/liamai/issue/LIA-200",
+  };
+
+  test("the record is keyed by tool call, survives a reload, and is namespaced to its thread", async () => {
+    const store = conversationStore(await scratch());
+    expect(await readFiledTicket(store, "t1", "call_a")).toBeUndefined();
+
+    await writeFiledTicket(store, "t1", "call_a", issue);
+    expect(await readFiledTicket(store, "t1", "call_a")).toEqual(issue);
+
+    // A second card in the same conversation is its own proposal, not a replay of the first.
+    expect(await readFiledTicket(store, "t1", "call_b")).toBeUndefined();
+    // And the same tool call id in another thread is another conversation's business.
+    expect(await readFiledTicket(store, "t2", "call_a")).toBeUndefined();
+
+    // What a reload reads: the record is in the conversation file, beside the session id.
+    const f = await store.read("t1");
+    expect(f?.metadata[ticketKey("call_a")]).toEqual(issue);
+    expect(ticketKey("call_a")).toBe("ticket:call_a");
+  });
+
+  test("anything that is not a filed issue reads back as nothing, rather than as a replay", async () => {
+    const store = conversationStore(await scratch());
+    const { metadata } = store.persistence.stores;
+    for (const junk of [
+      "LIA-200",
+      7,
+      { identifier: "LIA-200" },
+      { url: "u" },
+    ]) {
+      await metadata.set("t1", ticketKey("call_a"), junk);
+      expect(await readFiledTicket(store, "t1", "call_a")).toBeUndefined();
+    }
+  });
 });

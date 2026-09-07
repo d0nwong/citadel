@@ -243,7 +243,7 @@ function AskConversationPage() {
                   ›
                 </span>
                 <Link className="hidden hover:text-thread sm:inline" to="/ask">
-                  Ask
+                  Argus
                 </Link>
               </span>
             ) : (
@@ -252,7 +252,7 @@ function AskConversationPage() {
                 to="/ask"
               >
                 <ArrowLeftIcon className="size-3" />{" "}
-                <span className="hidden sm:inline">Ask</span>
+                <span className="hidden sm:inline">Argus</span>
               </Link>
             )}
           </p>
