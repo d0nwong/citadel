@@ -15,8 +15,7 @@ flowchart LR
         web["Web UI<br/>(web/, bun · :3777)"]
         pg[("Postgres<br/>(infra/, :5432)")]
         mcp["MCP gateway<br/>(infra/, mcp-proxy · :9090)"]
-        auth["~/.foundry/env<br/>CLAUDE_CODE_OAUTH_TOKEN · FOUNDRY_MCP_TOKEN"]
-        shared["~/.config/liamai/env<br/>SLACK_TOKEN · LINEAR_API_KEY · FOUNDRY_API_TOKEN<br/>(shared with argus, Pensieve)"]
+        auth[".env (repo root)<br/>CLAUDE_CODE_OAUTH_TOKEN · FOUNDRY_MCP_TOKEN<br/>SLACK_TOKEN · LINEAR_API_KEY · FOUNDRY_API_TOKEN"]
         jobs["~/.foundry/jobs/&lt;id&gt;/<br/>workspace clones"]
         joblogs["~/.foundry/logs/&lt;id&gt;.jsonl<br/>job session logs"]
     end
@@ -39,8 +38,8 @@ flowchart LR
     forge -- "--github (opt-in token)" --> remote
     forge -. "gateway token" .-> mcp
     jobforge -. "gateway token" .-> mcp
-    shared -- "upstream keys" --> mcp
-    shared -- "API token · LINEAR_API_KEY" --> web
+    auth -- "upstream keys" --> mcp
+    auth -- "API token · LINEAR_API_KEY" --> web
     mcp -- "LINEAR_API_KEY (host only)" --> linear
     mcp -- "SLACK_TOKEN (host only)" --> slack
 
@@ -80,8 +79,7 @@ then hands over to `foundry setup` and mints the trigger-API token. Every phase 
 no-op when it's already done, and each runs on its own
 (`./scripts/bootstrap.sh prereqs|identity|link|envfiles|foundry`).
 
-It never writes a credential — those stay with `foundry auth`, below; the shared
-`~/.config/liamai/env` is only created empty when it is missing — and three things
+It never writes a credential — those stay with `foundry auth`, below — and three things
 stay yours to do: `gh auth login`, `./scripts/setup-bb.sh` for Bitbucket, and cloning
 the repos you want jobs to target under `~/git`, which is the only directory the
 Repos page scans.
@@ -140,20 +138,21 @@ enter (re)authenticate one. Non-interactive: `--claude`, `--api-key`, `--linear`
 
 Claude Code on macOS keeps its credential in the **Keychain**, which Linux containers
 can't read. So the `claude` row runs `claude setup-token` and stores the long-lived
-token in `~/.foundry/env` (chmod 600), injected into every forge as
+token in the checkout's `.env` (chmod 600), injected into every forge as
 `CLAUDE_CODE_OAUTH_TOKEN`. Use `foundry auth --api-key` for a plain API key instead.
 
-#### Two credential files
+#### One credential file
 
-`foundry auth` keeps foundry-only secrets — the Claude credential and the gateway's
-`FOUNDRY_MCP_TOKEN` — in `~/.foundry/env`, and the keys other liamai tools use too —
-`SLACK_TOKEN`, `LINEAR_API_KEY`, `FOUNDRY_API_TOKEN` — in `~/.config/liamai/env`, which
-argus and Pensieve read as well (`LIAMAI_ENV` overrides the path). Both are `KEY=value`
-files, mode 600, rewritten one key at a time, and every reader here — the CLI,
-`infra.sh`, the web server — reads both, the shared file winning on a clash.
-`foundry doctor` and the `foundry auth` picker say which file each key is in. On the
-first `foundry` command after upgrading, any shared key still in `~/.foundry/env` is
-moved over once, with an `ok` line saying so.
+Every credential `foundry auth` stores — the Claude credential, the gateway's
+`FOUNDRY_MCP_TOKEN`, `SLACK_TOKEN`, `LINEAR_API_KEY`, `FOUNDRY_API_TOKEN` — lives in the
+repo's own `.env` (gitignored; `.env.example` lists the keys): `KEY=value` lines, mode
+600, rewritten one key at a time, and read fresh by every reader here — the CLI,
+`infra.sh`, the web server — so a new value needs no restart. argus and Pensieve keep
+their own `.env`, so the keys they share with foundry are pasted rather than read:
+`foundry auth --slack`, `--linear` and `--api` print the `KEY=value` line once and say
+which tool's `.env` it goes in. On the first `foundry` command after upgrading, any key
+still sitting in the old `~/.foundry/env` or `~/.config/liamai/env` is copied in once,
+with an `ok` line saying so; neither old file is read again or deleted.
 
 ### MCP gateway (Linear, Slack)
 
@@ -164,7 +163,7 @@ servers at `host.docker.internal:9090/{linear,slack}/mcp`, behind a per-install
 gateway token.
 
 ```sh
-foundry auth --linear          # LINEAR_API_KEY -> ~/.config/liamai/env, plus a generated FOUNDRY_MCP_TOKEN -> ~/.foundry/env
+foundry auth --linear          # LINEAR_API_KEY -> .env, plus a generated FOUNDRY_MCP_TOKEN
 foundry auth --slack           # optional: SLACK_TOKEN, a Slack user token (xoxp-…), so tickets' Slack links resolve
 bun run infra:up               # now also starts foundry-mcp (mcp.foundry.local)
 foundry recreate <name>        # existing forges pick the gateway up on next start
@@ -244,7 +243,7 @@ So `foundry rm` then `foundry new` with the same name resumes where you left off
 - Your SSH keys are never mounted.
 - Forges talk to Linear only through the MCP gateway, presenting `FOUNDRY_MCP_TOKEN`;
   the Linear API key itself never enters a container. To cut every forge off,
-  change the token in `~/.foundry/env` and `bun run infra:up`. The gateway port
+  change the token in `.env` and `bun run infra:up`. The gateway port
   (9090) listens on the Mac like the web UI does, which is what the token is for.
 
 ## Local infra
@@ -305,7 +304,8 @@ describes them. Purging a job from the ledger deletes its file with the row.
 
 Anything that can make a request — CI, a Slack bot, another agent, a shell script — can
 queue a job with the instructions in the body. `foundry auth --api` mints the bearer token
-(it lands in `~/.config/liamai/env`, read per request, so rotation needs no restart):
+(it lands in `.env`, read per request, so rotation needs no restart here — Pensieve
+gets the printed line pasted into its own `.env`):
 
 ```sh
 curl -s -X POST http://localhost:3777/api/jobs \

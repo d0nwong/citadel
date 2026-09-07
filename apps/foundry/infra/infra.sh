@@ -6,11 +6,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENVFILE="$HERE/.env"
 EXAMPLE="$HERE/.env.example"
-# foundry's credential store (`foundry auth`), in two files: the gateway token
-# in ~/.foundry/env, the upstream keys in the shared ~/.config/liamai/env that
-# argus and Pensieve read too (LIAMAI_ENV overrides the path). Never infra/.env.
-FOUNDRY_ENV="${FOUNDRY_HOME:-$HOME/.foundry}/env"
-SHARED_ENV="${LIAMAI_ENV:-$HOME/.config/liamai/env}"
+# foundry's credential store (`foundry auth`): the checkout's own .env, which
+# holds the gateway token and the upstream keys. Never infra/.env.
+FOUNDRY_ENV="$HERE/../.env"
 SERVICE=postgres
 
 c_dim=$'\033[2m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_yel=$'\033[33m'; c_bld=$'\033[1m'; c_0=$'\033[0m'
@@ -39,18 +37,14 @@ env_get() {
   printf '%s' "${val:-$fallback}"
 }
 
-# Export both env files into this process so compose can expand the upstream
-# keys (${LINEAR_API_KEY}, ${SLACK_TOKEN}) and ${FOUNDRY_MCP_TOKEN} for the
-# gateway. The shared file is sourced last so its value wins on a clash.
-# Values stay out of infra/.env.
+# Export the credential file into this process so compose can expand the
+# upstream keys (${LINEAR_API_KEY}, ${SLACK_TOKEN}) and ${FOUNDRY_MCP_TOKEN}
+# for the gateway. Values stay out of infra/.env.
 load_foundry_env() {
-  local f
-  for f in "$FOUNDRY_ENV" "$SHARED_ENV"; do
-    if [ -f "$f" ]; then
-      # shellcheck disable=SC1090
-      set -a; . "$f"; set +a
-    fi
-  done
+  if [ -f "$FOUNDRY_ENV" ]; then
+    # shellcheck disable=SC1090
+    set -a; . "$FOUNDRY_ENV"; set +a
+  fi
 }
 
 # The gateway only makes sense with an upstream credential behind it, so the
@@ -141,8 +135,8 @@ infra — foundry's local development stack
 
 Settings live in infra/.env, created from infra/.env.example on first up.
 The MCP gateway (service "mcp") starts alongside postgres once `foundry auth
---linear` (or `foundry auth --slack`) has stored an upstream key in the shared
-~/.config/liamai/env (LIAMAI_ENV) and the gateway token in ~/.foundry/env.
+--linear` (or `foundry auth --slack`) has stored an upstream key and the
+gateway token in the checkout's .env.
 USAGE
 }
 
