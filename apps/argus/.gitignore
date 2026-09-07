@@ -48,3 +48,9 @@ digests/.state.next.json
 .state/linear-titles.json
 # slack-pull's 24h user-id → name cache
 .state/slack-users.json
+
+# TanStack AI's Claude Code adapter writes these into the cwd for one run
+# (Pensieve's Ask) and removes them in its `finally`; a crash leaves them behind.
+tanstack-claude-*
+.tanstack-mcp-bridge-*
+tanstack-output-schema-*
