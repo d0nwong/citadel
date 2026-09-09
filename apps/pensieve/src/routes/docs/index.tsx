@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
-import { Empty, PageTitle } from "#/components/bits";
+import { Empty, PageHeader } from "#/components/bits";
 import { listDocs } from "#/lib/api";
 import { cn, daysSince } from "#/lib/utils";
 import type { DocMeta } from "#/server/workspace";
@@ -20,13 +20,13 @@ export const Route = createFileRoute("/docs/")({
 function Age({ date, label }: { date?: string; label: string }) {
   const d = daysSince(date);
   if (d === null) {
-    return <span className="text-ink-faint">{label} —</span>;
+    return <span className="text-subtle">{label} —</span>;
   }
   // Widest threshold first: ordering them the other way makes the second unreachable.
   return (
     <span
       className={cn(
-        d > 30 ? "text-st-hold" : d > 14 ? "text-st-decided" : "text-ink-faint"
+        d > 30 ? "text-st-hold" : d > 14 ? "text-st-decided" : "text-subtle"
       )}
       title={date}
     >
@@ -47,30 +47,29 @@ function AppSection({ app, docs }: { app: string; docs: DocMeta[] }) {
 
   return (
     <section className="mb-10">
-      <div className="mb-1 flex items-baseline gap-3 border-rule border-b pb-1">
-        <h2 className="display text-[19px] text-ink">{app}</h2>
-        <span className="mono text-ink-faint">
+      <div className="mb-1 flex items-baseline gap-3 border-border border-b pb-1">
+        <h2 className="font-medium text-foreground">{app}</h2>
+        <span className="mono text-subtle">
           {byFeature.length} feature{byFeature.length === 1 ? "" : "s"}
         </span>
       </div>
-      <ul className="divide-y divide-rule-soft">
-        {byFeature.map(([feature, tiers], i) => {
+      <ul className="divide-y divide-border">
+        {byFeature.map(([feature, tiers]) => {
           const any = tiers.product ?? tiers.arch;
           const short = feature.startsWith(`${app}/`)
             ? feature.slice(app.length + 1)
             : feature;
           return (
             <li
-              className="rise grid grid-cols-1 gap-x-6 gap-y-1 py-3 sm:grid-cols-[1fr_auto] sm:items-baseline"
+              className="grid grid-cols-1 gap-x-6 gap-y-1 py-3 sm:grid-cols-[1fr_auto] sm:items-baseline"
               key={feature}
-              style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }}
             >
               <div className="min-w-0">
                 <div className="flex flex-wrap items-baseline gap-x-3">
-                  <span className="display text-[19px] text-ink">
+                  <span className="font-medium text-foreground">
                     {any?.name ?? short}
                   </span>
-                  <span className="mono text-ink-faint">{short}</span>
+                  <span className="mono text-subtle">{short}</span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap gap-x-4 font-mono text-[11px]">
                   <Age date={any?.lastVerifiedDate} label="fe" />
@@ -80,7 +79,7 @@ function AppSection({ app, docs }: { app: string; docs: DocMeta[] }) {
                     <Age date={any.lastVerifiedBeDate} label="be" />
                   )}
                   {any?.status && (
-                    <span className="text-ink-faint">{any.status}</span>
+                    <span className="text-subtle">{any.status}</span>
                   )}
                 </div>
               </div>
@@ -88,7 +87,7 @@ function AppSection({ app, docs }: { app: string; docs: DocMeta[] }) {
                 {(["product", "arch"] as const).map((t) =>
                   tiers[t] ? (
                     <Link
-                      className="rounded-full border border-rule px-2.5 py-0.5 font-mono text-[10.5px] text-ink-dim uppercase tracking-[0.12em] hover:border-thread hover:text-thread"
+                      className="rounded-full border border-border px-2.5 py-0.5 text-muted-foreground hover:border-primary hover:text-primary"
                       key={t}
                       params={{ _splat: feature }}
                       search={{ tier: t }}
@@ -98,7 +97,7 @@ function AppSection({ app, docs }: { app: string; docs: DocMeta[] }) {
                     </Link>
                   ) : (
                     <span
-                      className="rounded-full border border-rule-soft border-dashed px-2.5 py-0.5 font-mono text-[10.5px] text-ink-faint/60 uppercase tracking-[0.12em]"
+                      className="rounded-full border border-border border-dashed px-2.5 py-0.5 text-subtle/60"
                       key={t}
                     >
                       {t}
@@ -141,14 +140,14 @@ function DocsPage() {
 
   return (
     <>
-      <PageTitle
+      <PageHeader
         aside={
           <>
             {features} feature{features === 1 ? "" : "s"}
             {apps.length > 1 && !selected && ` · ${apps.length} apps`}
             {selected && (
               <button
-                className="ml-3 text-thread hover:underline"
+                className="ml-3 text-primary hover:underline"
                 onClick={() => navigate({ search: {}, replace: true })}
                 type="button"
               >
@@ -157,22 +156,19 @@ function DocsPage() {
             )}
           </>
         }
-        kicker="Dual-tier feature docs"
+        eyebrow="Dual-tier feature docs"
         title="Docs"
       />
 
       {apps.length > 1 && (
-        <div
-          className="rise mb-8 flex flex-wrap items-center gap-1.5"
-          style={{ animationDelay: "40ms" }}
-        >
+        <div className="mb-8 flex flex-wrap items-center gap-1.5">
           {apps.map((a) => (
             <button
               className={cn(
-                "rounded-full border px-2.5 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em] transition-colors",
+                "rounded-md border px-2 py-0.5 font-medium text-xs transition-colors",
                 selected === a
-                  ? "border-ink bg-ink text-paper"
-                  : "border-rule text-ink-dim hover:border-ink-dim"
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border text-muted-foreground hover:border-muted-foreground"
               )}
               key={a}
               onClick={() =>

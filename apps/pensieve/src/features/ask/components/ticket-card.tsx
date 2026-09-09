@@ -104,7 +104,7 @@ export function TicketCard({ part, result }: ToolProps<Opts>) {
 function Filed({ identifier, url }: { identifier: string; url: string }) {
   return (
     <a
-      className="inline-flex items-center gap-1 text-thread hover:underline"
+      className="inline-flex items-center gap-1 text-primary hover:underline"
       href={url}
       rel="noreferrer"
       target="_blank"
@@ -183,17 +183,19 @@ function Proposed({
   // once the issue exists the card is the key rather than an offer to file it again.
   if (filed) {
     return (
-      <section className="my-2 max-w-[70ch] rounded-lg border border-rule bg-paper-2/40 px-3 py-2.5">
+      <section className="my-2 max-w-[70ch] rounded-lg border border-border bg-muted/40 px-3 py-2.5">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="inline-flex items-center rounded-full border border-st-implemented/40 px-2 py-0.5 font-mono text-[10.5px] text-st-implemented uppercase tracking-[0.12em]">
+          <span className="inline-flex items-center rounded-md bg-st-implemented/10 px-1.5 py-0.5 font-medium text-st-implemented text-xs">
             filed
           </span>
-          <span className="display min-w-0 truncate text-ink">{title}</span>
+          <span className="min-w-0 truncate font-medium text-foreground">
+            {title}
+          </span>
           <span className="ml-auto shrink-0">
             <Filed identifier={filed.identifier} url={filed.url} />
           </span>
         </div>
-        <p className="mt-1 text-ink-faint text-sm">
+        <p className="mt-1 text-sm text-subtle">
           {proposal.team} · {proposal.project || "no project"}
         </p>
       </section>
@@ -202,27 +204,27 @@ function Proposed({
 
   return (
     <form
-      className="my-2 flex max-w-[70ch] flex-col gap-2 rounded-lg border border-thread-soft bg-paper-2/40 px-3 py-2.5"
+      className="my-2 flex max-w-[70ch] flex-col gap-2 rounded-lg border border-primary/30 bg-muted/40 px-3 py-2.5"
       onSubmit={(e) => {
         e.preventDefault();
         void file();
       }}
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="inline-flex items-center rounded-full border border-thread-soft px-2 py-0.5 font-mono text-[10.5px] text-thread uppercase tracking-[0.12em]">
+        <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 font-medium text-primary text-xs">
           new ticket
         </span>
-        <span className="mono min-w-0 truncate text-ink-dim">
+        <span className="mono min-w-0 truncate text-muted-foreground">
           {proposal.team} · {proposal.project || "no project"}
         </span>
-        <span className="mono ml-auto shrink-0 text-ink-faint">proposed</span>
+        <span className="mono ml-auto shrink-0 text-subtle">proposed</span>
       </div>
 
       <label className="kicker" htmlFor={`ticket-title-${toolCallId}`}>
         Title
       </label>
       <input
-        className="w-full rounded-md border border-rule bg-paper px-3 py-1.5 text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none"
+        className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-foreground placeholder:text-subtle focus:border-primary focus:outline-none"
         id={`ticket-title-${toolCallId}`}
         onChange={(e) => setTitle(e.target.value)}
         value={title}
@@ -230,7 +232,7 @@ function Proposed({
       <p
         className={cn(
           "mono text-right text-sm",
-          over ? "text-st-hold" : "text-ink-faint"
+          over ? "text-st-hold" : "text-subtle"
         )}
       >
         {title.length}/{TITLE_MAX}
@@ -240,7 +242,7 @@ function Proposed({
         Body
       </label>
       <textarea
-        className="w-full rounded-md border border-rule bg-paper px-3 py-1.5 font-mono text-ink text-sm placeholder:text-ink-faint focus:border-thread focus:outline-none"
+        className="w-full rounded-md border border-border bg-background px-3 py-1.5 font-mono text-foreground text-sm placeholder:text-subtle focus:border-primary focus:outline-none"
         id={`ticket-body-${toolCallId}`}
         onChange={(e) => setDescription(e.target.value)}
         rows={14}
@@ -248,7 +250,7 @@ function Proposed({
       />
 
       {!proposal.verified && (
-        <p className="text-ink-faint text-sm leading-snug">
+        <p className="text-sm text-subtle leading-snug">
           The project could not be checked against Linear, so{" "}
           <span className="mono">{proposal.project}</span> is taken on trust.
         </p>
@@ -257,7 +259,7 @@ function Proposed({
       <div className="flex flex-wrap items-center gap-3">
         {config?.configured === false ? (
           <span
-            className="inline-flex cursor-not-allowed items-center gap-1.5 text-ink-faint text-sm"
+            className="inline-flex cursor-not-allowed items-center gap-1.5 text-sm text-subtle"
             title={config.reason}
           >
             <FilePlus2 className="size-3.5" strokeWidth={1.75} />
@@ -268,7 +270,7 @@ function Proposed({
           </span>
         ) : (
           <button
-            className="inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-1 text-paper text-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-medium text-primary-foreground text-sm transition-opacity hover:opacity-90 disabled:opacity-50"
             disabled={busy || q.isPending}
             type="submit"
           >
@@ -280,7 +282,7 @@ function Proposed({
             File
           </button>
         )}
-        <span className="text-ink-faint text-sm">
+        <span className="text-sm text-subtle">
           nothing is filed until you press File
         </span>
       </div>

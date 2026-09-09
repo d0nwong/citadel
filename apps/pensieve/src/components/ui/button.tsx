@@ -1,6 +1,6 @@
 /**
  * shadcn/ui Button, vendored from TanStack/ai `examples/ts-react-ui-chatbot`.
- * Pensieve is light-only, so the `dark:` classes shadcn ships are dropped.
+ * Dark mode is the `.dark` class on <html> (see styles.css), so shadcn's `dark:` classes apply.
  */
 
 import { Slot } from "@radix-ui/react-slot";

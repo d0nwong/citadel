@@ -154,12 +154,12 @@ function Proposed({ proposal }: { proposal: Proposal }) {
   // the point is decided the card is the verdict rather than an offer to give one.
   if (point?.decision) {
     return (
-      <section className="my-2 rounded-lg border border-rule bg-paper-2/40 px-3 py-2.5">
+      <section className="my-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
         <DecidedLine
           foundryUrl={q.data?.foundry.url ?? ""}
           head={
             <>
-              <span className="display min-w-0 truncate text-ink">
+              <span className="min-w-0 truncate font-medium text-foreground">
                 {point.subject}
               </span>
               {point.ticket && <TicketLink ticket={point.ticket} />}
@@ -173,7 +173,7 @@ function Proposed({ proposal }: { proposal: Proposal }) {
 
   return (
     <form
-      className="my-2 flex max-w-[60ch] flex-col gap-2 rounded-lg border border-thread-soft bg-paper-2/40 px-3 py-2.5"
+      className="my-2 flex max-w-[60ch] flex-col gap-2 rounded-lg border border-primary/30 bg-muted/40 px-3 py-2.5"
       onSubmit={(e) => {
         e.preventDefault();
         void confirm();
@@ -182,7 +182,7 @@ function Proposed({ proposal }: { proposal: Proposal }) {
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span
           className={cn(
-            "inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em]",
+            "inline-flex items-center rounded-full border px-2 py-0.5 font-medium text-xs",
             send
               ? "border-st-implemented/40 text-st-implemented"
               : "border-st-superseded/40 text-st-superseded"
@@ -190,23 +190,23 @@ function Proposed({ proposal }: { proposal: Proposal }) {
         >
           {proposal.action}
         </span>
-        <span className="display min-w-0 truncate text-ink">
+        <span className="min-w-0 truncate font-medium text-foreground">
           {proposal.subject}
         </span>
         {proposal.ticket && <TicketLink ticket={proposal.ticket} />}
-        <span className="mono ml-auto shrink-0 text-ink-faint">proposed</span>
+        <span className="mono ml-auto shrink-0 text-subtle">proposed</span>
       </div>
 
       {send ? (
         <>
           <RepoField
-            className="bg-paper"
+            className="bg-background"
             id={`card-repo-${proposal.point}`}
             onChange={setChosen}
             repos={repos}
             value={repo}
           />
-          <p className="text-ink-faint text-sm leading-snug">
+          <p className="text-sm text-subtle leading-snug">
             Foundry composes the brief from{" "}
             <span className="mono">{proposal.ticket}</span> and claims it in
             Linear. The idempotency key is the point id, so this cannot queue
@@ -219,7 +219,7 @@ function Proposed({ proposal }: { proposal: Proposal }) {
             Why ignore it
           </label>
           <textarea
-            className="w-full rounded-md border border-rule bg-paper px-3 py-1.5 text-ink text-sm placeholder:text-ink-faint focus:border-thread focus:outline-none"
+            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-foreground text-sm placeholder:text-subtle focus:border-primary focus:outline-none"
             id={`card-reason-${proposal.point}`}
             onChange={(e) => setReason(e.target.value)}
             placeholder="not worth a ticket / already handled in … / decided otherwise on …"
@@ -231,7 +231,7 @@ function Proposed({ proposal }: { proposal: Proposal }) {
 
       <div className="flex items-center gap-3">
         <button
-          className="inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-1 text-paper text-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-medium text-primary-foreground text-sm transition-opacity hover:opacity-90 disabled:opacity-50"
           disabled={busy || q.isPending}
           type="submit"
         >
@@ -242,7 +242,7 @@ function Proposed({ proposal }: { proposal: Proposal }) {
           )}
           Confirm
         </button>
-        <span className="text-ink-faint text-sm">
+        <span className="text-sm text-subtle">
           nothing is written until you confirm
         </span>
       </div>

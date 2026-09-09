@@ -65,7 +65,7 @@ export const Route = createFileRoute("/ask/$id")({
   },
   component: AskConversationPage,
   notFoundComponent: () => (
-    <p className="text-ink-dim">That is not a conversation id.</p>
+    <p className="text-muted-foreground">That is not a conversation id.</p>
   ),
 });
 
@@ -227,13 +227,13 @@ function AskConversationPage() {
     >
       {/* On a phone the header is one row — back, the question on one line, a delete icon — so the
           conversation keeps the screen; from `sm` up it is the page title with its breadcrumb. */}
-      <header className="rise mb-3 flex items-center gap-2 border-rule border-b pb-2 sm:mb-8 sm:flex-wrap sm:items-end sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:pb-4">
+      <header className="mb-3 flex items-center gap-2 border-border border-b pb-2 sm:mb-8 sm:flex-wrap sm:items-end sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:pb-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:block">
           <p className="kicker shrink-0 sm:mb-2">
             {from === "points" ? (
               <span className="inline-flex items-center gap-1.5">
                 <Link
-                  className="inline-flex items-center gap-1 hover:text-thread"
+                  className="inline-flex items-center gap-1 hover:text-primary"
                   to="/points"
                 >
                   <ArrowLeftIcon className="size-3" />{" "}
@@ -242,13 +242,13 @@ function AskConversationPage() {
                 <span aria-hidden className="hidden sm:inline">
                   ›
                 </span>
-                <Link className="hidden hover:text-thread sm:inline" to="/ask">
+                <Link className="hidden hover:text-primary sm:inline" to="/ask">
                   Argus
                 </Link>
               </span>
             ) : (
               <Link
-                className="inline-flex items-center gap-1 hover:text-thread"
+                className="inline-flex items-center gap-1 hover:text-primary"
                 to="/ask"
               >
                 <ArrowLeftIcon className="size-3" />{" "}
@@ -256,12 +256,12 @@ function AskConversationPage() {
               </Link>
             )}
           </p>
-          <h1 className="display min-w-0 truncate text-[17px] leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-[28px]">
+          <h1 className="min-w-0 truncate font-semibold text-[17px] leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-[28px]">
             {title}
           </h1>
         </div>
         <Button
-          className="shrink-0 text-ink-dim hover:text-st-hold"
+          className="shrink-0 text-muted-foreground hover:text-st-hold"
           disabled={deleting}
           onClick={remove}
           size="sm"
@@ -283,7 +283,7 @@ function AskConversationPage() {
         <chat.AppChat />
       </AskStatusProvider>
       <p
-        className="mono mt-2 truncate text-ink-faint"
+        className="mono mt-2 truncate text-subtle"
         title={
           conversation?.sessionId
             ? `session ${conversation.sessionId}`

@@ -45,7 +45,7 @@ import {
   ToolInput,
   ToolOutput,
 } from "#/components/ai/tool";
-import { PageTitle } from "#/components/bits";
+import { PageHeader } from "#/components/bits";
 
 export const Route = createFileRoute("/blocks")({
   component: BlocksPage,
@@ -105,9 +105,9 @@ function BlocksPage() {
 
   return (
     <div className="flex h-[calc(100dvh-5rem)] flex-col">
-      <PageTitle
+      <PageHeader
         aside="shadcn.io/ai on paper and ink"
-        kicker="scratch · LIA-101"
+        eyebrow="scratch · LIA-101"
         title="Chat blocks"
       />
 

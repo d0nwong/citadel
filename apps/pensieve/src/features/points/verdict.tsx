@@ -54,7 +54,7 @@ function when(iso: string) {
 // ── the repo a send lands in ───────────────────────────────────────────────────
 
 const FIELD_CLASS =
-  "mono w-full rounded-md border border-rule px-3 py-1.5 text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none";
+  "mono w-full rounded-md border border-border px-3 py-1.5 text-foreground placeholder:text-subtle focus:border-primary focus:outline-none";
 
 /**
  * Where the work lands, as the Send form and Ask's proposal card both ask it: a select over
@@ -100,8 +100,8 @@ export function RepoField({
               className={cn(
                 FIELD_CLASS,
                 className,
-                "cursor-pointer appearance-none pr-9 hover:border-thread-soft",
-                !value && "text-ink-faint"
+                "cursor-pointer appearance-none pr-9 hover:border-primary/30",
+                !value && "text-subtle"
               )}
               id={id}
               onChange={(e) => onChange(e.target.value)}
@@ -116,12 +116,12 @@ export function RepoField({
             </select>
             <ChevronDown
               aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-ink-faint"
+              className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-subtle"
               strokeWidth={1.75}
             />
           </div>
           {picked && picked.value !== picked.path && (
-            <p className="mono text-ink-faint text-sm">{picked.path}</p>
+            <p className="mono text-sm text-subtle">{picked.path}</p>
           )}
         </>
       ) : (
@@ -276,7 +276,7 @@ export function VerdictControls({
             </ActionButton>
           ) : (
             <span
-              className="inline-flex cursor-not-allowed items-center gap-1.5 text-ink-faint text-sm"
+              className="inline-flex cursor-not-allowed items-center gap-1.5 text-sm text-subtle"
               title={foundryReason}
             >
               <Send className="size-3.5" strokeWidth={1.75} />
@@ -290,7 +290,7 @@ export function VerdictControls({
 
       {mode === "ignore" && (
         <form
-          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-thread-soft border-l-2 pl-3"
+          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-primary/30 border-l-2 pl-3"
           onSubmit={(e) => {
             e.preventDefault();
             void ignore();
@@ -301,7 +301,7 @@ export function VerdictControls({
           </label>
           <textarea
             autoFocus
-            className="w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-ink text-sm placeholder:text-ink-faint focus:border-thread focus:outline-none"
+            className="w-full rounded-md border border-border bg-muted/60 px-3 py-1.5 text-foreground text-sm placeholder:text-subtle focus:border-primary focus:outline-none"
             id={`reason-${point.id}`}
             onChange={(e) => setReason(e.target.value)}
             placeholder="not worth a ticket / already handled in … / decided otherwise on …"
@@ -319,7 +319,7 @@ export function VerdictControls({
 
       {mode === "verify" && (
         <form
-          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-thread-soft border-l-2 pl-3"
+          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-primary/30 border-l-2 pl-3"
           onSubmit={(e) => {
             e.preventDefault();
             void verify();
@@ -330,14 +330,14 @@ export function VerdictControls({
           </label>
           <textarea
             autoFocus
-            className="w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-ink text-sm placeholder:text-ink-faint focus:border-thread focus:outline-none"
+            className="w-full rounded-md border border-border bg-muted/60 px-3 py-1.5 text-foreground text-sm placeholder:text-subtle focus:border-primary focus:outline-none"
             id={`note-${point.id}`}
             onChange={(e) => setNote(e.target.value)}
             placeholder="anything the edit should know — the point's own text is the instruction"
             rows={1}
             value={note}
           />
-          <p className="text-ink-faint text-sm leading-snug">
+          <p className="text-sm text-subtle leading-snug">
             Confirms the sweep's reading. Its next tick makes the edit this
             point names and records it against the point id.
           </p>
@@ -352,7 +352,7 @@ export function VerdictControls({
 
       {mode === "send" && (
         <form
-          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-thread-soft border-l-2 pl-3"
+          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-primary/30 border-l-2 pl-3"
           onSubmit={(e) => {
             e.preventDefault();
             void send();
@@ -360,13 +360,13 @@ export function VerdictControls({
         >
           <RepoField
             autoFocus
-            className="bg-paper-2/60"
+            className="bg-muted/60"
             id={`repo-${point.id}`}
             onChange={setRepo}
             repos={repos}
             value={repo}
           />
-          <p className="text-ink-faint text-sm leading-snug">
+          <p className="text-sm text-subtle leading-snug">
             Foundry composes the brief from{" "}
             <span className="mono">{point.ticket}</span> and claims it in
             Linear. The idempotency key is the point id, so this cannot queue
@@ -400,8 +400,8 @@ export function ActionButton({
       className={cn(
         "inline-flex items-center gap-1.5 text-sm transition-colors",
         active
-          ? "text-ink underline underline-offset-4"
-          : "text-thread hover:underline"
+          ? "text-foreground underline underline-offset-4"
+          : "text-primary hover:underline"
       )}
       onClick={onClick}
       type="button"
@@ -424,7 +424,7 @@ function Confirm({
   return (
     <div className="flex items-center gap-3">
       <button
-        className="inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-1 text-paper text-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-medium text-primary-foreground text-sm transition-opacity hover:opacity-90 disabled:opacity-50"
         disabled={busy}
         type="submit"
       >
@@ -432,7 +432,7 @@ function Confirm({
         {label}
       </button>
       <button
-        className="text-ink-faint text-sm hover:text-ink disabled:opacity-50"
+        className="text-sm text-subtle hover:text-foreground disabled:opacity-50"
         disabled={busy}
         onClick={onCancel}
         type="button"
@@ -495,17 +495,17 @@ export function DecidedLine({
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span
           className={cn(
-            "inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em]",
+            "inline-flex items-center rounded-full border px-2 py-0.5 font-medium text-xs",
             ACTION_CLASS[d.action]
           )}
         >
           {d.action}
         </span>
         {head}
-        <span className="mono ml-auto text-ink-faint">{when(d.at)}</span>
+        <span className="mono ml-auto text-subtle">{when(d.at)}</span>
       </div>
       {d.reason && (
-        <p className="mt-1 text-ink-dim text-sm italic leading-snug">
+        <p className="mt-1 text-muted-foreground text-sm italic leading-snug">
           {d.reason}
         </p>
       )}
@@ -530,9 +530,9 @@ function JobLine({ id, url }: { id: string; url: string }) {
   });
   const d = q.data;
   return (
-    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-ink-dim text-sm">
+    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground text-sm">
       <a
-        className="inline-flex items-center gap-1 text-thread hover:underline"
+        className="inline-flex items-center gap-1 text-primary hover:underline"
         href={url}
         rel="noreferrer"
         target="_blank"
@@ -541,7 +541,7 @@ function JobLine({ id, url }: { id: string; url: string }) {
         <ArrowUpRight className="size-3" />
       </a>
       {!d && (
-        <span className="text-ink-faint">
+        <span className="text-subtle">
           {q.isError ? "status unavailable" : "looking…"}
         </span>
       )}
@@ -559,11 +559,11 @@ function JobLine({ id, url }: { id: string; url: string }) {
           />
           {d.job.step &&
             (d.job.status === "queued" || d.job.status === "running") && (
-              <span className="mono text-ink-faint">{d.job.step}</span>
+              <span className="mono text-subtle">{d.job.step}</span>
             )}
           {d.job.prUrl && (
             <a
-              className="inline-flex items-center gap-1 text-thread hover:underline"
+              className="inline-flex items-center gap-1 text-primary hover:underline"
               href={d.job.prUrl}
               rel="noreferrer"
               target="_blank"
@@ -572,7 +572,7 @@ function JobLine({ id, url }: { id: string; url: string }) {
             </a>
           )}
           {d.job.status === "failed" && d.job.exitCode !== undefined && (
-            <span className="mono text-ink-faint">exit {d.job.exitCode}</span>
+            <span className="mono text-subtle">exit {d.job.exitCode}</span>
           )}
         </>
       )}
@@ -583,7 +583,7 @@ function JobLine({ id, url }: { id: string; url: string }) {
 const JOB_CLASS: Record<string, string> = {
   cancelled: "text-st-superseded border-st-superseded/40",
   failed: "text-st-hold border-st-hold/40",
-  queued: "text-ink-faint border-rule",
+  queued: "text-subtle border-border",
   running: "text-st-implemented border-st-implemented/40",
   succeeded: "text-st-documented border-st-documented/40",
 };
@@ -592,8 +592,8 @@ function JobStatusPill({ status, live }: { status: string; live: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em]",
-        JOB_CLASS[status] ?? "border-rule text-ink-dim"
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-medium text-xs",
+        JOB_CLASS[status] ?? "border-border text-muted-foreground"
       )}
     >
       {live && (

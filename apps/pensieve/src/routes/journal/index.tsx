@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import {
   Empty,
   FeatureLink,
-  PageTitle,
+  PageHeader,
   PrLink,
   StatusPill,
   TicketLink,
@@ -114,7 +114,7 @@ function JournalPage() {
 
   return (
     <>
-      <PageTitle
+      <PageHeader
         aside={
           <>
             {shown.length}
@@ -122,7 +122,7 @@ function JournalPage() {
             {shown.length === 1 ? "y" : "ies"}
             {filtered && (
               <button
-                className="ml-3 text-thread hover:underline"
+                className="ml-3 text-primary hover:underline"
                 onClick={() => navigate({ search: {}, replace: true })}
                 type="button"
               >
@@ -131,23 +131,20 @@ function JournalPage() {
             )}
           </>
         }
-        kicker="Change journal"
+        eyebrow="Change journal"
         title={search.day ? prettyDay(search.day) : "Landings"}
       />
 
-      <div
-        className="rise mb-8 flex flex-col gap-3"
-        style={{ animationDelay: "40ms" }}
-      >
+      <div className="mb-8 flex flex-col gap-3">
         {apps.length > 1 && (
           <div className="flex flex-wrap items-center gap-1.5">
             {apps.map((a) => (
               <button
                 className={cn(
-                  "rounded-full border px-2.5 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em] transition-colors",
+                  "rounded-md border px-2 py-0.5 font-medium text-xs transition-colors",
                   search.app === a
-                    ? "border-thread bg-thread text-paper"
-                    : "border-rule text-ink-dim hover:border-ink-dim"
+                    ? "border-primary bg-primary text-background"
+                    : "border-border text-muted-foreground hover:border-muted-foreground"
                 )}
                 key={a}
                 // Changing app drops the feature filter — a feature key belongs to one app.
@@ -168,10 +165,10 @@ function JournalPage() {
           {STATUSES.map((s) => (
             <button
               className={cn(
-                "rounded-full border px-2.5 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em] transition-colors",
+                "rounded-md border px-2 py-0.5 font-medium text-xs transition-colors",
                 search.status === s
-                  ? "border-ink bg-ink text-paper"
-                  : "border-rule text-ink-dim hover:border-ink-dim"
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border text-muted-foreground hover:border-muted-foreground"
               )}
               key={s}
               onClick={() =>
@@ -183,7 +180,7 @@ function JournalPage() {
             </button>
           ))}
           <input
-            className="ml-auto w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 font-mono text-ink text-sm placeholder:text-ink-faint focus:border-thread focus:outline-none sm:w-72"
+            className="ml-auto w-full rounded-md border border-border bg-muted/60 px-3 py-1.5 font-mono text-foreground text-sm placeholder:text-subtle focus:border-primary focus:outline-none sm:w-72"
             onChange={(e) => set({ q: e.target.value || undefined })}
             placeholder="search slug, summary, pr, ticket…"
             value={search.q ?? ""}
@@ -195,8 +192,8 @@ function JournalPage() {
               className={cn(
                 "mono transition-colors",
                 search.feature === f
-                  ? "text-thread underline underline-offset-4"
-                  : "text-ink-faint hover:text-ink"
+                  ? "text-primary underline underline-offset-4"
+                  : "text-subtle hover:text-foreground"
               )}
               key={f}
               onClick={() =>
@@ -218,32 +215,31 @@ function JournalPage() {
         </Empty>
       )}
 
-      {byDay.map(([day, entries], di) => (
+      {byDay.map(([day, entries]) => (
         <section
-          className="rise mb-8 grid grid-cols-1 gap-x-8 md:grid-cols-[9rem_1fr]"
+          className="mb-8 grid grid-cols-1 gap-x-8 md:grid-cols-[9rem_1fr]"
           key={day}
-          style={{ animationDelay: `${60 + di * 40}ms` }}
         >
           <div className="md:sticky md:top-6 md:self-start">
             <Link
-              className="display block text-[19px] text-ink leading-tight hover:text-thread"
+              className="block font-medium text-foreground leading-tight hover:text-primary"
               search={{ day }}
               to="/journal"
             >
               {prettyDay(day)}
             </Link>
-            <p className="mono mt-0.5 text-ink-faint">
+            <p className="mono mt-0.5 text-subtle">
               {entries.length} landing{entries.length === 1 ? "" : "s"}
             </p>
           </div>
-          <ol className="divide-y divide-rule-soft border-rule border-t md:border-t-0">
+          <ol className="divide-y divide-border border-border border-t md:border-t-0">
             {entries.map((e) => (
               <li className="py-3" key={e.id}>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   <FeatureLink app={e.app} feature={e.feature} />
                   <PrLink pr={e.pr} url={e.url} />
                   {e.merge && (
-                    <span className="mono text-ink-faint">
+                    <span className="mono text-subtle">
                       {e.merge.slice(0, 9)}
                     </span>
                   )}
@@ -253,7 +249,7 @@ function JournalPage() {
                   </span>
                 </div>
                 <Link
-                  className="mt-1 block text-[16px] text-ink leading-snug hover:text-thread"
+                  className="mt-1 block text-[16px] text-foreground leading-snug hover:text-primary"
                   params={{ _splat: e.id }}
                   to="/journal/$"
                 >

@@ -1,7 +1,7 @@
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import {
   BookOpenText,
-  CircleDot,
+  FileText,
   Inbox,
   MenuIcon,
   MessageCircleQuestion,
@@ -10,6 +10,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ThemeToggle } from "#/components/theme";
 import { cn } from "#/lib/utils";
 
 // ── pull to refresh ────────────────────────────────────────────────────────────
@@ -148,10 +149,10 @@ function PullToRefresh({
         )}
         style={{ transform: `translateY(${Math.max(0, pull - 40)}px)` }}
       >
-        <span className="kicker inline-flex items-center gap-2 rounded-full border border-rule bg-paper px-3 py-1.5 shadow-sm">
+        <span className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 font-medium text-muted-foreground text-xs shadow-sm">
           <Basin
             className={cn(
-              "size-3.5 text-thread transition-transform",
+              "size-3.5 text-primary transition-transform",
               refreshing && "animate-spin",
               armed && !refreshing && "rotate-180"
             )}
@@ -173,32 +174,12 @@ function PullToRefresh({
 }
 
 const NAV = [
-  { hint: "latest sweep", icon: Inbox, label: "Inbox", to: "/" },
-  {
-    hint: "send / ignore / verify",
-    icon: CircleDot,
-    label: "Points",
-    to: "/points",
-  },
-  {
-    hint: "one entry per landing",
-    icon: ScrollText,
-    label: "Journal",
-    to: "/journal",
-  },
-  {
-    hint: "#dev-team, daily",
-    icon: MessagesSquare,
-    label: "Digests",
-    to: "/digests",
-  },
-  { hint: "product + arch", icon: BookOpenText, label: "Docs", to: "/docs" },
-  {
-    hint: "the blackboard, read-only",
-    icon: MessageCircleQuestion,
-    label: "Argus",
-    to: "/ask",
-  },
+  { icon: Inbox, label: "Today", to: "/" },
+  { icon: FileText, label: "Reports", to: "/reports" },
+  { icon: ScrollText, label: "Journal", to: "/journal" },
+  { icon: MessagesSquare, label: "Digests", to: "/digests" },
+  { icon: BookOpenText, label: "Docs", to: "/docs" },
+  { icon: MessageCircleQuestion, label: "Argus", to: "/ask" },
 ] as const;
 
 function Basin({ className }: { className?: string }) {
@@ -253,21 +234,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [open]);
 
   const wordmark = (
-    <Link className="flex items-center gap-2.5 text-ink" to="/">
-      <Basin className="size-7 text-thread" />
-      <span className="display text-[22px] italic leading-none">Pensieve</span>
+    <Link
+      className="flex items-center gap-2 font-semibold text-[15px] text-foreground"
+      to="/"
+    >
+      <Basin className="size-6 text-primary" />
+      Pensieve
     </Link>
   );
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-[1180px] flex-col lg:flex-row">
-      <div className="flex items-center justify-between border-rule border-b px-4 py-2.5 lg:hidden">
+    <div className="flex min-h-dvh flex-col lg:flex-row">
+      <div className="flex items-center justify-between border-border border-b px-4 py-2.5 lg:hidden">
         {wordmark}
         <button
           aria-controls="app-nav"
           aria-expanded={open}
           aria-label="Open navigation"
-          className="rounded-md p-1.5 text-ink-dim hover:bg-paper-2 hover:text-ink"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           onClick={() => setOpen(true)}
           type="button"
         >
@@ -277,76 +261,64 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {open && (
         <button
           aria-label="Close navigation"
-          className="fixed inset-0 z-40 bg-ink/30 lg:hidden"
+          className="fixed inset-0 z-40 bg-foreground/30 lg:hidden"
           onClick={() => setOpen(false)}
           type="button"
         />
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[250px] shrink-0 flex-col border-rule border-r bg-paper shadow-xl transition-transform duration-200 ease-out",
-          "lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:w-[220px] lg:translate-x-0 lg:bg-transparent lg:shadow-none lg:transition-none",
+          "fixed inset-y-0 left-0 z-50 flex w-[260px] shrink-0 flex-col border-border border-r bg-background shadow-xl transition-transform duration-200 ease-out",
+          "lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:w-[240px] lg:translate-x-0 lg:bg-muted/40 lg:shadow-none lg:transition-none",
           open ? "translate-x-0" : "-translate-x-full"
         )}
         id="app-nav"
       >
-        <div className="flex items-center justify-between px-5 pt-6 pb-4">
+        <div className="flex items-center justify-between px-4 pt-5 pb-3">
           {wordmark}
           <button
             aria-label="Close navigation"
-            className="rounded-md p-1 text-ink-faint hover:text-ink lg:hidden"
+            className="rounded-md p-1 text-subtle hover:text-foreground lg:hidden"
             onClick={() => setOpen(false)}
             type="button"
           >
             <XIcon className="size-4" />
           </button>
         </div>
-        <nav className="flex flex-col gap-0.5 px-3">
-          {NAV.map(({ to, label, icon: Icon, hint }) => {
+        <nav className="flex flex-col gap-px px-2.5">
+          {NAV.map(({ to, label, icon: Icon }) => {
             const active =
               to === "/" ? pathname === "/" : pathname.startsWith(to);
             return (
               <Link
                 className={cn(
-                  "group relative flex shrink-0 items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                  "flex shrink-0 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
                   active
-                    ? "bg-paper-2 text-ink"
-                    : "text-ink-dim hover:bg-paper-2/60 hover:text-ink"
+                    ? "bg-accent font-medium text-foreground"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                 )}
                 key={to}
                 to={to}
               >
-                {active && (
-                  <span className="absolute top-1/2 -left-3 h-4 w-0.5 -translate-y-1/2 rounded-r bg-thread" />
-                )}
                 <Icon
                   className={cn(
                     "size-4",
-                    active
-                      ? "text-thread"
-                      : "text-ink-faint group-hover:text-ink-dim"
+                    active ? "text-foreground" : "text-subtle"
                   )}
                   strokeWidth={1.75}
                 />
                 <span>{label}</span>
-                <span className="ml-auto font-mono text-[10px] text-ink-faint">
-                  {hint}
-                </span>
               </Link>
             );
           })}
         </nav>
-        <div className="mt-auto px-5 py-4">
-          <p className="kicker">read-only, but one</p>
-          <p className="mt-1 text-ink-faint text-sm leading-snug">
-            The sweep writes the blackboard; this room only reads it — except{" "}
-            <span className="mono">decisions/</span>, where a verdict on a point
-            lands.
-          </p>
+        <div className="mt-auto flex items-center justify-between px-4 py-4">
+          <ThemeToggle />
+          <span className="kicker">reads argus</span>
         </div>
       </aside>
       <PullToRefresh enabled={!isChatDetail(pathname)}>
-        <main className="min-w-0 px-5 py-6 sm:px-8 lg:px-12 lg:py-10">
+        <main className="mx-auto min-w-0 max-w-[1040px] px-5 py-8 sm:px-8 lg:px-12 lg:py-10">
           {children}
         </main>
       </PullToRefresh>

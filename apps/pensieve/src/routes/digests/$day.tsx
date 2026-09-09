@@ -1,5 +1,5 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import { PageTitle } from "#/components/bits";
+import { PageHeader } from "#/components/bits";
 import { Md } from "#/components/md";
 import { getDigest } from "#/lib/api";
 import { prettyDay } from "#/lib/utils";
@@ -14,7 +14,7 @@ export const Route = createFileRoute("/digests/$day")({
   },
   component: DigestPage,
   notFoundComponent: () => (
-    <p className="text-ink-dim">No digest for that day.</p>
+    <p className="text-muted-foreground">No digest for that day.</p>
   ),
 });
 
@@ -23,12 +23,12 @@ function DigestPage() {
   const r = Route.useLoaderData();
   return (
     <>
-      <PageTitle
+      <PageHeader
         aside={<span className="mono">{r.path}</span>}
-        kicker="#dev-team digest"
+        eyebrow="#dev-team digest"
         title={prettyDay(day)}
       />
-      <div className="rise" style={{ animationDelay: "60ms" }}>
+      <div>
         <Md doc={r.doc} />
       </div>
     </>

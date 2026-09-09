@@ -1,5 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { Fact, FeatureLink, PageTitle } from "#/components/bits";
+import { Fact, FeatureLink, PageHeader } from "#/components/bits";
 import { Md } from "#/components/md";
 import { getDoc } from "#/lib/api";
 import { cn } from "#/lib/utils";
@@ -30,7 +30,7 @@ export const Route = createFileRoute("/docs/$")({
   },
   component: DocPage,
   notFoundComponent: () => (
-    <p className="text-ink-dim">No doc for that feature.</p>
+    <p className="text-muted-foreground">No doc for that feature.</p>
   ),
 });
 
@@ -43,16 +43,16 @@ function DocPage() {
     : meta.feature;
   return (
     <>
-      <PageTitle
+      <PageHeader
         aside={
           <span className="flex gap-1.5">
             {(["product", "arch"] as const).map((t) => (
               <Link
                 className={cn(
-                  "rounded-full border px-2.5 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em]",
+                  "rounded-md border px-2 py-0.5 font-medium text-xs",
                   meta.tier === t
-                    ? "border-ink bg-ink text-paper"
-                    : "border-rule text-ink-dim hover:border-thread hover:text-thread"
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border text-muted-foreground hover:border-primary hover:text-primary"
                 )}
                 key={t}
                 params={{ _splat: meta.feature }}
@@ -64,7 +64,7 @@ function DocPage() {
             ))}
           </span>
         }
-        kicker={
+        eyebrow={
           <>
             {meta.app} ·{" "}
             <span className="normal-case tracking-normal">{short}</span>
@@ -73,20 +73,17 @@ function DocPage() {
         title={meta.name ?? short}
       />
       <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-[1fr_13rem]">
-        <div className="rise min-w-0" style={{ animationDelay: "60ms" }}>
+        <div className="min-w-0">
           <Md doc={doc} />
         </div>
-        <aside
-          className="rise order-first lg:sticky lg:top-6 lg:order-none lg:max-h-[calc(100dvh-3rem)] lg:self-start lg:overflow-y-auto"
-          style={{ animationDelay: "120ms" }}
-        >
+        <aside className="order-first lg:sticky lg:top-6 lg:order-none lg:max-h-[calc(100dvh-3rem)] lg:self-start lg:overflow-y-auto">
           <dl>
             <Fact label="Verified · FE">
               {meta.lastVerified && (
                 <>
                   <span className="mono">{meta.lastVerified.slice(0, 9)}</span>
                   {meta.lastVerifiedDate && (
-                    <span className="ml-2 text-ink-faint">
+                    <span className="ml-2 text-subtle">
                       {meta.lastVerifiedDate}
                     </span>
                   )}
@@ -101,7 +98,7 @@ function DocPage() {
                     {meta.lastVerifiedBe.slice(0, 9)}
                   </span>
                   {meta.lastVerifiedBeDate && (
-                    <span className="ml-2 text-ink-faint">
+                    <span className="ml-2 text-subtle">
                       {meta.lastVerifiedBeDate}
                     </span>
                   )}
@@ -121,7 +118,7 @@ function DocPage() {
             </Fact>
             <Fact label="Journal">
               <Link
-                className="text-thread hover:underline"
+                className="text-primary hover:underline"
                 search={{ feature: meta.feature }}
                 to="/journal"
               >
@@ -129,20 +126,20 @@ function DocPage() {
               </Link>
             </Fact>
             <Fact label="File">
-              <span className="mono break-all text-ink-faint">{path}</span>
+              <span className="mono break-all text-subtle">{path}</span>
             </Fact>
           </dl>
           {headings.length > 1 && (
             <nav className="mt-6 hidden lg:block">
               <p className="kicker mb-2">On this page</p>
-              <ol className="flex flex-col gap-1 border-rule-soft border-l">
+              <ol className="flex flex-col gap-1 border-border border-l">
                 {headings.map((h) => (
                   <li
                     className={cn(h.level === 1 ? "pl-3" : "pl-3")}
                     key={h.id}
                   >
                     <a
-                      className="block text-ink-dim text-sm leading-snug hover:text-thread"
+                      className="block text-muted-foreground text-sm leading-snug hover:text-primary"
                       href={`#${h.id}`}
                     >
                       {h.text}

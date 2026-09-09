@@ -4,7 +4,7 @@
  */
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
-import { Empty, PageTitle } from "#/components/bits";
+import { Empty, PageHeader } from "#/components/bits";
 import { Button } from "#/components/ui/button";
 import { newThreadId } from "#/features/ask";
 import { listConversations } from "#/lib/api";
@@ -22,14 +22,14 @@ function AskListPage() {
     navigate({ to: "/ask/$id", params: { id: newThreadId() } });
   return (
     <>
-      <PageTitle
+      <PageHeader
         aside={
           <Button onClick={start} size="sm">
             <PlusIcon />
             New conversation
           </Button>
         }
-        kicker="Argus"
+        eyebrow="Argus"
         title="Conversations"
       />
       {conversations.length === 0 && (
@@ -37,23 +37,19 @@ function AskListPage() {
           Start one and ask what the last sweep found, or where a feature lives.
         </Empty>
       )}
-      <ul className="divide-y divide-rule-soft">
-        {conversations.map((c, i) => (
-          <li
-            className="rise"
-            key={c.threadId}
-            style={{ animationDelay: `${i * 30}ms` }}
-          >
+      <ul className="divide-y divide-border">
+        {conversations.map((c) => (
+          <li key={c.threadId}>
             {/* Phone: the question on two lines with the time under it; from sm up, one row with the time first. */}
             <Link
               className="group flex flex-col gap-0.5 py-3 sm:flex-row sm:items-baseline sm:gap-4"
               params={{ id: c.threadId }}
               to="/ask/$id"
             >
-              <span className="mono order-last shrink-0 text-ink-faint sm:order-none sm:w-36">
+              <span className="mono order-last shrink-0 text-subtle sm:order-none sm:w-36">
                 {prettyStamp(c.updatedAt)}
               </span>
-              <span className="display min-w-0 text-ink group-hover:text-thread max-sm:line-clamp-2 max-sm:text-[17px] max-sm:leading-snug sm:truncate sm:text-[19px]">
+              <span className="min-w-0 font-medium text-foreground group-hover:text-primary max-sm:line-clamp-2 max-sm:text-[17px] max-sm:leading-snug sm:truncate sm:text-[19px]">
                 {c.title}
               </span>
             </Link>

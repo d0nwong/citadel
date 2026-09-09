@@ -9,7 +9,7 @@
 
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChevronRight, MessageCircleQuestion } from "lucide-react";
-import { Empty, PageTitle, TicketLink } from "#/components/bits";
+import { Empty, PageHeader, TicketLink } from "#/components/bits";
 import { newThreadId } from "#/features/ask";
 import {
   ActionButton,
@@ -66,7 +66,7 @@ function PointsPage() {
   if (!file) {
     return (
       <>
-        <PageTitle kicker="Needs you" title="Points" />
+        <PageHeader eyebrow="Needs you" title="Points" />
         <Empty title="No points on file">
           The sweep writes <span className="mono">reports/points.json</span>{" "}
           each tick, one record per Needs-you item. Run{" "}
@@ -86,14 +86,14 @@ function PointsPage() {
 
   return (
     <>
-      <PageTitle
+      <PageHeader
         aside={
-          <span className="mono text-ink-faint" title={`tick ${file.tick}`}>
+          <span className="mono text-subtle" title={`tick ${file.tick}`}>
             {file.date}
             {decided.length > 0 && ` · ${decided.length} decided`}
           </span>
         }
-        kicker="Needs you"
+        eyebrow="Needs you"
         title={
           open.length === 0
             ? "Nothing to decide"
@@ -102,10 +102,7 @@ function PointsPage() {
       />
 
       {!foundry.configured && (
-        <p
-          className="rise mb-6 border-st-hold/50 border-l-2 pl-3 text-ink-dim text-sm leading-snug"
-          style={{ animationDelay: "40ms" }}
-        >
+        <p className="mb-6 border-st-hold/50 border-l-2 pl-3 text-muted-foreground text-sm leading-snug">
           <span className="font-semibold">Send is off.</span> {foundry.reason}.
           Ignore and Verify still work.
         </p>
@@ -118,24 +115,18 @@ function PointsPage() {
         </Empty>
       )}
 
-      {groups.map((g, gi) => (
-        <section
-          className="rise mb-10"
-          key={g.key}
-          style={{ animationDelay: `${60 + gi * 40}ms` }}
-        >
-          <div className="mb-1 flex items-baseline justify-between border-rule border-b pb-1.5">
-            <h2 className="display text-[22px] text-ink">
+      {groups.map((g) => (
+        <section className="mb-10" key={g.key}>
+          <div className="mb-1 flex items-baseline justify-between border-border border-b pb-1.5">
+            <h2 className="font-semibold text-foreground text-lg tracking-tight">
               {g.label}
-              <span className="mono ml-2 text-ink-faint">
-                {g.points.length}
-              </span>
+              <span className="mono ml-2 text-subtle">{g.points.length}</span>
             </h2>
-            <span className="hidden text-ink-faint text-sm italic sm:block">
+            <span className="hidden text-sm text-subtle italic sm:block">
               {g.hint}
             </span>
           </div>
-          <ul className="divide-y divide-rule-soft">
+          <ul className="divide-y divide-border">
             {g.points.map((p) => (
               <PointRow
                 foundryOk={foundry.configured}
@@ -150,22 +141,19 @@ function PointsPage() {
       ))}
 
       {decided.length > 0 && (
-        <details
-          className="rise group mt-4 border-rule border-t pt-4"
-          style={{ animationDelay: "200ms" }}
-        >
-          <summary className="flex cursor-pointer list-none items-center gap-2 text-ink-dim hover:text-ink [&::-webkit-details-marker]:hidden">
+        <details className="group mt-4 border-border border-t pt-4">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
             <ChevronRight
               className="size-4 transition-transform group-open:rotate-90"
               strokeWidth={1.75}
             />
-            <span className="display text-[19px]">Decided</span>
-            <span className="mono text-ink-faint">{decided.length}</span>
-            <span className="ml-auto hidden text-ink-faint text-sm italic sm:block">
+            <span className="font-medium">Decided</span>
+            <span className="mono text-subtle">{decided.length}</span>
+            <span className="ml-auto hidden text-sm text-subtle italic sm:block">
               leaves the report on the next tick
             </span>
           </summary>
-          <ul className="mt-3 divide-y divide-rule-soft">
+          <ul className="mt-3 divide-y divide-border">
             {decided.map((p) => (
               <DecidedRow foundryUrl={foundry.url} key={p.id} point={p} />
             ))}
@@ -193,15 +181,17 @@ function PointRow({
   return (
     <li className="py-4">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="display text-[19px] text-ink leading-tight">
+        <span className="font-medium text-foreground leading-tight">
           {point.subject}
         </span>
         {point.ticket && <TicketLink ticket={point.ticket} />}
-        <span className="mono text-ink-faint">{age(point.firstSeen)}</span>
+        <span className="mono text-subtle">{age(point.firstSeen)}</span>
       </div>
-      <p className="mt-1 text-ink-dim text-sm leading-snug">{point.ask}</p>
+      <p className="mt-1 text-muted-foreground text-sm leading-snug">
+        {point.ask}
+      </p>
       {point.detail && (
-        <p className="mt-1 max-w-[72ch] text-ink-faint text-sm leading-snug">
+        <p className="mt-1 max-w-[72ch] text-sm text-subtle leading-snug">
           {point.detail}
         </p>
       )}
@@ -245,17 +235,17 @@ function DecidedRow({
           <>
             <span
               className={cn(
-                "display text-[17px] leading-tight",
+                "font-medium leading-tight",
                 point.decision.action === "ignored"
-                  ? "text-ink-dim"
-                  : "text-ink"
+                  ? "text-muted-foreground"
+                  : "text-foreground"
               )}
             >
               {point.subject}
             </span>
             {point.ticket && <TicketLink ticket={point.ticket} />}
             <button
-              className="inline-flex items-center gap-1 text-sm text-thread hover:underline"
+              className="inline-flex items-center gap-1 text-primary text-sm hover:underline"
               onClick={askAbout}
               type="button"
             >

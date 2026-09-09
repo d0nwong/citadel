@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
-import { Empty, PageTitle } from "#/components/bits";
+import { Empty, PageHeader } from "#/components/bits";
 import { Md } from "#/components/md";
 import { getInbox } from "#/lib/api";
 import { prettyDay } from "#/lib/utils";
@@ -15,23 +15,23 @@ function InboxPage() {
     Route.useLoaderData();
   return (
     <>
-      <PageTitle
+      <PageHeader
         aside={
-          <span className="mono text-ink-faint" title={workspace}>
+          <span className="mono text-subtle" title={workspace}>
             {workspace.replace(/^\/Users\/[^/]+/, "~")}
           </span>
         }
-        kicker="Inbox"
+        eyebrow="Inbox"
         title={report ? prettyDay(report.day) : "Nothing drawn yet"}
       />
 
-      <section className="rise" style={{ animationDelay: "60ms" }}>
+      <section>
         <div className="mb-3 flex items-baseline justify-between gap-4">
           <h2 className="kicker">Sweep report</h2>
           <div className="flex items-baseline gap-4 text-sm">
             {openPoints !== null && (
               <Link
-                className="inline-flex items-center gap-1 text-thread hover:underline"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
                 to="/points"
               >
                 {openPoints === 0
@@ -40,11 +40,11 @@ function InboxPage() {
                 <ArrowUpRight className="size-3" />
               </Link>
             )}
-            <Link className="text-ink-faint hover:text-thread" to="/reports">
+            <Link className="text-subtle hover:text-primary" to="/reports">
               past reports
             </Link>
             <Link
-              className="inline-flex items-center gap-1 text-ink-faint hover:text-thread"
+              className="inline-flex items-center gap-1 text-subtle hover:text-primary"
               to="/ask"
             >
               {conversations === 0
@@ -66,7 +66,7 @@ function InboxPage() {
         )}
       </section>
 
-      <section className="rise mt-12" style={{ animationDelay: "140ms" }}>
+      <section className="mt-12">
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="kicker">
             Latest digest
@@ -74,7 +74,7 @@ function InboxPage() {
           </h2>
           {digest && (
             <Link
-              className="inline-flex items-center gap-1 text-ink-faint text-sm hover:text-thread"
+              className="inline-flex items-center gap-1 text-sm text-subtle hover:text-primary"
               params={{ day: digest.day }}
               to="/digests/$day"
             >

@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { AppShell } from "#/components/app-shell";
+import { THEME_SCRIPT } from "#/components/theme";
 import appCss from "../styles.css?url";
 
 interface RouterContext {
@@ -35,13 +36,15 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { rel: "stylesheet", href: appCss },
       { rel: "icon", type: "image/svg+xml", href: FAVICON },
     ],
+    // Applies `.dark` from the stored choice or the system before first paint.
+    scripts: [{ children: THEME_SCRIPT }],
   }),
   shellComponent: RootDocument,
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>

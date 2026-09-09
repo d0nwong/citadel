@@ -2,7 +2,7 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import {
   Fact,
   FeatureLink,
-  PageTitle,
+  PageHeader,
   PrLink,
   StatusPill,
   TicketLink,
@@ -21,7 +21,7 @@ export const Route = createFileRoute("/journal/$")({
   },
   component: EntryPage,
   notFoundComponent: () => (
-    <p className="text-ink-dim">No journal entry at that path.</p>
+    <p className="text-muted-foreground">No journal entry at that path.</p>
   ),
 });
 
@@ -29,38 +29,32 @@ function EntryPage() {
   const { doc, meta, path } = Route.useLoaderData();
   return (
     <>
-      <PageTitle
+      <PageHeader
         aside={<StatusPill hold={meta.hold} status={meta.status} />}
-        kicker={
+        eyebrow={
           <>
             <Link
-              className="hover:text-thread"
+              className="hover:text-primary"
               search={{ day: meta.date }}
               to="/journal"
             >
               {prettyDay(meta.date)}
             </Link>
             {" · "}
-            <FeatureLink
-              className="text-[10.5px] uppercase tracking-[0.16em]"
-              feature={meta.feature}
-            />
+            <FeatureLink className="text-xs" feature={meta.feature} />
           </>
         }
         title={meta.summary ?? meta.slug}
       />
       <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-[1fr_13rem]">
-        <div className="rise min-w-0" style={{ animationDelay: "60ms" }}>
+        <div className="min-w-0">
           <Md doc={doc} />
         </div>
-        <dl
-          className="rise order-first lg:sticky lg:top-6 lg:order-none lg:self-start"
-          style={{ animationDelay: "120ms" }}
-        >
+        <dl className="order-first lg:sticky lg:top-6 lg:order-none lg:self-start">
           <Fact label="Landing">
             <PrLink pr={meta.pr} url={meta.url} />
             {meta.merge && (
-              <span className="mono ml-2 text-ink-faint">{meta.merge}</span>
+              <span className="mono ml-2 text-subtle">{meta.merge}</span>
             )}
           </Fact>
           <Fact label="Ticket">
@@ -81,7 +75,7 @@ function EntryPage() {
             {meta.source && meta.source !== "null" ? meta.source : undefined}
           </Fact>
           <Fact label="File">
-            <span className="mono break-all text-ink-faint">{path}</span>
+            <span className="mono break-all text-subtle">{path}</span>
           </Fact>
         </dl>
       </div>
