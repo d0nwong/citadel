@@ -12,6 +12,7 @@
  *   marauder attach <id> <slug>    move an unsorted item onto a workstream, and learn from it
  *   marauder suggest <id> <slug>   leave it unsorted, but say where it probably goes
  *   marauder new <id> --name       open a workstream from a proposal
+ *   marauder dismiss <id> --reason drop an unsorted item that goes nowhere
  *   marauder split <slug> --into   cut one workstream in two
  *   marauder stage <slug> fe|be    say where a side really is, and why
  *   marauder propose-split <slug>  queue a split for a person to accept
@@ -144,6 +145,26 @@ export function suggest(state: State, id: string, slug: string): Result {
   if (item.suggest === slug) return unchanged(state, `${id} already suggests ${slug}`);
   item.suggest = slug;
   return { state: next, changed: true, notes: [`${id} suggests ${slug}`] };
+}
+
+// ---------------------------------------------------------------- dismiss
+
+/**
+ * Drop an item that belongs on no workstream — chat, a duplicate, a question already
+ * answered in its thread. The reason is required, because the item leaves the queue and the
+ * reason is then the only record of why it is nowhere.
+ *
+ * Nothing is learned from a dismissal. A rule taught here would attach the next message
+ * like this one to a workstream, and the judgment just made was that there is no such
+ * workstream.
+ */
+export function dismiss(state: State, id: string, opts: Who): Result {
+  const reason = opts.reason?.trim();
+  if (!reason) return unchanged(state, `dismissing ${id} needs a reason`);
+  const next = clone(state);
+  if (!next.unsorted.some((u) => u.id === id)) return unchanged(state, `nothing unsorted is called ${id}`);
+  next.unsorted = next.unsorted.filter((u) => u.id !== id);
+  return { state: next, changed: true, notes: [`${id} dismissed — ${reason}`] };
 }
 
 // ---------------------------------------------------------------- new
