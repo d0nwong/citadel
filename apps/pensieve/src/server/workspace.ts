@@ -24,6 +24,7 @@ import { basename, join, relative, resolve } from "node:path";
 import type { MarkdownDocument } from "@tanstack/markdown";
 import { parseMarkdown } from "@tanstack/markdown/parser";
 import { parse as parseYaml } from "yaml";
+import { dropTitle, outline } from "./sections";
 
 export const WORKSPACE_DIR = resolve(
   process.env.WORKSPACE_DIR || join(homedir(), "git/argus")
@@ -290,7 +291,13 @@ export async function render(
 ): Promise<Rendered> {
   const raw = await readFile(absPath, "utf8");
   const src = stripHtmlComments(resolveWikilinks(raw, feature));
-  const doc = parseMarkdown(src, { frontmatter: true, headingIds: true });
+  // Every page names its document in its own header, so a leading `# title` is dropped
+  // here rather than shown twice. The parser fills `headings` only through its docs
+  // extension; "On this page" reads the outline set here instead.
+  const doc = dropTitle(
+    parseMarkdown(src, { frontmatter: true, headingIds: true })
+  );
+  doc.headings = outline(doc);
   let frontmatter: Frontmatter = {};
   if (doc.frontmatter) {
     try {

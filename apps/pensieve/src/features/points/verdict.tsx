@@ -1,8 +1,14 @@
 /**
- * The verdict on a Needs-you point, as one component each page renders: the Ignore / Verify
- * / Send controls while it is open (`VerdictControls`), and what a decided point looks like
- * afterwards (`DecidedLine`). Lifted out of `/points` so the Ask conversation opened on a
- * point can give the same verdict without going back to the list (LIA-109).
+ * The verdict on a Needs-you point, as one component each surface renders: the Approve /
+ * Send / Dismiss controls while it is open (`VerdictControls`), and what a decided point
+ * looks like afterwards (`DecidedLine`). Shared by the home page's queue and the Ask
+ * conversation opened on a point, so a verdict given from either lands the same way
+ * (LIA-109).
+ *
+ * The labels are the reader's: Approve writes `action: "verified"` (the user confirming the
+ * sweep's inference, which licenses its next tick to make the edit the point names —
+ * LIA-114/115), Dismiss writes `action: "ignored"`, Send writes `action: "sent"`. The file
+ * shapes and the server's checks are argus's contract and do not change with the words.
  *
  * The repo a Send lands in is a field of its own (`RepoField`), since Ask's proposal card
  * asks for the same thing on a different surface: a select over the repos Foundry answered
@@ -29,12 +35,16 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import type { Tone } from "#/components/bits";
+import { Tag } from "#/components/bits";
+import { Button } from "#/components/ui/button";
 import type { Verdict } from "#/lib/api";
 import { decidePoint, jobStatus, sendPoint, verifyPoint } from "#/lib/api";
 import { pickRepo, REPO_REQUIRED, repoOptions } from "#/lib/points";
 import { cn } from "#/lib/utils";
 import type { FoundryRepo } from "#/server/foundry";
 import type { Point, PointDecision } from "#/server/workspace";
+import { primaryAction } from "./sections";
 
 export const shortId = (id: string) => id.slice(0, 8);
 
@@ -51,10 +61,11 @@ function when(iso: string) {
   });
 }
 
-// ── the repo a send lands in ───────────────────────────────────────────────────
+/** One field style for every input the verdict forms and the Ask cards show. */
+export const FIELD_CLASS =
+  "w-full rounded-md border border-input bg-background px-3 py-1.5 text-foreground text-sm placeholder:text-subtle focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25";
 
-const FIELD_CLASS =
-  "mono w-full rounded-md border border-rule px-3 py-1.5 text-ink placeholder:text-ink-faint focus:border-thread focus:outline-none";
+// ── the repo a send lands in ───────────────────────────────────────────────────
 
 /**
  * Where the work lands, as the Send form and Ask's proposal card both ask it: a select over
@@ -75,7 +86,6 @@ export function RepoField({
   value,
 }: {
   autoFocus?: boolean;
-  /** The field's background — the two surfaces this sits on are not the same paper. */
   className?: string;
   id: string;
   onChange: (repo: string) => void;
@@ -99,9 +109,10 @@ export function RepoField({
               autoFocus={autoFocus}
               className={cn(
                 FIELD_CLASS,
+                "mono",
                 className,
-                "cursor-pointer appearance-none pr-9 hover:border-thread-soft",
-                !value && "text-ink-faint"
+                "cursor-pointer appearance-none pr-9",
+                !value && "text-subtle"
               )}
               id={id}
               onChange={(e) => onChange(e.target.value)}
@@ -116,18 +127,18 @@ export function RepoField({
             </select>
             <ChevronDown
               aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-ink-faint"
+              className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-subtle"
               strokeWidth={1.75}
             />
           </div>
           {picked && picked.value !== picked.path && (
-            <p className="mono text-ink-faint text-sm">{picked.path}</p>
+            <p className="mono text-subtle">{picked.path}</p>
           )}
         </>
       ) : (
         <input
           autoFocus={autoFocus}
-          className={cn(FIELD_CLASS, className)}
+          className={cn(FIELD_CLASS, "mono", className)}
           id={id}
           onChange={(e) => onChange(e.target.value)}
           placeholder="a repo Foundry tracks — its path, or its name"
@@ -183,25 +194,25 @@ export function useVerdictCommit() {
 type Mode = "idle" | "ignore" | "verify" | "send";
 
 /**
- * Ignore (with a reason), Verify (with an optional note, on a Verify-group point only) and
- * Send to Foundry (when the point names a ticket and Foundry is configured), with the form
- * each opens. `lead` goes first in the action row, so a page with its own action there (the
- * Points list's Ask) keeps one row of actions rather than two. `onDecided` runs after the
- * verdict landed and the router was invalidated — the caller's chance to close whatever
- * opened these controls.
+ * Approve (with an optional note, on a Verify-group point only), Send to Foundry (when the
+ * point names a ticket and Foundry is configured) and Dismiss (with a reason), with the
+ * form each opens. The row leads with the one primary verdict `primaryAction` picks, then
+ * Dismiss, then whatever the caller adds in `extra` (the queue's Ask). `onDecided` runs
+ * after the verdict landed and the router was invalidated — the caller's chance to close
+ * whatever opened these controls.
  */
 export function VerdictControls({
   point,
   foundryOk,
   foundryReason,
-  lead,
+  extra,
   onDecided,
   repos = [],
 }: {
   point: Point;
   foundryOk: boolean;
   foundryReason?: string;
-  lead?: ReactNode;
+  extra?: ReactNode;
   onDecided?: () => void;
   repos?: FoundryRepo[];
 }) {
@@ -214,6 +225,7 @@ export function VerdictControls({
     repos.length > 0 ? pickRepo(repos, point.repo) : (point.repo ?? "")
   );
   const { busy, commit: run, error, setError } = useVerdictCommit();
+  const primary = primaryAction(point, foundryOk);
 
   const open = (m: Mode) => {
     setMode(mode === m ? "idle" : m);
@@ -245,72 +257,82 @@ export function VerdictControls({
     return commit(() => sendPoint({ data: { point: point.id, repo } }));
   };
 
+  const variant = (m: Mode, lead: boolean) =>
+    mode === m ? "secondary" : lead ? "default" : "outline";
+
   return (
     <>
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-        {lead}
-        <ActionButton
-          active={mode === "ignore"}
-          icon={EyeOff}
-          onClick={() => open("ignore")}
-        >
-          Ignore
-        </ActionButton>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         {point.group === "verify" && (
-          <ActionButton
-            active={mode === "verify"}
-            icon={BadgeCheck}
+          <Button
+            aria-pressed={mode === "verify"}
             onClick={() => open("verify")}
+            size="sm"
+            variant={variant("verify", primary === "approve")}
           >
-            Verify
-          </ActionButton>
+            <BadgeCheck strokeWidth={1.75} />
+            Approve
+          </Button>
         )}
         {point.ticket &&
           (foundryOk ? (
-            <ActionButton
-              active={mode === "send"}
-              icon={Send}
+            <Button
+              aria-pressed={mode === "send"}
               onClick={() => open("send")}
+              size="sm"
+              variant={variant("send", primary === "send")}
             >
+              <Send strokeWidth={1.75} />
               Send to Foundry
-            </ActionButton>
+            </Button>
           ) : (
-            <span
-              className="inline-flex cursor-not-allowed items-center gap-1.5 text-ink-faint text-sm"
-              title={foundryReason}
-            >
-              <Send className="size-3.5" strokeWidth={1.75} />
+            <Button disabled size="sm" title={foundryReason} variant="outline">
+              <Send strokeWidth={1.75} />
               Send to Foundry
-              <span className="italic">
-                — {foundryReason?.split(" — ")[0] ?? "off"}
+              <span className="font-normal text-subtle">
+                · {foundryReason?.split(" — ")[0] ?? "off"}
               </span>
-            </span>
+            </Button>
           ))}
+        <Button
+          aria-pressed={mode === "ignore"}
+          onClick={() => open("ignore")}
+          size="sm"
+          variant={variant("ignore", false)}
+        >
+          <EyeOff strokeWidth={1.75} />
+          Dismiss
+        </Button>
+        {extra}
       </div>
 
       {mode === "ignore" && (
         <form
-          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-thread-soft border-l-2 pl-3"
+          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-primary/30 border-l-2 pl-3"
           onSubmit={(e) => {
             e.preventDefault();
             void ignore();
           }}
         >
           <label className="kicker" htmlFor={`reason-${point.id}`}>
-            Why ignore it
+            Why dismiss it
           </label>
           <textarea
             autoFocus
-            className="w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-ink text-sm placeholder:text-ink-faint focus:border-thread focus:outline-none"
+            className={FIELD_CLASS}
             id={`reason-${point.id}`}
             onChange={(e) => setReason(e.target.value)}
             placeholder="not worth a ticket / already handled in … / decided otherwise on …"
             rows={2}
             value={reason}
           />
+          <p className="text-sm text-subtle leading-snug">
+            The reason is what the sweep records; the point leaves the report on
+            its next tick.
+          </p>
           <Confirm
             busy={busy}
-            label="Ignore this point"
+            label="Dismiss this point"
             onCancel={() => open("idle")}
           />
           <VerdictError v={error} />
@@ -319,7 +341,7 @@ export function VerdictControls({
 
       {mode === "verify" && (
         <form
-          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-thread-soft border-l-2 pl-3"
+          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-primary/30 border-l-2 pl-3"
           onSubmit={(e) => {
             e.preventDefault();
             void verify();
@@ -330,20 +352,20 @@ export function VerdictControls({
           </label>
           <textarea
             autoFocus
-            className="w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 text-ink text-sm placeholder:text-ink-faint focus:border-thread focus:outline-none"
+            className={FIELD_CLASS}
             id={`note-${point.id}`}
             onChange={(e) => setNote(e.target.value)}
             placeholder="anything the edit should know — the point's own text is the instruction"
             rows={1}
             value={note}
           />
-          <p className="text-ink-faint text-sm leading-snug">
+          <p className="text-sm text-subtle leading-snug">
             Confirms the sweep's reading. Its next tick makes the edit this
             point names and records it against the point id.
           </p>
           <Confirm
             busy={busy}
-            label="Verify this point"
+            label="Approve this point"
             onCancel={() => open("idle")}
           />
           <VerdictError v={error} />
@@ -352,7 +374,7 @@ export function VerdictControls({
 
       {mode === "send" && (
         <form
-          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-thread-soft border-l-2 pl-3"
+          className="mt-3 flex max-w-[60ch] flex-col gap-2 border-primary/30 border-l-2 pl-3"
           onSubmit={(e) => {
             e.preventDefault();
             void send();
@@ -360,13 +382,12 @@ export function VerdictControls({
         >
           <RepoField
             autoFocus
-            className="bg-paper-2/60"
             id={`repo-${point.id}`}
             onChange={setRepo}
             repos={repos}
             value={repo}
           />
-          <p className="text-ink-faint text-sm leading-snug">
+          <p className="text-sm text-subtle leading-snug">
             Foundry composes the brief from{" "}
             <span className="mono">{point.ticket}</span> and claims it in
             Linear. The idempotency key is the point id, so this cannot queue
@@ -384,34 +405,6 @@ export function VerdictControls({
   );
 }
 
-export function ActionButton({
-  active,
-  onClick,
-  icon: Icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: typeof Send;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      className={cn(
-        "inline-flex items-center gap-1.5 text-sm transition-colors",
-        active
-          ? "text-ink underline underline-offset-4"
-          : "text-thread hover:underline"
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      <Icon className="size-3.5" strokeWidth={1.75} />
-      {children}
-    </button>
-  );
-}
-
 function Confirm({
   busy,
   label,
@@ -422,23 +415,20 @@ function Confirm({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <button
-        className="inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-1 text-paper text-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-        disabled={busy}
-        type="submit"
-      >
-        {busy && <LoaderCircle className="size-3.5 animate-spin" />}
+    <div className="flex items-center gap-2">
+      <Button disabled={busy} size="sm" type="submit">
+        {busy && <LoaderCircle className="animate-spin" />}
         {label}
-      </button>
-      <button
-        className="text-ink-faint text-sm hover:text-ink disabled:opacity-50"
+      </Button>
+      <Button
         disabled={busy}
         onClick={onCancel}
+        size="sm"
         type="button"
+        variant="ghost"
       >
-        cancel
-      </button>
+        Cancel
+      </Button>
     </div>
   );
 }
@@ -465,17 +455,20 @@ export function VerdictError({ v }: { v: Verdict | null }) {
 
 // ── a decided point ────────────────────────────────────────────────────────────
 
-/** One row per verdict — green for a confirmation, blue for a send, grey for a dismissal. */
-const ACTION_CLASS: Record<PointDecision["action"], string> = {
-  ignored: "border-st-superseded/40 text-st-superseded",
-  sent: "border-st-implemented/40 text-st-implemented",
-  verified: "border-st-documented/40 text-st-documented",
+/** The file's verb, in the reader's words, with a tone: green for approve, blue for send, grey for dismiss. */
+const ACTION_TAG: Record<
+  PointDecision["action"],
+  { label: string; tone: Tone }
+> = {
+  ignored: { label: "dismissed", tone: "superseded" },
+  sent: { label: "sent", tone: "implemented" },
+  verified: { label: "approved", tone: "documented" },
 };
 
 /**
  * The verdict on a point that has one: the action, when, why, and — for a sent point — its
  * Foundry job live until it settles. `head` is what the page puts on the first row beside
- * the pill: the subject and ticket, plus whatever else that page offers there.
+ * the tag: the subject and ticket, plus whatever else that page offers there.
  */
 export function DecidedLine({
   point,
@@ -490,22 +483,21 @@ export function DecidedLine({
   if (!d) {
     return null;
   }
+  const tag = ACTION_TAG[d.action];
   return (
     <>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span
-          className={cn(
-            "inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em]",
-            ACTION_CLASS[d.action]
-          )}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <Tag
+          className={tag.tone === "superseded" ? "no-underline" : undefined}
+          tone={tag.tone}
         >
-          {d.action}
-        </span>
+          {tag.label}
+        </Tag>
         {head}
-        <span className="mono ml-auto text-ink-faint">{when(d.at)}</span>
+        <span className="ml-auto text-subtle text-xs">{when(d.at)}</span>
       </div>
       {d.reason && (
-        <p className="mt-1 text-ink-dim text-sm italic leading-snug">
+        <p className="mt-1 text-muted-foreground text-sm leading-normal">
           {d.reason}
         </p>
       )}
@@ -530,9 +522,9 @@ function JobLine({ id, url }: { id: string; url: string }) {
   });
   const d = q.data;
   return (
-    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-ink-dim text-sm">
+    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground text-sm">
       <a
-        className="inline-flex items-center gap-1 text-thread hover:underline"
+        className="inline-flex items-center gap-1 text-primary hover:underline"
         href={url}
         rel="noreferrer"
         target="_blank"
@@ -541,7 +533,7 @@ function JobLine({ id, url }: { id: string; url: string }) {
         <ArrowUpRight className="size-3" />
       </a>
       {!d && (
-        <span className="text-ink-faint">
+        <span className="text-subtle">
           {q.isError ? "status unavailable" : "looking…"}
         </span>
       )}
@@ -553,17 +545,19 @@ function JobLine({ id, url }: { id: string; url: string }) {
       )}
       {d?.ok && (
         <>
-          <JobStatusPill
+          <Tag
             live={d.job.status === "queued" || d.job.status === "running"}
-            status={d.job.status}
-          />
+            tone={JOB_TONE[d.job.status] ?? "neutral"}
+          >
+            {d.job.status}
+          </Tag>
           {d.job.step &&
             (d.job.status === "queued" || d.job.status === "running") && (
-              <span className="mono text-ink-faint">{d.job.step}</span>
+              <span className="mono text-subtle">{d.job.step}</span>
             )}
           {d.job.prUrl && (
             <a
-              className="inline-flex items-center gap-1 text-thread hover:underline"
+              className="inline-flex items-center gap-1 text-primary hover:underline"
               href={d.job.prUrl}
               rel="noreferrer"
               target="_blank"
@@ -572,7 +566,7 @@ function JobLine({ id, url }: { id: string; url: string }) {
             </a>
           )}
           {d.job.status === "failed" && d.job.exitCode !== undefined && (
-            <span className="mono text-ink-faint">exit {d.job.exitCode}</span>
+            <span className="mono text-subtle">exit {d.job.exitCode}</span>
           )}
         </>
       )}
@@ -580,26 +574,10 @@ function JobLine({ id, url }: { id: string; url: string }) {
   );
 }
 
-const JOB_CLASS: Record<string, string> = {
-  cancelled: "text-st-superseded border-st-superseded/40",
-  failed: "text-st-hold border-st-hold/40",
-  queued: "text-ink-faint border-rule",
-  running: "text-st-implemented border-st-implemented/40",
-  succeeded: "text-st-documented border-st-documented/40",
+const JOB_TONE: Record<string, Tone> = {
+  cancelled: "superseded",
+  failed: "hold",
+  queued: "neutral",
+  running: "implemented",
+  succeeded: "documented",
 };
-
-function JobStatusPill({ status, live }: { status: string; live: boolean }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em]",
-        JOB_CLASS[status] ?? "border-rule text-ink-dim"
-      )}
-    >
-      {live && (
-        <span className="size-1.5 animate-pulse rounded-full bg-current" />
-      )}
-      {status}
-    </span>
-  );
-}

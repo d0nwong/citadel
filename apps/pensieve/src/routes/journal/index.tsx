@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ChevronDown } from "lucide-react";
 import { useMemo } from "react";
 import {
   Empty,
   FeatureLink,
-  PageTitle,
+  PageHeader,
   PrLink,
   StatusPill,
   TicketLink,
@@ -81,19 +82,20 @@ function JournalPage() {
     () => Array.from(new Set(all.map((e) => e.app))).sort(),
     [all]
   );
-  // The feature list follows the app filter: every feature of every app at once is a
-  // wall of names, and a feature only means something inside its app.
-  const features = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          all
-            .filter((e) => !search.app || e.app === search.app)
-            .map((e) => e.feature)
-        )
-      ).sort(),
-    [all, search.app]
-  );
+  // The feature picker follows the app filter, and groups by app when none is set — a
+  // feature only means something inside its app, and the key's app half is the group's name.
+  const featureGroups = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const e of all) {
+      if (search.app && e.app !== search.app) {
+        continue;
+      }
+      m.set(e.app, (m.get(e.app) ?? new Set()).add(e.feature));
+    }
+    return Array.from(m.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([app, fs]) => [app, Array.from(fs).sort()] as const);
+  }, [all, search.app]);
   const shown = useMemo(
     () => all.filter((e) => matches(e, search)),
     [all, search]
@@ -114,7 +116,7 @@ function JournalPage() {
 
   return (
     <>
-      <PageTitle
+      <PageHeader
         aside={
           <>
             {shown.length}
@@ -122,7 +124,7 @@ function JournalPage() {
             {shown.length === 1 ? "y" : "ies"}
             {filtered && (
               <button
-                className="ml-3 text-thread hover:underline"
+                className="ml-3 text-primary hover:underline"
                 onClick={() => navigate({ search: {}, replace: true })}
                 type="button"
               >
@@ -131,23 +133,20 @@ function JournalPage() {
             )}
           </>
         }
-        kicker="Change journal"
+        eyebrow="Change journal"
         title={search.day ? prettyDay(search.day) : "Landings"}
       />
 
-      <div
-        className="rise mb-8 flex flex-col gap-3"
-        style={{ animationDelay: "40ms" }}
-      >
+      <div className="mb-8 flex flex-col gap-3">
         {apps.length > 1 && (
           <div className="flex flex-wrap items-center gap-1.5">
             {apps.map((a) => (
               <button
                 className={cn(
-                  "rounded-full border px-2.5 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em] transition-colors",
+                  "rounded-md border px-2 py-0.5 font-medium text-xs transition-colors",
                   search.app === a
-                    ? "border-thread bg-thread text-paper"
-                    : "border-rule text-ink-dim hover:border-ink-dim"
+                    ? "border-primary bg-primary text-background"
+                    : "border-border text-muted-foreground hover:border-muted-foreground"
                 )}
                 key={a}
                 // Changing app drops the feature filter — a feature key belongs to one app.
@@ -168,10 +167,10 @@ function JournalPage() {
           {STATUSES.map((s) => (
             <button
               className={cn(
-                "rounded-full border px-2.5 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.12em] transition-colors",
+                "rounded-md border px-2 py-0.5 font-medium text-xs transition-colors",
                 search.status === s
-                  ? "border-ink bg-ink text-paper"
-                  : "border-rule text-ink-dim hover:border-ink-dim"
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border text-muted-foreground hover:border-muted-foreground"
               )}
               key={s}
               onClick={() =>
@@ -183,32 +182,52 @@ function JournalPage() {
             </button>
           ))}
           <input
-            className="ml-auto w-full rounded-md border border-rule bg-paper-2/60 px-3 py-1.5 font-mono text-ink text-sm placeholder:text-ink-faint focus:border-thread focus:outline-none sm:w-72"
+            className="ml-auto w-full rounded-md border border-input bg-background px-3 py-1.5 text-foreground text-sm placeholder:text-subtle focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 sm:w-72"
             onChange={(e) => set({ q: e.target.value || undefined })}
             placeholder="search slug, summary, pr, ticket…"
             value={search.q ?? ""}
           />
         </div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1">
-          {features.map((f) => (
-            <button
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="kicker" htmlFor="journal-feature">
+            Feature
+          </label>
+          <div className="relative w-full sm:w-80">
+            <select
               className={cn(
-                "mono transition-colors",
-                search.feature === f
-                  ? "text-thread underline underline-offset-4"
-                  : "text-ink-faint hover:text-ink"
+                "w-full cursor-pointer appearance-none rounded-md border border-input bg-background py-1.5 pr-9 pl-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25",
+                search.feature ? "text-foreground" : "text-subtle"
               )}
-              key={f}
-              onClick={() =>
-                set({ feature: search.feature === f ? undefined : f })
-              }
+              id="journal-feature"
+              onChange={(e) => set({ feature: e.target.value || undefined })}
+              value={search.feature ?? ""}
+            >
+              <option value="">all features</option>
+              {featureGroups.map(([app, fs]) => (
+                <optgroup key={app} label={app}>
+                  {fs.map((f) => (
+                    <option key={f} value={f}>
+                      {f.startsWith(`${app}/`) ? f.slice(app.length + 1) : f}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <ChevronDown
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-subtle"
+              strokeWidth={1.75}
+            />
+          </div>
+          {search.feature && (
+            <button
+              className="text-subtle text-xs hover:text-foreground"
+              onClick={() => set({ feature: undefined })}
               type="button"
             >
-              {search.app && f.startsWith(`${search.app}/`)
-                ? f.slice(search.app.length + 1)
-                : f}
+              clear
             </button>
-          ))}
+          )}
         </div>
       </div>
 
@@ -218,32 +237,31 @@ function JournalPage() {
         </Empty>
       )}
 
-      {byDay.map(([day, entries], di) => (
+      {byDay.map(([day, entries]) => (
         <section
-          className="rise mb-8 grid grid-cols-1 gap-x-8 md:grid-cols-[9rem_1fr]"
+          className="mb-8 grid grid-cols-1 gap-x-8 md:grid-cols-[9rem_1fr]"
           key={day}
-          style={{ animationDelay: `${60 + di * 40}ms` }}
         >
           <div className="md:sticky md:top-6 md:self-start">
             <Link
-              className="display block text-[19px] text-ink leading-tight hover:text-thread"
+              className="block font-medium text-foreground leading-tight hover:text-primary"
               search={{ day }}
               to="/journal"
             >
               {prettyDay(day)}
             </Link>
-            <p className="mono mt-0.5 text-ink-faint">
+            <p className="mt-0.5 text-subtle text-xs">
               {entries.length} landing{entries.length === 1 ? "" : "s"}
             </p>
           </div>
-          <ol className="divide-y divide-rule-soft border-rule border-t md:border-t-0">
+          <ol className="divide-y divide-border border-border border-t md:border-t-0">
             {entries.map((e) => (
               <li className="py-3" key={e.id}>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   <FeatureLink app={e.app} feature={e.feature} />
                   <PrLink pr={e.pr} url={e.url} />
                   {e.merge && (
-                    <span className="mono text-ink-faint">
+                    <span className="mono text-subtle">
                       {e.merge.slice(0, 9)}
                     </span>
                   )}
@@ -253,16 +271,14 @@ function JournalPage() {
                   </span>
                 </div>
                 <Link
-                  className="mt-1 block text-[16px] text-ink leading-snug hover:text-thread"
+                  className="mt-1 block text-[16px] text-foreground leading-snug hover:text-primary"
                   params={{ _splat: e.id }}
                   to="/journal/$"
                 >
                   {e.summary ?? e.slug}
                 </Link>
                 {e.hold && (
-                  <p className="mt-1 text-sm text-st-hold italic">
-                    hold: {e.hold}
-                  </p>
+                  <p className="mt-1 text-sm text-st-hold">hold: {e.hold}</p>
                 )}
               </li>
             ))}

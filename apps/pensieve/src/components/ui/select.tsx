@@ -1,6 +1,6 @@
 /**
  * shadcn/ui Select, vendored from TanStack/ai `examples/ts-react-ui-chatbot`.
- * Pensieve is light-only, so the `dark:` classes shadcn ships are dropped.
+ * Dark mode is the `.dark` class on <html> (see styles.css), so shadcn's `dark:` classes apply.
  */
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { Select as SelectPrimitive } from "radix-ui";

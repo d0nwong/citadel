@@ -1,8 +1,8 @@
 /**
  * The Needs-you point a conversation was opened on, above the transcript (LIA-109). One
  * line by default — the page below it is the conversation, and that is what the screen is
- * for — with the point's ask and detail behind a disclosure and the same Ignore / Send
- * controls the Points page uses (`features/points/verdict`), so the verdict can be given
+ * for — with the point's ask and detail behind a disclosure and the same Approve / Send /
+ * Dismiss controls the home page's queue uses (`features/points/verdict`), so the verdict can be given
  * here rather than back on the list.
  *
  * A point that already has a decision shows it and offers no controls. A conversation with
@@ -10,7 +10,7 @@
  */
 
 import { ChevronRight } from "lucide-react";
-import { TicketLink } from "#/components/bits";
+import { Inline, TicketLink } from "#/components/bits";
 import { DecidedLine, VerdictControls } from "#/features/points/verdict";
 import type { PointPage } from "#/lib/api";
 import { daysSince } from "#/lib/utils";
@@ -29,14 +29,14 @@ export function PointCard({ page }: { page: PointPage | null }) {
     return null;
   }
   const subject = (
-    <span className="display min-w-0 truncate text-[17px] text-ink leading-tight">
-      {point.subject}
+    <span className="min-w-0 truncate font-medium text-foreground leading-tight">
+      <Inline text={point.subject} />
     </span>
   );
 
   if (point.decision) {
     return (
-      <section className="mb-3 border-rule-soft border-b pb-3">
+      <section className="mb-3 border-border border-b pb-3">
         <DecidedLine
           foundryUrl={page.foundry.url}
           head={
@@ -52,25 +52,25 @@ export function PointCard({ page }: { page: PointPage | null }) {
   }
 
   return (
-    <section className="mb-3 border-rule-soft border-b pb-3">
+    <section className="mb-3 border-border border-b pb-3">
       <details className="group">
         <summary className="flex cursor-pointer list-none items-baseline gap-x-3 gap-y-1 [&::-webkit-details-marker]:hidden">
           <ChevronRight
-            className="size-4 shrink-0 self-center text-ink-faint transition-transform group-open:rotate-90"
+            className="size-4 shrink-0 self-center text-subtle transition-transform group-open:rotate-90"
             strokeWidth={1.75}
           />
           {subject}
           {point.ticket && <TicketLink ticket={point.ticket} />}
-          <span className="mono ml-auto shrink-0 text-ink-faint">
+          <span className="mono ml-auto shrink-0 text-subtle">
             {age(point.firstSeen)}
           </span>
         </summary>
-        <p className="mt-1 pl-7 text-ink-dim text-sm leading-snug">
-          {point.ask}
+        <p className="mt-1 pl-7 text-muted-foreground text-sm leading-normal">
+          <Inline text={point.ask} />
         </p>
         {point.detail && (
-          <p className="mt-1 max-w-[72ch] pl-7 text-ink-faint text-sm leading-snug">
-            {point.detail}
+          <p className="mt-1 max-w-[72ch] pl-7 text-sm text-subtle leading-normal">
+            <Inline text={point.detail} />
           </p>
         )}
       </details>

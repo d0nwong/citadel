@@ -57,7 +57,7 @@ export function OrphanResultPart({ part }: PartProps<Opts, "toolResult">) {
 
 export function FallbackPart({ part }: PartProps<Opts>) {
   return (
-    <details className="text-ink-faint text-sm">
+    <details className="text-sm text-subtle">
       <summary className="kicker cursor-pointer">{part.type}</summary>
       <pre className="mt-1 overflow-x-auto font-mono text-[11px]">
         {JSON.stringify(part, null, 1)}

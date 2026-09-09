@@ -28,39 +28,40 @@ import type {
   JobStatus,
 } from "#/server/foundry";
 import type { LinearConfig } from "#/server/linear";
-import type { Json, Point, PointsFile } from "#/server/workspace";
+import type { Json, Point } from "#/server/workspace";
 
 export const getInbox = createServerFn({ method: "GET" }).handler(async () => {
   const ws = await import("#/server/workspace");
-  const dec = await import("#/server/decisions");
+  const { loadQueue } = await import("#/server/queue");
+  const { dropSection, dropTldr } = await import("#/server/sections");
   const ask = await import("#/server/ask");
-  const [reports, digests, points, conversations] = await Promise.all([
+  const [reports, digests, queue, conversations] = await Promise.all([
     ws.listReports(),
     ws.listDigests(),
-    ws.readPoints(),
+    loadQueue(),
     ask.listConversations(),
   ]);
   const [latestReport] = reports;
   const [latestDigest] = digests;
-  const [report, digest] = await Promise.all([
-    latestReport ? ws.readReport(latestReport.day) : null,
-    latestDigest ? ws.readDigest(latestDigest.day) : null,
-  ]);
-  // The open count merges the files on disk the same way /points does, so the number
-  // the Inbox shows is the number the page lists — even between sweep ticks (AC8).
-  const openPoints = points
-    ? dec
-        .mergeDecisions(points.points, await dec.readDecisions())
-        .filter((p) => !p.decision).length
-    : null;
+  const report = latestReport ? await ws.readReport(latestReport.day) : null;
   return {
-    // Ask's stored conversations — the Inbox links to /ask with this count (LIA-103, AC5).
+    // Ask's stored conversations — the page links to /ask with this count (LIA-103, AC5).
     conversations: conversations.length,
-    digest:
-      digest && latestDigest ? { day: latestDigest.day, ...digest } : null,
-    openPoints,
+    digest: latestDigest
+      ? { day: latestDigest.day, lede: latestDigest.lede }
+      : null,
+    // The queue is the report's Needs-you section with `decisions/` laid over it, so the
+    // report itself is shown without that section — and without the TL;DR callout that
+    // restates it; the summary sentence stays.
+    queue,
     report:
-      report && latestReport ? { day: latestReport.day, ...report } : null,
+      report && latestReport
+        ? {
+            day: latestReport.day,
+            doc: dropTldr(dropSection(report.doc, "Needs you")),
+            path: report.path,
+          }
+        : null,
     workspace: ws.WORKSPACE_DIR,
   };
 });
@@ -121,44 +122,10 @@ export const getDoc = createServerFn({ method: "GET" })
 
 // ── points: the one write path ─────────────────────────────────────────────────
 
-export interface PointsPage {
-  file: PointsFile | null;
-  foundry: FoundryConfig;
-  /** What Send offers as the repo; empty when Foundry could not answer with a list. */
-  repos: FoundryRepo[];
-}
-
-/**
- * `points.json` with `decisions/` laid over it, plus whether Send is available (AC7) and
- * the repos it may target (LIA-120). The token never reaches the client, so the list has
- * to travel with the points; `trackedRepos` swallows its own failures, so a Foundry that
- * cannot answer costs the page nothing but the picker.
- */
-export const listPoints = createServerFn({ method: "GET" }).handler(
-  async (): Promise<PointsPage> => {
-    const ws = await import("#/server/workspace");
-    const dec = await import("#/server/decisions");
-    const fd = await import("#/server/foundry");
-    const [file, onDisk, foundry, repos] = await Promise.all([
-      ws.readPoints(),
-      dec.readDecisions(),
-      fd.foundryConfig(),
-      fd.trackedRepos(),
-    ]);
-    return {
-      file: file
-        ? { ...file, points: dec.mergeDecisions(file.points, onDisk) }
-        : null,
-      foundry,
-      repos,
-    };
-  }
-);
-
 export interface PointPage {
   foundry: FoundryConfig;
   point: Point | null;
-  /** As on `PointsPage` — the same list, for the same field on the conversation's card. */
+  /** As on the home page's queue — the same list, for the same field on the conversation's card. */
   repos: FoundryRepo[];
 }
 

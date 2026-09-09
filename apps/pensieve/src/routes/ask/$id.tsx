@@ -9,9 +9,9 @@
  * The next question resumes the same session — the id is stored server-side, never sent
  * from here (AC3).
  *
- * Opened from a point (`?q=…&from=points&point=<id>`): the question is sent as soon as a
+ * Opened from a point (`?q=…&from=home&point=<id>`): the question is sent as soon as a
  * credential is known to be available — or left in the composer when it is not — and the
- * kicker is a breadcrumb back to the points. The point itself travels with the run and is
+ * eyebrow is a breadcrumb back to the queue on the home page. The point itself travels with the run and is
  * stored as the conversation's own (`metadata.point`), so the card above the transcript
  * survives a reload; `q` and `point` leave the URL once the first answer has landed and
  * the file carries them (LIA-109).
@@ -38,14 +38,14 @@ import {
 } from "#/lib/api";
 import { isPointId } from "#/lib/points";
 
-type From = "points";
+type From = "home";
 
 export const Route = createFileRoute("/ask/$id")({
   validateSearch: (
     s: Record<string, unknown>
   ): { q?: string; from?: From; point?: string } => ({
     ...(typeof s.q === "string" && s.q.trim() ? { q: s.q } : {}),
-    ...(s.from === "points" ? { from: "points" as const } : {}),
+    ...(s.from === "home" ? { from: "home" as const } : {}),
     ...(isPointId(s.point) ? { point: s.point } : {}),
   }),
   loaderDeps: ({ search }) => ({ point: search.point }),
@@ -65,7 +65,7 @@ export const Route = createFileRoute("/ask/$id")({
   },
   component: AskConversationPage,
   notFoundComponent: () => (
-    <p className="text-ink-dim">That is not a conversation id.</p>
+    <p className="text-muted-foreground">That is not a conversation id.</p>
   ),
 });
 
@@ -227,28 +227,28 @@ function AskConversationPage() {
     >
       {/* On a phone the header is one row — back, the question on one line, a delete icon — so the
           conversation keeps the screen; from `sm` up it is the page title with its breadcrumb. */}
-      <header className="rise mb-3 flex items-center gap-2 border-rule border-b pb-2 sm:mb-8 sm:flex-wrap sm:items-end sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:pb-4">
+      <header className="mb-3 flex items-center gap-2 border-border border-b pb-2 sm:mb-8 sm:flex-wrap sm:items-end sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:pb-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:block">
           <p className="kicker shrink-0 sm:mb-2">
-            {from === "points" ? (
+            {from === "home" ? (
               <span className="inline-flex items-center gap-1.5">
                 <Link
-                  className="inline-flex items-center gap-1 hover:text-thread"
-                  to="/points"
+                  className="inline-flex items-center gap-1 hover:text-primary"
+                  to="/"
                 >
                   <ArrowLeftIcon className="size-3" />{" "}
-                  <span className="hidden sm:inline">Points</span>
+                  <span className="hidden sm:inline">Today</span>
                 </Link>
                 <span aria-hidden className="hidden sm:inline">
                   ›
                 </span>
-                <Link className="hidden hover:text-thread sm:inline" to="/ask">
+                <Link className="hidden hover:text-primary sm:inline" to="/ask">
                   Argus
                 </Link>
               </span>
             ) : (
               <Link
-                className="inline-flex items-center gap-1 hover:text-thread"
+                className="inline-flex items-center gap-1 hover:text-primary"
                 to="/ask"
               >
                 <ArrowLeftIcon className="size-3" />{" "}
@@ -256,12 +256,12 @@ function AskConversationPage() {
               </Link>
             )}
           </p>
-          <h1 className="display min-w-0 truncate text-[17px] leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-[28px]">
+          <h1 className="min-w-0 truncate font-semibold text-[17px] leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-[28px]">
             {title}
           </h1>
         </div>
         <Button
-          className="shrink-0 text-ink-dim hover:text-st-hold"
+          className="shrink-0 text-muted-foreground hover:text-st-hold"
           disabled={deleting}
           onClick={remove}
           size="sm"
@@ -283,7 +283,7 @@ function AskConversationPage() {
         <chat.AppChat />
       </AskStatusProvider>
       <p
-        className="mono mt-2 truncate text-ink-faint"
+        className="mono mt-2 truncate text-subtle"
         title={
           conversation?.sessionId
             ? `session ${conversation.sessionId}`

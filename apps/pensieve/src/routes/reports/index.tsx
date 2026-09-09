@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Empty, PageTitle } from "#/components/bits";
+import { Empty, PageHeader } from "#/components/bits";
 import { listReports } from "#/lib/api";
 import { prettyDay } from "#/lib/utils";
 
@@ -12,30 +12,26 @@ function ReportsPage() {
   const reports = Route.useLoaderData();
   return (
     <>
-      <PageTitle
+      <PageHeader
         aside={`${reports.length} day${reports.length === 1 ? "" : "s"}`}
-        kicker="Sweep"
+        eyebrow="Sweep"
         title="Reports"
       />
       {reports.length === 0 && <Empty title="No reports yet" />}
-      <ul className="divide-y divide-rule-soft">
-        {reports.map((r, i) => (
-          <li
-            className="rise"
-            key={r.day}
-            style={{ animationDelay: `${i * 30}ms` }}
-          >
+      <ul className="-mx-2 flex flex-col">
+        {reports.map((r) => (
+          <li key={r.day}>
             <Link
-              className="group flex items-baseline gap-4 py-3"
+              className="flex items-baseline gap-4 rounded-md px-2 py-2 transition-colors hover:bg-accent"
               params={{ day: r.day }}
               to="/reports/$day"
             >
-              <span className="mono w-28 shrink-0 text-ink-faint">{r.day}</span>
-              <span className="display text-[19px] text-ink group-hover:text-thread">
+              <span className="mono w-24 shrink-0 text-subtle">{r.day}</span>
+              <span className="shrink-0 font-medium text-foreground">
                 {prettyDay(r.day)}
               </span>
               {r.lede && (
-                <span className="truncate text-ink-faint text-sm">
+                <span className="min-w-0 truncate text-sm text-subtle">
                   {r.lede}
                 </span>
               )}

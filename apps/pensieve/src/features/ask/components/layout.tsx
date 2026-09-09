@@ -53,7 +53,7 @@ export function AskLayout({
         </p>
       )}
       {finish === "length" && !chat.isLoading && (
-        <p className="mt-3 text-ink-dim text-sm" role="status">
+        <p className="mt-3 text-muted-foreground text-sm" role="status">
           Stopped at the turn limit before it was done. Ask it to continue — the
           session picks up where it left off.
         </p>
