@@ -77,6 +77,8 @@ export type WorkstreamEvent = {
   kind: EventKind;
   side?: Side;
   summary: string;
+  /** who an ask is aimed at; `you` is the user, and the board's Needs you reads this */
+  to?: string[];
   source?: EventSource;
   attached: Attachment;
   ticket?: string;
@@ -140,6 +142,8 @@ export type UnsortedItem = {
   id: string;
   kind: "landing" | "slack";
   summary: string;
+  /** who an ask is aimed at; `you` is the user, and the board's Needs you reads this */
+  to?: string[];
   source?: EventSource;
   candidates: { slug: string; how: AttachHow; why: string }[];
   suggest: string | null;
@@ -160,7 +164,7 @@ const KEY_ORDER = [
   "milestone", "keys", "open_questions", "facts", "events", "opened", "updated",
 ] as const;
 const KEYS_ORDER = ["tickets", "prs", "threads", "vocab", "people"] as const;
-const EVENT_ORDER = ["at", "kind", "side", "summary", "source", "attached", "ticket", "evidence", "action"] as const;
+const EVENT_ORDER = ["at", "kind", "side", "summary", "to", "source", "attached", "ticket", "evidence", "action"] as const;
 const SOURCE_ORDER = ["type", "ref", "url", "sha"] as const;
 
 const ordered = <T extends object>(value: T, order: readonly string[]): T => {
@@ -247,6 +251,8 @@ export function validate(value: unknown, slug?: string): string[] {
       if (!(EVENT_KINDS as readonly string[]).includes(String(ev.kind))) p.push(`${at} has an unknown kind "${String(ev.kind)}"`);
       if (!isStr(ev.summary)) p.push(`${at} has no summary`);
       if (ev.side !== undefined && !(SIDES as readonly string[]).includes(String(ev.side))) p.push(`${at} has an unknown side "${String(ev.side)}"`);
+      if (ev.to !== undefined && !isStrList(ev.to)) p.push(`${at} to is not a list of people`);
+      if (ev.kind === "directed-at-person" && !isStrList(ev.to)) p.push(`${at} is aimed at someone and does not say who`);
       const a = ev.attached as Record<string, unknown> | undefined;
       if (typeof a !== "object" || a === null) p.push(`${at} has no attached`);
       else {

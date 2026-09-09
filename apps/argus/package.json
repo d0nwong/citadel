@@ -7,11 +7,13 @@
   "scripts": {
     "sweep": "claude '/loop 1h /sweep' --model claude-sonnet-5 --dangerously-skip-permissions",
     "accio": "bun scripts/accio.ts",
+    "marauder": "bun scripts/marauder.ts",
     "canvas": "bun --hot canvas/server.ts",
     "sync-skills": "bun scripts/sync-skills.ts"
   },
   "bin": {
-    "accio": "./scripts/accio.ts"
+    "accio": "./scripts/accio.ts",
+    "marauder": "./scripts/marauder.ts"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
