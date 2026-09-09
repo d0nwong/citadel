@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Answer a question about the argus blackboard, read-only — "tell me about point decide/lia-71-history-rollup", "about the point X, what am I deciding, what is the evidence, what do you recommend", "what does LIA-71 say / where is LIA-71", "what shipped on 2026-09-04 / yesterday", "why is X pending / on hold / ignored", "what rule covers Y / what is BR-57", "what do the docs say about the usage page". Use for any question-shaped prompt about a point, ticket, day, rule id, feature, decision or landing in this checkout, from a terminal, from Pensieve's Ask, or mid-sweep. Retrieves with `accio point` / `accio ticket` / `accio journal` / `accio find` and the Linear read tools, reads the FE/BE checkouts without writing or switching anything, and answers in a fixed shape with every path cited. Also covers deciding a point — "ignore it", "send it", "do that" after a recommendation — and filing a new ticket — "file this", "make a ticket for that" — each of which is proposed for the user's confirmation, never performed.
+description: Answer a question about the argus blackboard, read-only — "tell me about point decide/lia-71-history-rollup", "about the point X, what am I deciding, what is the evidence, what do you recommend", "what does LIA-71 say / where is LIA-71", "what shipped on 2026-09-04 / yesterday", "why is X pending / on hold / ignored", "what rule covers Y / what is BR-57", "what do the docs say about the usage page", "where are we on invoice emails / what's left on entity billing". Use for any question-shaped prompt about a point, ticket, day, rule id, feature, initiative, decision or landing in this checkout, from a terminal, from Pensieve's Ask, or mid-sweep. Retrieves with `accio point` / `accio ticket` / `accio journal` / `accio find` / `accio arc` and the Linear read tools, reads the FE/BE checkouts without writing or switching anything, and answers in a fixed shape with every path cited. Also covers deciding a point — "ignore it", "send it", "do that" after a recommendation — filing a new ticket — "file this", "make a ticket for that" — and opening an arc for an initiative — "track this", "open an arc for invoice emails" — each of which is proposed for the user's confirmation, never performed.
 ---
 
 # ask — answer a question about the blackboard, read-only
@@ -12,8 +12,9 @@ wants from the user, `reports/points.json` is that Needs-you section as records 
 `<group>/<slug>` ids, `decisions/<group>/<slug>.json` is the user's Send / Ignore verdict on
 a point, `digests/<day>.md` is Slack made durable, and each `<app>/features/<dir>/` holds
 `journal/` (one entry per landing or decision, frontmatter is the routing) and `docs/`
-(`product.md` + `arch.md`, rules as `| BR-n |` / `| MM-n |` table rows). The README's
-Layout table is the map; you do not need to rediscover it.
+(`product.md` + `arch.md`, rules as `| BR-n |` / `| MM-n |` table rows). `arcs/<slug>.md`
+is the running story of one initiative over those records, written by the sweep. The
+README's Layout table is the map; you do not need to rediscover it.
 
 ## Three rules for a headless session
 
@@ -28,9 +29,9 @@ Layout table is the map; you do not need to rediscover it.
 - **Write nothing.** Not to this checkout, not to the product checkouts, not to Linear.
   No `git add/commit/checkout/fetch/pull/stash`, no `save_issue`, no `save_comment`, no
   file edits — even when the answer makes the next edit obvious. Say what the edit would
-  be; the person asking makes it. A proposed verdict is not a write and neither is a
-  proposed ticket: the tools in sections 5 and 6 check one and answer with it, and the
-  user's Confirm or File is what writes the file or the issue.
+  be; the person asking makes it. A proposed verdict is not a write, and neither is a
+  proposed ticket or a proposed arc: the tools in sections 5, 6 and 7 check one and answer
+  with it, and the user's Confirm, File or Open is what writes the file or the issue.
 
 ## 1. Classify the question
 
@@ -41,12 +42,20 @@ Layout table is the map; you do not need to rediscover it.
 | a date, "today", "yesterday", "what shipped / landed" | day | `bun run accio journal <YYYY-MM-DD>`, then `reports/<day>.md` and `digests/<day>.md` |
 | `BR-n` / `MM-n` | rule | Grep `^\| BR-n \|` in `*/features/*/docs/{product,arch}.md`, scoped to the feature the question is about |
 | a feature, screen, field, endpoint | feature | `bun run accio "<the thing>"`, then that feature's `docs/product.md` (rules) and `docs/arch.md` (endpoints, files) |
+| an initiative — "where are we on invoice emails", "what's left on entity billing" | initiative | `bun run accio arc <slug>` (section 2 for the slug), or `bun run accio arc` to find it |
 | "why was X ignored / sent / verified", "what did I decide" | decision | `decisions/<group>/<slug>.json`, then `accio point <id>` for what it was about |
 | none of the above | free text | Grep `-ril` the words over `reports/`, `digests/`, `*/features/**/journal`, then classify again from what matched |
 
 A point named only by subject ("the LIA-71 history one"): Grep the subject words in
 `reports/points.json`, take the `id`, then `accio point`. Group ids are `decide`,
 `verify`, `confirm`, `hold`, `housekeeping`.
+
+An initiative is a story rather than a key, so the tell is a noun phrase with no id in it
+and a "where are we" / "what's left" / "how is X going" verb. When the question names a
+key as well — "where are we on LIA-133" — it is a ticket question and the arc is one of
+its Sources, not the retrieval. `accio arc` with no slug lists every arc there is: run it
+whenever the phrase does not obviously map to one, and when none does, the question is a
+feature or free-text one (section 4 says what the answer then owes).
 
 ## 2. Retrieve
 
@@ -57,19 +66,31 @@ features the ticket's entries live in (newest first), each rule id resolved to
 the doc line that defines it, and each path-looking token resolved in the checkout with
 its last three commits. `accio ticket` prints the open points, the journal entries with
 that ticket, their rule ids, and ends with `body: mcp__linear__get_issue LIA-nn` — call
-exactly that next; the ticket body lives only in Linear and argus holds no key. Both verbs
-read no `.state/` file, so they work on any clone.
+exactly that next; the ticket body lives only in Linear and argus holds no key.
+`accio arc <slug>` prints the arc's frontmatter and seeds, its `## Where we are`
+paragraph as the sweep last wrote it, the `Landed` rows in the file, and then re-derives
+from the blackboard the journal entries and the open and decided points its seeds name,
+ending with `body: mcp__linear__get_issue LIA-nn` per seeded ticket — same rule, call
+those next. `accio arc` alone lists every arc, its status and the day it was last
+rewritten. The slug is the point-id rule (PLAN.md, "Shared contracts", where the sweep
+owns it): lowercased, runs of non-alphanumerics to one `-`, trimmed — "invoice emails" is
+`invoice-emails`. None of these verbs reads a `.state/` file, so they work on any clone.
 
 Read after retrieving, not instead of it: the journal entries the block lists (their
 bodies say *why*), the rule rows it points at, the code it names. Stop when the evidence
 answers the ask; a point question is one retrieval plus three to six reads, not twenty.
+An arc is fewer still: its paragraph is the sweep's summary of exactly those entries, so
+read only what has moved since — the rows and open points the block prints — and the
+ticket bodies behind them.
 
 **If `bun run accio` is denied** (Pensieve's Ask allows Read, Grep, Glob, `git log` and
 `git show` only): Read `reports/points.json` and find the id; Read the `## Needs you`
 section of `reports/<its date>.md`; Read `decisions/<id>.json` if it exists; Grep
 `ticket: \[?LIA-nn` over `*/features/**/journal` and `features: \[.*<feature>` for the
 feature; Grep `^\| BR-n \|` in the feature's docs; Glob `**/<basename>` in the checkout
-for a path token. Same evidence, more calls — note the denial once and carry on.
+for a path token; Read `arcs/<slug>.md` for an arc, which carries the paragraph, the
+`Landed` table and the `Open` list as written (Glob `arcs/*.md` when the slug is a
+guess). Same evidence, more calls — note the denial once and carry on.
 
 ## 3. Evidence from the product checkouts
 
@@ -121,6 +142,16 @@ older than the landing, a ticket body).
 · `reports/points.json` · `LIA-71 in Linear`. Paths and line numbers live here and only
 here; the prose above names things the way a colleague would ("the 4 Sep decision",
 "the History tab component").
+
+An **initiative question** takes the same five parts, and the arc's `## Where we are` is
+**The question**: the sweep wrote that paragraph over this evidence, so say what it says
+and what is still open, and never rebuild the story from the journal entries the arc
+already lists. What I found is what has moved since the paragraph was last rewritten —
+the `Landed` rows and the open points the block printed, in the order they landed; My
+call names the next open step; Sources leads with `arcs/<slug>.md`. When the initiative
+has no arc, answer from `accio find` / `accio ticket` as any other question, and let My
+call name the arc that would hold it — the slug, and the keys it would be seeded by —
+without proposing it; section 7 is where a proposal comes from, and only when asked.
 
 Not allowed: narrating the work ("this is enough evidence, I have what I need"), lists
 of rule ids in prose (say "the seven usage rules it touches" unless rules were the
@@ -208,3 +239,44 @@ the answer, and the draft can be filed from a terminal.
 **Without the tool.** In a terminal no such tool exists and `linear-ticket` files as
 usual, its steps 5 and 6. Mid-sweep the ticket pass is the only Linear writer: name the
 ticket that would be filed, in one sentence, and stop.
+
+## 7. Arcs
+
+An arc is opened by the user's click, never by a session; this section is only how a
+proposal reaches them. Answering *from* an arc is sections 1, 2 and 4 — this is the other
+direction, and section 5's rules hold here word for word: one call, never a second to
+check, never say it happened.
+
+**When.** The user asks for one — "track this", "open an arc for invoice emails" — or
+accepts an answer whose My call named the arc that would hold a cluster: "do that", "yes".
+Never on your own initiative, never for a slug `accio arc` already lists (say where that
+arc is instead), and never for a single ticket: an arc is a story with more than one open
+item behind it, and one ticket is what `accio ticket` already answers.
+
+**With the tool.** In Pensieve's Argus panel a tool named `propose_arc` is available. Call
+it once, with `{ slug, title, seeds: { tickets, rules, prs, features } }`: `slug` by the
+section-2 rule, `title` the initiative in the words the user uses for it, and `seeds` at
+least one key — `tickets` as `LIA-nn`, `rules` as `BR-n` / `MM-n`, `prs` as the journal
+writes them, `features` as feature dirs. **Every seed is a key this conversation
+retrieved**: a ticket `accio` or the Linear read returned, a rule id resolved to its doc
+row, a PR named by a journal entry, a feature dir the manifest carries. Never a key you
+did not see — a guessed seed files the wrong evidence against the arc on every tick after.
+If nothing retrieved gives a seed, say that in one sentence and propose nothing.
+
+Then one sentence, and stop: "Proposed — open it on the card above." The seed file lands
+when the user presses Open and the arc itself is written by the next sweep tick, so never
+say the arc exists, is open, or is tracking anything.
+
+If it answers `ok: false`, report its `error` in one sentence and stop — section 5's rule,
+unchanged. The two it has of its own are a slug already under `arcs/` or `decisions/arc/`
+(the arc is already there; say where) and a seed naming no open ticket, no journal entry
+and no feature dir (the key was wrong; do not respell it).
+
+**Without the tool.** In a terminal or mid-sweep no such tool exists. Name in one sentence
+the slug and the seeds you would propose, and stop — do not write `arcs/<slug>.md` or
+`decisions/arc/<slug>.json`, and do not ask to be allowed to. Rule 3 covers it: the seed
+file is the user's verdict and the arc file is the sweep's to write from it.
+
+**Closing.** Closing an arc is a verdict too, and its button is on that arc's page in
+Pensieve. Asked to close one, say so in one sentence; there is no tool here for it, and
+the sweep never closes an arc either — one with nothing open says so in its paragraph.
