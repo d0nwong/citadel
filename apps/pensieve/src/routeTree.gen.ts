@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BlocksRouteImport } from './routes/blocks'
+import { Route as ArcsIndexRouteImport } from './routes/arcs/index'
+import { Route as ArcsSlugRouteImport } from './routes/arcs/$slug'
 import { Route as AskIndexRouteImport } from './routes/ask/index'
 import { Route as AskIdRouteImport } from './routes/ask/$id'
 import { Route as DigestsIndexRouteImport } from './routes/digests/index'
@@ -30,6 +32,16 @@ const IndexRoute = IndexRouteImport.update({
 const BlocksRoute = BlocksRouteImport.update({
   id: '/blocks',
   path: '/blocks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArcsIndexRoute = ArcsIndexRouteImport.update({
+  id: '/arcs/',
+  path: '/arcs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArcsSlugRoute = ArcsSlugRouteImport.update({
+  id: '/arcs/$slug',
+  path: '/arcs/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AskIndexRoute = AskIndexRouteImport.update({
@@ -86,11 +98,13 @@ const ReportsDayRoute = ReportsDayRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/blocks': typeof BlocksRoute
+  '/arcs/$slug': typeof ArcsSlugRoute
   '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/journal/$': typeof JournalSplatRoute
   '/reports/$day': typeof ReportsDayRoute
+  '/arcs/': typeof ArcsIndexRoute
   '/ask/': typeof AskIndexRoute
   '/digests/': typeof DigestsIndexRoute
   '/docs/': typeof DocsIndexRoute
@@ -100,11 +114,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/blocks': typeof BlocksRoute
+  '/arcs/$slug': typeof ArcsSlugRoute
   '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/journal/$': typeof JournalSplatRoute
   '/reports/$day': typeof ReportsDayRoute
+  '/arcs': typeof ArcsIndexRoute
   '/ask': typeof AskIndexRoute
   '/digests': typeof DigestsIndexRoute
   '/docs': typeof DocsIndexRoute
@@ -115,11 +131,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/blocks': typeof BlocksRoute
+  '/arcs/$slug': typeof ArcsSlugRoute
   '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/journal/$': typeof JournalSplatRoute
   '/reports/$day': typeof ReportsDayRoute
+  '/arcs/': typeof ArcsIndexRoute
   '/ask/': typeof AskIndexRoute
   '/digests/': typeof DigestsIndexRoute
   '/docs/': typeof DocsIndexRoute
@@ -131,11 +149,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/blocks'
+    | '/arcs/$slug'
     | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
     | '/journal/$'
     | '/reports/$day'
+    | '/arcs/'
     | '/ask/'
     | '/digests/'
     | '/docs/'
@@ -145,11 +165,13 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/blocks'
+    | '/arcs/$slug'
     | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
     | '/journal/$'
     | '/reports/$day'
+    | '/arcs'
     | '/ask'
     | '/digests'
     | '/docs'
@@ -159,11 +181,13 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/blocks'
+    | '/arcs/$slug'
     | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
     | '/journal/$'
     | '/reports/$day'
+    | '/arcs/'
     | '/ask/'
     | '/digests/'
     | '/docs/'
@@ -174,11 +198,13 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BlocksRoute: typeof BlocksRoute
+  ArcsSlugRoute: typeof ArcsSlugRoute
   AskIdRoute: typeof AskIdRoute
   DigestsDayRoute: typeof DigestsDayRoute
   DocsSplatRoute: typeof DocsSplatRoute
   JournalSplatRoute: typeof JournalSplatRoute
   ReportsDayRoute: typeof ReportsDayRoute
+  ArcsIndexRoute: typeof ArcsIndexRoute
   AskIndexRoute: typeof AskIndexRoute
   DigestsIndexRoute: typeof DigestsIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
@@ -200,6 +226,20 @@ declare module '@tanstack/react-router' {
       path: '/blocks'
       fullPath: '/blocks'
       preLoaderRoute: typeof BlocksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/arcs/': {
+      id: '/arcs/'
+      path: '/arcs'
+      fullPath: '/arcs/'
+      preLoaderRoute: typeof ArcsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/arcs/$slug': {
+      id: '/arcs/$slug'
+      path: '/arcs/$slug'
+      fullPath: '/arcs/$slug'
+      preLoaderRoute: typeof ArcsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ask/': {
@@ -278,11 +318,13 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BlocksRoute: BlocksRoute,
+  ArcsSlugRoute: ArcsSlugRoute,
   AskIdRoute: AskIdRoute,
   DigestsDayRoute: DigestsDayRoute,
   DocsSplatRoute: DocsSplatRoute,
   JournalSplatRoute: JournalSplatRoute,
   ReportsDayRoute: ReportsDayRoute,
+  ArcsIndexRoute: ArcsIndexRoute,
   AskIndexRoute: AskIndexRoute,
   DigestsIndexRoute: DigestsIndexRoute,
   DocsIndexRoute: DocsIndexRoute,

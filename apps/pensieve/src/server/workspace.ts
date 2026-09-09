@@ -9,6 +9,7 @@
  *   <app>/features/<dir>/journal/**\/*.md       one entry per landing
  *   <app>/features/<dir>/docs/{product,arch}.md
  *   reports/points.json                         Needs-you as data, one record per point
+ *   arcs/<slug>.md                              one initiative's running story
  *
  * `<app>` is discovered, not hardcoded: any directory one or two levels under
  * WORKSPACE_DIR holding a `features/` tree is an app — `foundry` and `pensieve` are one
@@ -24,6 +25,8 @@ import { basename, join, relative, resolve } from "node:path";
 import type { MarkdownDocument } from "@tanstack/markdown";
 import { parseMarkdown } from "@tanstack/markdown/parser";
 import { parse as parseYaml } from "yaml";
+import type { ArcSeeds } from "../lib/arcs";
+import { isArcSlug, toSeeds } from "../lib/arcs";
 import { dropTitle, outline } from "./sections";
 
 export const WORKSPACE_DIR = resolve(
@@ -575,18 +578,61 @@ export async function readDoc(
 
 /** An arc's frontmatter, as `skills/sweep/scripts/arcs.ts` renders it (LIA-145). */
 export interface ArcMeta {
-  /** The day of the last rewrite. */
+  /** The `at` of the `opened` decision file. */
   opened: string;
   path: string;
+  /** The keys an item is filed against this arc by — never a resemblance. */
+  seeds: ArcSeeds;
   slug: string;
   status: "open" | "closed";
   title: string;
+  /** The day of the last rewrite; what the index orders by (LIA-149 AC1). */
+  updated: string;
+}
+
+/** One row of an arc's `## Landed` table: when it landed, what it was, the file that says so. */
+export interface ArcLanded {
+  /** The path the Evidence cell names, backticks stripped — a journal entry or a decision. */
+  evidence: string;
+  what: string;
+  when: string;
+}
+
+/** One row of an arc's `## Open` list, and the point it names when it names one. */
+export interface ArcOpen {
+  point?: string;
+  /** The row as the sweep wrote it, markdown and all, minus its `- ` bullet. */
+  text: string;
+}
+
+/** An arc's file: its frontmatter, its paragraph parsed, and its two derived sections. */
+export interface ArcFile {
+  /** `## Where we are` — the sweep's paragraph, the only part of the file it writes by hand. */
+  doc: MarkdownDocument;
+  landed: ArcLanded[];
+  meta: ArcMeta;
+  open: ArcOpen[];
+}
+
+function arcMeta(abs: string, fm: Frontmatter, slug: string): ArcMeta {
+  return {
+    opened: str(fm.opened) ?? "",
+    path: relative(WORKSPACE_DIR, abs),
+    seeds: toSeeds(fm.seeds),
+    slug: str(fm.slug) ?? slug,
+    // A file whose frontmatter did not parse is an arc that exists and is not closed:
+    // the slug is taken either way, and a Close on it is refused rather than guessed.
+    status: str(fm.status) === "closed" ? "closed" : "open",
+    title: str(fm.title) ?? slug,
+    updated: str(fm.updated) ?? str(fm.opened)?.slice(0, 10) ?? "",
+  };
 }
 
 /**
- * The arcs the sweep has written, by slug. Only the frontmatter: the paragraph, the Landed
- * table and the Open list are the Arcs page's (LIA-149), and what this file answers is the
- * two questions a verdict asks — is this slug taken, and is that arc still open (AC3, AC4).
+ * The arcs the sweep has written, by slug. Only the frontmatter — a verdict asks two
+ * questions of it (is this slug taken, is that arc still open: LIA-147 AC3, AC4) and the
+ * index asks three more (title, status, last rewrite: LIA-149 AC1). The body is
+ * `readArcFile`'s.
  */
 export async function listArcs(dir = ARCS_DIR): Promise<ArcMeta[]> {
   let names: string[];
@@ -598,17 +644,7 @@ export async function listArcs(dir = ARCS_DIR): Promise<ArcMeta[]> {
   const out: ArcMeta[] = [];
   for (const name of names.filter((n) => n.endsWith(".md")).sort()) {
     const abs = join(dir, name);
-    const fm = await readFrontmatter(abs);
-    const slug = basename(name, ".md");
-    out.push({
-      opened: str(fm.opened) ?? "",
-      path: relative(WORKSPACE_DIR, abs),
-      slug: str(fm.slug) ?? slug,
-      // A file whose frontmatter did not parse is an arc that exists and is not closed:
-      // the slug is taken either way, and a Close on it is refused rather than guessed.
-      status: str(fm.status) === "closed" ? "closed" : "open",
-      title: str(fm.title) ?? slug,
-    });
+    out.push(arcMeta(abs, await readFrontmatter(abs), basename(name, ".md")));
   }
   return out;
 }
@@ -619,6 +655,94 @@ export async function readArc(
   dir = ARCS_DIR
 ): Promise<ArcMeta | null> {
   return (await listArcs(dir)).find((a) => a.slug === slug) ?? null;
+}
+
+/** The lines of one `## <heading>` section, blank lines at either end trimmed. */
+function mdSection(body: string, heading: string): string[] {
+  const lines = body.split("\n");
+  const start = lines.findIndex((l) => l.trim() === `## ${heading}`);
+  if (start === -1) {
+    return [];
+  }
+  let end = start + 1;
+  while (end < lines.length && !lines[end].startsWith("## ")) {
+    end += 1;
+  }
+  const out = lines.slice(start + 1, end);
+  while (out.length > 0 && out[0].trim() === "") {
+    out.shift();
+  }
+  while (out.length > 0 && out.at(-1)?.trim() === "") {
+    out.pop();
+  }
+  return out;
+}
+
+/** `| when | what | evidence |` → the row, skipping the header and its rule. */
+function landedRow(line: string): ArcLanded[] {
+  const cells = line.split("|").map((c) => c.trim());
+  if (cells.length !== 5 || cells[1] === "When" || /^-+$/.test(cells[1])) {
+    return [];
+  }
+  return [
+    {
+      evidence: cells[3].replace(/^`|`$/g, ""),
+      what: cells[2],
+      when: cells[1],
+    },
+  ];
+}
+
+/** The point id an Open row names — the sweep writes it last, in backticks. */
+const OPEN_POINT_RE = /`([a-z]+\/[a-z0-9]+(?:-[a-z0-9]+)*)`/;
+
+function openRow(line: string): ArcOpen {
+  const text = line.replace(/^-\s+/, "");
+  const point = text.match(OPEN_POINT_RE)?.[1];
+  return { text, ...(point ? { point } : {}) };
+}
+
+/**
+ * One arc as its page reads it (LIA-149 AC2). The three sections are parsed rather than
+ * rendered whole: Landed's Evidence becomes a link into Pensieve and Open's rows are
+ * replaced by live points from `points.json`, so only the paragraph reaches the renderer as
+ * markdown. A file the sweep has not written yet — or a slug that is not one — is `null`.
+ */
+export async function readArcFile(
+  slug: string,
+  dir = ARCS_DIR
+): Promise<ArcFile | null> {
+  if (!isArcSlug(slug)) {
+    return null;
+  }
+  const abs = join(dir, `${slug}.md`);
+  let raw: string;
+  try {
+    raw = await readFile(abs, "utf8");
+  } catch {
+    return null;
+  }
+  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  let fm: Frontmatter = {};
+  if (fmMatch) {
+    try {
+      fm = toJson(parseYaml(fmMatch[1]));
+    } catch {
+      fm = {};
+    }
+  }
+  const body = fmMatch ? raw.slice(fmMatch[0].length) : raw;
+  const where = mdSection(body, "Where we are").join("\n");
+  const doc = parseMarkdown(resolveWikilinks(where), { headingIds: true });
+  doc.headings = outline(doc);
+  return {
+    doc,
+    landed: mdSection(body, "Landed").flatMap(landedRow),
+    meta: arcMeta(abs, fm, slug),
+    open: mdSection(body, "Open")
+      .filter((l) => l.trimStart().startsWith("- "))
+      .map(openRow),
+  };
 }
 
 // ── points ─────────────────────────────────────────────────────────────────────
@@ -642,6 +766,8 @@ export interface PointDecision {
 
 /** One Needs-you item as `skills/sweep/scripts/points.ts` emits it (LIA-87). */
 export interface Point {
+  /** The arc this point belongs to, by slug, when the sweep filed it against one (LIA-148). */
+  arc?: string;
   ask: string;
   decision?: PointDecision;
   detail?: string;
@@ -706,6 +832,7 @@ export async function readPoints(): Promise<PointsFile | null> {
           })
         : undefined;
     points.push({
+      arc: str(r.arc),
       ask: String(r.ask ?? ""),
       decision:
         d &&

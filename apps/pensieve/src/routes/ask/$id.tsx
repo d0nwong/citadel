@@ -9,6 +9,9 @@
  * The next question resumes the same session — the id is stored server-side, never sent
  * from here (AC3).
  *
+ * Opened from an arc (`?q=…&from=arcs&arc=<slug>`) it is the same shape without controls:
+ * the arc's title and file above the thread, `metadata.arc` on the conversation.
+ *
  * Opened from a point (`?q=…&from=home&point=<id>`): the question is sent as soon as a
  * credential is known to be available — or left in the composer when it is not — and the
  * top bar's breadcrumb leads back. The point itself travels with the run and is
@@ -28,27 +31,34 @@ import { Trash2Icon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "#/components/ui/button";
 import { AskStatusProvider, useAppChat } from "#/features/ask";
+import { ArcLine } from "#/features/ask/components/arc-line";
 import { PointCard } from "#/features/ask/components/point-card";
 import {
   askStatus,
   deleteConversation,
+  getArcMeta,
   getConversation,
   getPoint,
 } from "#/lib/api";
+import { isArcSlug } from "#/lib/arcs";
 import { isPointId } from "#/lib/points";
 
-type From = "home";
+const FROM = ["home", "arcs"] as const;
+type From = (typeof FROM)[number];
+
+const asFrom = (v: unknown): From | undefined => FROM.find((f) => f === v);
 
 export const Route = createFileRoute("/ask/$id")({
   staticData: { crumb: "Argus" },
   validateSearch: (
     s: Record<string, unknown>
-  ): { q?: string; from?: From; point?: string } => ({
+  ): { q?: string; from?: From; point?: string; arc?: string } => ({
     ...(typeof s.q === "string" && s.q.trim() ? { q: s.q } : {}),
-    ...(s.from === "home" ? { from: "home" as const } : {}),
+    ...(asFrom(s.from) ? { from: asFrom(s.from) } : {}),
     ...(isPointId(s.point) ? { point: s.point } : {}),
+    ...(isArcSlug(s.arc) ? { arc: s.arc } : {}),
   }),
-  loaderDeps: ({ search }) => ({ point: search.point }),
+  loaderDeps: ({ search }) => ({ arc: search.arc, point: search.point }),
   loader: async ({ params, deps }) => {
     // The server refuses anything that is not a thread id (path-like, too long); that is a 404 here, not a crash.
     const [conversation, status] = await Promise.all([
@@ -58,10 +68,15 @@ export const Route = createFileRoute("/ask/$id")({
     if (conversation === undefined) {
       throw notFound();
     }
-    // The stored point wins: it is what this thread was opened on, whatever the URL says.
+    // The stored subject wins: it is what this thread was opened on, whatever the URL says.
     const pointId = conversation?.point ?? deps.point;
-    const point = pointId ? await getPoint({ data: pointId }) : null;
+    const arcSlug = conversation?.arc ?? deps.arc;
+    const [point, arc] = await Promise.all([
+      pointId ? getPoint({ data: pointId }) : null,
+      arcSlug ? getArcMeta({ data: arcSlug }) : null,
+    ]);
     return {
+      arc,
       conversation,
       // `messages` crossed the wire as JSON (see `ConversationWire`); the bytes are UIMessages.
       crumb:
@@ -125,8 +140,8 @@ const firstQuestion = (messages: UIMessage[]): string =>
 
 function AskConversationPage() {
   const { id } = Route.useParams();
-  const { q, point: urlPoint } = Route.useSearch();
-  const { conversation, point, status } = Route.useLoaderData();
+  const { q, arc: urlArc, point: urlPoint } = Route.useSearch();
+  const { arc, conversation, point, status } = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
@@ -136,9 +151,16 @@ function AskConversationPage() {
   // Hook-level rather than per-send, so the question the composer holds when no credential
   // was available (`draft`) carries it too.
   const pointId = conversation?.point ?? urlPoint;
+  const arcSlug = conversation?.arc ?? urlArc;
   const body = useMemo(
-    () => (pointId ? { point: pointId } : undefined),
-    [pointId]
+    () =>
+      pointId || arcSlug
+        ? {
+            ...(pointId ? { point: pointId } : {}),
+            ...(arcSlug ? { arc: arcSlug } : {}),
+          }
+        : undefined,
+    [arcSlug, pointId]
   );
 
   // `messages` crossed the wire as JSON (see `ConversationWire`); the bytes are UIMessages.
@@ -166,16 +188,21 @@ function AskConversationPage() {
     }
     void (async () => {
       await router.invalidate();
-      if (q || urlPoint) {
+      if (q || urlPoint || urlArc) {
         await navigate({
           params: { id },
           replace: true,
-          search: (prev) => ({ ...prev, point: undefined, q: undefined }),
+          search: (prev) => ({
+            ...prev,
+            arc: undefined,
+            point: undefined,
+            q: undefined,
+          }),
           to: "/ask/$id",
         });
       }
     })();
-  }, [chat.isLoading, router, navigate, id, q, urlPoint]);
+  }, [chat.isLoading, router, navigate, id, q, urlArc, urlPoint]);
 
   // A question that arrived with the URL (a point's Ask) goes out by itself, once. Not on the
   // first effect pass: after a client-side navigation React commits this tree, something below
@@ -254,6 +281,7 @@ function AskConversationPage() {
           <span className="hidden sm:inline">Delete</span>
         </Button>
       </header>
+      <ArcLine arc={arc} />
       <PointCard page={point} />
       <AskStatusProvider
         draft={q && !status.available ? q : undefined}

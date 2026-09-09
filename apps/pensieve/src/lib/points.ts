@@ -18,6 +18,13 @@ export const isPointId = (id: unknown): id is string =>
   typeof id === "string" && POINT_ID_RE.test(id);
 
 /**
+ * The id of the element a point's row is rendered as, wherever it is listed. An arc's
+ * Landed table links a `decisions/<group>/<slug>.json` here (LIA-149 AC2): Pensieve has no
+ * page per decision file, and the row on Today is where that verdict is shown.
+ */
+export const pointAnchor = (id: string) => `point-${id.replace("/", "-")}`;
+
+/**
  * Why a Send cannot go — the repo is missing. The form refuses with it before asking, and
  * `server/verdict.ts` refuses with it when something reaches the writer without one, so the
  * sentence is the same wherever it is read (LIA-120). It names a choice rather than a path:

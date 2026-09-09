@@ -3,17 +3,29 @@
  * who moves it (`sections.ts`), each row with its verdict controls; the decided points
  * collapsed underneath, a sent one showing its Foundry job live until it settles. Lives on
  * the home page above the sweep log (LIA-94, LIA-115).
+ *
+ * Once the sweep files points against arcs, the same sections sit under one heading per
+ * initiative (`arcs.ts`, LIA-149): the arc is what the queue is a list of steps of, and the
+ * three groups are how each step moves. A tick where no point carries an arc renders
+ * exactly as it did before.
  */
 
-import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, MessageCircleQuestion } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  ArrowUpRight,
+  ChevronRight,
+  MessageCircleQuestion,
+} from "lucide-react";
 import { Empty, Inline, Tag, TicketLink } from "#/components/bits";
 import { Button } from "#/components/ui/button";
 import { newThreadId } from "#/features/ask";
+import { pointAnchor } from "#/lib/points";
 import { cn, daysSince } from "#/lib/utils";
 import type { FoundryRepo } from "#/server/foundry";
 import type { Queue as QueueData } from "#/server/queue";
 import type { Point } from "#/server/workspace";
+import type { ArcGroup } from "./arcs";
+import { byArc, NO_ARC } from "./arcs";
 import { SECTIONS, sectionOf, waitingTag } from "./sections";
 import { DecidedLine, VerdictControls } from "./verdict";
 
@@ -45,7 +57,7 @@ function age(firstSeen: string) {
 }
 
 export function Queue({ queue }: { queue: QueueData }) {
-  const { file, foundry, repos } = queue;
+  const { arcs, file, foundry, repos } = queue;
   if (!file) {
     return (
       <Empty title="No points on file">
@@ -59,10 +71,7 @@ export function Queue({ queue }: { queue: QueueData }) {
   const decided = file.points
     .filter((p) => p.decision)
     .sort((a, b) => ((a.decision?.at ?? "") < (b.decision?.at ?? "") ? 1 : -1));
-  const sections = SECTIONS.map((s) => ({
-    ...s,
-    points: open.filter((p) => sectionOf(p) === s.key),
-  })).filter((s) => s.points.length > 0);
+  const groups = byArc(open, arcs);
 
   return (
     <div className="flex flex-col gap-8">
@@ -80,28 +89,17 @@ export function Queue({ queue }: { queue: QueueData }) {
         </Empty>
       )}
 
-      {sections.map((s) =>
-        s.key === "housekeeping" ? (
-          <Disclosure
-            count={s.points.length}
-            hint={s.hint}
-            key={s.key}
-            label={s.label}
-          >
-            <Rows foundry={foundry} points={s.points} repos={repos} />
-          </Disclosure>
-        ) : (
-          <section key={s.key}>
-            <div className="mb-1 flex items-baseline gap-2 border-border border-b pb-1.5">
-              <h2 className="font-semibold text-base">{s.label}</h2>
-              <span className="text-subtle text-xs">{s.points.length}</span>
-              <span className="ml-auto hidden text-subtle text-xs sm:block">
-                {s.hint}
-              </span>
-            </div>
-            <Rows foundry={foundry} points={s.points} repos={repos} />
-          </section>
-        )
+      {groups ? (
+        groups.map((g) => (
+          <ArcGroupSection
+            foundry={foundry}
+            group={g}
+            key={g.ref?.slug ?? NO_ARC}
+            repos={repos}
+          />
+        ))
+      ) : (
+        <Sections foundry={foundry} points={open} repos={repos} />
       )}
 
       {decided.length > 0 && (
@@ -118,6 +116,101 @@ export function Queue({ queue }: { queue: QueueData }) {
         </Disclosure>
       )}
     </div>
+  );
+}
+
+/**
+ * The three Needs-you sections over one set of points. `nested` is the arc layout: the same
+ * sections a step down in the hierarchy, so the arc's title is what the eye lands on.
+ */
+export function Sections({
+  points,
+  foundry,
+  repos,
+  nested,
+}: {
+  points: Point[];
+  foundry: QueueData["foundry"];
+  repos: FoundryRepo[];
+  nested?: boolean;
+}) {
+  const sections = SECTIONS.map((s) => ({
+    ...s,
+    points: points.filter((p) => sectionOf(p) === s.key),
+  })).filter((s) => s.points.length > 0);
+  return (
+    <div className={cn("flex flex-col", nested ? "gap-5" : "gap-8")}>
+      {sections.map((s) =>
+        s.key === "housekeeping" ? (
+          <Disclosure
+            count={s.points.length}
+            hint={s.hint}
+            key={s.key}
+            label={s.label}
+          >
+            <Rows foundry={foundry} points={s.points} repos={repos} />
+          </Disclosure>
+        ) : (
+          <section key={s.key}>
+            <div
+              className={cn(
+                "mb-1 flex items-baseline gap-2 border-border pb-1.5",
+                nested ? "border-b border-dashed" : "border-b"
+              )}
+            >
+              {nested ? (
+                <h3 className="font-medium text-muted-foreground text-sm">
+                  {s.label}
+                </h3>
+              ) : (
+                <h2 className="font-semibold text-base">{s.label}</h2>
+              )}
+              <span className="text-subtle text-xs">{s.points.length}</span>
+              <span className="ml-auto hidden text-subtle text-xs sm:block">
+                {s.hint}
+              </span>
+            </div>
+            <Rows foundry={foundry} points={s.points} repos={repos} />
+          </section>
+        )
+      )}
+    </div>
+  );
+}
+
+/** One arc's steps: its title, a link to its page, and the three sections beneath. */
+function ArcGroupSection({
+  group,
+  foundry,
+  repos,
+}: {
+  group: ArcGroup;
+  foundry: QueueData["foundry"];
+  repos: FoundryRepo[];
+}) {
+  const { ref } = group;
+  return (
+    <section>
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 className="font-semibold text-base">{ref ? ref.title : NO_ARC}</h2>
+        <span className="text-subtle text-xs">{group.points.length}</span>
+        {ref ? (
+          <Link
+            className="ml-auto inline-flex items-center gap-1 text-subtle text-xs hover:text-primary"
+            params={{ slug: ref.slug }}
+            to="/arcs/$slug"
+          >
+            the arc
+            <ArrowUpRight className="size-3" />
+          </Link>
+        ) : (
+          <span className="ml-auto hidden text-subtle text-xs sm:block">
+            filed against no initiative
+          </span>
+        )}
+      </div>
+      <Sections foundry={foundry} nested points={group.points} repos={repos} />
+    </section>
   );
 }
 
@@ -150,7 +243,7 @@ function Disclosure({
   );
 }
 
-function Rows({
+export function Rows({
   points,
   foundry,
   repos,
@@ -190,7 +283,7 @@ function PointRow({
   const askAbout = useAskAbout(point);
   const waiting = waitingTag(point);
   return (
-    <li className="py-4">
+    <li className="py-4" id={pointAnchor(point.id)}>
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <span className="font-medium text-[15px] text-foreground leading-snug">
           <Inline text={point.subject} />
@@ -244,7 +337,7 @@ function DecidedRow({
     return null;
   }
   return (
-    <li className="py-3">
+    <li className="py-3" id={pointAnchor(point.id)}>
       <DecidedLine
         foundryUrl={foundryUrl}
         head={

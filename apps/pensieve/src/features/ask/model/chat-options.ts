@@ -20,15 +20,18 @@ import { finishReasonOf, noteFinish } from "./finish-reason";
 /**
  * `threadId` is the hook's own (the per-call override), so nothing here closes over state.
  * `data` is the merged body — what the page put in `useAppChat({ body })` — which is how the
- * point a conversation was opened on reaches the server's first run (LIA-109).
+ * point a conversation was opened on reaches the server's first run (LIA-109) — and the
+ * arc, on the same path (LIA-149).
  */
 const fetcher: ChatFetcher = ({ messages, threadId, data }, { signal }) => {
   const point = data?.point;
+  const arc = data?.arc;
   return askChat({
     data: {
       messages,
       threadId,
       ...(typeof point === "string" ? { point } : {}),
+      ...(typeof arc === "string" ? { arc } : {}),
     },
     signal,
   });

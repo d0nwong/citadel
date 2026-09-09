@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { emptySeeds } from "../lib/arcs";
 import { PROPOSE_ARC } from "../lib/ask-tools";
 import type { ArcSources } from "./arcs";
 import { checkArcDraft, closeArc, openArc, SEEDS_MAX, TITLE_MAX } from "./arcs";
@@ -80,9 +81,11 @@ const sources = (over: Partial<ArcSources> = {}): ArcSources => ({
 const arc = (over: Partial<ArcMeta> = {}): ArcMeta => ({
   opened: "2026-09-01",
   path: "arcs/invoice-emails.md",
+  seeds: emptySeeds(),
   slug: "invoice-emails",
   status: "open",
   title: "Invoice emails",
+  updated: "2026-09-01",
   ...over,
 });
 
@@ -396,6 +399,20 @@ describe("AC4 — Close writes only on an arc that exists and is open", () => {
     );
     expect(r).toMatchObject({ error: "that arc is already closed", ok: false });
     expect(await written()).toEqual([]);
+  });
+
+  test("a second press answers the verdict on disk and writes nothing more (LIA-149 AC3)", async () => {
+    const first = await closeArc("invoice-emails", "shipped", open());
+    expect(first).toMatchObject({ ok: true });
+    const at = first.ok ? first.decision.at : "";
+
+    // The arc file still says `status: open` — the sweep flips it on its next tick — so
+    // nothing but the decision already there stops a second close from re-stamping it.
+    const again = await closeArc("invoice-emails", "shipped again", open());
+    expect(again).toMatchObject({ ok: true, replay: true });
+    expect(again.ok && again.decision.at).toBe(at);
+    expect(again.ok && again.decision.reason).toBe("shipped");
+    expect(await written()).toEqual(["arc/invoice-emails.json"]);
   });
 
   test("a slug that is not a slug never reaches the writer", async () => {

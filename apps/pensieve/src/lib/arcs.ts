@@ -28,6 +28,21 @@ export const isArcId = (id: unknown): id is string =>
 export const arcId = (slug: string) => `${ARC_GROUP}/${slug}`;
 
 /**
+ * How arcs are ordered wherever they are listed: the one rewritten last first, since an arc
+ * that moved this tick is the one being read (LIA-149 AC1), and title order between arcs
+ * rewritten on the same day so the list does not shuffle between loads.
+ */
+export function byLastRewrite<T extends { title: string; updated: string }>(
+  a: T,
+  b: T
+): number {
+  if (a.updated !== b.updated) {
+    return a.updated < b.updated ? 1 : -1;
+  }
+  return a.title.localeCompare(b.title);
+}
+
+/**
  * The keys an item is filed against an arc by. Never a resemblance: the sweep joins a
  * journal entry, a point or a ticket to an arc only through one of these four lists, so a
  * wrong seed mis-files every later landing and a missing one loses it.
@@ -55,6 +70,40 @@ export const SEED_LABEL: Record<SeedKind, string> = {
 /** Every seed the four lists carry, in seed order — what "at least one" is counted over. */
 export const allSeeds = (seeds: ArcSeeds): string[] =>
   SEED_KINDS.flatMap((k) => seeds[k]);
+
+/**
+ * What an arc's Landed row points at. The sweep writes the Evidence cell as a
+ * workspace-relative path — a journal entry for a landing, `decisions/<group>/<slug>.json`
+ * for a verdict — and the page turns it into a link into Pensieve (LIA-149 AC2). A path of
+ * neither shape is shown as it is: the arc file is argus's, and a row this app cannot route
+ * is still evidence worth reading in the editor.
+ */
+export type Evidence =
+  | { kind: "journal"; id: string; path: string }
+  | { kind: "decision"; path: string; point: string }
+  | { kind: "plain"; path: string };
+
+export function evidenceOf(raw: string): Evidence {
+  const path = raw.trim().replace(/^`|`$/g, "");
+  const decision = path.match(/^decisions\/([^/]+)\/([^/]+)\.json$/);
+  if (decision) {
+    return { kind: "decision", path, point: `${decision[1]}/${decision[2]}` };
+  }
+  // `<app>/features/<dir>/journal/**/<slug>.md` → the journal id, `<app>/<dir>/<slug>`.
+  const cut = path.indexOf("/features/");
+  const journal = cut > 0 ? path.indexOf("/journal/", cut) : -1;
+  if (journal > 0 && path.endsWith(".md")) {
+    const app = path.slice(0, cut);
+    const dir = path.slice(cut + "/features/".length, journal);
+    const slug = path.slice(journal + "/journal/".length, -".md".length);
+    return {
+      id: `${app}/${dir}/${slug.slice(slug.lastIndexOf("/") + 1)}`,
+      kind: "journal",
+      path,
+    };
+  }
+  return { kind: "plain", path };
+}
 
 /**
  * Anything off the wire as the four lists, trimmed and de-duplicated. A kind the caller
