@@ -6,6 +6,7 @@
  * per workstream under `workstreams/`, and the pages a person reads rendered from those
  * records and nothing else.
  *
+ *   marauder ingest --landings     merges on the base branches become events
  *   marauder board                 where every open workstream stands, right now
  *   marauder show <slug>           one workstream's story
  *   marauder changelog [day]       what changed in the project that day
@@ -21,14 +22,17 @@ import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { loadWorkstreams, type Workstream } from "../skills/sweep/scripts/marauder/record.ts";
 import { checkStyle, formatStyleProblems, renderBoard, renderChangelog, renderWorkstream, OUT_DIR } from "../skills/sweep/scripts/marauder/render.ts";
+import { run as ingestLandings, formatChanges } from "../skills/sweep/scripts/marauder/ingest-landings.ts";
 
 const HELP = `marauder — where the work stands
 
+  marauder ingest --landings        merges on origin/staging and origin/dev become events
   marauder board                    marauder/board.md — the one page to read
   marauder show <slug>              marauder/<slug>.md — one workstream's story
   marauder changelog [YYYY-MM-DD]   marauder/changelog/<day>.md — what changed that day
   marauder render                   all three
 
+  --since <day>   ingest from this day instead of the newest landing each side holds
   --now <ISO>     render as of this instant instead of the clock (tests, back-fills)
   --root <dir>    the workspace root (default: the repo this script is in)
   --dry-run       print what would be written, write nothing
@@ -68,6 +72,30 @@ const verb = args[0];
 if (!verb || verb === "help" || verb === "--help" || verb === "-h") {
   console.log(HELP);
   process.exit(verb ? 0 : 1);
+}
+
+const since = flag("--since");
+
+// ingest reads and writes the records, so it runs before they are loaded to be rendered
+if (verb === "ingest") {
+  if (!args.includes("--landings")) {
+    console.error("marauder: ingest needs --landings (Slack is the other half, and is not here yet)");
+    process.exit(1);
+  }
+  try {
+    const result = await ingestLandings({ root, since, now, dryRun });
+    if (result.changes.length) console.error(formatChanges(result.changes));
+    const attached = result.changes.filter((c) => c.kind === "attached").length;
+    const unsorted = result.changes.filter((c) => c.kind === "unsorted").length;
+    console.error(
+      `marauder: ${attached} landing${attached === 1 ? "" : "s"} attached · ${unsorted} unsorted · ` +
+        `${result.written.length} file${result.written.length === 1 ? "" : "s"} written${dryRun ? " · (dry run)" : ""}`,
+    );
+    process.exit(0);
+  } catch (err) {
+    console.error(`marauder: ${(err as Error).message}`);
+    process.exit(1);
+  }
 }
 
 const { workstreams, milestones, problems } = await loadWorkstreams(root);
