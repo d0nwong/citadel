@@ -151,7 +151,7 @@ saying what to do, and nothing to widen it with.
   compare it against the edit the point names: when the bullet is already gone or the
   sentence already reads right, change nothing and report nothing. That only happens on a
   tick that died between the edit and the report — the point drops out of the report at
-  step 8, so the normal case is a single pass.
+  step 9, so the normal case is a single pass.
 - **Report each edit in Done with the point id**, e.g. `LIA-79 — deleted the Pending
   bullet on the retainer cap (verify/lia-79)`. The id is what makes the line traceable
   back to the file that licensed it.

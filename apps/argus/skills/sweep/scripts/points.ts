@@ -31,6 +31,11 @@
  *             subject, else the report's day. The report's age suffix is then rewritten
  *             so `· new` / `· Nd` agrees with firstSeen — write `new` and let this fix it.
  *
+ * One decision group is not a verdict on a point and never joins them: `decisions/arc/`,
+ * which opens and closes an arc — the running story of an initiative (LIA-145).
+ * `readDecisions` skips it whole and `readArcDecisions` reads it, for
+ * `skills/sweep/scripts/arcs.ts`; a malformed one is still an Audit line.
+ *
  * `ticket` is the LIA key when the subject or detail names exactly one. `repo` needs the
  * ticket's Linear project (one per repo: Argus, Pensieve, Foundry) and, inside Alden Portal
  * — the one project covering two repos — its title tag (`[FE]` / `[BE]`). Both live in
@@ -49,6 +54,8 @@ export const ROOT = new URL("../../..", import.meta.url).pathname.replace(/\/$/,
 const REPORTS = join(ROOT, "reports");
 const POINTS = join(REPORTS, "points.json");
 const DECISIONS = join(ROOT, "decisions");
+/** the one decision group that is not a verdict on a point — `decisions/arc/<slug>.json` (LIA-145) */
+export const ARC_GROUP = "arc";
 const TITLES = join(ROOT, ".state/linear-titles.json");
 const MANIFEST = join(ROOT, "alden/alden-portal/.doc-workspace/feature-manifest.json");
 
@@ -62,6 +69,28 @@ export type Decision = {
   job?: { id: string; url: string };
   [extra: string]: unknown;
 };
+/**
+ * `decisions/arc/<slug>.json` — the user's verdict that an initiative is worth a running
+ * story, or that its story is over (LIA-145). It travels as a decision file like every
+ * other verdict, but it is not a verdict on a Needs-you point, so it never joins the
+ * points: `readDecisions` leaves `arc/` alone and `readArcDecisions` reads it.
+ */
+export type ArcDecision = {
+  /** `arc/<slug>` — the slug is the arc's file name under `arcs/` */
+  point: string;
+  slug: string;
+  action: "opened" | "closed";
+  subject?: string;
+  reason?: string;
+  at?: string;
+  seeds: ArcSeeds;
+  [extra: string]: unknown;
+};
+/** the keys an item is filed against an arc by — never a resemblance, always one of these */
+export type ArcSeeds = { tickets: string[]; rules: string[]; prs: string[]; features: string[] };
+export const SEED_KINDS = ["tickets", "rules", "prs", "features"] as const;
+export const emptySeeds = (): ArcSeeds => ({ tickets: [], rules: [], prs: [], features: [] });
+
 export type Point = {
   id: string;
   group: Group;
@@ -341,22 +370,90 @@ export function parseDecision(text: string): { decision: Decision } | { error: s
 }
 
 /**
- * Every `decisions/**\/*.json`, keyed by its `point`. Two files for one point: the later
- * `at` wins. Files that fail `parseDecision` come back separately, for Audit.
+ * One `decisions/arc/<slug>.json` → the arc verdict, or the one reason it cannot be used.
+ * `seeds` is required on `opened` (an arc with no keys files nothing) and ignored on
+ * `closed`, which only flips the status of an arc that already exists.
  */
-export async function readDecisions(dir = DECISIONS): Promise<{ decisions: Map<string, Decision>; unreadable: Unreadable[] }> {
-  const decisions = new Map<string, Decision>();
+export function parseArcDecision(text: string): { decision: ArcDecision } | { error: string } {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (err) {
+    return { error: `not valid JSON: ${(err as Error).message}` };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { error: "not a JSON object" };
+  const d = raw as Record<string, unknown>;
+  if (typeof d.point !== "string" || !d.point.startsWith("arc/") || d.point.length <= 4)
+    return { error: "`point` must be `arc/<slug>`" };
+  if (d.action !== "opened" && d.action !== "closed") return { error: '`action` must be "opened" or "closed"' };
+  const seeds = emptySeeds();
+  if (d.seeds !== undefined) {
+    if (!d.seeds || typeof d.seeds !== "object" || Array.isArray(d.seeds)) return { error: "`seeds` must be an object of string arrays" };
+    for (const [kind, value] of Object.entries(d.seeds as Record<string, unknown>)) {
+      if (!SEED_KINDS.includes(kind as (typeof SEED_KINDS)[number]))
+        return { error: `\`seeds.${kind}\` is not a seed kind (${SEED_KINDS.join(", ")})` };
+      if (!Array.isArray(value) || value.some((v) => typeof v !== "string" || !v.trim()))
+        return { error: `\`seeds.${kind}\` must be an array of non-empty strings` };
+      seeds[kind as keyof ArcSeeds] = [...new Set((value as string[]).map((v) => v.trim()))];
+    }
+  }
+  if (d.action === "opened" && !SEED_KINDS.some((k) => seeds[k].length))
+    return { error: "`seeds` required for an opened arc — an arc with no keys files nothing" };
+  return { decision: { ...(d as Record<string, unknown>), point: d.point, slug: d.point.slice(4), action: d.action, seeds } as ArcDecision };
+}
+
+/** Every arc named by a `decisions/arc/*.json`, its `opened` and `closed` files kept apart. */
+export type ArcVerdicts = { slug: string; opened?: ArcDecision; closed?: ArcDecision };
+
+/**
+ * `decisions/arc/**\/*.json` by slug — the arc group alone, read by the sweep's arc step
+ * and by nothing in the points join (AC4). Two files for one slug and action: the later
+ * `at` wins, as everywhere else. Files that fail `parseArcDecision` come back for Audit.
+ */
+export async function readArcDecisions(dir = DECISIONS): Promise<{ arcs: ArcVerdicts[]; unreadable: Unreadable[] }> {
+  const by = new Map<string, ArcVerdicts>();
   const unreadable: Unreadable[] = [];
+  for (const { file, text } of await decisionFiles(dir, (n) => n.startsWith(`${ARC_GROUP}/`))) {
+    const parsed = parseArcDecision(text);
+    if ("error" in parsed) {
+      unreadable.push({ file, error: parsed.error });
+      continue;
+    }
+    const arc = by.get(parsed.decision.slug) ?? { slug: parsed.decision.slug };
+    const prev = arc[parsed.decision.action];
+    if (!prev || String(parsed.decision.at ?? "") >= String(prev.at ?? "")) arc[parsed.decision.action] = parsed.decision;
+    by.set(arc.slug, arc);
+  }
+  return { arcs: [...by.values()].sort((a, b) => a.slug.localeCompare(b.slug)), unreadable };
+}
+
+/** every `<dir>/**\/*.json` the filter keeps, sorted by name, read as text */
+async function decisionFiles(dir: string, keep: (name: string) => boolean) {
   let names: string[];
   try {
     names = (await readdir(dir, { recursive: true })) as string[];
   } catch {
-    return { decisions, unreadable };
+    return [];
   }
-  for (const name of names.filter((n) => n.endsWith(".json")).sort()) {
+  const out: { file: string; text: string }[] = [];
+  for (const name of names.filter((n) => n.endsWith(".json") && keep(n)).sort()) {
     const path = join(dir, name);
-    const file = path.startsWith(`${ROOT}/`) ? relative(ROOT, path) : path;
-    const parsed = parseDecision(await Bun.file(path).text());
+    out.push({ file: path.startsWith(`${ROOT}/`) ? relative(ROOT, path) : path, text: await Bun.file(path).text() });
+  }
+  return out;
+}
+
+/**
+ * Every `decisions/**\/*.json`, keyed by its `point`. Two files for one point: the later
+ * `at` wins. Files that fail `parseDecision` come back separately, for Audit. The `arc/`
+ * group is skipped whole — an arc is not a verdict on a point, so it must never land on
+ * one, nor in the Housekeeping count (LIA-145); `readArcDecisions` is its reader.
+ */
+export async function readDecisions(dir = DECISIONS): Promise<{ decisions: Map<string, Decision>; unreadable: Unreadable[] }> {
+  const decisions = new Map<string, Decision>();
+  const unreadable: Unreadable[] = [];
+  for (const { file, text } of await decisionFiles(dir, (n) => !n.startsWith(`${ARC_GROUP}/`))) {
+    const parsed = parseDecision(text);
     if ("error" in parsed) {
       unreadable.push({ file, error: parsed.error });
       continue;
@@ -373,7 +470,7 @@ export async function readDecisions(dir = DECISIONS): Promise<{ decisions: Map<s
  * inference, so its `ask` and `detail` are the instruction; there is no separate field.
  *
  * The join is against `points.json`, not against `decisions/` alone, and that is what
- * bounds it: the same tick's step 8 drops the point's bullet from the report, so the next
+ * bounds it: the same tick's step 9 drops the point's bullet from the report, so the next
  * tick's `points.json` no longer holds the record and this returns nothing for it. The
  * worker's compare-before-editing is the backstop for a tick that died in between.
  */
@@ -511,7 +608,12 @@ export async function run(opts: { report?: string; titles?: string; decisions?: 
   if (!(await reportFile.exists())) throw new Error(`no report at ${reportPath}`);
   const md = stripOwned(await reportFile.text());
 
-  const { decisions, unreadable } = await readDecisions(opts.decisions ?? DECISIONS);
+  const decisionsDir = opts.decisions ?? DECISIONS;
+  const { decisions, unreadable: badPoints } = await readDecisions(decisionsDir);
+  // arc files never decide a point, but a malformed one is still a file the blackboard
+  // cannot read, so it earns the same Audit line (LIA-145)
+  const { unreadable: badArcs } = await readArcDecisions(decisionsDir);
+  const unreadable = [...badPoints, ...badArcs].sort((a, b) => a.file.localeCompare(b.file));
   const previous = (await Bun.file(POINTS).exists()) ? ((await Bun.file(POINTS).json()) as PointsFile) : null;
   const titlesPath = opts.titles ?? TITLES;
   const titles = (await Bun.file(titlesPath).exists()) ? normaliseTitles(await Bun.file(titlesPath).json()) : {};

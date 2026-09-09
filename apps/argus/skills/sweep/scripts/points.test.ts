@@ -1,7 +1,7 @@
 /**
  * points.ts — the Needs-you section as data (LIA-87).
  *
- * The fixture is the report shape `skills/sweep/SKILL.md` step 8 mandates; the cases are
+ * The fixture is the report shape `skills/sweep/SKILL.md` step 9 mandates; the cases are
  * the ticket's acceptance criteria, one describe per AC that a unit can check.
  *
  *   bun test skills/sweep/scripts/points.test.ts
@@ -640,5 +640,108 @@ describe("card shape — a blank line between headline and detail changes nothin
       { id: "verify/lia-78", group: "verify", subject: "LIA-78", ask: "x", firstSeen: "2026-09-05" },
     ] } }));
     expect(md).toContain("- **LIA-78** — four ACs appear satisfied by fe#406, not ticked · 1d\n\n  AC1 (fixture deleted)");
+  });
+});
+
+// ---------------------------------------------------------------- LIA-145 — the arc group
+
+import { parseArcDecision, readArcDecisions, type ArcDecision } from "./points.ts";
+
+/** the verdict that opens an arc — a decision file, but never a verdict on a Needs-you point */
+const openedArc = {
+  point: "arc/invoice-emails",
+  action: "opened",
+  subject: "Invoice emails",
+  at: "2026-09-09T06:00:00.000Z",
+  seeds: { tickets: ["LIA-133", "LIA-137"], rules: ["BR-16a"], prs: ["fe#408"], features: ["admin-invoicing"] },
+};
+const closedArc = { point: "arc/invoice-emails", action: "closed", subject: "Invoice emails", at: "2026-09-09T07:00:00.000Z" };
+
+describe("LIA-145 AC4 — an arc file parses as its own kind of verdict", () => {
+  test("an opened file keeps its seeds and derives the slug from the point", () => {
+    const parsed = parseArcDecision(JSON.stringify(openedArc)) as { decision: ArcDecision };
+    expect(parsed.decision.slug).toBe("invoice-emails");
+    expect(parsed.decision.action).toBe("opened");
+    expect(parsed.decision.seeds).toEqual(openedArc.seeds);
+    expect(parsed.decision.subject).toBe("Invoice emails");
+  });
+  test("a closed file needs no seeds — it only flips the status of an arc that exists", () => {
+    const parsed = parseArcDecision(JSON.stringify(closedArc)) as { decision: ArcDecision };
+    expect(parsed.decision.action).toBe("closed");
+    expect(parsed.decision.seeds).toEqual({ tickets: [], rules: [], prs: [], features: [] });
+  });
+  test("seeds are normalised: absent kinds are empty arrays, duplicates collapse, values trim", () => {
+    const parsed = parseArcDecision(JSON.stringify({ ...openedArc, seeds: { tickets: [" LIA-133 ", "LIA-133"] } })) as { decision: ArcDecision };
+    expect(parsed.decision.seeds).toEqual({ tickets: ["LIA-133"], rules: [], prs: [], features: [] });
+  });
+  test("a malformed `seeds` is the one reason the file cannot be used", () => {
+    expect(parseArcDecision(JSON.stringify({ ...openedArc, seeds: ["LIA-133"] }))).toEqual({
+      error: "`seeds` must be an object of string arrays",
+    });
+    expect(parseArcDecision(JSON.stringify({ ...openedArc, seeds: { tickets: "LIA-133" } }))).toEqual({
+      error: "`seeds.tickets` must be an array of non-empty strings",
+    });
+    expect(parseArcDecision(JSON.stringify({ ...openedArc, seeds: { tickets: ["LIA-133", ""] } }))).toEqual({
+      error: "`seeds.tickets` must be an array of non-empty strings",
+    });
+    expect(parseArcDecision(JSON.stringify({ ...openedArc, seeds: { threads: ["x"] } }))).toEqual({
+      error: "`seeds.threads` is not a seed kind (tickets, rules, prs, features)",
+    });
+    expect(parseArcDecision(JSON.stringify({ ...openedArc, seeds: {} }))).toEqual({
+      error: "`seeds` required for an opened arc — an arc with no keys files nothing",
+    });
+  });
+  test("the point must be `arc/<slug>` and the action one of the two", () => {
+    expect(parseArcDecision(JSON.stringify({ ...openedArc, point: "decide/x" }))).toEqual({ error: "`point` must be `arc/<slug>`" });
+    expect(parseArcDecision(JSON.stringify({ ...openedArc, point: "arc/" }))).toEqual({ error: "`point` must be `arc/<slug>`" });
+    expect(parseArcDecision(JSON.stringify({ ...openedArc, action: "sent" }))).toEqual({ error: '`action` must be "opened" or "closed"' });
+    expect(parseArcDecision("{")).toMatchObject({ error: expect.stringContaining("not valid JSON") });
+  });
+});
+
+describe("LIA-145 AC4 — an arc never joins the points", () => {
+  const dir = async () => {
+    const d = await mkdtemp(join(tmpdir(), "argus-arc-decisions-"));
+    await mkdir(join(d, "arc"), { recursive: true });
+    await mkdir(join(d, "decide"), { recursive: true });
+    await writeFile(join(d, "arc", "invoice-emails.json"), JSON.stringify(openedArc));
+    await writeFile(join(d, "arc", "invoice-emails-closed.json"), JSON.stringify(closedArc));
+    await writeFile(join(d, "decide", "lia-53-looks-agent-ready.json"), JSON.stringify(ignored));
+    return d;
+  };
+
+  test("readDecisions skips the arc group whole — no point decided, nothing unreadable", async () => {
+    const { decisions, unreadable } = await readDecisions(await dir());
+    expect([...decisions.keys()]).toEqual(["decide/lia-53-looks-agent-ready"]);
+    expect(unreadable).toEqual([]);
+  });
+  test("a valid arc file is not an Audit line, and cannot decide a point named `arc/<slug>`", async () => {
+    const { decisions } = await readDecisions(await dir());
+    expect(decisions.has("arc/invoice-emails")).toBe(false);
+    const { md, file } = pipeline(REPORT, ctx({ decisions }));
+    expect(md).toContain("- 1 point decided (decisions/)\n"); // the Decide file, never the two arc files
+    expect(file.points.filter((p) => p.decision)).toHaveLength(1);
+  });
+  test("readArcDecisions reads that group alone, opened and closed kept apart, later `at` winning", async () => {
+    const d = await dir();
+    await writeFile(join(d, "arc", "invoice-emails-earlier.json"), JSON.stringify({ ...openedArc, at: "2026-09-08T00:00:00.000Z", subject: "Older" }));
+    const { arcs, unreadable } = await readArcDecisions(d);
+    expect(arcs.map((a) => a.slug)).toEqual(["invoice-emails"]);
+    expect(arcs[0]!.opened!.subject).toBe("Invoice emails");
+    expect(arcs[0]!.closed!.at).toBe(closedArc.at);
+    expect(unreadable).toEqual([]);
+  });
+  test("a malformed arc file is one Audit line, and still no decision", async () => {
+    const d = await dir();
+    await writeFile(join(d, "arc", "broken.json"), JSON.stringify({ ...openedArc, point: "arc/broken", seeds: { tickets: [7] } }));
+    const { arcs, unreadable } = await readArcDecisions(d);
+    expect(arcs.map((a) => a.slug)).toEqual(["invoice-emails"]);
+    expect(unreadable).toHaveLength(1);
+    expect(unreadable[0]!.file.endsWith("arc/broken.json")).toBe(true);
+    expect(unreadable[0]!.error).toBe("`seeds.tickets` must be an array of non-empty strings");
+    expect((await readDecisions(d)).unreadable).toEqual([]);
+  });
+  test("no decisions directory → no arcs, nothing unreadable", async () => {
+    expect(await readArcDecisions("/nonexistent/argus-arc-decisions")).toEqual({ arcs: [], unreadable: [] });
   });
 });
