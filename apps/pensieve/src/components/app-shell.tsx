@@ -24,6 +24,7 @@ import {
   FileText,
   FolderIcon,
   Inbox,
+  Map as MapIcon,
   MessageCircleQuestion,
   MessagesSquare,
   ScrollText,
@@ -221,7 +222,7 @@ function PullToRefresh({
 // ── the sidebar ────────────────────────────────────────────────────────────────
 
 const READING = [
-  { icon: FileText, label: "Reports", to: "/reports" },
+  { icon: FileText, label: "Sweep log", to: "/reports" },
   { icon: MessagesSquare, label: "Digests", to: "/digests" },
   { icon: ScrollText, label: "Journal", to: "/journal" },
 ] as const;
@@ -260,7 +261,7 @@ const isActive = (pathname: string, to: string) =>
 
 function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { docs } = useLoaderData({ from: "__root__" });
+  const { docs, unsorted } = useLoaderData({ from: "__root__" });
   const { setOpenMobile } = useSidebar();
   // The sheet closes on navigation; shadcn leaves that to the app.
   // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger, not an input
@@ -283,13 +284,32 @@ function AppSidebar() {
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === "/"}>
                 <Link to="/">
-                  <Inbox />
-                  <span>Today</span>
+                  <MapIcon />
+                  <span>Board</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            {/* Beside Today, not under Reading: the points on one and the initiatives on
-                the other are the same work, asked about at two altitudes (LIA-149). */}
+            {/* Beside the board, because triage is what keeps the board honest: an entry
+                that attached to nothing is a workstream that has not learned it yet, and
+                the count is the only place anyone would see there is triage waiting. */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={isActive(pathname, "/unsorted")}
+              >
+                <Link to="/unsorted">
+                  <Inbox />
+                  <span>Unsorted</span>
+                  {unsorted > 0 && (
+                    <span className="ml-auto rounded-md bg-muted px-1.5 py-0.5 font-medium text-muted-foreground text-xs tabular-nums">
+                      {unsorted}
+                    </span>
+                  )}
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {/* Beside the board, not under Reading: the points on one and the initiatives
+                on the other are the same work, asked about at two altitudes (LIA-149). */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={isActive(pathname, "/arcs")}>
                 <Link to="/arcs">

@@ -1,18 +1,27 @@
 # pensieve
 
 The reading room for [argus](https://github.com/d0nwong/argus) — a UI over
-the blackboard the sweep maintains: **sweep reports** (the Needs-you queue), **Slack
-digests**, the per-landing **change journal**, and the dual-tier **feature docs**.
+the blackboard the sweep maintains: the **board** (where every piece of work stands) and a
+page per **workstream**, the **Unsorted** queue behind them, **sweep reports** (the
+Needs-you queue), **Slack digests**, the per-landing **change journal**, and the dual-tier
+**feature docs**.
+
+The front page is `marauder/board.md` as argus rendered it, with each workstream's name
+linked to `/work/<slug>` and every path in it pointed at the page that serves it. The sweep
+log — the Needs-you queue and the day's report — is at `/reports`.
 
 Pensieve is read-only by design, with one exception. The sweep in argus owns every
 file it shows; this app only parses and renders them, so there is never a second writer to
-the workflow state. The exception is `decisions/`: the queue on the home page lists the sweep's
-Needs-you points and lets you *dismiss* one with a reason (`ignored`), *approve* one in the
-Verify group (`verified`), or *send* one to
-[Foundry](https://github.com/d0nwong/foundry), and each verdict is one JSON file there
-that the sweep reads back and commits. Nothing else is written into the blackboard from
-here — not the journal, docs, reports or tickets; those still go through Linear, Slack,
-or the argus skills.
+the workflow state. The exception is `decisions/`, which it writes in two shapes. The queue
+at `/reports` lists the sweep's Needs-you points and lets you *dismiss* one with a reason
+(`ignored`), *approve* one in the Verify group (`verified`), or *send* one to
+[Foundry](https://github.com/d0nwong/foundry). **Unsorted** lists what argus took in and
+could not attach to a workstream, and lets you *attach* one, open a *new* workstream from
+it, or *dismiss* it with a reason; the next `marauder ingest` applies that file through its
+correction functions, drops the entry and commits. Either way it is one JSON file under
+`decisions/` that argus reads back. Nothing else is written into the blackboard from
+here — not `workstreams/`, `marauder/`, the journal, docs, reports or tickets; those still
+go through argus, Linear or Slack.
 
 **Ask** runs Claude Code over the checkout with a read-only tool set and keeps each
 conversation as one file under `PENSIEVE_HOME` (default `~/.pensieve`) — outside the

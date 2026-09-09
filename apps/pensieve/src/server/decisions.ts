@@ -27,6 +27,18 @@
  * exception to read-only, one code path, one audit line if a file is ever malformed. It
  * joins no point, so `readDecisions` leaves the group alone and `readArcDecision` reads it,
  * exactly as `parseArcDecision` / `readArcDecisions` do on the sweep's side.
+ *
+ * A third group is a verdict on an Unsorted entry — what ingest could not attach on its own
+ * (LIA-160):
+ *
+ *   decisions/marauder/<slug>.json
+ *   { id, action: "attach" | "new" | "dismiss" | "stage", slug?, name?, reason, at, by }
+ *
+ * `id` is the entry's own id and `<slug>` is that id folded to a file name (`lib/marauder`
+ * `decisionSlug`), since a Slack `ts` is not a path segment. The next `marauder ingest`
+ * applies each file through its correction functions, drops the entry from the queue, and
+ * leaves the file where it is as history. It joins no point either, so `readDecisions`
+ * skips this group exactly as it skips `arc/`.
  */
 
 import { randomBytes } from "node:crypto";
@@ -41,6 +53,13 @@ import {
 import { join, resolve, sep } from "node:path";
 import type { ArcSeeds } from "../lib/arcs";
 import { ARC_GROUP, allSeeds, arcId, isArcId, toSeeds } from "../lib/arcs";
+import type { MarauderDecision } from "../lib/marauder";
+import {
+  isMarauderId,
+  MARAUDER_ACTIONS,
+  MARAUDER_GROUP,
+  marauderId,
+} from "../lib/marauder";
 import { isPointId } from "../lib/points";
 import type { Point, PointGroup } from "./workspace";
 import { WORKSPACE_DIR } from "./workspace";
@@ -87,7 +106,7 @@ export const isArcDecision = (d: AnyDecision): d is ArcDecision =>
  * stated in code so a future loosening of the regex cannot silently widen the write.
  */
 export function decisionPath(pointId: string, dir = DECISIONS_DIR): string {
-  if (!(isPointId(pointId) || isArcId(pointId))) {
+  if (!(isPointId(pointId) || isArcId(pointId) || isMarauderId(pointId))) {
     throw new Error(`refused: "${pointId}" is not a point id (<group>/<slug>)`);
   }
   const abs = resolve(dir, `${pointId}.json`);
@@ -244,7 +263,8 @@ export async function readDecisions(
       (n) =>
         n.endsWith(".json") &&
         !n.includes(".tmp-") &&
-        !n.startsWith(`${ARC_GROUP}/`)
+        !n.startsWith(`${ARC_GROUP}/`) &&
+        !n.startsWith(`${MARAUDER_GROUP}/`)
     )
     .sort()) {
     let d: AnyDecision | null;
@@ -269,23 +289,16 @@ export async function readDecisions(
  * is what makes the sweep's read all-or-nothing — a crash mid-write leaves a `.tmp-` file
  * the walker above ignores, never a truncated `.json`.
  */
-export async function writeDecision(
+export function writeDecision(
   d: AnyDecision,
   dir = DECISIONS_DIR
 ): Promise<string> {
   if (d.point.split("/")[1] === undefined) {
     throw new Error("refused: decision has no point id");
   }
-  const target = decisionPath(d.point, dir);
-  const parent = resolve(target, "..");
-  await mkdir(parent, { recursive: true });
-  const tmp = join(
-    parent,
-    `.${d.point.split("/")[1]}.json.tmp-${randomBytes(4).toString("hex")}`
-  );
   // `slug` is derived from `point` by every reader, so it never goes on the wire; `seeds`
   // does, since it is the arc's whole substance and nothing else carries it.
-  const body = {
+  return writeAtomically(d.point, dir, {
     action: d.action,
     point: d.point,
     ...(d.reason === undefined ? {} : { reason: d.reason }),
@@ -293,7 +306,25 @@ export async function writeDecision(
     subject: d.subject,
     ...(isArcDecision(d) ? { seeds: d.seeds } : {}),
     ...(!isArcDecision(d) && d.job ? { job: d.job } : {}),
-  };
+  });
+}
+
+/**
+ * The write itself: temp file beside the target, rename into place. Shared by every group,
+ * so a file the sweep reads is whole whatever wrote it.
+ */
+async function writeAtomically(
+  id: string,
+  dir: string,
+  body: unknown
+): Promise<string> {
+  const target = decisionPath(id, dir);
+  const parent = resolve(target, "..");
+  await mkdir(parent, { recursive: true });
+  const tmp = join(
+    parent,
+    `.${id.split("/")[1]}.json.tmp-${randomBytes(4).toString("hex")}`
+  );
   try {
     await writeFile(tmp, `${JSON.stringify(body, null, 2)}\n`, "utf8");
     await rename(tmp, target);
@@ -302,6 +333,124 @@ export async function writeDecision(
     throw e;
   }
   return target;
+}
+
+// ── the marauder group: a verdict on an Unsorted entry (LIA-160) ───────────────
+
+/**
+ * A file's text as a decision on an Unsorted entry, or null when it is not one ingest
+ * would apply. `id` and `action` are the whole of it: everything else is what that action
+ * needs, and an action missing its argument is refused here rather than half-applied by
+ * the sweep — `dismiss` without a reason leaves no record of why, which is the one thing
+ * that file exists to carry.
+ */
+export function parseMarauderDecision(text: string): MarauderDecision | null {
+  let v: unknown;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) {
+    return null;
+  }
+  const d = v as Record<string, unknown>;
+  const str = (k: string) => (typeof d[k] === "string" ? (d[k] as string) : "");
+  const id = str("id");
+  const action = str("action") as MarauderDecision["action"];
+  if (!(id && (MARAUDER_ACTIONS as readonly string[]).includes(action))) {
+    return null;
+  }
+  if (action === "attach" && !str("slug")) {
+    return null;
+  }
+  if (action === "new" && !str("name")) {
+    return null;
+  }
+  if (action === "dismiss" && !str("reason").trim()) {
+    return null;
+  }
+  return {
+    action,
+    at: str("at"),
+    by: str("by"),
+    id,
+    ...(str("name") ? { name: str("name") } : {}),
+    ...(str("reason") ? { reason: str("reason") } : {}),
+    ...(str("side") ? { side: str("side") as MarauderDecision["side"] } : {}),
+    ...(str("slug") ? { slug: str("slug") } : {}),
+    ...(str("stage")
+      ? { stage: str("stage") as MarauderDecision["stage"] }
+      : {}),
+  };
+}
+
+/** The decision already written on this entry, or null — what makes a second click a no-op. */
+export async function readMarauderDecision(
+  id: string,
+  dir = DECISIONS_DIR
+): Promise<MarauderDecision | null> {
+  const raw = await decisionText(marauderId(id), dir);
+  return raw === null ? null : parseMarauderDecision(raw);
+}
+
+/**
+ * Every decision on an Unsorted entry that is on disk, keyed by the entry's own id — what
+ * the page lays over the queue so a row that has been decided says so, whether or not the
+ * sweep has run since.
+ */
+export async function readMarauderDecisions(
+  dir = DECISIONS_DIR
+): Promise<Map<string, MarauderDecision>> {
+  const out = new Map<string, MarauderDecision>();
+  let names: string[];
+  try {
+    names = await readdir(join(dir, MARAUDER_GROUP));
+  } catch {
+    return out;
+  }
+  for (const name of names
+    .filter((n) => n.endsWith(".json") && !n.includes(".tmp-"))
+    .sort()) {
+    let d: MarauderDecision | null;
+    try {
+      d = parseMarauderDecision(
+        await readFile(join(dir, MARAUDER_GROUP, name), "utf8")
+      );
+    } catch {
+      continue;
+    }
+    if (!d) {
+      continue;
+    }
+    const prev = out.get(d.id);
+    if (!prev || d.at >= prev.at) {
+      out.set(d.id, d);
+    }
+  }
+  return out;
+}
+
+/**
+ * Write one `decisions/marauder/<slug>.json`, atomically, through the same rename every
+ * other verdict uses. Nothing under `workstreams/` is touched: `marauder ingest` applies
+ * this file on its next run and commits what it changed.
+ */
+export function writeMarauderDecision(
+  d: MarauderDecision,
+  dir = DECISIONS_DIR
+): Promise<string> {
+  return writeAtomically(marauderId(d.id), dir, {
+    action: d.action,
+    id: d.id,
+    ...(d.slug === undefined ? {} : { slug: d.slug }),
+    ...(d.name === undefined ? {} : { name: d.name }),
+    ...(d.side === undefined ? {} : { side: d.side }),
+    ...(d.stage === undefined ? {} : { stage: d.stage }),
+    ...(d.reason === undefined ? {} : { reason: d.reason }),
+    at: d.at,
+    by: d.by,
+  });
 }
 
 /**

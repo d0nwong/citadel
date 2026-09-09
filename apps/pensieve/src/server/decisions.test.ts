@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { MarauderDecision } from "../lib/marauder";
 import { isPointId } from "../lib/points";
 import type { ArcDecision, Decision } from "./decisions";
 import {
@@ -16,10 +17,14 @@ import {
   isArcDecision,
   mergeDecisions,
   parseDecision,
+  parseMarauderDecision,
   readArcDecision,
   readDecision,
   readDecisions,
+  readMarauderDecision,
+  readMarauderDecisions,
   writeDecision,
+  writeMarauderDecision,
 } from "./decisions";
 import type { Point } from "./workspace";
 
@@ -344,5 +349,115 @@ describe("LIA-147 — the arc group travels the same path and joins no point", (
     expect(await readDecision("arc/invoice-emails", dir)).toBeNull();
     const arc = await readArcDecision("invoice-emails", dir);
     expect(arc && isArcDecision(arc)).toBe(true);
+  });
+});
+
+// ── the marauder group: a decision on an Unsorted entry (LIA-160) ──────────────
+
+const entry = (extra: Partial<MarauderDecision> = {}): MarauderDecision => ({
+  action: "attach",
+  at: "2026-09-09T20:00:00.000Z",
+  by: "Liam Leung",
+  id: "fe#417",
+  slug: "usage-page",
+  ...extra,
+});
+
+describe("AC3 — the decision file a click writes", () => {
+  test("lands at decisions/marauder/<slug>.json, atomically, with the id inside", async () => {
+    const target = await writeMarauderDecision(entry(), dir);
+    expect(target).toBe(join(dir, "marauder", "fe-417.json"));
+    // The name is the id folded to a path segment; the id itself is what ingest matches on.
+    expect(JSON.parse(await readFile(target, "utf8"))).toEqual({
+      action: "attach",
+      at: "2026-09-09T20:00:00.000Z",
+      by: "Liam Leung",
+      id: "fe#417",
+      slug: "usage-page",
+    });
+    // Nothing half-written is left behind for the sweep to read.
+    expect(
+      (await readdir(join(dir, "marauder"))).filter((n) => n.includes(".tmp-"))
+    ).toEqual([]);
+  });
+
+  test("a second click reads the file already there rather than writing a later one", async () => {
+    await writeMarauderDecision(entry(), dir);
+    const already = await readMarauderDecision("fe#417", dir);
+    expect(already).toMatchObject({ action: "attach", slug: "usage-page" });
+    // What `decideUnsorted` does with that: answer it, and write nothing more.
+    const before = await readFile(join(dir, "marauder", "fe-417.json"), "utf8");
+    expect(await readMarauderDecision("fe#417", dir)).toEqual(already);
+    expect(await readFile(join(dir, "marauder", "fe-417.json"), "utf8")).toBe(
+      before
+    );
+  });
+
+  test("an entry with no decision reads as none", async () => {
+    expect(await readMarauderDecision("fe#999", dir)).toBeNull();
+  });
+
+  test("a dismiss with no reason is not a decision ingest would apply", () => {
+    expect(
+      parseMarauderDecision(
+        JSON.stringify({ action: "dismiss", at: "", by: "", id: "fe#417" })
+      )
+    ).toBeNull();
+    expect(
+      parseMarauderDecision(
+        JSON.stringify({
+          action: "dismiss",
+          at: "",
+          by: "",
+          id: "fe#417",
+          reason: "chat",
+        })
+      )
+    ).toMatchObject({ action: "dismiss", reason: "chat" });
+  });
+
+  test.each([
+    ["not JSON at all", "{"],
+    ["an unknown verb", JSON.stringify({ action: "ignore", id: "fe#417" })],
+    ["no id", JSON.stringify({ action: "attach", slug: "usage-page" })],
+    [
+      "an attach naming no workstream",
+      JSON.stringify({ action: "attach", id: "fe#417" }),
+    ],
+    ["a new with no name", JSON.stringify({ action: "new", id: "fe#417" })],
+  ])("%s is refused", (_what, text) => {
+    expect(parseMarauderDecision(text)).toBeNull();
+  });
+
+  test("the queue reads back keyed by the entry's own id, later verdict winning", async () => {
+    await writeMarauderDecision(entry(), dir);
+    await writeMarauderDecision(
+      entry({
+        action: "dismiss",
+        id: "split/usage-page",
+        reason: "not two things",
+      }),
+      dir
+    );
+    const all = await readMarauderDecisions(dir);
+    expect([...all.keys()].sort()).toEqual(["fe#417", "split/usage-page"]);
+    expect(all.get("split/usage-page")?.action).toBe("dismiss");
+  });
+});
+
+describe("AC4 — the group joins no point, so the points audit leaves it alone", () => {
+  test("readDecisions skips decisions/marauder/ the way it skips decisions/arc/", async () => {
+    await writeMarauderDecision(entry(), dir);
+    await writeDecision(
+      {
+        action: "ignored",
+        at: "2026-09-09",
+        point: "decide/x",
+        reason: "why",
+        subject: "S",
+      },
+      dir
+    );
+    expect([...(await readDecisions(dir)).keys()]).toEqual(["decide/x"]);
   });
 });

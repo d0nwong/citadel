@@ -16,6 +16,8 @@ import type { MarkdownDocument } from "@tanstack/markdown";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { ARC_SLUG_RE, byLastRewrite } from "#/lib/arcs";
+import type { MarauderDecision } from "#/lib/marauder";
+import { checkDraft, PENSIEVE_USER } from "#/lib/marauder";
 import { isPointId, POINT_ID_RE } from "#/lib/points";
 import type {
   AskStatus,
@@ -32,7 +34,14 @@ import type {
   JobStatus,
 } from "#/server/foundry";
 import type { LinearConfig } from "#/server/linear";
-import type { ArcFile, ArcMeta, Json, Point } from "#/server/workspace";
+import type { Milestone, UnsortedItem, Workstream } from "#/server/marauder";
+import type {
+  ArcFile,
+  ArcMeta,
+  Json,
+  Point,
+  Rendered,
+} from "#/server/workspace";
 
 /** The sidebar's docs tree and the top bar's workspace path — what the shell shows on every page. */
 export interface Navigation {
@@ -40,14 +49,23 @@ export interface Navigation {
     app: string;
     features: Array<{ feature: string; label: string }>;
   }>;
+  /** Entries waiting to be triaged, so the nav says when there is triage to do (AC5). */
+  unsorted: number;
   workspace: string;
 }
 
 export const getNavigation = createServerFn({ method: "GET" }).handler(
   async (): Promise<Navigation> => {
     const ws = await import("#/server/workspace");
+    const mr = await import("#/server/marauder");
+    const dec = await import("#/server/decisions");
+    const [docs, unsorted, decided] = await Promise.all([
+      ws.listDocs(),
+      mr.readUnsorted(),
+      dec.readMarauderDecisions(),
+    ]);
     const byApp = new Map<string, Map<string, string>>();
-    for (const d of await ws.listDocs()) {
+    for (const d of docs) {
       const short = d.feature.startsWith("/")
         ? d.feature.slice(d.app.length + 1)
         : d.feature;
@@ -69,46 +87,57 @@ export const getNavigation = createServerFn({ method: "GET" }).handler(
           label,
         })),
       })),
+      // Decided rows are still in the file until the next ingest run drops them; the count
+      // is what is left to do, not what is left in the file.
+      unsorted: unsorted.filter((u) => !decided.has(u.id)).length,
       workspace: ws.WORKSPACE_DIR,
     };
   }
 );
 
-export const getInbox = createServerFn({ method: "GET" }).handler(async () => {
-  const ws = await import("#/server/workspace");
-  const { loadQueue } = await import("#/server/queue");
-  const { dropSection, dropTldr } = await import("#/server/sections");
-  const ask = await import("#/server/ask");
-  const [reports, digests, queue, conversations] = await Promise.all([
-    ws.listReports(),
-    ws.listDigests(),
-    loadQueue(),
-    ask.listConversations(),
-  ]);
-  const [latestReport] = reports;
-  const [latestDigest] = digests;
-  const report = latestReport ? await ws.readReport(latestReport.day) : null;
-  return {
-    // Ask's stored conversations — the page links to /ask with this count (LIA-103, AC5).
-    conversations: conversations.length,
-    digest: latestDigest
-      ? { day: latestDigest.day, lede: latestDigest.lede }
-      : null,
-    // The queue is the report's Needs-you section with `decisions/` laid over it, so the
-    // report itself is shown without that section — and without the TL;DR callout that
-    // restates it; the summary sentence stays.
-    queue,
-    report:
-      report && latestReport
-        ? {
-            day: latestReport.day,
-            doc: dropTldr(dropSection(report.doc, "Needs you")),
-            path: report.path,
-          }
+/**
+ * The sweep log page (/reports): the Needs-you queue, the latest report without the section
+ * the queue already is, every day on file, and the latest digest. This was the home page's
+ * loader until the board took `/` (LIA-160 AC1).
+ */
+export const getSweepLog = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const ws = await import("#/server/workspace");
+    const { loadQueue } = await import("#/server/queue");
+    const { dropSection, dropTldr } = await import("#/server/sections");
+    const ask = await import("#/server/ask");
+    const [reports, digests, queue, conversations] = await Promise.all([
+      ws.listReports(),
+      ws.listDigests(),
+      loadQueue(),
+      ask.listConversations(),
+    ]);
+    const [latestReport] = reports;
+    const [latestDigest] = digests;
+    const report = latestReport ? await ws.readReport(latestReport.day) : null;
+    return {
+      // Ask's stored conversations — the page links to /ask with this count (LIA-103, AC5).
+      conversations: conversations.length,
+      days: reports,
+      digest: latestDigest
+        ? { day: latestDigest.day, lede: latestDigest.lede }
         : null,
-    workspace: ws.WORKSPACE_DIR,
-  };
-});
+      // The queue is the report's Needs-you section with `decisions/` laid over it, so the
+      // report itself is shown without that section — and without the TL;DR callout that
+      // restates it; the summary sentence stays.
+      queue,
+      report:
+        report && latestReport
+          ? {
+              day: latestReport.day,
+              doc: dropTldr(dropSection(report.doc, "Needs you")),
+              path: report.path,
+            }
+          : null,
+      workspace: ws.WORKSPACE_DIR,
+    };
+  }
+);
 
 export const listJournal = createServerFn({ method: "GET" }).handler(
   async () => {
@@ -137,13 +166,6 @@ export const getDigest = createServerFn({ method: "GET" })
     const ws = await import("#/server/workspace");
     return ws.readDigest(data);
   });
-
-export const listReports = createServerFn({ method: "GET" }).handler(
-  async () => {
-    const ws = await import("#/server/workspace");
-    return ws.listReports();
-  }
-);
 
 export const getReport = createServerFn({ method: "GET" })
   .validator((day: string) => day)
@@ -794,4 +816,158 @@ export const closeArc = createServerFn({ method: "POST" })
     return v.ok
       ? { arc: asOpened(v.decision), ok: true }
       : { error: v.error, ok: false };
+  });
+
+// ── the board, a workstream, and the triage queue (LIA-160) ────────────────────
+
+export interface BoardPage {
+  /** `marauder/board.md`, or null when no run has rendered one yet. */
+  board: Rendered | null;
+  /** Left to triage — the badge the board carries through to `/unsorted`. */
+  unsorted: number;
+}
+
+/**
+ * The home page: the board as the sweep rendered it, with its links pointed at the routes
+ * that serve them and every workstream's name linked to its own page (AC1).
+ */
+export const getBoard = createServerFn({ method: "GET" }).handler(
+  async (): Promise<BoardPage> => {
+    const mr = await import("#/server/marauder");
+    const dec = await import("#/server/decisions");
+    const [workstreams, unsorted, decided] = await Promise.all([
+      mr.listWorkstreams(),
+      mr.readUnsorted(),
+      dec.readMarauderDecisions(),
+    ]);
+    return {
+      board: await mr.readBoard(undefined, { workstreams }),
+      unsorted: unsorted.filter((u) => !decided.has(u.id)).length,
+    };
+  }
+);
+
+export interface WorkstreamPage {
+  milestone: Milestone | null;
+  page: Rendered | null;
+  workstream: Workstream | null;
+}
+
+/**
+ * One workstream: its rendered page, the record behind it — which is where the stage per
+ * side, the tickets and the PRs come from — and the milestone it points at (AC2).
+ */
+export const getWorkstream = createServerFn({ method: "GET" })
+  .validator((slug: string) => slug)
+  .handler(async ({ data }): Promise<WorkstreamPage> => {
+    const mr = await import("#/server/marauder");
+    const found = await mr.readWorkstream(data);
+    if (!found) {
+      return { milestone: null, page: null, workstream: null };
+    }
+    const milestones = found.workstream?.milestone
+      ? await mr.readMilestones()
+      : {};
+    return {
+      milestone: found.workstream?.milestone
+        ? (milestones[found.workstream.milestone] ?? null)
+        : null,
+      page: found.page,
+      workstream: found.workstream,
+    };
+  });
+
+export interface UnsortedPage {
+  /** The decision already written on an entry, by the entry's own id. */
+  decided: [string, MarauderDecision][];
+  items: UnsortedItem[];
+  /** The workstreams a row may attach to — every one that is not parked. */
+  open: Array<{ name: string; slug: string }>;
+}
+
+/**
+ * The corrections queue: every entry ingest could not attach, newest first, with whatever
+ * has already been decided about it laid over the top (AC3). A `Map` does not survive the
+ * wire, so the pairs travel as an array.
+ */
+export const getUnsorted = createServerFn({ method: "GET" }).handler(
+  async (): Promise<UnsortedPage> => {
+    const mr = await import("#/server/marauder");
+    const dec = await import("#/server/decisions");
+    const [items, workstreams, decided] = await Promise.all([
+      mr.readUnsorted(),
+      mr.listWorkstreams(),
+      dec.readMarauderDecisions(),
+    ]);
+    return {
+      decided: Array.from(decided.entries()),
+      items,
+      open: workstreams
+        .filter((w) => !w.parked)
+        .map((w) => ({ name: w.name, slug: w.slug }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }
+);
+
+export type UnsortedVerdict =
+  | { ok: true; decision: MarauderDecision; replay?: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Decide one Unsorted entry: one `decisions/marauder/<slug>.json`, through the same atomic
+ * writer every other verdict uses. Nothing under `workstreams/` is touched here — the next
+ * `marauder ingest` applies the file through its correction functions, drops the entry from
+ * the queue and commits, which is what keeps this app's one-writer rule (AC3, AC4).
+ *
+ * A second click on the same entry is a no-op that answers the file already there: a
+ * decision file is never edited afterwards, and re-deciding would otherwise write a second,
+ * later verdict over a correction the sweep may already have applied.
+ */
+export const decideUnsorted = createServerFn({ method: "POST" })
+  .validator(
+    (input: {
+      action: string;
+      id: string;
+      name?: string;
+      reason?: string;
+      side?: string;
+      slug?: string;
+      stage?: string;
+    }) => input
+  )
+  .handler(async ({ data }): Promise<UnsortedVerdict> => {
+    const dec = await import("#/server/decisions");
+    const draft = {
+      action: trimmed(data.action),
+      id: trimmed(data.id),
+      name: trimmed(data.name),
+      reason: trimmed(data.reason),
+      side: trimmed(data.side),
+      slug: trimmed(data.slug),
+      stage: trimmed(data.stage),
+    };
+    const error = checkDraft(draft);
+    if (error) {
+      return { error, ok: false };
+    }
+    const already = await dec.readMarauderDecision(draft.id);
+    if (already) {
+      return { decision: already, ok: true, replay: true };
+    }
+    const decision: MarauderDecision = {
+      action: draft.action as MarauderDecision["action"],
+      at: new Date().toISOString(),
+      by: PENSIEVE_USER,
+      id: draft.id,
+      ...(draft.name ? { name: draft.name } : {}),
+      ...(draft.reason ? { reason: draft.reason } : {}),
+      ...(draft.side ? { side: draft.side as MarauderDecision["side"] } : {}),
+      ...(draft.slug ? { slug: draft.slug } : {}),
+      ...(draft.stage
+        ? { stage: draft.stage as MarauderDecision["stage"] }
+        : {}),
+    };
+    await dec.writeMarauderDecision(decision);
+    return { decision, ok: true };
   });
