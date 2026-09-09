@@ -141,6 +141,18 @@
   /* The chrome reads at 14px (`text-sm`); prose is 16px, set on `.prose-pensieve`. */
 }
 
+/* Tailwind 4 defaults an unqualified `border` to currentColor; the vendored shadcn parts
+   (sidebar, sheet) rely on the v3 default instead, so every border starts from the token. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
+}
+
 html {
   font-family: var(--font-sans);
   font-size: 16px;
