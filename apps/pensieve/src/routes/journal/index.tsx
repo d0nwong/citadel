@@ -180,7 +180,7 @@ function JournalPage() {
             </button>
           ))}
           <input
-            className="ml-auto w-full rounded-md border border-border bg-muted/60 px-3 py-1.5 font-mono text-foreground text-sm placeholder:text-subtle focus:border-primary focus:outline-none sm:w-72"
+            className="ml-auto w-full rounded-md border border-input bg-background px-3 py-1.5 text-foreground text-sm placeholder:text-subtle focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 sm:w-72"
             onChange={(e) => set({ q: e.target.value || undefined })}
             placeholder="search slug, summary, pr, ticket…"
             value={search.q ?? ""}
@@ -228,7 +228,7 @@ function JournalPage() {
             >
               {prettyDay(day)}
             </Link>
-            <p className="mono mt-0.5 text-subtle">
+            <p className="mt-0.5 text-subtle text-xs">
               {entries.length} landing{entries.length === 1 ? "" : "s"}
             </p>
           </div>
@@ -256,9 +256,7 @@ function JournalPage() {
                   {e.summary ?? e.slug}
                 </Link>
                 {e.hold && (
-                  <p className="mt-1 text-sm text-st-hold italic">
-                    hold: {e.hold}
-                  </p>
+                  <p className="mt-1 text-sm text-st-hold">hold: {e.hold}</p>
                 )}
               </li>
             ))}

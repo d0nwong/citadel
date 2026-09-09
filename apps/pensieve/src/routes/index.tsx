@@ -5,6 +5,7 @@
  * and Argus are one link each — the digest's own action-item list is the same items again.
  */
 
+import type { MarkdownHeading } from "@tanstack/markdown";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 import { Empty, PageHeader } from "#/components/bits";
@@ -25,6 +26,27 @@ function tickTime(iso: string) {
     return iso;
   }
   return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+/** The log's h2s — Done today, Linear today, Audit — as one row of anchors above it. */
+function SweepJumps({ headings }: { headings: MarkdownHeading[] }) {
+  const tops = headings.filter((h) => h.level === 2);
+  if (tops.length < 2) {
+    return null;
+  }
+  return (
+    <p className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      {tops.map((h) => (
+        <a
+          className="text-muted-foreground hover:text-foreground"
+          href={`#${h.id}`}
+          key={h.id}
+        >
+          {h.text}
+        </a>
+      ))}
+    </p>
+  );
 }
 
 function TodayPage() {
@@ -67,7 +89,10 @@ function TodayPage() {
           </Link>
         </div>
         {report ? (
-          <Md doc={report.doc} />
+          <>
+            <SweepJumps headings={report.doc.headings ?? []} />
+            <Md doc={report.doc} />
+          </>
         ) : (
           <Empty title="No sweep report on file">
             The sweep writes{" "}

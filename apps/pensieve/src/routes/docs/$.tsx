@@ -1,6 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { Fact, FeatureLink, PageHeader } from "#/components/bits";
 import { Md } from "#/components/md";
+import { DocLayout, Toc } from "#/components/toc";
 import { getDoc } from "#/lib/api";
 import { cn } from "#/lib/utils";
 
@@ -36,8 +37,7 @@ export const Route = createFileRoute("/docs/$")({
 
 function DocPage() {
   const { doc, meta, path } = Route.useLoaderData();
-  const headings = (doc.headings ?? []).filter((h) => h.level <= 2);
-  // The key is `<app>/<dir>`; the app is already the kicker's first half.
+  // The key is `<app>/<dir>`; the app is already the eyebrow's first half.
   const short = meta.feature.startsWith(`${meta.app}/`)
     ? meta.feature.slice(meta.app.length + 1)
     : meta.feature;
@@ -45,14 +45,15 @@ function DocPage() {
     <>
       <PageHeader
         aside={
-          <span className="flex gap-1.5">
+          // The two tiers as a segmented control: one is always the page shown.
+          <span className="inline-flex rounded-md border border-border p-0.5">
             {(["product", "arch"] as const).map((t) => (
               <Link
                 className={cn(
-                  "rounded-md border px-2 py-0.5 font-medium text-xs",
+                  "rounded-[5px] px-2.5 py-0.5 font-medium text-xs transition-colors",
                   meta.tier === t
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                    ? "bg-accent text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
                 key={t}
                 params={{ _splat: meta.feature }}
@@ -66,91 +67,86 @@ function DocPage() {
         }
         eyebrow={
           <>
-            {meta.app} ·{" "}
-            <span className="normal-case tracking-normal">{short}</span>
+            <Link className="hover:text-primary" to="/docs">
+              Docs
+            </Link>
+            <span aria-hidden>›</span>
+            <Link
+              className="hover:text-primary"
+              search={{ app: meta.app }}
+              to="/docs"
+            >
+              {meta.app}
+            </Link>
+            <span aria-hidden>›</span>
+            <span className="mono">{short}</span>
           </>
         }
         title={meta.name ?? short}
       />
-      <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-[1fr_13rem]">
-        <div className="min-w-0">
-          <Md doc={doc} />
-        </div>
-        <aside className="order-first lg:sticky lg:top-6 lg:order-none lg:max-h-[calc(100dvh-3rem)] lg:self-start lg:overflow-y-auto">
-          <dl>
-            <Fact label="Verified · FE">
-              {meta.lastVerified && (
-                <>
-                  <span className="mono">{meta.lastVerified.slice(0, 9)}</span>
-                  {meta.lastVerifiedDate && (
-                    <span className="ml-2 text-subtle">
-                      {meta.lastVerifiedDate}
+      <DocLayout
+        rail={
+          <>
+            <dl>
+              <Fact label="Verified · FE">
+                {meta.lastVerified && (
+                  <>
+                    <span className="mono">
+                      {meta.lastVerified.slice(0, 9)}
                     </span>
-                  )}
-                </>
-              )}
-            </Fact>
-            {/* Single-repo apps carry no backend stamp; `Fact` omits an empty row. */}
-            <Fact label="Verified · BE">
-              {meta.lastVerifiedBe && (
-                <>
-                  <span className="mono">
-                    {meta.lastVerifiedBe.slice(0, 9)}
+                    {meta.lastVerifiedDate && (
+                      <span className="ml-2 text-subtle">
+                        {meta.lastVerifiedDate}
+                      </span>
+                    )}
+                  </>
+                )}
+              </Fact>
+              {/* Single-repo apps carry no backend stamp; `Fact` omits an empty row. */}
+              <Fact label="Verified · BE">
+                {meta.lastVerifiedBe && (
+                  <>
+                    <span className="mono">
+                      {meta.lastVerifiedBe.slice(0, 9)}
+                    </span>
+                    {meta.lastVerifiedBeDate && (
+                      <span className="ml-2 text-subtle">
+                        {meta.lastVerifiedBeDate}
+                      </span>
+                    )}
+                  </>
+                )}
+              </Fact>
+              <Fact label="Status">{meta.status}</Fact>
+              <Fact label="Owner">{meta.owner}</Fact>
+              <Fact label="Related">
+                {meta.related.length > 0 && (
+                  <span className="flex flex-wrap gap-x-2">
+                    {meta.related.map((f) => (
+                      <FeatureLink feature={f} key={f} />
+                    ))}
                   </span>
-                  {meta.lastVerifiedBeDate && (
-                    <span className="ml-2 text-subtle">
-                      {meta.lastVerifiedBeDate}
-                    </span>
-                  )}
-                </>
-              )}
-            </Fact>
-            <Fact label="Status">{meta.status}</Fact>
-            <Fact label="Owner">{meta.owner}</Fact>
-            <Fact label="Related">
-              {meta.related.length > 0 && (
-                <span className="flex flex-wrap gap-x-2">
-                  {meta.related.map((f) => (
-                    <FeatureLink feature={f} key={f} />
-                  ))}
-                </span>
-              )}
-            </Fact>
-            <Fact label="Journal">
-              <Link
-                className="text-primary hover:underline"
-                search={{ feature: meta.feature }}
-                to="/journal"
-              >
-                landings for {meta.feature}
-              </Link>
-            </Fact>
-            <Fact label="File">
-              <span className="mono break-all text-subtle">{path}</span>
-            </Fact>
-          </dl>
-          {headings.length > 1 && (
-            <nav className="mt-6 hidden lg:block">
-              <p className="kicker mb-2">On this page</p>
-              <ol className="flex flex-col gap-1 border-border border-l">
-                {headings.map((h) => (
-                  <li
-                    className={cn(h.level === 1 ? "pl-3" : "pl-3")}
-                    key={h.id}
-                  >
-                    <a
-                      className="block text-muted-foreground text-sm leading-snug hover:text-primary"
-                      href={`#${h.id}`}
-                    >
-                      {h.text}
-                    </a>
-                  </li>
-                ))}
-              </ol>
-            </nav>
-          )}
-        </aside>
-      </div>
+                )}
+              </Fact>
+              <Fact label="Journal">
+                <Link
+                  className="text-primary hover:underline"
+                  search={{ feature: meta.feature }}
+                  to="/journal"
+                >
+                  landings for {short}
+                </Link>
+              </Fact>
+              <Fact label="File">
+                <span className="mono break-all text-subtle">{path}</span>
+              </Fact>
+            </dl>
+            <Toc className="hidden xl:block" headings={doc.headings ?? []} />
+          </>
+        }
+      >
+        <Md doc={doc} />
+      </DocLayout>
     </>
   );
 }

@@ -42,14 +42,14 @@ function AskListPage() {
           <li key={c.threadId}>
             {/* Phone: the question on two lines with the time under it; from sm up, one row with the time first. */}
             <Link
-              className="group flex flex-col gap-0.5 py-3 sm:flex-row sm:items-baseline sm:gap-4"
+              className="flex flex-col gap-0.5 rounded-md px-2 py-2 transition-colors hover:bg-accent sm:flex-row sm:items-baseline sm:gap-4"
               params={{ id: c.threadId }}
               to="/ask/$id"
             >
               <span className="mono order-last shrink-0 text-subtle sm:order-none sm:w-36">
                 {prettyStamp(c.updatedAt)}
               </span>
-              <span className="min-w-0 font-medium text-foreground group-hover:text-primary max-sm:line-clamp-2 max-sm:text-[17px] max-sm:leading-snug sm:truncate sm:text-[19px]">
+              <span className="min-w-0 font-medium text-foreground max-sm:line-clamp-2 sm:truncate">
                 {c.title}
               </span>
             </Link>

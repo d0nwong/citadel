@@ -1,6 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { PageHeader } from "#/components/bits";
 import { Md } from "#/components/md";
+import { DocLayout, Toc } from "#/components/toc";
 import { getReport } from "#/lib/api";
 import { prettyDay } from "#/lib/utils";
 
@@ -24,13 +25,13 @@ function ReportPage() {
   return (
     <>
       <PageHeader
-        aside={<span className="mono">{r.path}</span>}
+        aside={<span className="mono text-subtle">{r.path}</span>}
         eyebrow="Sweep report"
         title={prettyDay(day)}
       />
-      <div>
+      <DocLayout rail={<Toc headings={r.doc.headings ?? []} />}>
         <Md doc={r.doc} />
-      </div>
+      </DocLayout>
     </>
   );
 }

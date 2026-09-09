@@ -18,16 +18,16 @@ function DigestsPage() {
         title="Digests"
       />
       {digests.length === 0 && <Empty title="No digests yet" />}
-      <ul className="divide-y divide-border">
+      <ul className="-mx-2 flex flex-col">
         {digests.map((d) => (
           <li key={d.day}>
             <Link
-              className="group flex flex-col gap-1 py-3 sm:flex-row sm:items-baseline sm:gap-4"
+              className="flex flex-col gap-0.5 rounded-md px-2 py-2 transition-colors hover:bg-accent sm:flex-row sm:items-baseline sm:gap-4"
               params={{ day: d.day }}
               to="/digests/$day"
             >
-              <span className="mono w-28 shrink-0 text-subtle">{d.day}</span>
-              <span className="font-medium text-foreground group-hover:text-primary">
+              <span className="mono w-24 shrink-0 text-subtle">{d.day}</span>
+              <span className="shrink-0 font-medium text-foreground">
                 {prettyDay(d.day)}
               </span>
               {d.lede && (

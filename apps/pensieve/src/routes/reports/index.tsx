@@ -18,20 +18,22 @@ function ReportsPage() {
         title="Reports"
       />
       {reports.length === 0 && <Empty title="No reports yet" />}
-      <ul className="divide-y divide-border">
+      <ul className="-mx-2 flex flex-col">
         {reports.map((r) => (
           <li key={r.day}>
             <Link
-              className="group flex items-baseline gap-4 py-3"
+              className="flex items-baseline gap-4 rounded-md px-2 py-2 transition-colors hover:bg-accent"
               params={{ day: r.day }}
               to="/reports/$day"
             >
-              <span className="mono w-28 shrink-0 text-subtle">{r.day}</span>
-              <span className="font-medium text-foreground group-hover:text-primary">
+              <span className="mono w-24 shrink-0 text-subtle">{r.day}</span>
+              <span className="shrink-0 font-medium text-foreground">
                 {prettyDay(r.day)}
               </span>
               {r.lede && (
-                <span className="truncate text-sm text-subtle">{r.lede}</span>
+                <span className="min-w-0 truncate text-sm text-subtle">
+                  {r.lede}
+                </span>
               )}
             </Link>
           </li>

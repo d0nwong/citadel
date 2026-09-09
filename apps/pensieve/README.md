@@ -22,7 +22,7 @@ blackboard, so the rule above holds. The server half landed in LIA-102, the page
 
 TanStack Start (React 19, Vite 8) on Bun · TanStack Router for file routes and typed
 search params · `@tanstack/markdown` — parse once on the server, ship the AST, render in
-React · Tailwind 4 with a paper-and-ink palette.
+React · Tailwind 4 with a docs-site palette — system sans, white and grey, one blue — in light and dark.
 
 The same shape as [foundry/web](https://github.com/d0nwong/foundry), on purpose: the
 two could share a shell later.

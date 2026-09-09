@@ -8,6 +8,7 @@ import {
   TicketLink,
 } from "#/components/bits";
 import { Md } from "#/components/md";
+import { DocLayout, Toc } from "#/components/toc";
 import { getJournalEntry } from "#/lib/api";
 import { prettyDay } from "#/lib/utils";
 
@@ -33,6 +34,10 @@ function EntryPage() {
         aside={<StatusPill hold={meta.hold} status={meta.status} />}
         eyebrow={
           <>
+            <Link className="hover:text-primary" to="/journal">
+              Journal
+            </Link>
+            <span aria-hidden>›</span>
             <Link
               className="hover:text-primary"
               search={{ day: meta.date }}
@@ -40,45 +45,51 @@ function EntryPage() {
             >
               {prettyDay(meta.date)}
             </Link>
-            {" · "}
+            <span aria-hidden>›</span>
             <FeatureLink className="text-xs" feature={meta.feature} />
           </>
         }
         title={meta.summary ?? meta.slug}
       />
-      <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-[1fr_13rem]">
-        <div className="min-w-0">
-          <Md doc={doc} />
-        </div>
-        <dl className="order-first lg:sticky lg:top-6 lg:order-none lg:self-start">
-          <Fact label="Landing">
-            <PrLink pr={meta.pr} url={meta.url} />
-            {meta.merge && (
-              <span className="mono ml-2 text-subtle">{meta.merge}</span>
-            )}
-          </Fact>
-          <Fact label="Ticket">
-            <TicketLink ticket={meta.ticket} />
-          </Fact>
-          <Fact label="Scope">{meta.scope}</Fact>
-          <Fact label="Features">
-            <span className="flex flex-wrap gap-x-2">
-              {meta.features.map((f) => (
-                <FeatureLink feature={f} key={f} />
-              ))}
-            </span>
-          </Fact>
-          <Fact label="Hold">
-            {meta.hold && <span className="text-st-hold">{meta.hold}</span>}
-          </Fact>
-          <Fact label="Source">
-            {meta.source && meta.source !== "null" ? meta.source : undefined}
-          </Fact>
-          <Fact label="File">
-            <span className="mono break-all text-subtle">{path}</span>
-          </Fact>
-        </dl>
-      </div>
+      <DocLayout
+        rail={
+          <>
+            <dl>
+              <Fact label="Landing">
+                <PrLink pr={meta.pr} url={meta.url} />
+                {meta.merge && (
+                  <span className="mono ml-2 text-subtle">{meta.merge}</span>
+                )}
+              </Fact>
+              <Fact label="Ticket">
+                <TicketLink ticket={meta.ticket} />
+              </Fact>
+              <Fact label="Scope">{meta.scope}</Fact>
+              <Fact label="Features">
+                <span className="flex flex-wrap gap-x-2">
+                  {meta.features.map((f) => (
+                    <FeatureLink feature={f} key={f} />
+                  ))}
+                </span>
+              </Fact>
+              <Fact label="Hold">
+                {meta.hold && <span className="text-st-hold">{meta.hold}</span>}
+              </Fact>
+              <Fact label="Source">
+                {meta.source && meta.source !== "null"
+                  ? meta.source
+                  : undefined}
+              </Fact>
+              <Fact label="File">
+                <span className="mono break-all text-subtle">{path}</span>
+              </Fact>
+            </dl>
+            <Toc className="hidden xl:block" headings={doc.headings ?? []} />
+          </>
+        }
+      >
+        <Md doc={doc} />
+      </DocLayout>
     </>
   );
 }

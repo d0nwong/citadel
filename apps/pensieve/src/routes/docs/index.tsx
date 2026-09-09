@@ -48,8 +48,8 @@ function AppSection({ app, docs }: { app: string; docs: DocMeta[] }) {
   return (
     <section className="mb-10">
       <div className="mb-1 flex items-baseline gap-3 border-border border-b pb-1">
-        <h2 className="font-medium text-foreground">{app}</h2>
-        <span className="mono text-subtle">
+        <h2 className="font-semibold text-base text-foreground">{app}</h2>
+        <span className="text-subtle text-xs">
           {byFeature.length} feature{byFeature.length === 1 ? "" : "s"}
         </span>
       </div>
@@ -71,7 +71,7 @@ function AppSection({ app, docs }: { app: string; docs: DocMeta[] }) {
                   </span>
                   <span className="mono text-subtle">{short}</span>
                 </div>
-                <div className="mt-0.5 flex flex-wrap gap-x-4 font-mono text-[11px]">
+                <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs">
                   <Age date={any?.lastVerifiedDate} label="fe" />
                   {/* Single-repo apps have no backend tier, so an empty `be —` on every
                       row would be noise rather than a signal. */}

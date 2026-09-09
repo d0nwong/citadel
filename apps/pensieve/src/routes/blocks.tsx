@@ -1,6 +1,6 @@
 /**
  * /blocks — scratch page for LIA-101. Renders every vendored chat block with canned
- * content so the paper-and-ink token mapping can be eyeballed without a model in the
+ * content so the token mapping can be eyeballed without a model in the
  * loop: Conversation → Message (user + assistant) → Tool (collapsed + expanded) →
  * Reasoning → Sources → PromptInput. Submitting the prompt echoes it locally.
  * Not in the nav on purpose; LIA-103 replaces it with the real /ask pages.
@@ -106,7 +106,7 @@ function BlocksPage() {
   return (
     <div className="flex h-[calc(100dvh-5rem)] flex-col">
       <PageHeader
-        aside="shadcn.io/ai on paper and ink"
+        aside="shadcn.io/ai on Pensieve's tokens"
         eyebrow="scratch · LIA-101"
         title="Chat blocks"
       />
