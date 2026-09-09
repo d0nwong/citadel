@@ -100,7 +100,7 @@ cmd_prereqs() {
 
   tool git    "the blackboard is a git repo; pr-facts reads the alden checkouts" "brew install git"
   tool bun    "accio, sync-skills, points, slack-pull — every script here"        "curl -fsSL https://bun.sh/install | bash"
-  tool claude "the sweep is a Claude Code session (/loop 1h /sweep)"             "curl -fsSL https://claude.ai/install.sh | bash"
+  tool claude "the sweep is a Claude Code session (/loop 15m /sweep)"             "curl -fsSL https://claude.ai/install.sh | bash"
   tool gh     "office-hours and prototyping open PRs on github.com"              "brew install gh" opt
 }
 
@@ -202,7 +202,7 @@ cmd_env() {
     ok "created $ENV_FILE ${c_dim}(from .env.example, mode 600)${c_0}"
   fi
   if grep -Eq '^SLACK_TOKEN=.+' "$ENV_FILE"; then ok "SLACK_TOKEN set"; return 0; fi
-  warn "SLACK_TOKEN empty — slack-digest (and so the sweep's digest tick) cannot pull Slack"
+  warn "SLACK_TOKEN empty — slack-pull (and so the sweep's Slack intake) cannot reach the channel"
   if [ "$CHECK" = 1 ] || [ ! -t 0 ]; then
     say "  ${c_dim}./scripts/bootstrap.sh env${c_0}                    from a terminal, to be prompted"
     say "  ${c_dim}foundry auth --slack${c_0}                          prints a token to paste, if Foundry is set up here"
@@ -256,7 +256,7 @@ summary() {
   if [ "$FAIL" = 0 ]; then ok "host is ready"
   else warn "something is missing — see above"; fi
   say ""
-  say "  bun run sweep               ${c_dim}# the loop: claude '/loop 1h /sweep' on Sonnet${c_0}"
+  say "  bun run sweep               ${c_dim}# the loop: claude '/loop 15m /sweep' on Sonnet${c_0}"
   say "  claude → /sweep             ${c_dim}# one manual pass${c_0}"
   say "  bun run accio audit         ${c_dim}# reconcile without writing${c_0}"
   return "$FAIL"

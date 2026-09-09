@@ -14,8 +14,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { apply, parseDecision, readDecisions, type MarauderDecision } from "./decisions.ts";
-import { dismiss, type State } from "./correct.ts";
-import type { UnsortedItem, Workstream } from "./record.ts";
+import { CONFIRMED, dismiss, type State } from "./correct.ts";
+import type { UnsortedItem, Workstream, WorkstreamEvent } from "./record.ts";
 
 const w = (over: Partial<Workstream> = {}): Workstream => ({
   slug: "history-subtask-rows",
@@ -196,5 +196,40 @@ describe("dismiss, the correction the decision file needed", () => {
     const who = { by: "Liam Leung", reason: "chat", at: "2026-09-09T20:00:00Z" };
     const once = dismiss(state(), item().id, who);
     expect(dismiss(once.state, item().id, who).changed).toBe(false);
+  });
+});
+
+describe("verified — the user answering what an event asked them (LIA-161)", () => {
+  const held = (over: Partial<WorkstreamEvent> = {}): WorkstreamEvent => ({
+    at: "2026-09-09T15:00:00Z",
+    kind: "directed-at-person",
+    summary: "LIA-153's Pending bullet looks answered, and Foundry is running the ticket.",
+    source: { type: "ticket", ref: "LIA-153" },
+    attached: { how: "human", confidence: "certain" },
+    ticket: "LIA-153",
+    ...over,
+  });
+  const withHeld = (over: Partial<WorkstreamEvent> = {}) => state({ workstreams: [w({ events: [held(over)] })] });
+
+  test("it stamps the event the go-ahead, keyed by the id the event is named by", () => {
+    const { state: next, changes } = apply(withHeld(), [
+      decision({ id: "LIA-153", action: "verified", slug: undefined, reason: "delete the bullet" }),
+    ]);
+    expect(next.workstreams[0]!.events[0]!.action).toBe(`${CONFIRMED} delete the bullet — Liam Leung`);
+    expect(changes[0]!.notes[0]).toContain("confirmed LIA-153");
+  });
+
+  test("a second confirmation of the same event changes nothing", () => {
+    const once = apply(withHeld(), [decision({ id: "LIA-153", action: "verified", slug: undefined })]);
+    expect(apply(once.state, [decision({ id: "LIA-153", action: "verified", slug: undefined })]).changes).toEqual([]);
+  });
+
+  test("an event no workstream carries is skipped, like every other stale decision", () => {
+    expect(apply(withHeld(), [decision({ id: "fe#999", action: "verified", slug: undefined })]).changes).toEqual([]);
+  });
+
+  test("it needs no slug, no name and no reason — the event says what was asked", () => {
+    const parsed = parseDecision(JSON.stringify({ id: "LIA-153", action: "verified", at: "2026-09-09T20:00:00.000Z", by: "Liam Leung" }));
+    expect(parsed).toHaveProperty("decision");
   });
 });

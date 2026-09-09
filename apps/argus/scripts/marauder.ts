@@ -216,7 +216,12 @@ if (verb === "ingest") {
 
 const CORRECTIONS = ["attach", "suggest", "new", "dismiss", "split", "stage", "propose-split", "pending", "resolved", "ticket", "held"];
 
-/** a `sent` decision naming this ticket means Foundry is executing it (PLAN "Shared contracts") */
+/**
+ * A `sent` decision naming this ticket means Foundry is executing it (PLAN "Shared
+ * contracts"). Every group under `decisions/` is scanned, so this reads both the old
+ * point-keyed files and `decisions/send/<ticket>.json` — `{ ticket, action: "sent", job }`,
+ * what Pensieve writes once Send moves onto the workstream page (LIA-162).
+ */
 async function sentTickets(root: string): Promise<Set<string>> {
   const out = new Set<string>();
   for await (const file of new Bun.Glob("**/*.json").scan({ cwd: join(root, "decisions"), absolute: true, onlyFiles: true })) {

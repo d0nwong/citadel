@@ -1,21 +1,17 @@
 # ticket-pass — the sweep's Linear worker
 
-One subagent per sweep tick, spawned by `skills/sweep/SKILL.md` step 6 after ingest has
+One subagent per sweep tick, spawned by `skills/sweep/SKILL.md` step 6 after dispatch has
 finished, `model: "opus"`. It is the **only** thing in the loop that writes to Linear.
 Write policy is the sweep's Autonomy section; ticket shape and editing rules are the
-`linear-ticket` skill. Neither changed with this rewrite — only where the work comes from.
+`linear-ticket` skill. Neither changed when the work's source did.
 
-The work now comes from workstream events. A ticket belongs to a workstream, so "which
+The work comes from workstream events, and from nothing else since LIA-161. A ticket belongs to a workstream, so "which
 ticket does this affect" is a choice among that workstream's one or two tickets rather
 than among every open one; and the workstream's `open_questions` and `facts` are a
 statement of what the work now is, so the pass diffs the ticket against them instead of
 patching it message by message. `marauder ticket-plan` computes that diff, and it is a
 pure function of the record and the body — the worker holds the Linear key and applies it,
 because argus holds no key.
-
-Until the rewire ticket retires the digest, the digest's own unlinked ✋ items are still an
-input; dedupe on the ticket key, and a ticket the event path already filed needs no second
-one.
 
 ## Prompt
 
@@ -27,8 +23,6 @@ Fill every `{…}`:
 > Inputs:
 > - The workstreams that gained an event this tick, and the events they gained:
 >   `{bun run marauder changed --since {prev tick ISO}}`.
-> - Unmarked, unlinked ✋ items from `digests/{date}.md`, one per line:
->   `{headline} — {detail} — {permalink}`. Still an input until the rewire.
 > - Features refreshed this tick: `{ids}`.
 > - Team `Liamai`; assignee = me. Linear tools are `mcp__linear__*` — ToolSearch them if
 >   deferred.
@@ -38,8 +32,8 @@ Fill every `{…}`:
 > ticket body with `get_issue`, write it to a temp file, and run
 > `bun run marauder ticket-plan <slug> <LIA-nn> --body <file> --state "<its Linear state>"`.
 > Apply the plan per the action table below. Then Part B — file a ticket for every
-> `fileAsks` entry and for every unlinked ✋ item, per "Filing" — and Part C — review the
-> tickets naming a refreshed feature, per "Reviewing".
+> `fileAsks` entry, per "Filing" — and Part C — review the tickets naming a refreshed
+> feature, per "Reviewing".
 >
 > Report back two lists, verbatim lines the sweep can paste: **Needs you** (every flag the
 > plan returned, every ticket held because Foundry is running it, and anything you could
@@ -99,7 +93,7 @@ Notes edits are `replace` with an exact `old_string`; `due-date` is the `dueDate
 
 ## Filing
 
-A `fileAsks` entry, or an unlinked ✋ digest item carrying a real deliverable, gets a ticket:
+A `fileAsks` entry — a `new-ask` event on a workstream that has no ticket — gets one:
 
 - **Where:** the **Alden Portal** project — the project is the tag. Assignee me, the title
   prefixed `[FE]` or `[BE]` for the repo it lands in, the Slack permalink as the body's
@@ -107,16 +101,15 @@ A `fileAsks` entry, or an unlinked ✋ digest item carrying a real deliverable, 
 - **One ticket per ask.** Never an omnibus: one ask still waiting on a name would hold its
   siblings off the cockpit's Send button.
 - **No labels at filing.** A filed ticket is a queue entry, never a dispatch.
-- **Pure reply or acknowledgement pings get no ticket** — they stay in the report.
+- **A pure reply or an acknowledgement gets no ticket.** It is already an event on its
+  workstream, and the board is where it is read.
 - **Write the key back**, so no later tick files it twice:
 
   ```sh
   bun run marauder ticket <slug> <event-id> <LIA-nn>
   ```
 
-  For a digest item, also append ` → LIA-xx` to the end of its source line in the digest
-  file, which is what the old path dedupes on.
-- **Backstop before filing:** search the Alden Portal project for the item's permalink
+- **Backstop before filing:** search the Alden Portal project for the ask's permalink
   first. A hit means a prior tick crashed between filing and recording — write the missing
   key instead of filing twice.
 
@@ -126,7 +119,7 @@ Skip on a tick that refreshed nothing. Otherwise re-read the open tickets naming
 refreshed feature against the fresh docs: Pending items now landed, Scope lines pointing at
 files that no longer exist, line anchors that drifted. A drift re-verified against the
 pinned sha is a fact and is written in. Your own reading that an acceptance criterion now
-holds is *appears-satisfied* — Needs you, never a ticked box.
+holds is a flag — Needs you, never a ticked box.
 
 ## A ticket Foundry is running
 
@@ -141,6 +134,13 @@ bun run marauder held <slug> <LIA-nn>
 That writes a `directed-at-person` event carrying the edits, so the board shows it under
 Needs you and the reader decides whether to interrupt the run.
 
+**Once they answer.** Their yes arrives as `decisions/marauder/<event-id>.json` with
+`action: "verified"`, and the next ingest stamps that event `confirmed: …`. An event
+carrying that stamp is the fact that lifts the hold, for exactly the edits it named and
+nothing wider: apply them on this tick, and never re-hold the same ones. Everything under
+"Never" still holds — a confirmation is never a close, never an AC tick, and never
+permission to rewrite the ask.
+
 ## Never
 
 Unchanged from Autonomy, and worth restating because this worker is the only writer:
@@ -149,4 +149,6 @@ Unchanged from Autonomy, and worth restating because this worker is the only wri
 - never tick or untick an acceptance criterion — the boxes are the implementer's record;
 - never rewrite the ask itself; that is a flag;
 - never a comment where a body edit belongs, never a dated "Landed …" paragraph, never a
-  Slack quote. The journal owns history; the ticket is the current task.
+  Slack quote. The journal owns history; the ticket is the current task;
+- never a write to `reports/`, `digests/` or `arcs/`. They are the archive (sweep skill,
+  "Where the archive is").

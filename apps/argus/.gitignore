@@ -45,6 +45,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # the advanced cursor slack-pull writes, promoted only once the tick's commit succeeds
 workstreams/.state.json
 workstreams/.state.next.json
+# where that cursor lived while the digest owned it. slack-pull adopts it on its first run
+# and deletes it (LIA-161); the lines stay so an un-migrated checkout cannot commit one
+digests/.state.json
+digests/.state.next.json
 # slack-pull's 24h user-id → name cache
 .state/slack-users.json
 

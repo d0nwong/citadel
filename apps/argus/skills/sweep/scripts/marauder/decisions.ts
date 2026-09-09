@@ -10,7 +10,16 @@
  * for every other verb.
  *
  *   decisions/marauder/<slug>.json
- *   { id, action: "attach" | "new" | "dismiss" | "stage", slug?, name?, reason, at, by }
+ *   { id, action: "attach" | "new" | "dismiss" | "stage" | "verified", slug?, name?, reason, at, by }
+ *
+ * `verified` is the odd one: its `id` names an *event* rather than a queue entry, and it
+ * is the user answering what a `directed-at-person` event asked them — the go-ahead for
+ * the one edit that event named. It stamps the event and nothing else (LIA-161).
+ *
+ * The other group Pensieve writes is `decisions/send/<ticket>.json`,
+ * `{ ticket, action: "sent", job, at, by }` — a ticket handed to Foundry. Nothing here
+ * applies it: `marauder.ts` `sentTickets` reads every `sent` decision with a job when it
+ * builds a ticket plan, which is what holds the edits on a ticket Foundry is running.
  *
  * `id` is the entry's own id — a Slack `ts`, `fe#417`, `split/<slug>` — carried inside the
  * file because the file's *name* cannot be: an id is not a path segment, so Pensieve folds
@@ -31,15 +40,16 @@
  */
 
 import { join } from "node:path";
-import { attach, dismiss, newFrom, setStage, type Result, type State, type Who } from "./correct.ts";
+import { attach, confirmEvent, dismiss, newFrom, setStage, type Result, type State, type Who } from "./correct.ts";
 import { USER, type Side, type Stage } from "./record.ts";
 
 /** the group under `decisions/` this reads; the other groups are the old verdicts, archive */
 export const MARAUDER_GROUP = "marauder";
 
-export type MarauderAction = "attach" | "new" | "dismiss" | "stage";
+export type MarauderAction = "attach" | "new" | "dismiss" | "stage" | "verified";
 
 export type MarauderDecision = {
+  /** the queue entry this decides, or — for `verified` — the event it answers */
   id: string;
   action: MarauderAction;
   /** `attach` and `stage` — the workstream it lands on */
@@ -53,7 +63,7 @@ export type MarauderDecision = {
   by: string;
 };
 
-const ACTIONS: MarauderAction[] = ["attach", "new", "dismiss", "stage"];
+const ACTIONS: MarauderAction[] = ["attach", "new", "dismiss", "stage", "verified"];
 const isStr = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 
 /**
@@ -137,6 +147,7 @@ export function apply(state: State, decisions: MarauderDecision[]): { state: Sta
       d.action === "attach" ? attach(current, d.id, d.slug!, who)
       : d.action === "new" ? newFrom(current, d.id, { ...who, name: d.name! })
       : d.action === "dismiss" ? dismiss(current, d.id, who)
+      : d.action === "verified" ? confirmEvent(current, d.id, who)
       : setStage(current, d.slug!, d.side!, d.stage!, who);
     current = result.state;
     // the correction already says what it did, in the record's own words

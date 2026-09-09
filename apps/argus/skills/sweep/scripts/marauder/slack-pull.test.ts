@@ -1,5 +1,8 @@
 import { test, expect } from "bun:test";
-import { assemble, normaliseText, permalink, render, type SlackMessage, type State } from "./slack-pull.ts";
+import { assemble, normaliseText, permalink, readCursor, render, type SlackMessage, type State } from "./slack-pull.ts";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const users = { U1: "Carlos Lopes", U2: "Foong Leung", U09R2MYP6A0: "Liam" };
 const msg = (ts: string, user: string, text: string, extra: Partial<SlackMessage> = {}): SlackMessage => ({ ts, user, text, ...extra });
@@ -73,4 +76,35 @@ test("huddle notes from Slackbot are content, not noise, and point at the canvas
 test("render: quiet run says so", () => {
   const p = assemble({ last_ts: "1.000000", watched_threads: {} }, "1.000000", [], {}, {}, users, 2);
   expect(render(p)).toContain("nothing new.");
+});
+
+/**
+ * The cursor moved out of `digests/` when the digest was retired (LIA-161). Losing a
+ * message and re-reading a day are both silent failures, so the move is tested rather than
+ * trusted: it carries the old values over, it deletes the old file, and it happens once.
+ */
+test("the cursor adopts the digest's, once, and leaves nothing to adopt twice", async () => {
+  const root = await mkdtemp(join(tmpdir(), "slack-cursor-"));
+  const state = join(root, "workstreams/.state.json");
+  const digest = join(root, "digests/.state.json");
+  await Bun.write(digest, JSON.stringify({ last_ts: "1788949866.296519", watched_threads: { "1788776724.482269": "1788921414.929109" } }));
+
+  const first = await readCursor(state, digest);
+  expect(first.last_ts).toBe("1788949866.296519");
+  expect(first.watched_threads).toEqual({ "1788776724.482269": "1788921414.929109" });
+  expect(await Bun.file(digest).exists()).toBe(false);
+  expect(await Bun.file(state).exists()).toBe(true);
+
+  // the second run reads the new file and never looks at the old path again
+  expect(await readCursor(state, digest)).toEqual(first);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("no cursor anywhere is a day back, not the epoch — a fresh clone reads a day, never everything", async () => {
+  const root = await mkdtemp(join(tmpdir(), "slack-cursor-"));
+  const now = 1788949866_000;
+  const fresh = await readCursor(join(root, "workstreams/.state.json"), join(root, "digests/.state.json"), now);
+  expect(Number(fresh.last_ts)).toBe(now / 1000 - 24 * 3600);
+  expect(fresh.watched_threads).toEqual({});
+  await rm(root, { recursive: true, force: true });
 });

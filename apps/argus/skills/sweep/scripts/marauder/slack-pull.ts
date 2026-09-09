@@ -343,26 +343,28 @@ async function loadUsers(): Promise<Users> {
 }
 
 /**
- * The cursor, moving itself out of `digests/` the first time it is asked for. Adopting the
- * digest's `last_ts` and `watched_threads` verbatim is what makes the rewire lossless: a
- * fresh cursor would default to 24 hours back and re-read a day, and an empty one would
- * skip whatever arrived since the last digest run. The old file is deleted once its
- * contents are safely at the new path, so the adoption happens exactly once.
+ * The cursor, moving itself out of `digests/` the first time it is asked for (LIA-161).
+ *
+ * Adopting the digest's `last_ts` and `watched_threads` verbatim is what makes the rewire
+ * lossless: a fresh cursor would default to 24 hours back and re-read a day, and an empty
+ * one would skip whatever arrived since the last digest run. The old file is deleted once
+ * its contents are safely at the new path, so the adoption happens exactly once and a
+ * later run has nothing left to adopt.
  */
-async function loadState(): Promise<State> {
-  const f = Bun.file(STATE);
+export async function readCursor(state = STATE, digest = DIGEST_STATE, now = Date.now()): Promise<State> {
+  const f = Bun.file(state);
   if (await f.exists()) return (await f.json()) as State;
 
-  const old = Bun.file(DIGEST_STATE);
+  const old = Bun.file(digest);
   if (await old.exists()) {
     const carried = (await old.json()) as State;
-    const state: State = { last_ts: carried.last_ts, watched_threads: carried.watched_threads ?? {} };
-    await Bun.write(STATE, JSON.stringify(state, null, 2) + "\n");
+    const moved: State = { last_ts: carried.last_ts, watched_threads: carried.watched_threads ?? {} };
+    await Bun.write(state, JSON.stringify(moved, null, 2) + "\n");
     await old.delete();
-    console.error(`slack-pull: cursor moved from digests/.state.json to workstreams/.state.json (last_ts ${state.last_ts})`);
-    return state;
+    console.error(`slack-pull: cursor moved to workstreams/.state.json (last_ts ${moved.last_ts})`);
+    return moved;
   }
-  return { last_ts: String(Math.floor(Date.now() / 1000) - 24 * 3600), watched_threads: {} };
+  return { last_ts: String(Math.floor(now / 1000) - 24 * 3600), watched_threads: {} };
 }
 
 /** "2026-08-28" → ts at local midnight; anything else is taken as a unix ts */
@@ -381,7 +383,7 @@ async function main() {
   const json = argv.includes("--json");
   const writeNext = !argv.includes("--no-next") && !sinceArg;
 
-  const state = await loadState();
+  const state = await readCursor();
   const since = sinceArg ? parseSince(sinceArg) : state.last_ts;
   const nowS = Math.floor(Date.now() / 1000);
   const users = await loadUsers();
