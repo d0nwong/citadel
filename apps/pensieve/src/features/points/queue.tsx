@@ -190,7 +190,7 @@ function PointRow({
   const askAbout = useAskAbout(point);
   const waiting = waitingTag(point);
   return (
-    <li className="py-3.5">
+    <li className="py-4">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <span className="font-medium text-foreground leading-snug">
           <Inline text={point.subject} />
@@ -203,16 +203,13 @@ function PointRow({
       </div>
       {/* A waiting row's ask is its tag; the others' ask is the question itself. */}
       {!waiting && (
-        <p className="mt-0.5 text-muted-foreground text-sm leading-snug">
+        <p className="mt-1 text-muted-foreground text-sm leading-normal">
           <Inline text={point.ask} />
         </p>
       )}
       {point.detail && (
         <p
-          className={cn(
-            "max-w-[72ch] text-sm text-subtle leading-snug",
-            waiting ? "mt-1" : "mt-0.5"
-          )}
+          className={cn("mt-1 max-w-[72ch] text-sm text-subtle leading-normal")}
         >
           <Inline text={point.detail} />
         </p>

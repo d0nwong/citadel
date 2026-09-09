@@ -65,11 +65,11 @@ export function PointCard({ page }: { page: PointPage | null }) {
             {age(point.firstSeen)}
           </span>
         </summary>
-        <p className="mt-1 pl-7 text-muted-foreground text-sm leading-snug">
+        <p className="mt-1 pl-7 text-muted-foreground text-sm leading-normal">
           <Inline text={point.ask} />
         </p>
         {point.detail && (
-          <p className="mt-1 max-w-[72ch] pl-7 text-sm text-subtle leading-snug">
+          <p className="mt-1 max-w-[72ch] pl-7 text-sm text-subtle leading-normal">
             <Inline text={point.detail} />
           </p>
         )}

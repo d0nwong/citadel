@@ -109,14 +109,14 @@
 
   /* The app's one text size: everything that is not a heading is `text-sm`. */
   --text-sm: 0.9375rem;
-  --text-sm--line-height: 1.6;
+  --text-sm--line-height: 1.75;
 }
 
 html {
   font-family: var(--font-sans);
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
-  line-height: 1.6;
+  line-height: 1.7;
   color: var(--foreground);
   color-scheme: light;
   background: var(--background);
@@ -163,27 +163,30 @@ body {
   line-height: 1.2;
 }
 .prose-pensieve :where(h2) {
-  margin: 2rem 0 0.6rem;
+  margin: 2.5rem 0 0.75rem;
   font-size: 1.25rem;
   line-height: 1.3;
 }
 .prose-pensieve :where(h3) {
-  margin: 1.5rem 0 0.4rem;
+  margin: 2rem 0 0.5rem;
   font-size: 1.0625rem;
   line-height: 1.35;
 }
 .prose-pensieve :where(h4) {
-  margin: 1.25rem 0 0.3rem;
+  margin: 1.5rem 0 0.4rem;
   font-size: 1rem;
 }
 .prose-pensieve :where(p, ul, ol, blockquote, table, pre) {
-  margin: 0 0 0.85rem;
+  margin: 0 0 1.2rem;
 }
 .prose-pensieve :where(ul, ol) {
   padding-left: 1.4rem;
 }
 .prose-pensieve :where(li) {
-  margin: 0.25rem 0;
+  margin: 0.5rem 0;
+}
+.prose-pensieve :where(li > ul, li > ol) {
+  margin: 0.35rem 0 0;
 }
 .prose-pensieve :where(li > p) {
   margin: 0;

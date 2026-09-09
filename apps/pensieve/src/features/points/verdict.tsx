@@ -497,7 +497,7 @@ export function DecidedLine({
         <span className="ml-auto text-subtle text-xs">{when(d.at)}</span>
       </div>
       {d.reason && (
-        <p className="mt-1 text-muted-foreground text-sm leading-snug">
+        <p className="mt-1 text-muted-foreground text-sm leading-normal">
           {d.reason}
         </p>
       )}
