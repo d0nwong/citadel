@@ -106,8 +106,7 @@ function BlocksPage() {
   return (
     <div className="flex h-[calc(100dvh-5rem)] flex-col">
       <PageHeader
-        aside="shadcn.io/ai on Pensieve's tokens"
-        eyebrow="scratch · LIA-101"
+        actions="shadcn.io/ai on Pensieve's tokens"
         title="Chat blocks"
       />
 

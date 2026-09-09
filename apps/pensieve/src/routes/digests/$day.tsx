@@ -6,12 +6,13 @@ import { getDigest } from "#/lib/api";
 import { prettyDay } from "#/lib/utils";
 
 export const Route = createFileRoute("/digests/$day")({
+  staticData: { crumb: "Digests" },
   loader: async ({ params }) => {
     const r = await getDigest({ data: params.day });
     if (!r) {
       throw notFound();
     }
-    return r;
+    return { ...r, crumb: prettyDay(params.day) };
   },
   component: DigestPage,
   notFoundComponent: () => (
@@ -25,8 +26,7 @@ function DigestPage() {
   return (
     <>
       <PageHeader
-        aside={<span className="mono text-subtle">{r.path}</span>}
-        eyebrow="#dev-team digest"
+        actions={<span className="mono text-subtle">{r.path}</span>}
         title={prettyDay(day)}
       />
       <DocLayout rail={<Toc headings={r.doc.headings ?? []} />}>

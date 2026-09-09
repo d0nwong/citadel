@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { Empty, PageHeader } from "#/components/bits";
+import { DocLayout } from "#/components/toc";
 import { listDocs } from "#/lib/api";
 import { cn, daysSince } from "#/lib/utils";
 import type { DocMeta } from "#/server/workspace";
@@ -10,6 +11,7 @@ interface Search {
 }
 
 export const Route = createFileRoute("/docs/")({
+  staticData: { crumb: "Docs" },
   validateSearch: (s: Record<string, unknown>): Search => ({
     app: typeof s.app === "string" && s.app ? s.app : undefined,
   }),
@@ -139,9 +141,9 @@ function DocsPage() {
   );
 
   return (
-    <>
+    <DocLayout>
       <PageHeader
-        aside={
+        actions={
           <>
             {features} feature{features === 1 ? "" : "s"}
             {apps.length > 1 && !selected && ` · ${apps.length} apps`}
@@ -156,7 +158,6 @@ function DocsPage() {
             )}
           </>
         }
-        eyebrow="Dual-tier feature docs"
         title="Docs"
       />
 
@@ -189,6 +190,6 @@ function DocsPage() {
       {grouped.map(([app, appDocs]) => (
         <AppSection app={app} docs={appDocs} key={app} />
       ))}
-    </>
+    </DocLayout>
   );
 }

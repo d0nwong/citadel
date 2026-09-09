@@ -1,4 +1,4 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, notFound } from "@tanstack/react-router";
 import {
   Fact,
   FeatureLink,
@@ -10,15 +10,15 @@ import {
 import { Md } from "#/components/md";
 import { DocLayout, Toc } from "#/components/toc";
 import { getJournalEntry } from "#/lib/api";
-import { prettyDay } from "#/lib/utils";
 
 export const Route = createFileRoute("/journal/$")({
+  staticData: { crumb: "Journal" },
   loader: async ({ params }) => {
     const r = await getJournalEntry({ data: params._splat ?? "" });
     if (!r) {
       throw notFound();
     }
-    return r;
+    return { ...r, crumb: r.meta.summary ?? r.meta.slug };
   },
   component: EntryPage,
   notFoundComponent: () => (
@@ -31,24 +31,7 @@ function EntryPage() {
   return (
     <>
       <PageHeader
-        aside={<StatusPill hold={meta.hold} status={meta.status} />}
-        eyebrow={
-          <>
-            <Link className="hover:text-primary" to="/journal">
-              Journal
-            </Link>
-            <span aria-hidden>›</span>
-            <Link
-              className="hover:text-primary"
-              search={{ day: meta.date }}
-              to="/journal"
-            >
-              {prettyDay(meta.date)}
-            </Link>
-            <span aria-hidden>›</span>
-            <FeatureLink className="text-xs" feature={meta.feature} />
-          </>
-        }
+        actions={<StatusPill hold={meta.hold} status={meta.status} />}
         title={meta.summary ?? meta.slug}
       />
       <DocLayout

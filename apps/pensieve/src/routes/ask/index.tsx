@@ -5,12 +5,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
 import { Empty, PageHeader } from "#/components/bits";
+import { DocLayout } from "#/components/toc";
 import { Button } from "#/components/ui/button";
 import { newThreadId } from "#/features/ask";
 import { listConversations } from "#/lib/api";
 import { prettyStamp } from "#/lib/utils";
 
 export const Route = createFileRoute("/ask/")({
+  staticData: { crumb: "Argus" },
   loader: () => listConversations(),
   component: AskListPage,
 });
@@ -21,15 +23,14 @@ function AskListPage() {
   const start = () =>
     navigate({ to: "/ask/$id", params: { id: newThreadId() } });
   return (
-    <>
+    <DocLayout>
       <PageHeader
-        aside={
+        actions={
           <Button onClick={start} size="sm">
             <PlusIcon />
             New conversation
           </Button>
         }
-        eyebrow="Argus"
         title="Conversations"
       />
       {conversations.length === 0 && (
@@ -56,6 +57,6 @@ function AskListPage() {
           </li>
         ))}
       </ul>
-    </>
+    </DocLayout>
   );
 }

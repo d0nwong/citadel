@@ -11,7 +11,7 @@
  *
  * Opened from a point (`?q=…&from=home&point=<id>`): the question is sent as soon as a
  * credential is known to be available — or left in the composer when it is not — and the
- * eyebrow is a breadcrumb back to the queue on the home page. The point itself travels with the run and is
+ * top bar's breadcrumb leads back. The point itself travels with the run and is
  * stored as the conversation's own (`metadata.point`), so the card above the transcript
  * survives a reload; `q` and `point` leave the URL once the first answer has landed and
  * the file carries them (LIA-109).
@@ -20,12 +20,11 @@
 import type { UIMessage } from "@tanstack/ai";
 import {
   createFileRoute,
-  Link,
   notFound,
   useNavigate,
   useRouter,
 } from "@tanstack/react-router";
-import { ArrowLeftIcon, Trash2Icon } from "lucide-react";
+import { Trash2Icon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "#/components/ui/button";
 import { AskStatusProvider, useAppChat } from "#/features/ask";
@@ -41,6 +40,7 @@ import { isPointId } from "#/lib/points";
 type From = "home";
 
 export const Route = createFileRoute("/ask/$id")({
+  staticData: { crumb: "Argus" },
   validateSearch: (
     s: Record<string, unknown>
   ): { q?: string; from?: From; point?: string } => ({
@@ -61,7 +61,16 @@ export const Route = createFileRoute("/ask/$id")({
     // The stored point wins: it is what this thread was opened on, whatever the URL says.
     const pointId = conversation?.point ?? deps.point;
     const point = pointId ? await getPoint({ data: pointId }) : null;
-    return { conversation, point, status };
+    return {
+      conversation,
+      // `messages` crossed the wire as JSON (see `ConversationWire`); the bytes are UIMessages.
+      crumb:
+        firstQuestion(
+          (conversation?.messages ?? []) as unknown as UIMessage[]
+        ) || "New conversation",
+      point,
+      status,
+    };
   },
   component: AskConversationPage,
   notFoundComponent: () => (
@@ -116,7 +125,7 @@ const firstQuestion = (messages: UIMessage[]): string =>
 
 function AskConversationPage() {
   const { id } = Route.useParams();
-  const { q, from, point: urlPoint } = Route.useSearch();
+  const { q, point: urlPoint } = Route.useSearch();
   const { conversation, point, status } = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
@@ -229,33 +238,6 @@ function AskConversationPage() {
           conversation keeps the screen; from `sm` up it is the page title with its breadcrumb. */}
       <header className="mb-3 flex items-center gap-2 border-border border-b pb-2 sm:mb-8 sm:flex-wrap sm:items-end sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:pb-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:block">
-          <p className="kicker shrink-0 sm:mb-2">
-            {from === "home" ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Link
-                  className="inline-flex items-center gap-1 hover:text-primary"
-                  to="/"
-                >
-                  <ArrowLeftIcon className="size-3" />{" "}
-                  <span className="hidden sm:inline">Today</span>
-                </Link>
-                <span aria-hidden className="hidden sm:inline">
-                  ›
-                </span>
-                <Link className="hidden hover:text-primary sm:inline" to="/ask">
-                  Argus
-                </Link>
-              </span>
-            ) : (
-              <Link
-                className="inline-flex items-center gap-1 hover:text-primary"
-                to="/ask"
-              >
-                <ArrowLeftIcon className="size-3" />{" "}
-                <span className="hidden sm:inline">Argus</span>
-              </Link>
-            )}
-          </p>
           <h1 className="min-w-0 truncate font-semibold text-[17px] leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-[28px]">
             {title}
           </h1>

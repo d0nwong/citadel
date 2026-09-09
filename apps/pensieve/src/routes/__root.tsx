@@ -7,6 +7,7 @@ import {
 import { lazy, Suspense } from "react";
 import { AppShell } from "#/components/app-shell";
 import { THEME_SCRIPT } from "#/components/theme";
+import { getNavigation } from "#/lib/api";
 import appCss from "../styles.css?url";
 
 interface RouterContext {
@@ -22,6 +23,9 @@ const FAVICON =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='15' r='9' fill='none' stroke='%233a6a90' stroke-width='2'/%3E%3Cpath d='M8 15c3-3 9-3 12 0' fill='none' stroke='%233a6a90' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E";
 
 export const Route = createRootRouteWithContext<RouterContext>()({
+  // The sidebar's docs tree; a minute old is fine, and a pull-to-refresh re-reads it.
+  loader: () => getNavigation(),
+  staleTime: 60_000,
   head: () => ({
     meta: [
       { charSet: "utf-8" },

@@ -6,12 +6,13 @@ import { getReport } from "#/lib/api";
 import { prettyDay } from "#/lib/utils";
 
 export const Route = createFileRoute("/reports/$day")({
+  staticData: { crumb: "Reports" },
   loader: async ({ params }) => {
     const r = await getReport({ data: params.day });
     if (!r) {
       throw notFound();
     }
-    return r;
+    return { ...r, crumb: prettyDay(params.day) };
   },
   component: ReportPage,
   notFoundComponent: () => (
@@ -25,8 +26,7 @@ function ReportPage() {
   return (
     <>
       <PageHeader
-        aside={<span className="mono text-subtle">{r.path}</span>}
-        eyebrow="Sweep report"
+        actions={<span className="mono text-subtle">{r.path}</span>}
         title={prettyDay(day)}
       />
       <DocLayout rail={<Toc headings={r.doc.headings ?? []} />}>

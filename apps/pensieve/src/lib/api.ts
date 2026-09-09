@@ -30,6 +30,46 @@ import type {
 import type { LinearConfig } from "#/server/linear";
 import type { Json, Point } from "#/server/workspace";
 
+/** The sidebar's docs tree and the top bar's workspace path — what the shell shows on every page. */
+export interface Navigation {
+  docs: Array<{
+    app: string;
+    features: Array<{ feature: string; label: string }>;
+  }>;
+  workspace: string;
+}
+
+export const getNavigation = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Navigation> => {
+    const ws = await import("#/server/workspace");
+    const byApp = new Map<string, Map<string, string>>();
+    for (const d of await ws.listDocs()) {
+      const short = d.feature.startsWith("/")
+        ? d.feature.slice(d.app.length + 1)
+        : d.feature;
+      const features = byApp.get(d.app) ?? new Map<string, string>();
+      // Both tiers name the feature; the first row with a name wins, else the key.
+      if (
+        !features.has(d.feature) ||
+        (d.name && features.get(d.feature) === short)
+      ) {
+        features.set(d.feature, d.name ?? short);
+      }
+      byApp.set(d.app, features);
+    }
+    return {
+      docs: Array.from(byApp.entries()).map(([app, features]) => ({
+        app,
+        features: Array.from(features.entries()).map(([feature, label]) => ({
+          feature,
+          label,
+        })),
+      })),
+      workspace: ws.WORKSPACE_DIR,
+    };
+  }
+);
+
 export const getInbox = createServerFn({ method: "GET" }).handler(async () => {
   const ws = await import("#/server/workspace");
   const { loadQueue } = await import("#/server/queue");

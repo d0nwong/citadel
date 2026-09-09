@@ -1,9 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Empty, PageHeader } from "#/components/bits";
+import { DocLayout } from "#/components/toc";
 import { listReports } from "#/lib/api";
 import { prettyDay } from "#/lib/utils";
 
 export const Route = createFileRoute("/reports/")({
+  staticData: { crumb: "Reports" },
   loader: () => listReports(),
   component: ReportsPage,
 });
@@ -11,10 +13,9 @@ export const Route = createFileRoute("/reports/")({
 function ReportsPage() {
   const reports = Route.useLoaderData();
   return (
-    <>
+    <DocLayout>
       <PageHeader
-        aside={`${reports.length} day${reports.length === 1 ? "" : "s"}`}
-        eyebrow="Sweep"
+        actions={`${reports.length} day${reports.length === 1 ? "" : "s"}`}
         title="Reports"
       />
       {reports.length === 0 && <Empty title="No reports yet" />}
@@ -39,6 +40,6 @@ function ReportsPage() {
           </li>
         ))}
       </ul>
-    </>
+    </DocLayout>
   );
 }

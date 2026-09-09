@@ -4,37 +4,34 @@ import { cn, LINEAR_ISSUE } from "#/lib/utils";
 import type { JournalStatus } from "#/server/workspace";
 
 /**
- * The top of every page: an optional eyebrow (a breadcrumb or a section name), the title,
- * an optional one-line description under it, and whatever the page keeps at the right —
- * a count, a path, a button.
+ * The top of every page: an optional row of actions (a tier switch, a button, a count) at
+ * the right, the title, and an optional one-line description — closed by a dashed rule,
+ * the same rule that separates sections in prose. The breadcrumb lives in the top bar.
  */
 export function PageHeader({
-  eyebrow,
   title,
   description,
-  aside,
+  actions,
 }: {
-  eyebrow?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
-  aside?: ReactNode;
+  actions?: ReactNode;
 }) {
   return (
-    <header className="mb-8 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-border border-b pb-5">
-      <div className="min-w-0">
-        {eyebrow && (
-          <p className="kicker mb-1.5 flex flex-wrap items-center gap-x-1.5">
-            {eyebrow}
-          </p>
-        )}
-        <h1 className="font-semibold text-2xl tracking-tight sm:text-3xl">
-          {title}
-        </h1>
-        {description && (
-          <p className="mt-1.5 text-muted-foreground text-sm">{description}</p>
-        )}
-      </div>
-      {aside && <div className="text-muted-foreground text-sm">{aside}</div>}
+    <header className="mb-10 border-border border-b border-dashed pb-8">
+      {actions && (
+        <div className="mb-4 flex flex-wrap items-center justify-end gap-2 text-muted-foreground text-sm">
+          {actions}
+        </div>
+      )}
+      <h1 className="font-semibold text-[28px] text-foreground leading-tight tracking-[-0.02em]">
+        {title}
+      </h1>
+      {description && (
+        <p className="mt-2 text-[16px] text-muted-foreground leading-relaxed">
+          {description}
+        </p>
+      )}
     </header>
   );
 }
