@@ -23,13 +23,13 @@
  * `propose-split` writes what they judged.
  */
 
-import { slug as slugify } from "../points.ts";
 import { identifiers, tokenIn } from "./ingest-slack.ts";
 import {
   USER,
   eventId,
   eventKeys,
   instantOf,
+  slug as slugify,
   type EventKind,
   type Milestones,
   type Side,

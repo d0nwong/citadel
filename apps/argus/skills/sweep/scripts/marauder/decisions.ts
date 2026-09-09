@@ -24,8 +24,8 @@
  *     twice. Applying it again is a no-op anyway — every correction is idempotent — but a
  *     decision naming an entry that is gone is skipped without a word, not reported as a
  *     problem: that is the normal state of every file after the run that applied it.
- *   - **A malformed file is a problem, and is said out loud.** `readDecisions` in
- *     `points.ts` skips this group whole, so nothing else would ever report it.
+ *   - **A malformed file is a problem, and is said out loud.** Nothing else under
+ *     `decisions/` is read any more, so an unreadable file here is reported or lost.
  *   - **Oldest first.** Two decisions can name the same workstream, and the record should
  *     read in the order the person made them.
  */
@@ -34,7 +34,7 @@ import { join } from "node:path";
 import { attach, dismiss, newFrom, setStage, type Result, type State, type Who } from "./correct.ts";
 import { USER, type Side, type Stage } from "./record.ts";
 
-/** the group under `decisions/` this reads; `points.ts` skips it by the same name */
+/** the group under `decisions/` this reads; the other groups are the old verdicts, archive */
 export const MARAUDER_GROUP = "marauder";
 
 export type MarauderAction = "attach" | "new" | "dismiss" | "stage";

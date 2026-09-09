@@ -1,20 +1,21 @@
 #!/usr/bin/env bun
 /**
- * slack-pull — fetch what's new in #dev-team since the last digest run and print it as a
+ * slack-pull — fetch what's new in #dev-team since the last tick and print it as a
  * compact, agent-readable transcript.
  *
- * This is the deterministic half of `slack-digest`: cursor bookkeeping, pagination, thread
- * following, user-id resolution, noise filtering and permalinks. The agent only triages
- * what this prints. Nothing here writes to Slack.
+ * This is the deterministic half of `marauder ingest --slack`: cursor bookkeeping,
+ * pagination, thread following, user-id resolution, noise filtering and permalinks. The
+ * ingest places what this prints. Nothing here writes to Slack.
  *
- *   slack-pull                    everything since digests/.state.json's last_ts
+ *   slack-pull                    everything since workstreams/.state.json's last_ts
  *   slack-pull --since 2026-08-28 override the cursor (date or unix ts); state untouched
  *   slack-pull --json             structured output instead of the transcript
- *   slack-pull --no-next          don't write digests/.state.next.json
+ *   slack-pull --no-next          don't write workstreams/.state.next.json
  *
- * State protocol: this never touches `.state.json`. It writes the advanced cursor to
- * `.state.next.json`; the agent promotes it (`mv`) only after the digest commit succeeds,
- * so a crashed run replays instead of skipping.
+ * State protocol: this never touches `.state.json` except to adopt the digest's old cursor
+ * once (below). It writes the advanced cursor to `.state.next.json`; the sweep promotes it
+ * (`mv`) only after the tick's commit succeeds, so a crashed run replays instead of
+ * skipping.
  *
  * Auth: SLACK_TOKEN — from the environment and nowhere else. Bun loads the checkout's
  * .env for every `bun …` script, and `./scripts/bootstrap.sh env` is what writes it
@@ -28,9 +29,11 @@ export const WORKSPACE = "https://alden-studios.slack.com";
 export const ME = "U09R2MYP6A0";
 const WATCH_EXPIRY_S = 48 * 3600;
 
-const ROOT = new URL("../../..", import.meta.url).pathname.replace(/\/$/, "");
-const STATE = join(ROOT, "digests/.state.json");
-const STATE_NEXT = join(ROOT, "digests/.state.next.json");
+const ROOT = new URL("../../../..", import.meta.url).pathname.replace(/\/$/, "");
+const STATE = join(ROOT, "workstreams/.state.json");
+const STATE_NEXT = join(ROOT, "workstreams/.state.next.json");
+/** where the cursor lived while the digest owned it; adopted once, then deleted (LIA-161) */
+const DIGEST_STATE = join(ROOT, "digests/.state.json");
 const USER_CACHE = join(ROOT, ".state/slack-users.json");
 
 /** subtypes that are never content — dropped and counted */
@@ -339,9 +342,26 @@ async function loadUsers(): Promise<Users> {
   return users;
 }
 
+/**
+ * The cursor, moving itself out of `digests/` the first time it is asked for. Adopting the
+ * digest's `last_ts` and `watched_threads` verbatim is what makes the rewire lossless: a
+ * fresh cursor would default to 24 hours back and re-read a day, and an empty one would
+ * skip whatever arrived since the last digest run. The old file is deleted once its
+ * contents are safely at the new path, so the adoption happens exactly once.
+ */
 async function loadState(): Promise<State> {
   const f = Bun.file(STATE);
   if (await f.exists()) return (await f.json()) as State;
+
+  const old = Bun.file(DIGEST_STATE);
+  if (await old.exists()) {
+    const carried = (await old.json()) as State;
+    const state: State = { last_ts: carried.last_ts, watched_threads: carried.watched_threads ?? {} };
+    await Bun.write(STATE, JSON.stringify(state, null, 2) + "\n");
+    await old.delete();
+    console.error(`slack-pull: cursor moved from digests/.state.json to workstreams/.state.json (last_ts ${state.last_ts})`);
+    return state;
+  }
   return { last_ts: String(Math.floor(Date.now() / 1000) - 24 * 3600), watched_threads: {} };
 }
 

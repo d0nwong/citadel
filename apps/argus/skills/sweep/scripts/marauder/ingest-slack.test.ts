@@ -23,7 +23,7 @@ import {
   splitCanvas,
   type SlackItem,
 } from "./ingest-slack.ts";
-import type { Pull } from "../../../slack-digest/scripts/slack-pull.ts";
+import type { Pull } from "./slack-pull.ts";
 import { validate, type Workstream } from "./record.ts";
 
 const HERE = new URL(".", import.meta.url).pathname;

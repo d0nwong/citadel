@@ -12,9 +12,9 @@
  *   accio map                      derive/refresh the feature manifest from the route tree
  *   accio sync                     refetch the spec, reanalyze, regenerate docs + index
  *   accio audit                    hold the docs to what code and spec actually back
- *   accio point <group>/<slug>     everything the blackboard holds about one Needs-you point
- *   accio ticket LIA-nn            the same, keyed by ticket (then read the body via Linear MCP)
- *   accio arc <slug>               the running story of one initiative, and what is behind it
+ *
+ * The API surface and the docs are all of it. Where the work stands — a workstream, a
+ * ticket, a day, what needs you — is `marauder`, which reads `workstreams/` (LIA-161).
  *
  * Subcommands dispatch by rewriting argv and importing the command module, so each
  * command file also still runs standalone (`bun scripts/commands/sync.ts`).
@@ -26,9 +26,6 @@ const COMMANDS = {
   sync: { module: "./commands/sync.ts", blurb: "refetch the spec, reanalyze the frontend, regenerate docs" },
   audit: { module: "./commands/audit.ts", blurb: "check the docs against code and spec" },
   stale: { module: "./commands/stale.ts", blurb: "which features' docs drifted from the code, and why" },
-  journal: { module: "./commands/journal.ts", blurb: "day view over per-landing journal entries" },
-  point: { module: "./commands/point.ts", blurb: "one Needs-you point: record, report lines, decision, journal, rules, files" },
-  arc: { module: "./commands/arc.ts", blurb: "one initiative's running story: where we are, what landed, what is open" },
 } as const;
 
 const HELP = `accio — summon the API surface
@@ -41,14 +38,9 @@ const HELP = `accio — summon the API surface
   accio sync [--offline|--check|--feature <id>]
   accio audit
   accio stale [--json] [--all]          which features' docs drifted (tiers / fe-core / be-handlers / journal)
-  accio journal [YYYY-MM-DD | --day <d> | --since <d>]   day view over landings (default: today)
-  accio point <group>/<slug>            one Needs-you point (reports/points.json id): record, report
-                                        lines, decision, journal entries, rule ids, files + git log
-  accio ticket LIA-nn                   open points + journal entries + rule ids for a ticket; the
-                                        body is read next with the Linear MCP (no key lives here)
-  accio arc [<slug>]                    one initiative's running story (arcs/<slug>.md): frontmatter,
-                                        "Where we are", the journal entries, points and tickets its
-                                        seeds name; no slug lists every arc and its last rewrite
+
+accio is the API surface and the docs. Where the work stands is \`marauder\`:
+\`marauder board\`, \`marauder show <slug>\`, \`marauder changelog [day]\`.
 
 Examples
   accio "status select"                 → PUT /api/v1/tasks/{taskId}/status/{status}
@@ -67,7 +59,23 @@ if (!first || first === "help" || first === "--help" || first === "-h") {
   process.exit(first ? 0 : 1);
 }
 
-/** `accio list` is `find --list` and `accio ticket X` is `point --ticket X`; anything not a known verb is a search term. */
+/**
+ * The four verbs `marauder` took over (LIA-161). A pointer, not a search result: someone
+ * typing `accio arc` wants where the work stands, and the answer is one command away.
+ */
+const MOVED: Record<string, [command: string, why: string]> = {
+  journal: ["marauder changelog [YYYY-MM-DD]", "what changed that day"],
+  point: ["marauder board", "what needs you, and what everything else is doing"],
+  ticket: ["marauder show <slug>", "a ticket belongs to a workstream now"],
+  arc: ["marauder show <slug>", "an arc is a workstream now"],
+};
+if (first in MOVED) {
+  const [command, why] = MOVED[first]!;
+  console.error(`accio no longer answers \`${first}\` — ${why}: \`bun run ${command}\``);
+  process.exit(1);
+}
+
+/** `accio list` is `find --list`; anything not a known verb is a search term. */
 let command: keyof typeof COMMANDS = "find";
 let rest = argv;
 if (first in COMMANDS) {
@@ -75,9 +83,6 @@ if (first in COMMANDS) {
   rest = argv.slice(1);
 } else if (first === "list") {
   rest = ["--list", ...argv.slice(1)];
-} else if (first === "ticket") {
-  command = "point";
-  rest = ["--ticket", ...argv.slice(1)];
 }
 
 // spawn rather than import: command files guard on import.meta.main so they stay
