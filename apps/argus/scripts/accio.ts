@@ -14,6 +14,7 @@
  *   accio audit                    hold the docs to what code and spec actually back
  *   accio point <group>/<slug>     everything the blackboard holds about one Needs-you point
  *   accio ticket LIA-nn            the same, keyed by ticket (then read the body via Linear MCP)
+ *   accio arc <slug>               the running story of one initiative, and what is behind it
  *
  * Subcommands dispatch by rewriting argv and importing the command module, so each
  * command file also still runs standalone (`bun scripts/commands/sync.ts`).
@@ -27,6 +28,7 @@ const COMMANDS = {
   stale: { module: "./commands/stale.ts", blurb: "which features' docs drifted from the code, and why" },
   journal: { module: "./commands/journal.ts", blurb: "day view over per-landing journal entries" },
   point: { module: "./commands/point.ts", blurb: "one Needs-you point: record, report lines, decision, journal, rules, files" },
+  arc: { module: "./commands/arc.ts", blurb: "one initiative's running story: where we are, what landed, what is open" },
 } as const;
 
 const HELP = `accio — summon the API surface
@@ -44,6 +46,9 @@ const HELP = `accio — summon the API surface
                                         lines, decision, journal entries, rule ids, files + git log
   accio ticket LIA-nn                   open points + journal entries + rule ids for a ticket; the
                                         body is read next with the Linear MCP (no key lives here)
+  accio arc [<slug>]                    one initiative's running story (arcs/<slug>.md): frontmatter,
+                                        "Where we are", the journal entries, points and tickets its
+                                        seeds name; no slug lists every arc and its last rewrite
 
 Examples
   accio "status select"                 → PUT /api/v1/tasks/{taskId}/status/{status}

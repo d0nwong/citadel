@@ -1,7 +1,7 @@
 # style — how the loop writes for a reader
 
 The rules for every file the loop writes for a human to read: `digests/<day>.md`
-(`slack-digest`) and `reports/<day>.md` (`sweep` step 8). Those skills keep their
+(`slack-digest`) and `reports/<day>.md` (`sweep` step 9). Those skills keep their
 skeletons and their machine contracts; the prose and layout rules live here, once. The
 rules are Notion's documentation practice (summary first, descriptive headings, callouts
 for what must not be missed, tables for repeated rows, short paragraphs, link instead of

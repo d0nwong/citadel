@@ -1,6 +1,6 @@
 ---
 name: sweep
-description: One idempotent pass over the whole workspace loop — digest tick, unjournaled-landing scan, the join between landings / open decisions / open Liamai tickets, per-item dispatch of log-change and feature-docs, a Linear ticket pass (file tickets from digest ✋ action items, review open tickets against refreshed docs), then accio audit and a morning-readable report. Run via /loop 2h /sweep or on demand; every stage is state-driven and catch-up-safe, so the first run after days away backfills everything. Use when the user says "sweep", "run the sweep", "catch me up on everything", or asks to run the workspace loop.
+description: One idempotent pass over the whole workspace loop — digest tick, unjournaled-landing scan, the join between landings / open decisions / open Liamai tickets, per-item dispatch of log-change and feature-docs, a Linear ticket pass (file tickets from digest ✋ action items, review open tickets against refreshed docs), an arc pass that keeps each initiative's running story current, then accio audit and a morning-readable report. Run via /loop 2h /sweep or on demand; every stage is state-driven and catch-up-safe, so the first run after days away backfills everything. Use when the user says "sweep", "run the sweep", "catch me up on everything", or asks to run the workspace loop.
 ---
 
 # sweep — the scheduler for the workspace loop
@@ -52,13 +52,17 @@ landings drop out on their own, so overlapping windows are harmless.
   merely-updated by `createdAt`.
 - write the open tickets' titles and projects to `.state/linear-titles.json` as
   `{ "LIA-nn": { "title": "<title>", "project": "<project>" } }` (gitignored; refresh it
-  again after the ticket pass adds keys). Step 8's `points.ts` reads each point's `repo`
+  again after the ticket pass adds keys). Step 9's `points.ts` reads each point's `repo`
   off it — from the project, so a ticket without one gets no `repo`. Its terminal line
   says when the file carries no project at all; that is this step's bug, not the script's.
+- arc verdicts: `ls decisions/arc/*.json` — one file per arc the user opened or closed
+  in Pensieve (`{ point: "arc/<slug>", action: "opened" | "closed", seeds }`). Step 7
+  files this tick's evidence against them; `points.ts` never reads one as a verdict on a
+  point (below). Usually unchanged from the last tick, and usually empty.
 - verified points: `bun skills/sweep/scripts/points.ts --verified` — points the cockpit
   confirmed since the last tick, each licensing exactly the edit its own text names
   (Autonomy): a feature point goes to dispatch (5), a ticket point into the ticket-pass
-  brief (6). Read here, because `points.ts` next runs at step 8, after both; that run
+  brief (6). Read here, because `points.ts` next runs at step 9, after both; that run
   drops the bullet, so each point is listed once. Usually empty.
 
 **4. The join.** For each `NOT JOURNALED` landing, before dispatching anything, match it
@@ -145,7 +149,7 @@ worker's procedure and prompt are `skills/sweep/ticket-pass.md`.
 **Skip the spawn** when there is nothing for it: no unmarked unlinked ✋ items, no
 ticket-linked digest item newer than the previous tick's `_Tick` stamp in
 `reports/<today>.md`, no feature refreshed this tick, *and* no step-3 verified point
-naming a ticket (step 8 drops that point's bullet whether or not the worker ran — skip
+naming a ticket (step 9 drops that point's bullet whether or not the worker ran — skip
 it and the edit is lost for good).
 
 Otherwise, **after dispatch has finished** (the worker writes the digest file and
@@ -174,14 +178,42 @@ against the body as written, precisely the decision the report exists to surface
 make — the user settles it in Pensieve (README, "Downstream"). Like holds, an undecided
 nomination restates every tick until decided or disqualified.
 
-**7. Audit.** `bun run accio audit`. Problems it still reports after dispatch go in the
-report, every one, in step 8's Audit shape — never silence one by inventing the missing
+**7. Arcs.** The tick's evidence, filed against the initiatives it belongs to:
+
+```sh
+bun skills/sweep/scripts/arcs.ts        # decisions/arc/ → arcs/*.md, and what moved in each
+```
+
+`arcs/<slug>.md` is the running story of one initiative (README, "Layout"): a "Where we
+are" paragraph over the landings, decisions and open items behind it. It runs here
+because it must see this tick's journal entries (5) and ticket edits (6). **The script
+owns everything derivable** — the frontmatter, the Landed table, the Open list — and
+rewrites all three from the journals, `reports/points.json` and the step-3 open tickets,
+so an arc cannot drift from the blackboard; an arc nothing touched comes out
+byte-identical and is reported `unchanged`. **You own the paragraph.** For each arc the
+script prints as `created` or `rewritten`, edit `## Where we are` in that file: one
+paragraph, **≤ 120 words**, what is true now — never a dated "Landed …" sentence
+appended, since the history is the Landed table and `git log -p arcs/` (style.md,
+"Summary first"; the rewrite rule is the ticket format's Background rule). The block the
+script prints under each arc is what you write from: the paragraph as it stands, the rows
+added since it was last written, and what is open. An arc with nothing open **says so in
+the paragraph and stays open** — closing is the user's verdict, never the sweep's
+(Autonomy). Commit each rewritten arc as `arc: <slug> — <what moved>`.
+
+Nothing here opens an arc, and nothing here guesses one. An arc exists because
+`decisions/arc/<slug>.json` says so, and an item is filed against it **only through a
+seed key** — a ticket, a rule id, a PR, a feature dir — never by resemblance. A landing
+or point matching no arc stays exactly where it is today; a cluster of such items is what
+Argus proposes a new arc from in Pensieve, not something to invent here.
+
+**8. Audit.** `bun run accio audit`. Problems it still reports after dispatch go in the
+report, every one, in step 9's Audit shape — never silence one by inventing the missing
 fact. `tiers disagree` lines left over are the stale features 5c's cap did not reach:
 report them as a count with the feature ids ("4 product tiers still behind their arch
 tier, next tick: …"), not as a decision for the user; they clear as 5c works through
 the list.
 
-**8. Report.** One screen, in this order, skipping empty sections, written to
+**9. Report.** One screen, in this order, skipping empty sections, written to
 `skills/sweep/style.md`: summary sentence and TL;DR first, cards for Needs-you items,
 tables for Done today and Linear today, one-liners for holds, Housekeeping and Audit.
 **"One screen" is a budget: ≤ 1,200 words for a full day.** The 2026-09-01 report
@@ -380,7 +412,10 @@ them from drifting. The script owns:
   the `decision` attached — the one asymmetry between the two shapes. So an ignored
   point stops reappearing, a sent point stops asking, and a verified point stops asking
   because this tick already made the edit it licensed (step 3) — the drop records that,
-  it does not stand in for it;
+  it does not stand in for it. The `arc/` group is the one exception: an arc is not a
+  verdict on a point, so `points.ts` skips those files whole — they never decide a point
+  nor enter the decided count — and step 7 is their reader. A malformed one is still an
+  Audit line, since it is still a file the blackboard cannot read;
 - **two report lines** — `- N points decided (decisions/)` under Housekeeping (absent
   when N is 0) and an `**Unreadable decision files**` block under Audit naming any file it
   could not parse (that point renders undecided until the file is fixed). Rewrite
@@ -406,7 +441,11 @@ refer here rather than restating it.
 
 - journal entries, doc regeneration, `reports/<today>.md` and the derived
   `reports/points.json`, local git commits — and those commits include whatever
-  Pensieve has written under `decisions/` (step 8), as-is;
+  Pensieve has written under `decisions/` (step 9), as-is;
+- **`arcs/<slug>.md` — creating one a `decisions/arc/` file opened, rewriting its
+  frontmatter, Landed table and Open list from the blackboard, and rewriting its "Where
+  we are" paragraph** (7). The paragraph is current state, so it is a rewrite, never an
+  appended dated sentence — the same rule as a ticket's Background;
 - filing Liamai tickets from unlinked digest ✋ deliverables (6a, with the digest-file
   writeback marker) and folding linked digest items into their tickets (6b) — both in
   `ticket-pass`, the loop's only Linear writer;
@@ -449,6 +488,10 @@ refer here rather than restating it.
 - create, edit or delete a file under `decisions/` — Pensieve writes them, the sweep
   and its workers only read and commit them; a decision the sweep disagrees with is a
   report line, not a file change;
+- **open or close an arc, or file an item against one on a resemblance.** Both verdicts
+  are the user's, and they arrive as `decisions/arc/<slug>.json`; an arc with nothing
+  open says so in its paragraph and stays open, and an item whose keys match no arc's
+  seeds is left where it is — the cluster of those is what Argus proposes an arc from;
 - post to Slack, push git, or guess frontmatter.
 
 Anything needing the user's judgement goes in the report, not into a file.

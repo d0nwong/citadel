@@ -71,7 +71,7 @@ export async function loadJournal(dir = FEATURES_DIR): Promise<JournalEntry[]> {
 // ---------------------------------------------------------------- every app
 
 /** Workspace directories that are never an app, so the scan does not descend into them. */
-const NOT_APPS = new Set(["reports", "digests", "decisions", "skills", "scripts", "canvas", "node_modules", "features", "dist", ".state", ".git", ".claude"]);
+const NOT_APPS = new Set(["reports", "digests", "decisions", "arcs", "skills", "scripts", "canvas", "node_modules", "features", "dist", ".state", ".git", ".claude"]);
 
 export type AppRoot = {
   /** relative to the workspace root — `foundry`, `pensieve`, `alden/alden-portal` */
