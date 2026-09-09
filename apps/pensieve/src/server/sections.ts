@@ -83,6 +83,38 @@ export function dropSection(
   return found ? withHeadings(doc, out) : doc;
 }
 
+/**
+ * The document without its TL;DR callout: the first blockquote before the first `##`,
+ * when its opening text is "TL;DR". The sweep writes one at the top of every report
+ * (argus `skills/sweep/style.md`, "Summary first"); on the home page its Decide / Verify /
+ * Confirm lines restate the queue rendered directly above, so the home page drops it and
+ * keeps the summary sentence. The document itself comes back when there is none.
+ */
+export function dropTldr(doc: MarkdownDocument): MarkdownDocument {
+  for (let i = 0; i < doc.children.length; i++) {
+    const node = doc.children[i]!;
+    if (node.type === "heading" && node.depth === 2) {
+      break;
+    }
+    if (node.type !== "blockquote") {
+      continue;
+    }
+    const first = node.children[0];
+    const text =
+      first && "children" in first && Array.isArray(first.children)
+        ? inlineText(first.children as InlineNode[]).trim()
+        : "";
+    if (/^TL;DR\b/i.test(text)) {
+      return withHeadings(doc, [
+        ...doc.children.slice(0, i),
+        ...doc.children.slice(i + 1),
+      ]);
+    }
+    break;
+  }
+  return doc;
+}
+
 /** The document without a leading `# title` — for a page whose header already names it. */
 export function dropTitle(doc: MarkdownDocument): MarkdownDocument {
   const [first, ...rest] = doc.children;

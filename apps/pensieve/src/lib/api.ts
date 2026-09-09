@@ -33,7 +33,7 @@ import type { Json, Point } from "#/server/workspace";
 export const getInbox = createServerFn({ method: "GET" }).handler(async () => {
   const ws = await import("#/server/workspace");
   const { loadQueue } = await import("#/server/queue");
-  const { dropSection } = await import("#/server/sections");
+  const { dropSection, dropTldr } = await import("#/server/sections");
   const ask = await import("#/server/ask");
   const [reports, digests, queue, conversations] = await Promise.all([
     ws.listReports(),
@@ -51,13 +51,14 @@ export const getInbox = createServerFn({ method: "GET" }).handler(async () => {
       ? { day: latestDigest.day, lede: latestDigest.lede }
       : null,
     // The queue is the report's Needs-you section with `decisions/` laid over it, so the
-    // report itself is shown without that section.
+    // report itself is shown without that section — and without the TL;DR callout that
+    // restates it; the summary sentence stays.
     queue,
     report:
       report && latestReport
         ? {
             day: latestReport.day,
-            doc: dropSection(report.doc, "Needs you"),
+            doc: dropTldr(dropSection(report.doc, "Needs you")),
             path: report.path,
           }
         : null,
