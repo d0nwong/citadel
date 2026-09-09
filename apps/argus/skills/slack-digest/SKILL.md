@@ -109,14 +109,15 @@ canvas; the transcript flags them as `HUDDLE NOTES canvas F…`. Read the canvas
 MCP tool `slack_read_file` (ToolSearch it first) and triage its **Summary** and **Action
 items** exactly like a thread: each settled point is a decision, each action item naming
 `U09R2MYP6A0` is the user's, attendee IDs resolve via `slack_read_user_profile`. Anchor
-every item to the huddle's start ts (the parent message) and label it `(AI huddle notes)`
-— they are machine-generated from a transcript, so treat internal contradictions as
+every item to the huddle's start ts (the parent message), its source line reading
+`[huddle notes](permalink)` in place of `[thread](…)` — they are machine-generated
+from a transcript, so treat internal contradictions as
 unverified and say so rather than picking a side. A huddle usually *closes* things the
 digest lists as 🟡 In flight or a ticket lists under Pending; say what it closed, and
 link the ticket (step 6) so `ticket-pass` folds it in. (Missed once: a 36-minute huddle
 that settled the invoice edit lanes and the soft-delete question was dropped as noise.)
 Classify the rest:
-- **Decisions & conclusions** — anything settled: agreed behavior, chosen approach,
+- **Decisions** (🔴) — anything settled: agreed behavior, chosen approach,
   scope changes, "we'll do X". These are the doc-staleness risk. A message announcing
   a **backend change** (new/changed endpoint, server-side rule change, BE deploy to
   `dev`) counts here too — the docs verify against BE code (`last_verified_be`), so a
@@ -138,8 +139,8 @@ none fits, tag `[unmapped]`. This is a hint for the end-of-day pass, not a commi
 
 **6. Link, don't file.** For each 🔴 / ✋ / 🟠 item, check whether its thread names or
 clearly concerns an open Liamai ticket (`list_issues`, team `Liamai`, by key if the
-thread typed one, else by keywords) and, if so, link it inline as `([LIA-xx](url))`.
-That link is the signal the sweep's `ticket-pass` worker uses to **fold** the thread's
+thread typed one, else by keywords) and, if so, link it on the item's source line as
+`[LIA-xx](url)` (step 7's card). That link is the signal the sweep's `ticket-pass` worker uses to **fold** the thread's
 outcome into the ticket instead of filing a duplicate; an unlinked ✋ item is what it
 files a new ticket from. Everything that touches Linear happens there, under the
 sweep's Autonomy policy — never here: no filing, no `patch`, no comments, no labels.
@@ -173,28 +174,39 @@ not its history").
 
 Rewriting is not deleting. An item is never dropped once filed, and a resolved one
 stays put — it just states its outcome in its own sentence ("merged 12:32 as fe#379")
-instead of growing a tail. Two things survive every rewrite verbatim: an item's
-original `HH:MM ·` stamp, and the ` → LIA-xx` ticket marker described below.
+instead of growing a tail. One thing survives every rewrite verbatim: the item's
+source line — its original `HH:MM ·` stamp, its tags and links, and the ` → LIA-xx`
+ticket marker described below.
 
-**An item is one headline and at most one detail line.** The headline is the
-conclusion in ≤ 12 words, bold, first — the reader scans headlines and only drops into
-a detail line when they need the fact behind it:
+**An item is a card** — the shape, and every prose rule behind it, is
+`skills/sweep/style.md` ("The card"); this is the digest's instance of it:
 
 ```markdown
-- **<headline: what was decided / what they need / where it stands>** — HH:MM · <author> [feature] [thread](permalink)
-  <detail, ≤ 30 words: the one fact that makes the headline actionable>
+1. **<headline, ≤ 12 words: what was decided / what they need / where it stands>**
+
+    <detail, ≤ 30 words: the one fact that makes the headline actionable>
+
+    _HH:MM · <author> · <feature> · [thread](permalink) · [LIA-xx](url) → LIA-xx_
 ```
 
-The stamp, tag, ticket link `([LIA-xx](url))` and ` → LIA-xx` marker all live on the
-headline line, after the headline; the detail line carries none of them. A 🟠 headline
-names the ask, not the topic ("Billing Entity Name should render `legalName`", not
-"Entity Billing page"). A ✋ headline is the deliverable, with its deadline if stated.
+The blank lines are mandatory — the renderer joins an indented line straight under a
+bullet onto it. Cards are numbered, restarting at `1.` under every section heading,
+with the detail and source lines indented four spaces (style.md says why: three drops
+the item out of the list once the numbers reach `10.`). The headline carries only the
+headline; the reader scans headlines and
+drops into the detail only when they need the fact. The stamp, feature tag, ticket link
+(step 6) and ` → LIA-xx` marker all live on the source line, which is the last line of
+the card; the detail is optional, the source line is not. A huddle item's source line
+reads `[huddle notes](permalink)` in place of `[thread](…)` — that is the
+`(AI huddle notes)` label. A 🟠 headline names the ask, not the topic ("Billing Entity
+Name should render legalName", not "Entity Billing page"). A ✋ headline is the
+deliverable, with its deadline if stated.
 
 **One ✋ bullet per deliverable.** A thread in which the user accepted several independent
 asks at once (a numbered list of fixes) yields one bullet per ask, in the thread's order,
 each anchored to the same permalink — `ticket-pass` files one ticket per bullet
 (linear-ticket's granularity rule, both directions) and the ` → LIA-xx` marker is per
-line, so a bundled headline would turn five deliverables into one ticket that the one
+card, so a bundled headline would turn five deliverables into one ticket that the one
 unclear ask keeps off the cockpit's Send button. An ask the thread or a journal entry
 says already landed is not an action item: name the PR in a sibling's detail line
 instead of giving it a bullet.
@@ -205,25 +217,47 @@ heading back, in skeleton order, when its first item arrives.
 ```markdown
 # #dev-team digest — YYYY-MM-DD
 
-_Last updated: HH:MM. N messages scanned today, M skipped as noise._
+_<one sentence: what the day amounted to — Pensieve shows it as the file's lede>_
 
-## 🔴 Decisions & conclusions
-- **<what was decided>** — HH:MM · <author> [feature-tag] [thread](permalink)
-  <why, or what it replaces>
+_Last updated HH:MM · N messages scanned today, M skipped as noise._
+
+> **TL;DR**
+> - <what was decided, ≤ 15 words>
+> - <what needs you, ≤ 15 words>
+> - <what is blocked, ≤ 15 words>
+
+## 🔴 Decisions
+1. **<what was decided>**
+
+    <why, or what it replaces>
+
+    _HH:MM · <author> · <feature> · [thread](permalink)_
 
 ## ✋ Your action items
-- **<the deliverable, deadline if stated>** — HH:MM ([LIA-xx](linear-url) when it concerns an open ticket — step 6) [thread](permalink)
+1. **<the deliverable, deadline if stated>**
+
+    <what makes it concrete>
+
+    _HH:MM · <author> · <feature> · [thread](permalink) · [LIA-xx](linear-url) when it concerns an open ticket (step 6)_
 
 ## 🟠 Needs you
-- **<what they need from you>** — HH:MM · <author> [feature-tag] [message](permalink)
-  <the one fact behind the ask>
+1. **<what they need from you>**
+
+    <the one fact behind the ask>
+
+    _HH:MM · <author> · <feature> · [message](permalink)_
 
 ## 🟡 In flight
-- **<topic: where it stands>** — HH:MM [thread](permalink)
-  <who disagrees about what>
+1. **<topic: where it stands>**
+
+    <who disagrees about what>
+
+    _HH:MM · [thread](permalink)_
 
 ## ⚪ FYI
-- **<summary>** — HH:MM · <author> [message](permalink)
+1. **<summary>**
+
+    _HH:MM · <author> · [message](permalink)_
 
 ## End of day → docs
 _🔴 items go through `/log-change`; ✋ items through the sweep's ticket-pass; a decision with no code yet is journaled as `status: decided` (sweep step 5b)._
@@ -232,8 +266,9 @@ _🔴 items go through `/log-change`; ✋ items through the sweep's ticket-pass;
 - <one bullet per 🔴 / 🟠 item not yet journaled or verified, ≤ 25 words: what to do with it>
 ```
 
-Empty sections are omitted (rule above); the skeleton shows every heading only to fix
-their order. The End-of-day line is a pointer, not the rule — the rules live in
+The summary sentence and the TL;DR are rewritten in full every run (style.md, "Summary
+first"). Empty sections are omitted (rule above); the skeleton shows every heading only
+to fix their order. The End-of-day line is a pointer, not the rule — the rules live in
 `/log-change` and sweep step 5b, one copy each.
 
 Permalinks: `https://alden-studios.slack.com/archives/C07KG06L601/p<ts-with-dot-removed>`
@@ -241,23 +276,20 @@ Permalinks: `https://alden-studios.slack.com/archives/C07KG06L601/p<ts-with-dot-
 parent thread by appending `?thread_ts=<parent_ts>&cid=C07KG06L601` to the reply link.
 Prefer results' provided permalinks when the API returns them.
 
-The sweep's `ticket-pass` appends ` → LIA-xx` to a ✋ line when it files a ticket from
-it; never remove or rewrite that marker — it is what keeps the item from being filed
-twice.
+The sweep's `ticket-pass` appends ` → LIA-xx` to the end of a ✋ item's source line when
+it files a ticket from it; never remove or rewrite that marker — it is what keeps the
+item from being filed twice.
 
 Summaries are the product: write what was concluded, not "there was a discussion
 about X". The user should be able to skip opening Slack entirely unless they want the
-detail. Update the `_Last updated_` line and counters each run.
+detail. Update the summary sentence, the TL;DR, the `_Last updated_` line and the
+counters each run.
 
-**Length is a hard constraint, not a preference.** A digest longer than the Slack it
-summarizes has failed at its only job. Budget **≤ 40 words per item** and **≤ 1,500
-words for a full day** — for calibration, 2026-08-26 came in at 550 words and
-2026-08-28 at 1,280, while 2026-09-01 hit 8,809 and had to be rewritten. An item past
-~80 words is nearly always carrying one of three things that belong elsewhere:
-history (see the current-state rule above), code you verified (the journal entry or
-the arch doc owns that), or ticket scope (the ticket owns that). Link to them; do not
-restate them. If a day genuinely earns more words, it is because more happened — not
-because each item got longer.
+**Length is a hard constraint, not a preference** — `skills/sweep/style.md`
+("Budgets") holds the numbers and the calibration days: ≤ 40 words per item, ≤ 1,500
+for a full day. A digest longer than the Slack it summarizes has failed at its only
+job; if a day genuinely earns more words, it is because more happened, not because
+each item got longer.
 
 **8. Save state.** Promote the cursor the script prepared: read
 `digests/.state.next.json`, write it to `digests/.state.json`, and delete
