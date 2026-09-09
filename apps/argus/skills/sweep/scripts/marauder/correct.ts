@@ -23,13 +23,13 @@
  * `propose-split` writes what they judged.
  */
 
-import { slug as slugify } from "../points.ts";
 import { identifiers, tokenIn } from "./ingest-slack.ts";
 import {
   USER,
   eventId,
   eventKeys,
   instantOf,
+  slug as slugify,
   type EventKind,
   type Milestones,
   type Side,
@@ -359,6 +359,33 @@ export function resolveQuestion(state: State, slug: string, question: string, ti
 }
 
 /** a filed ticket belongs to the ask that caused it and to the workstream it is on */
+/** the prefix a confirmation writes onto the event it confirms; the ticket pass reads it */
+export const CONFIRMED = "confirmed:";
+
+/**
+ * The user saying yes to what one event asked them (LIA-161, for LIA-162's Verify button).
+ *
+ * A `directed-at-person` event is the one thing the loop computes and then refuses to
+ * apply — a held edit on a ticket Foundry is running, a fact that may have unsaid a Scope
+ * sentence. The confirmation is the fact that lifts that refusal for exactly the edit the
+ * event named, so it is stamped on the event itself rather than kept in a file the ticket
+ * pass would have to know to open. Idempotent: a second confirmation of the same event
+ * changes nothing, which is what makes replaying a decision file safe.
+ */
+export function confirmEvent(state: State, id: string, who: Who): Result {
+  const next = clone(state);
+  for (const w of next.workstreams) {
+    const i = eventKeys(w).indexOf(id);
+    if (i === -1) continue;
+    const e = w.events[i]!;
+    if (e.action?.startsWith(CONFIRMED)) return unchanged(state, `${id} is already confirmed`);
+    e.action = `${CONFIRMED} ${who.reason ?? "make the edit it named"} — ${who.by}`;
+    w.updated = who.at;
+    return { state: next, changed: true, notes: [`${w.slug}: ${who.by} confirmed ${id}`] };
+  }
+  return unchanged(state, `no event ${id} on any workstream`);
+}
+
 export function recordTicket(state: State, slug: string, id: string, ticket: string): Result {
   const next = clone(state);
   const w = next.workstreams.find((x) => x.slug === slug);

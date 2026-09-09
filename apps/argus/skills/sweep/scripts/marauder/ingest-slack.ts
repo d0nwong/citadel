@@ -14,12 +14,15 @@
  * A decision or an ask that matches nothing is proposed as a new workstream — `kind: "new"`
  * with a name in the item's own words. Nothing here ever creates a workstream file.
  *
- * The cursor is not this script's. It reads through `slack-pull --json --no-next`, so
- * `digests/.state.json` stays the digest's until the rewire ticket moves it.
+ * The cursor is this script's since the rewire (LIA-161). It reads through
+ * `slack-pull --json`, which advances `workstreams/.state.next.json`; the sweep promotes
+ * that to `workstreams/.state.json` only after the tick's commit succeeds, so a crashed
+ * tick replays the channel instead of skipping it. A dry run passes `--no-next` and moves
+ * nothing.
  */
 
 import { join } from "node:path";
-import { ME, type Msg, type Pull } from "../../../slack-digest/scripts/slack-pull.ts";
+import { ME, type Msg, type Pull } from "./slack-pull.ts";
 import {
   MILESTONES_FILE,
   UNSORTED_FILE,
@@ -39,7 +42,7 @@ import {
   type WorkstreamEvent,
 } from "./record.ts";
 
-const SLACK_PULL = new URL("../../../slack-digest/scripts/slack-pull.ts", import.meta.url).pathname;
+const SLACK_PULL = new URL("./slack-pull.ts", import.meta.url).pathname;
 
 // ---------------------------------------------------------------- items
 
@@ -126,8 +129,8 @@ const DECISION_HEAD = /^(decisions?|summary|agreed|conclusions?)\b/i;
 /**
  * A huddle canvas is a meeting, not a message: each settled point is a change to what the
  * work is, each action item naming a person is an ask, and anything naming a date and an
- * owner is a deadline. The rule is `slack-digest`'s, kept, with the kind set here so the
- * items leave the splitter already typed.
+ * owner is a deadline. The rule is the digest's, inherited when it was retired, with the
+ * kind set here so the items leave the splitter already typed.
  */
 export function splitCanvas(markdown: string, from: SlackItem, users: Record<string, string> = {}, me = ""): SlackItem[] {
   const lines = resolveMentions(markdown, users, me).split("\n");
@@ -495,8 +498,10 @@ export const openList = (workstreams: Workstream[]): string =>
 export type RunOpts = { root: string; since?: string; canvas?: string; dryRun?: boolean; pull?: Pull; users?: Record<string, string> };
 export type RunResult = ApplyResult & { written: string[] };
 
-async function pullChannel(since?: string): Promise<Pull> {
-  const args = [process.execPath, SLACK_PULL, "--json", "--no-next", ...(since ? ["--since", since] : [])];
+async function pullChannel(since?: string, dryRun?: boolean): Promise<Pull> {
+  // `--since` already suppresses the cursor write; `--no-next` is for the dry run, which
+  // reads the channel and must leave the next tick's window exactly where it found it
+  const args = [process.execPath, SLACK_PULL, "--json", ...(dryRun ? ["--no-next"] : []), ...(since ? ["--since", since] : [])];
   const p = Bun.spawnSync(args, { stdout: "pipe", stderr: "pipe" });
   if (p.exitCode !== 0) throw new Error(`slack-pull: ${p.stderr.toString().trim()}`);
   return JSON.parse(p.stdout.toString()) as Pull;
@@ -508,7 +513,7 @@ export async function run(opts: RunOpts): Promise<RunResult> {
   const unsortedPath = join(opts.root, WORKSTREAMS_DIR, UNSORTED_FILE);
   const unsorted: UnsortedItem[] = (await Bun.file(unsortedPath).exists()) ? await Bun.file(unsortedPath).json() : [];
 
-  const pull = opts.pull ?? (await pullChannel(opts.since));
+  const pull = opts.pull ?? (await pullChannel(opts.since, opts.dryRun));
   let items = itemsOf(pull);
   if (opts.canvas) {
     const markdown = await Bun.file(opts.canvas).text();

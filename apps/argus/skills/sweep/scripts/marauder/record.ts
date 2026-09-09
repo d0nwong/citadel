@@ -170,6 +170,18 @@ export type UnsortedItem = {
 
 // ---------------------------------------------------------------- reading and writing
 
+/**
+ * A name to a slug: lowercased, runs of non-alphanumerics to one `-`, trimmed. It was the
+ * point id's rule (PLAN.md, "Shared contracts") and outlived it — `new` and `split` name a
+ * workstream file with it, so a workstream a person opens by typing its name lands at the
+ * path everything else already expects.
+ */
+export const slug = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
 export const WORKSTREAMS_DIR = "workstreams";
 export const MILESTONES_FILE = "_milestones.json";
 export const UNSORTED_FILE = "_unsorted.json";
