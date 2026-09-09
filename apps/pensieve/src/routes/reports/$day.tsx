@@ -30,7 +30,7 @@ function ReportPage() {
         title={prettyDay(day)}
       />
       <DocLayout rail={<Toc headings={r.doc.headings ?? []} />}>
-        <Md doc={r.doc} />
+        <Md className="prose-loose" doc={r.doc} />
       </DocLayout>
     </>
   );

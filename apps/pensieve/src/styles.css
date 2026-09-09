@@ -261,3 +261,15 @@ body {
 .prose-pensieve :where(h2 + ul) {
   margin-top: 0.4rem;
 }
+
+/* Digests and sweep reports list one finding per item, each a headline and a detail
+   line — they read as entries, not bullets, so the items stand further apart. */
+.prose-loose :where(li) {
+  margin: 1.4rem 0;
+}
+.prose-loose :where(li > ul, li > ol) {
+  margin: 0.5rem 0 0;
+}
+.prose-loose :where(h2 + ul, h3 + ul) {
+  margin-top: 0.6rem;
+}

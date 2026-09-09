@@ -91,7 +91,7 @@ function TodayPage() {
         {report ? (
           <>
             <SweepJumps headings={report.doc.headings ?? []} />
-            <Md doc={report.doc} />
+            <Md className="prose-loose" doc={report.doc} />
           </>
         ) : (
           <Empty title="No sweep report on file">
