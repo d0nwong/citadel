@@ -214,8 +214,10 @@ tier, next tick: …"), not as a decision for the user; they clear as 5c works t
 the list.
 
 **9. Report.** One screen, in this order, skipping empty sections, written to
-`skills/sweep/style.md`: summary sentence and TL;DR first, cards for Needs-you items,
-tables for Done today and Linear today, one-liners for holds, Housekeeping and Audit.
+`skills/sweep/style.md`: summary sentence and TL;DR first — **by arc, when any arc is
+open** (style.md, "Summary first") — then a line per arc that moved, cards for Needs-you
+items, tables for Done today and Linear today, one-liners for holds, Housekeeping and
+Audit.
 **"One screen" is a budget: ≤ 1,200 words for a full day.** The 2026-09-01 report
 reached 3,981, almost all `Done today` written as per-tick essays, and had to be
 rewritten; 2026-09-07 hit 2,280 the same way before its reformat. A Done-today block is
@@ -226,7 +228,25 @@ link rather than retell. Consecutive quiet ticks collapse onto one heading
 (`### 14:19 · 15:18 · 17:17`) over the line `Nothing new.` Needs you follows the
 digest's current-state rule: each card says what is open *now*, not how it got there.
 
-1. **Needs you** — grouped by what is being asked of the user, as bold labels in
+1. **Arcs** — what the day did to each initiative, before what it asks of you.
+   One line per open arc that **moved today**, in the order the arcs were opened —
+   `updated: <today>` in the arc's frontmatter is what "moved" means, so the section is
+   the same on a tick that changed nothing and needs no memory of earlier ticks:
+
+   ```markdown
+   - **[Invoice emails](../arcs/invoice-emails.md)** — LIA-133 sent to Foundry, fe#408 journaled; only the re-send is left · 2 open
+   ```
+
+   The title links the arc file, then `<what moved, ≤ 20 words>`, then ` · <n> open` —
+   `<n>` is the length of that arc's `## Open` list. Open arcs that did not move close
+   the section on one line, named and nothing more:
+   `_Quiet today: entity billing, peer review._` **No open arc, no section**, and the
+   rest of the report is exactly what it was before arcs existed. This is a state
+   section like Needs you: re-emitted in full each tick, never appended to. It is the
+   story; Done today and Audit under it are the evidence, and neither is dropped or
+   trimmed to make room for it. At 20 words a line the section costs ~120 words with
+   five arcs open, which the 1,200-word budget already carries.
+2. **Needs you** — grouped by what is being asked of the user, as bold labels in
    this fixed order, empty groups omitted:
    - **Decide** — only the user can settle it: revert or accept, ticket or not, close
      or rescope, send a ready ticket to Foundry (6d nominations), attribute an
@@ -249,7 +269,7 @@ digest's current-state rule: each card says what is open *now*, not how it got t
    Slack backs it:
 
    ```markdown
-   - **<subject>** — <the ask, ≤ 12 words> · <age>
+   - **<subject>** — <the ask, ≤ 12 words> · <age> · <arc title, when it is in one>
 
      <the one fact needed to act, ≤ 25 words>
    ```
@@ -270,16 +290,25 @@ digest's current-state rule: each card says what is open *now*, not how it got t
      compose this section; the script drops decided points. A point you leave out
      because "it was decided" is one the script can no longer tell apart from one whose
      condition cleared.
-2. **Done today** — one `### HH:MM` sub-block per tick that did something, each a
+   - **The arc tag is read off the arc files, never judged.** A point whose id appears
+     in some `arcs/<slug>.md` `## Open` list carries ` · <arc title>` last on its
+     headline, after the age; a point in no arc's list carries nothing, and you do not
+     put it in one — the seeds decide that (step 7). Read every `arcs/*.md`, not only
+     the ones the script reported as moved: a point can sit in an arc that stood still.
+     A point in two arcs takes the one whose `opened` is earlier, and Audit gets one
+     line naming the overlap. The tag is a suffix `points.ts` strips before anything
+     else, so it changes no id and no age; it becomes the point's `arc` slug in
+     `points.json`, and the script's run line names any tag no arc file claims.
+3. **Done today** — one `### HH:MM` sub-block per tick that did something, each a
    table `| What | Went to | Commit |` — one row per entry written, doc refreshed,
    ticket filed (6a) or updated (keys + PRs), decision journaled — followed by at most
    one sentence of notes.
-3. **Linear today** — a table `| Ticket | Change | By |`: every Liamai ticket created
+4. **Linear today** — a table `| Ticket | Change | By |`: every Liamai ticket created
    or updated since local midnight — key and short title; `created` or `updated` and
    which sections; and by what (sweep, digest filing, or **outside activity**, bolded
    since it's news). Built from the step-3 query, not tick memory, so every tick
    restates the full day.
-4. **Audit** — every remaining problem, **one line each, grouped by kind**, none
+5. **Audit** — every remaining problem, **one line each, grouped by kind**, none
    omitted: keep the feature or journal file and the kind, drop the boilerplate
    suffix (`bun run accio audit` reprints it in full). Shape:
    `- \`peer-review\` — tiers disagree (product@67e5abc, arch@885f086)` and
@@ -290,7 +319,7 @@ it is the human copy of the one thing on the blackboard that holds an inference 
 report that only went to the terminal is a report that was lost. Its sections have two
 natures:
 
-- **Needs you, Linear today, Audit are state.** Each tick re-emits them from this
+- **Arcs, Needs you, Linear today, Audit are state.** Each tick re-emits them from this
   tick's findings, replacing the previous body: an item still open restates, an item
   resolved drops out, nothing is appended — a snapshot that accumulated stale bullets
   would be worse than none.
@@ -303,19 +332,26 @@ Format:
 ```markdown
 # sweep — 2026-08-28
 
-_Two landings journaled and one ticket updated; one revert to decide, one thread to confirm with Foong._
+_Usage is one revert away from settled; capacity still hangs on a direction only Foong can give._
 
 _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 
 > **TL;DR**
-> - Decide: keep or revert fe#396's formatting churn.
-> - Confirm with Foong: the capacity-unit direction, huddle and code disagree.
+> - Usage: fe#396 landed, and its formatting churn is yours to keep or revert.
+> - Capacity: huddle and shipped code disagree; Foong settles it.
 > - Blocked: fe#401 waits on LIA-78's usage endpoint.
+
+## Arcs
+
+- **[Usage page](../arcs/usage-page.md)** — fe#396 and fe#402 journaled; only the quoteStyle churn is undecided · 1 open
+- **[Capacity model](../arcs/capacity-model.md)** — nothing landed; the unit direction is still unanswered · 2 open
+
+_Quiet today: invoice emails._
 
 ## Needs you
 
 **Decide**
-- **fe#396 quoteStyle flip** — revert, or accept the churn? · 4d
+- **fe#396 quoteStyle flip** — revert, or accept the churn? · 4d · Usage page
 
   Only touched files were reformatted; the next repo-wide format run churns the rest.
 
@@ -323,7 +359,7 @@ _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 - **LIA-79** — huddle's "retainer forced to 100%" appears to close its Pending bullet · 2d
 
 **Confirm with someone**
-- **Capacity-unit direction** — Foong · 2d
+- **Capacity-unit direction** — Foong · 2d · Capacity model
 
   Huddle: 1 unit = 2.5 h. Shipped: 2.5 units = 1 h.
 

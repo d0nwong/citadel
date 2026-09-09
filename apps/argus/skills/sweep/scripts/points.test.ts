@@ -745,3 +745,106 @@ describe("LIA-145 AC4 — an arc never joins the points", () => {
     expect(await readArcDecisions("/nonexistent/argus-arc-decisions")).toEqual({ arcs: [], unreadable: [] });
   });
 });
+
+// ---------------------------------------------------------------- LIA-148 — a point carries its arc
+
+import { arcTitles, arcOf, readArcTitles, type Arcs } from "./points.ts";
+
+const ARC_FILE = `---
+slug: invoice-emails
+title: Invoice emails
+status: open
+opened: 2026-09-08T06:00:00.000Z
+updated: 2026-09-09
+seeds:
+  tickets: [LIA-133, LIA-137]
+  rules: [BR-16a]
+  prs: [fe#408]
+  features: [admin-invoicing]
+---
+
+## Where we are
+
+The re-send path is the last open step.
+`;
+
+/** the fixture report, with the arc tag the sweep writes after the age on two cards */
+const TAGGED = REPORT.replace(
+  "code shipped a different shape · new",
+  "code shipped a different shape · new · Invoice emails",
+).replace("— Foong · 2d", "— Foong · 2d · Invoice emails");
+
+const arcs: Arcs = arcTitles([{ name: "invoice-emails.md", text: ARC_FILE }]);
+const tagged = (over: Partial<Derive> = {}) => ctx({ arcs, ...over });
+
+describe("LIA-148 AC5 — the tag becomes `arc`, and changes nothing else about the point", () => {
+  const plain = derive(parseNeedsYou(REPORT), tagged());
+  const items = parseNeedsYou(TAGGED);
+  const file = derive(items, tagged());
+  const byId = Object.fromEntries(file.points.map((p) => [p.id, p]));
+
+  test("a tagged card carries the arc's slug, not its title", () => {
+    expect(byId["decide/lia-71-history-rollup"]!.arc).toBe("invoice-emails");
+    expect(byId["confirm/capacity-unit-direction"]!.arc).toBe("invoice-emails");
+  });
+  test("an untagged card has no `arc` key at all", () => {
+    expect("arc" in byId["verify/lia-78"]!).toBe(false);
+    expect("arc" in byId["hold/lia-83-netlify-preview-bounce"]!).toBe(false);
+  });
+  test("the tag does not touch the id, the subject, the ask or firstSeen", () => {
+    expect(file.points.map((p) => ({ ...p, arc: undefined }))).toEqual(plain.points.map((p) => ({ ...p, arc: undefined })));
+    expect(byId["decide/lia-71-history-rollup"]!.ask).toBe("decision entry still `decided`, code shipped a different shape");
+    expect(byId["confirm/capacity-unit-direction"]!.ask).toBe("Foong");
+  });
+  test("a decided point keeps its arc", () => {
+    const decided = derive(items, tagged({ decisions: new Map([[sent.point, sent]]) }));
+    const p = decided.points.find((x) => x.id === "verify/lia-78")!;
+    expect(p.decision).toEqual(sent);
+    const confirm = decided.points.find((x) => x.id === "confirm/capacity-unit-direction")!;
+    expect(confirm.arc).toBe("invoice-emails");
+  });
+  test("a tag no arcs/*.md claims yields no arc — never a guessed slug", () => {
+    const stray = derive(parseNeedsYou(REPORT.replace("· 2d", "· 2d · Entity billing")), tagged());
+    expect("arc" in stray.points.find((p) => p.id === "confirm/capacity-unit-direction")!).toBe(false);
+  });
+});
+
+describe("LIA-148 AC5 — the age rewrite carries the tag across", () => {
+  const items = parseNeedsYou(TAGGED);
+  const previous: PointsFile = {
+    tick: "t",
+    date: "2026-09-04",
+    points: [{ id: "decide/lia-71-history-rollup", group: "decide", subject: "LIA-71 History rollup", ask: "x", firstSeen: "2026-09-01" }],
+  };
+  test("`· new · Invoice emails` becomes `· 4d · Invoice emails`, tag intact", () => {
+    const synced = syncAges(TAGGED, items, derive(items, tagged({ previous })));
+    expect(synced).toContain("code shipped a different shape · 4d · Invoice emails\n");
+    expect(synced).toContain("— Foong · 2d · Invoice emails\n"); // already correct, untouched
+  });
+  test("an untagged report syncs exactly as it did before the tag existed", () => {
+    expect(syncAges(REPORT, parseNeedsYou(REPORT), derive(parseNeedsYou(REPORT), tagged({ previous })))).toBe(
+      syncAges(REPORT, parseNeedsYou(REPORT), derive(parseNeedsYou(REPORT), ctx({ previous }))),
+    );
+  });
+});
+
+describe("LIA-148 — the title → slug map", () => {
+  test("both the title and the slug resolve, by shape not by case", () => {
+    expect(arcs).toEqual({ "invoice-emails": "invoice-emails" });
+    expect(arcOf("Invoice emails", arcs)).toBe("invoice-emails");
+    expect(arcOf("invoice emails", arcs)).toBe("invoice-emails");
+    expect(arcOf("invoice-emails", arcs)).toBe("invoice-emails");
+    expect(arcOf("Entity billing", arcs)).toBeUndefined();
+    expect(arcOf(undefined, arcs)).toBeUndefined();
+  });
+  test("a title that differs from the slug keeps both keys", () => {
+    const map = arcTitles([{ name: "entity-billing.md", text: ARC_FILE.replace("slug: invoice-emails", "slug: entity-billing") }]);
+    expect(map).toEqual({ "entity-billing": "entity-billing", "invoice-emails": "entity-billing" });
+  });
+  test("a file with no frontmatter is skipped, not an error", () => {
+    expect(arcTitles([{ name: "broken.md", text: "## Where we are\n" }])).toEqual({});
+  });
+  test("no arcs/ directory is an empty map", async () => {
+    expect(await readArcTitles("/nonexistent/argus-arcs")).toEqual({});
+  });
+});

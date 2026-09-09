@@ -32,6 +32,23 @@ summary. Then a TL;DR callout:
 At most three bullets. Rewritten in full every run, never appended to, never read by a
 script.
 
+**In a report with an open arc, both are written by arc.** An arc is an initiative's
+running story (`arcs/<slug>.md`), and it is what the day meant something *to* — so the
+report leads with the work, not with the tick:
+
+- **The summary sentence names at most two arcs and where each now stands**, and never a
+  count of landings, decisions or points. "Seven landings and five decisions journaled,
+  every feature's docs refreshed" is a tally of the machine's morning; "Invoice emails is
+  down to the re-send ticket; entity billing still waits on `needsSetupEntities`" is what
+  the day meant. The counts are still true and still visible — Done today and Housekeeping
+  are made of them.
+- **The TL;DR's bullets are one per arc that moved**, in the order of the Arcs section, at
+  most three as always. Fewer than three arcs moved: the remaining bullets fall back to
+  the decided / needs you / blocked rule above, in that order.
+
+No open arc, or none that moved, and both fall back whole — the shape above is the rule,
+and this is the exception the arcs earn.
+
 ## Headings
 
 Sentence case, descriptive, the section emoji kept as its icon (`## 🔴 Decisions`, not
@@ -90,8 +107,8 @@ One digest item, before and after:
 
 ## One-liners
 
-On hold, Housekeeping and Audit bullets stay single lines, no card: `subject → waits on
-X`, a count, a file and a kind. `points.ts` inserts its Housekeeping count after the
+Arcs, On hold, Housekeeping and Audit bullets stay single lines, no card: what moved in
+an initiative, `subject → waits on X`, a count, a file and a kind. `points.ts` inserts its Housekeeping count after the
 group's last `- ` line, so a card there would be split in two.
 
 ## Tables
