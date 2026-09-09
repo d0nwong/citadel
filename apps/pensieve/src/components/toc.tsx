@@ -1,4 +1,5 @@
 import type { MarkdownHeading } from "@tanstack/markdown";
+import { ListIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "#/lib/utils";
 
@@ -20,12 +21,15 @@ export function Toc({
   }
   return (
     <nav aria-label="On this page" className={className}>
-      <p className="kicker mb-2">On this page</p>
-      <ol className="flex flex-col gap-1 border-border border-l">
+      <p className="mb-3 flex items-center gap-2 font-semibold text-foreground text-sm">
+        <ListIcon className="size-4 text-subtle" strokeWidth={1.75} />
+        On this page
+      </p>
+      <ol className="flex flex-col gap-2 border-border border-l">
         {shown.map((h) => (
-          <li className={cn(h.level === 3 ? "pl-6" : "pl-3")} key={h.id}>
+          <li className={cn(h.level === 3 ? "pl-7" : "pl-4")} key={h.id}>
             <a
-              className="block truncate text-[13px] text-muted-foreground leading-snug hover:text-foreground"
+              className="block truncate font-medium text-muted-foreground text-sm leading-snug hover:text-foreground"
               href={`#${h.id}`}
               title={h.text}
             >
@@ -39,9 +43,9 @@ export function Toc({
 }
 
 /**
- * A reading page: the prose column and, from `xl` up, a sticky right rail for the outline
- * and the page's facts. Below `xl` the rail's content comes first, in flow, so the facts
- * are not lost on a phone.
+ * The content column every page uses: a reading width of 720px and, when a page has a
+ * rail, a sticky right column for the outline and the page's facts from `xl` up. Below
+ * `xl` the rail's content comes first, in flow, so the facts are not lost on a phone.
  */
 export function DocLayout({
   rail,
@@ -51,12 +55,12 @@ export function DocLayout({
   children: ReactNode;
 }) {
   if (!rail) {
-    return <div className="min-w-0">{children}</div>;
+    return <div className="min-w-0 max-w-[720px]">{children}</div>;
   }
   return (
-    <div className="grid grid-cols-1 gap-x-10 gap-y-8 xl:grid-cols-[minmax(0,1fr)_13rem]">
+    <div className="grid grid-cols-1 gap-x-16 gap-y-8 xl:grid-cols-[minmax(0,720px)_240px]">
       <div className="min-w-0">{children}</div>
-      <aside className="order-first flex flex-col gap-6 xl:sticky xl:top-8 xl:order-none xl:max-h-[calc(100dvh-4rem)] xl:self-start xl:overflow-y-auto">
+      <aside className="order-first flex flex-col gap-8 xl:sticky xl:top-24 xl:order-none xl:max-h-[calc(100dvh-8rem)] xl:self-start xl:overflow-y-auto">
         {rail}
       </aside>
     </div>

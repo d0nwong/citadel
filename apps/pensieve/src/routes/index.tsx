@@ -10,11 +10,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 import { Empty, PageHeader } from "#/components/bits";
 import { Md } from "#/components/md";
+import { DocLayout } from "#/components/toc";
 import { Queue } from "#/features/points/queue";
 import { getInbox } from "#/lib/api";
 import { prettyDay } from "#/lib/utils";
 
 export const Route = createFileRoute("/")({
+  staticData: { crumb: "Today" },
   loader: () => getInbox(),
   component: TodayPage,
 });
@@ -50,8 +52,7 @@ function SweepJumps({ headings }: { headings: MarkdownHeading[] }) {
 }
 
 function TodayPage() {
-  const { report, digest, queue, workspace, conversations } =
-    Route.useLoaderData();
+  const { report, digest, queue, conversations } = Route.useLoaderData();
   const open = queue.file
     ? queue.file.points.filter((p) => !p.decision).length
     : 0;
@@ -60,19 +61,13 @@ function TodayPage() {
       ? "Nothing needs you"
       : `${open} point${open === 1 ? "" : "s"} need${open === 1 ? "s" : ""} you`;
   return (
-    <>
+    <DocLayout>
       <PageHeader
-        aside={
-          <span className="mono text-subtle" title={workspace}>
-            {workspace.replace(/^\/Users\/[^/]+/, "~")}
-          </span>
-        }
         description={
           queue.file
             ? `${count} · last sweep tick ${tickTime(queue.file.tick)}`
             : undefined
         }
-        eyebrow="Today"
         title={report ? prettyDay(report.day) : "Nothing drawn yet"}
       />
 
@@ -140,6 +135,6 @@ function TodayPage() {
           </p>
         </Link>
       </section>
-    </>
+    </DocLayout>
   );
 }

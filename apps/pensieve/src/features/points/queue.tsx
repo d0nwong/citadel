@@ -192,7 +192,7 @@ function PointRow({
   return (
     <li className="py-4">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-        <span className="font-medium text-foreground leading-snug">
+        <span className="font-medium text-[15px] text-foreground leading-snug">
           <Inline text={point.subject} />
         </span>
         {point.ticket && <TicketLink ticket={point.ticket} />}

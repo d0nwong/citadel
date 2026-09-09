@@ -25,3 +25,10 @@ declare module "@tanstack/react-router" {
     router: ReturnType<typeof getRouter>;
   }
 }
+
+/** A route's crumb in the top bar; dynamic pages return `crumb` from their loader instead. */
+declare module "@tanstack/react-router" {
+  interface StaticDataRouteOption {
+    crumb?: string;
+  }
+}

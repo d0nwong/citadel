@@ -1,9 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Empty, PageHeader } from "#/components/bits";
+import { DocLayout } from "#/components/toc";
 import { listDigests } from "#/lib/api";
 import { prettyDay } from "#/lib/utils";
 
 export const Route = createFileRoute("/digests/")({
+  staticData: { crumb: "Digests" },
   loader: () => listDigests(),
   component: DigestsPage,
 });
@@ -11,10 +13,9 @@ export const Route = createFileRoute("/digests/")({
 function DigestsPage() {
   const digests = Route.useLoaderData();
   return (
-    <>
+    <DocLayout>
       <PageHeader
-        aside={`${digests.length} day${digests.length === 1 ? "" : "s"}`}
-        eyebrow="#dev-team"
+        actions={`${digests.length} day${digests.length === 1 ? "" : "s"}`}
         title="Digests"
       />
       {digests.length === 0 && <Empty title="No digests yet" />}
@@ -39,6 +40,6 @@ function DigestsPage() {
           </li>
         ))}
       </ul>
-    </>
+    </DocLayout>
   );
 }

@@ -9,6 +9,7 @@ import {
   StatusPill,
   TicketLink,
 } from "#/components/bits";
+import { DocLayout } from "#/components/toc";
 import { listJournal } from "#/lib/api";
 import { cn, prettyDay } from "#/lib/utils";
 import type { JournalEntry, JournalStatus } from "#/server/workspace";
@@ -30,6 +31,7 @@ interface Search {
 }
 
 export const Route = createFileRoute("/journal/")({
+  staticData: { crumb: "Journal" },
   validateSearch: (s: Record<string, unknown>): Search => ({
     app: typeof s.app === "string" && s.app ? s.app : undefined,
     day: typeof s.day === "string" ? s.day : undefined,
@@ -115,9 +117,9 @@ function JournalPage() {
   );
 
   return (
-    <>
+    <DocLayout>
       <PageHeader
-        aside={
+        actions={
           <>
             {shown.length}
             {filtered ? ` of ${all.length}` : ""} entr
@@ -133,7 +135,6 @@ function JournalPage() {
             )}
           </>
         }
-        eyebrow="Change journal"
         title={search.day ? prettyDay(search.day) : "Landings"}
       />
 
@@ -285,6 +286,6 @@ function JournalPage() {
           </ol>
         </section>
       ))}
-    </>
+    </DocLayout>
   );
 }

@@ -1,16 +1,60 @@
-import { Link, useRouter, useRouterState } from "@tanstack/react-router";
+/**
+ * The shell: shadcn's Sidebar on the left — grouped nav, with every feature doc listed
+ * under its app the way a docs site lists its pages — and, over the content, a sticky top
+ * bar with the breadcrumb, the theme switch, the workspace path and a way to ask Argus.
+ * Below `md` the sidebar is a sheet behind the trigger in the top bar.
+ *
+ * The docs tree and the workspace path come from the root route's loader
+ * (`getNavigation`), so a feature added to argus is in the sidebar on the next load. The
+ * breadcrumb is read off the matched routes: a route names its section in
+ * `staticData.crumb`, and a dynamic page returns its own `crumb` from its loader.
+ */
+
+import {
+  Link,
+  useLoaderData,
+  useMatches,
+  useNavigate,
+  useRouter,
+  useRouterState,
+} from "@tanstack/react-router";
 import {
   BookOpenText,
+  ChevronRight,
   FileText,
+  FolderIcon,
   Inbox,
-  MenuIcon,
   MessageCircleQuestion,
   MessagesSquare,
   ScrollText,
-  XIcon,
+  SparklesIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "#/components/theme";
+import { Button } from "#/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "#/components/ui/collapsible";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "#/components/ui/sidebar";
+import { newThreadId } from "#/features/ask/lib/thread-id";
 import { cn } from "#/lib/utils";
 
 // ── pull to refresh ────────────────────────────────────────────────────────────
@@ -173,13 +217,12 @@ function PullToRefresh({
   );
 }
 
-const NAV = [
-  { icon: Inbox, label: "Today", to: "/" },
+// ── the sidebar ────────────────────────────────────────────────────────────────
+
+const READING = [
   { icon: FileText, label: "Reports", to: "/reports" },
-  { icon: ScrollText, label: "Journal", to: "/journal" },
   { icon: MessagesSquare, label: "Digests", to: "/digests" },
-  { icon: BookOpenText, label: "Docs", to: "/docs" },
-  { icon: MessageCircleQuestion, label: "Argus", to: "/ask" },
+  { icon: ScrollText, label: "Journal", to: "/journal" },
 ] as const;
 
 function Basin({ className }: { className?: string }) {
@@ -211,117 +254,244 @@ function Basin({ className }: { className?: string }) {
   );
 }
 
+const isActive = (pathname: string, to: string) =>
+  to === "/" ? pathname === "/" : pathname.startsWith(to);
+
+function AppSidebar() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { docs } = useLoaderData({ from: "__root__" });
+  const { setOpenMobile } = useSidebar();
+  // The sheet closes on navigation; shadcn leaves that to the app.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger, not an input
+  useEffect(() => setOpenMobile(false), [pathname]);
+
+  return (
+    <Sidebar collapsible="offcanvas">
+      <SidebarHeader className="h-14 justify-center border-sidebar-border border-b px-4">
+        <Link
+          className="flex items-center gap-2 font-semibold text-[15px] text-foreground"
+          to="/"
+        >
+          <Basin className="size-6 text-primary" />
+          Pensieve
+        </Link>
+      </SidebarHeader>
+      <SidebarContent className="gap-0 py-2">
+        <SidebarGroup>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname === "/"}>
+                <Link to="/">
+                  <Inbox />
+                  <span>Today</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Reading</SidebarGroupLabel>
+          <SidebarMenu>
+            {READING.map(({ to, label, icon: Icon }) => (
+              <SidebarMenuItem key={to}>
+                <SidebarMenuButton asChild isActive={isActive(pathname, to)}>
+                  <Link to={to}>
+                    <Icon />
+                    <span>{label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Docs</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname === "/docs" || pathname === "/docs/"}
+              >
+                <Link to="/docs">
+                  <BookOpenText />
+                  <span>All features</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {docs.map(({ app, features }) => {
+              const inApp = pathname.startsWith(`/docs/${app}/`);
+              return (
+                <Collapsible
+                  asChild
+                  className="group/collapsible"
+                  defaultOpen={inApp || docs.length === 1}
+                  key={app}
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton>
+                        <FolderIcon />
+                        <span className="truncate">{app}</span>
+                        <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {features.map((f) => (
+                          <SidebarMenuSubItem key={f.feature}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={pathname === `/docs/${f.feature}`}
+                            >
+                              <Link params={{ _splat: f.feature }} to="/docs/$">
+                                <span className="truncate">{f.label}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              );
+            })}
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Argus</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive(pathname, "/ask")}>
+                <Link to="/ask">
+                  <MessageCircleQuestion />
+                  <span>Conversations</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
+    </Sidebar>
+  );
+}
+
+// ── the top bar ────────────────────────────────────────────────────────────────
+
+/** `/reports/$day` → `/reports`, `/docs/$` → `/docs`: the section a dynamic page sits under. */
+const sectionPath = (fullPath: string) => fullPath.split("/$")[0] || "/";
+
+/**
+ * The trail of matched routes that name themselves. A route's `staticData.crumb` is its
+ * section; a dynamic page's loader adds its own `crumb`, and then the section links to
+ * the route's static part and the page is the last, current crumb.
+ */
+function Breadcrumb() {
+  const matches = useMatches();
+  const crumbs: Array<{ label: string; to: string }> = [];
+  const push = (label: string, to: string) => {
+    const last = crumbs.at(-1);
+    if (last?.to === to) {
+      last.label = label;
+    } else {
+      crumbs.push({ label, to });
+    }
+  };
+  for (const m of matches) {
+    const fromLoader = (m.loaderData as { crumb?: unknown } | undefined)?.crumb;
+    const page = typeof fromLoader === "string" ? fromLoader : undefined;
+    const section = m.staticData.crumb;
+    const to = m.pathname.replace(/\/$/, "") || "/";
+    if (section) {
+      push(section, page ? sectionPath(m.fullPath) : to);
+    }
+    if (page) {
+      push(page, to);
+    }
+  }
+  if (crumbs.length === 0) {
+    return null;
+  }
+  return (
+    <nav
+      aria-label="Breadcrumb"
+      className="flex min-w-0 items-center gap-1 text-sm"
+    >
+      {crumbs.map((c, i) => {
+        const last = i === crumbs.length - 1;
+        return (
+          <span className="flex min-w-0 items-center gap-1" key={c.to}>
+            {i > 0 && (
+              <ChevronRight
+                aria-hidden
+                className="size-3.5 shrink-0 text-subtle"
+                strokeWidth={1.75}
+              />
+            )}
+            {last ? (
+              <span
+                aria-current="page"
+                className="truncate rounded-md bg-muted px-2 py-1 font-medium text-foreground"
+              >
+                {c.label}
+              </span>
+            ) : (
+              <Link
+                className="truncate px-1 py-1 font-medium text-muted-foreground hover:text-foreground"
+                to={c.to as "/"}
+              >
+                {c.label}
+              </Link>
+            )}
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+
+function TopBar() {
+  const { workspace } = useLoaderData({ from: "__root__" });
+  const navigate = useNavigate();
+  const ask = () => navigate({ params: { id: newThreadId() }, to: "/ask/$id" });
+  return (
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-border border-b bg-background/85 px-4 backdrop-blur sm:px-6">
+      <SidebarTrigger className="-ml-1 md:hidden" />
+      <Breadcrumb />
+      <div className="ml-auto flex items-center gap-2">
+        <span className="mono hidden text-subtle md:inline" title={workspace}>
+          {workspace.replace(/^\/Users\/[^/]+/, "~")}
+        </span>
+        <ThemeToggle />
+        <Button onClick={ask} size="sm">
+          <SparklesIcon />
+          Ask Argus
+        </Button>
+      </div>
+    </header>
+  );
+}
+
+// ── the shell ──────────────────────────────────────────────────────────────────
+
 /** The chat detail page (`/ask/<id>`) keeps its own scroll and may have a run in flight. */
 const isChatDetail = (pathname: string) => /^\/ask\/[^/]+\/?$/.test(pathname);
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  // Below `lg` the sidebar is a drawer behind a menu button; it closes on navigation and Escape.
-  const [open, setOpen] = useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger, not an input
-  useEffect(() => setOpen(false), [pathname]);
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  const wordmark = (
-    <Link
-      className="flex items-center gap-2 font-semibold text-[15px] text-foreground"
-      to="/"
-    >
-      <Basin className="size-6 text-primary" />
-      Pensieve
-    </Link>
-  );
-
   return (
-    <div className="flex min-h-dvh flex-col lg:flex-row">
-      <div className="flex items-center justify-between border-border border-b px-4 py-2.5 lg:hidden">
-        {wordmark}
-        <button
-          aria-controls="app-nav"
-          aria-expanded={open}
-          aria-label="Open navigation"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-          onClick={() => setOpen(true)}
-          type="button"
-        >
-          <MenuIcon className="size-5" strokeWidth={1.75} />
-        </button>
-      </div>
-      {open && (
-        <button
-          aria-label="Close navigation"
-          className="fixed inset-0 z-40 bg-foreground/30 lg:hidden"
-          onClick={() => setOpen(false)}
-          type="button"
-        />
-      )}
-      <aside
-        className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[260px] shrink-0 flex-col border-border border-r bg-background shadow-xl transition-transform duration-200 ease-out",
-          "lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:w-[240px] lg:translate-x-0 lg:bg-muted/40 lg:shadow-none lg:transition-none",
-          open ? "translate-x-0" : "-translate-x-full"
-        )}
-        id="app-nav"
-      >
-        <div className="flex items-center justify-between px-4 pt-5 pb-3">
-          {wordmark}
-          <button
-            aria-label="Close navigation"
-            className="rounded-md p-1 text-subtle hover:text-foreground lg:hidden"
-            onClick={() => setOpen(false)}
-            type="button"
-          >
-            <XIcon className="size-4" />
-          </button>
-        </div>
-        <nav className="flex flex-col gap-px px-2.5">
-          {NAV.map(({ to, label, icon: Icon }) => {
-            const active =
-              to === "/" ? pathname === "/" : pathname.startsWith(to);
-            return (
-              <Link
-                className={cn(
-                  "flex shrink-0 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
-                  active
-                    ? "bg-accent font-medium text-foreground"
-                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                )}
-                key={to}
-                to={to}
-              >
-                <Icon
-                  className={cn(
-                    "size-4",
-                    active ? "text-foreground" : "text-subtle"
-                  )}
-                  strokeWidth={1.75}
-                />
-                <span>{label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="mt-auto flex items-center justify-between px-4 py-4">
-          <ThemeToggle />
-          <span className="kicker">reads argus</span>
-        </div>
-      </aside>
-      <PullToRefresh enabled={!isChatDetail(pathname)}>
-        <main className="mx-auto min-w-0 max-w-[1040px] px-5 py-8 sm:px-8 lg:px-12 lg:py-10">
-          {children}
-        </main>
-      </PullToRefresh>
-    </div>
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset className="min-w-0">
+        <TopBar />
+        <PullToRefresh enabled={!isChatDetail(pathname)}>
+          <div className="mx-auto w-full max-w-[1080px] px-5 py-8 sm:px-8 lg:px-12 lg:py-10">
+            {children}
+          </div>
+        </PullToRefresh>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

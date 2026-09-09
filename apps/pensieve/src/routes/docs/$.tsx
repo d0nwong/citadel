@@ -10,6 +10,7 @@ interface Search {
 }
 
 export const Route = createFileRoute("/docs/$")({
+  staticData: { crumb: "Docs" },
   validateSearch: (s: Record<string, unknown>): Search => ({
     tier:
       s.tier === "arch" ? "arch" : s.tier === "product" ? "product" : undefined,
@@ -27,7 +28,10 @@ export const Route = createFileRoute("/docs/$")({
     if (!r) {
       throw notFound();
     }
-    return r;
+    const short = r.meta.feature.startsWith(`${r.meta.app}/`)
+      ? r.meta.feature.slice(r.meta.app.length + 1)
+      : r.meta.feature;
+    return { ...r, crumb: r.meta.name ?? short };
   },
   component: DocPage,
   notFoundComponent: () => (
@@ -37,14 +41,14 @@ export const Route = createFileRoute("/docs/$")({
 
 function DocPage() {
   const { doc, meta, path } = Route.useLoaderData();
-  // The key is `<app>/<dir>`; the app is already the eyebrow's first half.
+  // The key is `<app>/<dir>`; the app is already in the breadcrumb.
   const short = meta.feature.startsWith(`${meta.app}/`)
     ? meta.feature.slice(meta.app.length + 1)
     : meta.feature;
   return (
     <>
       <PageHeader
-        aside={
+        actions={
           // The two tiers as a segmented control: one is always the page shown.
           <span className="inline-flex rounded-md border border-border p-0.5">
             {(["product", "arch"] as const).map((t) => (
@@ -64,23 +68,6 @@ function DocPage() {
               </Link>
             ))}
           </span>
-        }
-        eyebrow={
-          <>
-            <Link className="hover:text-primary" to="/docs">
-              Docs
-            </Link>
-            <span aria-hidden>›</span>
-            <Link
-              className="hover:text-primary"
-              search={{ app: meta.app }}
-              to="/docs"
-            >
-              {meta.app}
-            </Link>
-            <span aria-hidden>›</span>
-            <span className="mono">{short}</span>
-          </>
         }
         title={meta.name ?? short}
       />
