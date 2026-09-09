@@ -36,6 +36,15 @@
  * `readDecisions` skips it whole and `readArcDecisions` reads it, for
  * `skills/sweep/scripts/arcs.ts`; a malformed one is still an Audit line.
  *
+ * `arc` is the initiative the point belongs to (LIA-148). The sweep writes the arc's
+ * **title** on the card, after the age (`· 3d · Invoice emails`), because that is what a
+ * reader wants to see; `points.json` carries the arc's **slug**, because that is what the
+ * cockpit can group by. The map between them is the `arcs/*.md` frontmatter the arc step
+ * wrote earlier in the same tick, read the way `.state/linear-titles.json` is read for
+ * `repo`: a tag no arc file claims yields no `arc` and one terminal line, never a guessed
+ * slug. The tag is a suffix and nothing else — the point's id, `firstSeen` and age are
+ * computed from the line with it stripped, so tagging a point does not restart it.
+ *
  * `ticket` is the LIA key when the subject or detail names exactly one. `repo` needs the
  * ticket's Linear project (one per repo: Argus, Pensieve, Foundry) and, inside Alden Portal
  * — the one project covering two repos — its title tag (`[FE]` / `[BE]`). Both live in
@@ -101,6 +110,8 @@ export type Point = {
   ticket?: string;
   repo?: string;
   features?: string[];
+  /** the slug of the arc whose story this point is part of (LIA-148) — absent when it is in none */
+  arc?: string;
   /** the cockpit's verdict, copied from its `decisions/` file — present means: not in the report */
   decision?: Decision;
 };
@@ -122,7 +133,12 @@ const PROJECT_REPOS: Record<string, string> = { Argus: "argus", Pensieve: "pensi
 /** The one project that covers two repos; its tickets say which in a `[FE]` / `[BE]` title tag. */
 const TAGGED_PROJECT = "Alden Portal";
 const TAG_REPOS: Record<string, string> = { FE: "alden-portal-fe", BE: "alden-connect-portal-be" };
-const AGE_RE = / · (new|\d+d)$/;
+/**
+ * The headline's machine-read tail: ` · <age>`, and since LIA-148 an optional ` · <arc
+ * title>` after it. `[^·]+` keeps the arc tag to one segment, so a card with neither
+ * suffix, or with the age alone, parses exactly as it did before.
+ */
+const AGE_RE = / · (new|\d+d)(?: · ([^·]+))?$/;
 const DECIDED_LINE_RE = /^- \d+ points? decided \(decisions\/\)\s*$/;
 const UNREADABLE_HEADER = "**Unreadable decision files**";
 const TICKET_RE = /\bLIA-\d+\b/g;
@@ -159,14 +175,17 @@ export type Item = {
   detail?: string;
   /** the age the line carried, if any — the bootstrap for firstSeen */
   age?: string;
+  /** the arc **title** the line carried, if any (LIA-148); `derive` turns it into a slug */
+  arc?: string;
   line: number;
   /** index of the bullet's last line (its detail line when it has one) */
   end: number;
 };
 
-const splitAge = (text: string): [string, string | undefined] => {
+/** a headline body → `[body, age, arc title]`, the two suffixes stripped off the front part */
+const splitAge = (text: string): [string, string | undefined, string | undefined] => {
   const m = text.match(AGE_RE);
-  return m ? [text.slice(0, -m[0].length), m[1]] : [text, undefined];
+  return m ? [text.slice(0, -m[0].length), m[1], m[2]?.trim() || undefined] : [text, undefined, undefined];
 };
 
 /** Needs-you bullets of a report, in file order. Everything outside `## Needs you` is ignored. */
@@ -194,8 +213,8 @@ export function parseNeedsYou(md: string): Item[] {
 
     if (DECIDED_LINE_RE.test(line)) continue; // the count points.ts writes, never a point
     if (line.startsWith("- ")) {
-      const [body, age] = splitAge(line.slice(2).trim());
-      items.push({ group, ...split(group, body), age, line: i, end: i });
+      const [body, age, arc] = splitAge(line.slice(2).trim());
+      items.push({ group, ...split(group, body), age, arc, line: i, end: i });
     } else if (/^\s+\S/.test(line) && items.length && items[items.length - 1]!.group === group) {
       const last = items[items.length - 1]!;
       last.detail = last.detail ? `${last.detail} ${line.trim()}` : line.trim();
@@ -284,12 +303,59 @@ export function featuresOf(item: Item, ids: string[]): string[] | undefined {
   return found.length ? found : undefined;
 }
 
+/** title → slug for every `arcs/*.md`, both keys normalised through `slug` so a tag matches by shape */
+export type Arcs = Record<string, string>;
+
+/**
+ * The arc titles the sweep may tag a card with, as `slug(title)` → slug (LIA-148). Both
+ * the title and the slug are keys, so a sweep that wrote the slug instead of the title
+ * still resolves. Frontmatter only: this must not depend on `arcs.ts`, which imports this
+ * module.
+ */
+export function arcTitles(files: { name: string; text: string }[]): Arcs {
+  const out: Arcs = {};
+  for (const { name, text } of files) {
+    const fm = text.match(/^---\n([\s\S]*?)\n---/)?.[1];
+    if (!fm) continue;
+    const field = (k: string) => fm.match(new RegExp(`^${k}:[ \\t]*(.*)$`, "m"))?.[1]?.trim();
+    const id = field("slug") || name.replace(/\.md$/, "");
+    const title = field("title");
+    out[id] = id;
+    if (title) out[slug(title)] = id;
+  }
+  return out;
+}
+
+/** every `arcs/*.md` under `root`, as `arcTitles` wants them; no directory is an empty map */
+export async function readArcTitles(root = ROOT): Promise<Arcs> {
+  const dir = join(root, "arcs");
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return {};
+  }
+  const files = [];
+  for (const name of names.filter((n) => n.endsWith(".md")).sort())
+    files.push({ name, text: await Bun.file(join(dir, name)).text() });
+  return arcTitles(files);
+}
+
+/**
+ * The slug of the arc a card's tag names, or undefined when no arc file claims it. Never a
+ * guess: an unmapped tag is this tick's drift between the arc step and the report, and the
+ * run line says so — a made-up slug would group the cockpit's Points page by a fiction.
+ */
+export const arcOf = (tag: string | undefined, arcs: Arcs): string | undefined => (tag ? arcs[slug(tag)] : undefined);
+
 export type Derive = {
   day: string;
   tick: string;
   previous: PointsFile | null;
   titles: Titles;
   featureIds: string[];
+  /** `arcs/*.md` title → slug; absent (or empty) leaves every tagged point without an `arc` */
+  arcs?: Arcs;
   /** oldest reports/*.md naming the subject — the bootstrap when nothing else knows the age */
   oldestReportNaming: (subject: string) => string | undefined;
   /** readable `decisions/` files, by their `point` id */
@@ -318,6 +384,8 @@ export function derive(items: Item[], d: Derive): PointsFile {
     if (repo) point.repo = repo;
     const features = featuresOf(item, d.featureIds);
     if (features) point.features = features;
+    const arc = arcOf(item.arc, d.arcs ?? {});
+    if (arc) point.arc = arc;
     const decision = d.decisions?.get(id);
     if (decision) point.decision = decision;
     return point;
@@ -333,10 +401,11 @@ export function syncAges(md: string, items: Item[], file: PointsFile): string {
   const lines = md.split("\n");
   items.forEach((item, i) => {
     const point = file.points[i]!;
-    const [body, age] = splitAge(lines[item.line]!.replace(/\s+$/, ""));
+    const [body, age, arc] = splitAge(lines[item.line]!.replace(/\s+$/, ""));
     const wanted = ageOf(point.firstSeen, file.date);
     if (age === undefined && (item.group === "hold" || item.group === "housekeeping")) return;
-    if (age !== wanted) lines[item.line] = `${body} · ${wanted}`;
+    // the arc tag sits after the age, so rewriting the age must carry it across (LIA-148)
+    if (age !== wanted) lines[item.line] = `${body} · ${wanted}${arc ? ` · ${arc}` : ""}`;
   });
   return lines.join("\n");
 }
@@ -620,6 +689,8 @@ export async function run(opts: { report?: string; titles?: string; decisions?: 
   const featureIds = (await Bun.file(MANIFEST).exists())
     ? ((await Bun.file(MANIFEST).json()).features as { id: string }[]).map((f) => f.id)
     : [];
+  // the arc step (SKILL.md step 7) ran earlier in this same tick, so `arcs/*.md` is current
+  const arcs = await readArcTitles();
 
   const reports = (await readdir(REPORTS)).filter((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f)).sort();
   const texts = new Map<string, string>();
@@ -633,7 +704,7 @@ export async function run(opts: { report?: string; titles?: string; decisions?: 
   };
 
   const items = parseNeedsYou(md);
-  const file = derive(items, { day, tick: tickOf(md, day), previous, titles, featureIds, oldestReportNaming, decisions });
+  const file = derive(items, { day, tick: tickOf(md, day), previous, titles, featureIds, arcs, oldestReportNaming, decisions });
   const synced = applyDecisions(syncAges(md, items, file), items, file, unreadable);
   const original = await reportFile.text();
 
@@ -644,6 +715,8 @@ export async function run(opts: { report?: string; titles?: string; decisions?: 
   return {
     file,
     reportChanged: synced !== original,
+    /** arc tags on cards that no `arcs/*.md` claims — the tick's drift, not the script's (LIA-148) */
+    unmappedArcs: [...new Set(items.flatMap((i) => (i.arc && !arcOf(i.arc, arcs) ? [i.arc] : [])))],
     titlesLoaded: Object.keys(titles).length > 0,
     /** false when the titles file is the pre-LIA-121 title-only shape: only `[FE]` / `[BE]` can resolve */
     titlesCarryProject: Object.values(titles).some((t) => t.project !== undefined),
@@ -682,7 +755,7 @@ if (import.meta.main) {
 
   try {
     const opts = { report, titles, decisions: decisionsDir, dryRun };
-    const { file, reportChanged, titlesLoaded, titlesCarryProject, decided, unreadable } = await run(opts);
+    const { file, reportChanged, titlesLoaded, titlesCarryProject, decided, unreadable, unmappedArcs } = await run(opts);
     if (dryRun) console.log(JSON.stringify(file, null, 2));
     const withRepo = file.points.filter((p) => p.repo).length;
     const withTicket = file.points.filter((p) => p.ticket).length;
@@ -695,6 +768,8 @@ if (import.meta.main) {
         `${reportChanged ? " · report rewritten (ages / decisions)" : ""}` +
         repoLine +
         `${decided ? ` · ${decided} decided` : ""}` +
+        `${file.points.filter((p) => p.arc).length ? ` · arc on ${file.points.filter((p) => p.arc).length}` : ""}` +
+        `${unmappedArcs.length ? ` · no arcs/*.md for ${unmappedArcs.map((a) => `"${a}"`).join(", ")} — the report tagged an arc that does not exist` : ""}` +
         `${unreadable.length ? ` · ${unreadable.length} unreadable decision file(s), see Audit` : ""}`,
     );
   } catch (err) {
