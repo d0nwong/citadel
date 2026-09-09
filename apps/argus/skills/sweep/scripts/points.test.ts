@@ -562,3 +562,83 @@ describe("LIA-114 — verifiedPoints is the tick's licensed edits, joined agains
     expect(formatVerified([bare])).toBe("verify/x — X — right?");
   });
 });
+
+// ---------------------------------------------------------------- card shape (style.md)
+
+/**
+ * `skills/sweep/style.md` writes a Needs-you bullet as a card: headline, blank line,
+ * indented detail. The parser must read a card exactly as it reads the compact shape,
+ * and the writer must drop and insert around whole cards.
+ */
+const CARD_REPORT = `# sweep — 2026-09-05
+
+_Seven landings journaled; three points need you._
+
+_Tick 13:14 · no digest writeback (quiet) · staging@a49795756 · dev@5ca2ed71_
+
+> **TL;DR**
+> - Decide: whether the pr-facts ticket gets its label.
+
+## Needs you
+
+**Decide**
+- **LIA-53 looks agent-ready** — label it? · 5d
+
+  No Pending, no blockers, concrete Scope across \`pr-facts\`/\`feature-docs\`/\`audit\`.
+
+- **Usage feature still has zero tests** — ticket it? · 1d
+
+  fe#405 deleted five test files in \`admin-usage\`; LIA-71 and LIA-78 both touch it.
+
+**Verify**
+- **LIA-78** — four ACs appear satisfied by fe#406, not ticked · new
+
+  AC1 (fixture deleted), AC8 (rollover band reads \`credits.availableRollover\`).
+
+**On hold**
+- LIA-83 Netlify preview bounce → waits on Auth0 tenant settings from Foong
+
+**Housekeeping**
+- All 22 features clean — no stale docs, audit clean
+
+## Done today
+
+### 09:49
+
+| What | Went to | Commit |
+|---|---|---|
+| fe#405 — usage tests deleted | [journal](…) | \`abc1234\` |
+`;
+
+describe("card shape — a blank line between headline and detail changes nothing", () => {
+  const compact = parseNeedsYou(REPORT).filter((i) =>
+    ["LIA-53 looks agent-ready", "Usage feature still has zero tests", "LIA-78"].includes(i.subject),
+  );
+  const cards = parseNeedsYou(CARD_REPORT);
+  test("same subjects, asks and details as the compact shape", () => {
+    expect(cards.filter((i) => i.group !== "hold" && i.group !== "housekeeping").map((i) => [i.subject, i.ask, i.detail])).toEqual(
+      compact.map((i) => [i.subject, i.ask, i.detail]),
+    );
+    expect(cards.map((i) => i.group)).toEqual(["decide", "decide", "verify", "hold", "housekeeping"]);
+  });
+  test("the TL;DR callout and the summary line are not points", () => {
+    expect(cards.some((i) => i.subject.includes("TL;DR") || i.subject.includes("Seven landings"))).toBe(false);
+  });
+  test("a decided card is dropped whole — headline, blank and detail", () => {
+    const { md } = pipeline(CARD_REPORT, withDecisions());
+    expect(md).not.toContain("LIA-53 looks agent-ready");
+    expect(md).not.toContain("No Pending, no blockers");
+    expect(md).not.toContain("**Verify**");
+    expect(md).toContain("- **Usage feature still has zero tests** — ticket it? · 1d\n\n  fe#405 deleted");
+  });
+  test("the Housekeeping count lands after the one-line Housekeeping bullet", () => {
+    const { md } = pipeline(CARD_REPORT, withDecisions());
+    expect(md).toContain("- All 22 features clean — no stale docs, audit clean\n- 2 points decided (decisions/)");
+  });
+  test("ages are rewritten on the headline line only", () => {
+    const { md } = pipeline(CARD_REPORT, ctx({ day: "2026-09-06", previous: { tick: "", date: "2026-09-05", points: [
+      { id: "verify/lia-78", group: "verify", subject: "LIA-78", ask: "x", firstSeen: "2026-09-05" },
+    ] } }));
+    expect(md).toContain("- **LIA-78** — four ACs appear satisfied by fe#406, not ticked · 1d\n\n  AC1 (fixture deleted)");
+  });
+});

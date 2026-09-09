@@ -16,10 +16,11 @@ Fill every `{…}`:
 >
 > Inputs:
 > - Unmarked, unlinked ✋ items from `digests/{date}.md`, one per line:
->   `{line text} — {permalink}`.
+>   `{headline} — {detail} — {permalink}` (the card's three parts; the permalink is
+>   the one on its source line).
 > - Digest items (🔴 / ✋ / 🟠) that link an open ticket, timestamped after the previous
 >   tick (`{prev tick HH:MM}`, or all of today's on the first tick), one per line:
->   `{LIA-xx} — {line text} — {permalink}`.
+>   `{LIA-xx} — {headline} — {detail} — {permalink}`.
 > - Features refreshed this tick: `{ids}`; open Liamai tickets naming them: `{keys}`.
 > - Verified points licensing an edit, from step 3's
 >   `bun skills/sweep/scripts/points.ts --verified`, pasted verbatim:
@@ -72,9 +73,12 @@ ticketed):
   nominates, the user sends from Pensieve).
 - **Pure reply/ack pings get no ticket** — they stay in the report; a queue buried in
   micro-tasks stops being read.
-- **Dedupe is a writeback:** after filing, append ` → LIA-xx` to the item's headline line in the
-  digest file. A marked item is invisible to every later tick, which is what makes the
-  catch-up case free.
+- **Dedupe is a writeback:** after filing, append ` → LIA-xx` to the end of the item's
+  source line in the digest file — the italic last line of its card (`skills/sweep/
+  style.md`, "The card"), the one carrying the stamp and permalink; the headline and
+  detail stay untouched. An item is *unmarked* when its source line carries no marker.
+  A marked item is invisible to every later tick, which is what makes the catch-up case
+  free.
 - **Backstop before filing:** the file-then-mark pair isn't atomic, so search the Alden
   Portal project's issues for the item's Slack permalink first. A hit means a prior tick
   crashed mid-pair — write the missing marker instead of filing twice.
