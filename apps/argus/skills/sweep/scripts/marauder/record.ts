@@ -21,6 +21,9 @@ import { join } from "node:path";
 
 // ---------------------------------------------------------------- the vocabulary
 
+/** the reader: `you` everywhere a page addresses them, their own name where it names them */
+export const USER = { token: "you", name: "Liam Leung" };
+
 /** the two sides of a piece of work; a workstream records only the sides it has */
 export const SIDES = ["fe", "be"] as const;
 export type Side = (typeof SIDES)[number];
@@ -140,12 +143,18 @@ export type Milestones = Record<string, Milestone>;
 /** an event that attached to nothing, or to more than one thing — the corrections queue */
 export type UnsortedItem = {
   id: string;
-  kind: "landing" | "slack";
+  /** `new` is a proposal that this is a workstream nobody has opened yet */
+  kind: "landing" | "slack" | "new";
   summary: string;
+  /** `new` only: the name proposed for it, in the item's own words */
+  name?: string;
+  features?: string[];
   /** who an ask is aimed at; `you` is the user, and the board's Needs you reads this */
   to?: string[];
   source?: EventSource;
   candidates: { slug: string; how: AttachHow; why: string }[];
+  /** why it is here at all, when no candidate says it */
+  why?: string;
   suggest: string | null;
   /** what the script wants done: read it against the open list, or ask a person */
   needs?: "read" | "ask";

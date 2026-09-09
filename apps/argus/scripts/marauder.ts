@@ -7,6 +7,7 @@
  * records and nothing else.
  *
  *   marauder ingest --landings     merges on the base branches become events
+ *   marauder ingest --slack        what the channel said becomes events
  *   marauder board                 where every open workstream stands, right now
  *   marauder show <slug>           one workstream's story
  *   marauder changelog [day]       what changed in the project that day
@@ -23,16 +24,19 @@ import { mkdir } from "node:fs/promises";
 import { loadWorkstreams, type Workstream } from "../skills/sweep/scripts/marauder/record.ts";
 import { checkStyle, formatStyleProblems, renderBoard, renderChangelog, renderWorkstream, OUT_DIR } from "../skills/sweep/scripts/marauder/render.ts";
 import { run as ingestLandings, formatChanges } from "../skills/sweep/scripts/marauder/ingest-landings.ts";
+import { run as ingestSlack, formatChanges as formatSlackChanges, openList } from "../skills/sweep/scripts/marauder/ingest-slack.ts";
 
 const HELP = `marauder — where the work stands
 
   marauder ingest --landings        merges on origin/staging and origin/dev become events
+  marauder ingest --slack           what the channel said becomes events, or goes to Unsorted
   marauder board                    marauder/board.md — the one page to read
   marauder show <slug>              marauder/<slug>.md — one workstream's story
   marauder changelog [YYYY-MM-DD]   marauder/changelog/<day>.md — what changed that day
   marauder render                   all three
 
   --since <day>   ingest from this day instead of the newest landing each side holds
+  --canvas <file> split these huddle notes (read them with slack_read_file first)
   --now <ISO>     render as of this instant instead of the clock (tests, back-fills)
   --root <dir>    the workspace root (default: the repo this script is in)
   --dry-run       print what would be written, write nothing
@@ -75,21 +79,39 @@ if (!verb || verb === "help" || verb === "--help" || verb === "-h") {
 }
 
 const since = flag("--since");
+const canvas = flag("--canvas");
 
 // ingest reads and writes the records, so it runs before they are loaded to be rendered
 if (verb === "ingest") {
-  if (!args.includes("--landings")) {
-    console.error("marauder: ingest needs --landings (Slack is the other half, and is not here yet)");
+  const wantsLandings = args.includes("--landings");
+  const wantsSlack = args.includes("--slack");
+  if (!wantsLandings && !wantsSlack) {
+    console.error("marauder: ingest needs --landings or --slack");
     process.exit(1);
   }
   try {
-    const result = await ingestLandings({ root, since, now, dryRun });
-    if (result.changes.length) console.error(formatChanges(result.changes));
-    const attached = result.changes.filter((c) => c.kind === "attached").length;
-    const unsorted = result.changes.filter((c) => c.kind === "unsorted").length;
+    let attached = 0;
+    let queued = 0;
+    const written: string[] = [];
+    if (wantsLandings) {
+      const r = await ingestLandings({ root, since, now, dryRun });
+      if (r.changes.length) console.error(formatChanges(r.changes));
+      attached += r.changes.filter((c) => c.kind === "attached").length;
+      queued += r.changes.filter((c) => c.kind === "unsorted").length;
+      written.push(...r.written);
+    }
+    if (wantsSlack) {
+      const r = await ingestSlack({ root, since, canvas, dryRun });
+      if (r.changes.length) console.error(formatSlackChanges(r.changes));
+      attached += r.changes.filter((c) => c.kind === "attached").length;
+      queued += r.changes.filter((c) => c.kind === "unsorted" || c.kind === "proposed").length;
+      written.push(...r.written);
+      // what a reader needs beside the queue to answer it, in the run that shows the queue
+      if (dryRun && queued) console.error(`\nthe open list, for reading the queue against:\n${openList(r.workstreams)}`);
+    }
     console.error(
-      `marauder: ${attached} landing${attached === 1 ? "" : "s"} attached · ${unsorted} unsorted · ` +
-        `${result.written.length} file${result.written.length === 1 ? "" : "s"} written${dryRun ? " · (dry run)" : ""}`,
+      `marauder: ${attached} attached · ${queued} left to read · ` +
+        `${written.length} file${written.length === 1 ? "" : "s"} written${dryRun ? " · (dry run)" : ""}`,
     );
     process.exit(0);
   } catch (err) {

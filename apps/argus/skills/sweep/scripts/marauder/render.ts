@@ -26,12 +26,12 @@ import {
   type Milestones,
   type Side,
   type Stage,
+  USER,
   type Workstream,
   type WorkstreamEvent,
 } from "./record.ts";
 
-/** the reader; they are "you" on the board and their own name on a workstream's page */
-export const USER = { token: "you", name: "Liam Leung" };
+export { USER };
 
 export const OUT_DIR = "marauder";
 
