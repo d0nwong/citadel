@@ -1,11 +1,21 @@
-# ticket-pass — the sweep's Linear worker (steps 6a–6c, 6e)
+# ticket-pass — the sweep's Linear worker
 
-One subagent per sweep tick, spawned by `skills/sweep/SKILL.md` step 6 after dispatch
-has finished, `model: "opus"`. It is the **only** thing in the loop that writes to
-Linear: it files tickets from the digest's unlinked ✋ items (6a), folds digest items
-into the open tickets they link (6b), reviews open tickets against docs refreshed
-this tick (6c), and makes the edits verified points license (6e). Write policy is the
-sweep's Autonomy section; ticket shape and editing rules are the `linear-ticket` skill.
+One subagent per sweep tick, spawned by `skills/sweep/SKILL.md` step 6 after ingest has
+finished, `model: "opus"`. It is the **only** thing in the loop that writes to Linear.
+Write policy is the sweep's Autonomy section; ticket shape and editing rules are the
+`linear-ticket` skill. Neither changed with this rewrite — only where the work comes from.
+
+The work now comes from workstream events. A ticket belongs to a workstream, so "which
+ticket does this affect" is a choice among that workstream's one or two tickets rather
+than among every open one; and the workstream's `open_questions` and `facts` are a
+statement of what the work now is, so the pass diffs the ticket against them instead of
+patching it message by message. `marauder ticket-plan` computes that diff, and it is a
+pure function of the record and the body — the worker holds the Linear key and applies it,
+because argus holds no key.
+
+Until the rewire ticket retires the digest, the digest's own unlinked ✋ items are still an
+input; dedupe on the ticket key, and a ticket the event path already filed needs no second
+one.
 
 ## Prompt
 
@@ -15,143 +25,128 @@ Fill every `{…}`:
 > directory). Execute directly; never spawn a subagent — it would recurse.
 >
 > Inputs:
+> - The workstreams that gained an event this tick, and the events they gained:
+>   `{bun run marauder changed --since {prev tick ISO}}`.
 > - Unmarked, unlinked ✋ items from `digests/{date}.md`, one per line:
->   `{headline} — {detail} — {permalink}` (the card's three parts; the permalink is
->   the one on its source line).
-> - Digest items (🔴 / ✋ / 🟠) that link an open ticket, timestamped after the previous
->   tick (`{prev tick HH:MM}`, or all of today's on the first tick), one per line:
->   `{LIA-xx} — {headline} — {detail} — {permalink}`.
-> - Features refreshed this tick: `{ids}`; open Liamai tickets naming them: `{keys}`.
-> - Verified points licensing an edit, from step 3's
->   `bun skills/sweep/scripts/points.ts --verified`, pasted verbatim:
->   `{blocks}` — each is `{point id} — {subject} — {ask}`, its detail line, then its
->   `ticket` / `features` / `reason`. Often empty.
-> - Team `Liamai`; assignee = me. Linear tools are `mcp__linear-server__*` — ToolSearch
->   them if deferred.
+>   `{headline} — {detail} — {permalink}`. Still an input until the rewire.
+> - Features refreshed this tick: `{ids}`.
+> - Team `Liamai`; assignee = me. Linear tools are `mcp__linear__*` — ToolSearch them if
+>   deferred.
 >
-> Read `skills/sweep/ticket-pass.md` (this file) and the Autonomy section of
-> `skills/sweep/SKILL.md` before starting. Part A — file tickets from the unlinked ✋
-> items per 6a, drafting each with the `linear-ticket` skill. Part B — fold the linked
-> items into their tickets per 6b. Part C — review the listed open tickets against the
-> refreshed docs per 6c. Part D — make the edit each verified point named, per 6e.
+> Read this file and the Autonomy section of `skills/sweep/SKILL.md` before starting.
+> For each workstream with new events, for each ticket in its `keys.tickets`: read the
+> ticket body with `get_issue`, write it to a temp file, and run
+> `bun run marauder ticket-plan <slug> <LIA-nn> --body <file> --state "<its Linear state>"`.
+> Apply the plan per the action table below. Then Part B — file a ticket for every
+> `fileAsks` entry and for every unlinked ✋ item, per "Filing" — and Part C — review the
+> tickets naming a refreshed feature, per "Reviewing".
 >
-> Write policy is the sweep's Autonomy section, in full. In short: you may file tickets
-> from ✋ items (Alden Portal project, no labels, per 6a), write the ` → LIA-xx` digest
-> marker, and update a ticket's description with verified facts —
-> by editing the section the fact belongs to, never by commenting, never as a dated
-> log. You may NEVER close a ticket, write inference into a ticket, tick or untick an
-> AC, or push git. The one exception to "never write inference" is a verified point:
-> the user confirmed that inference, so the edit it names is licensed. The close and the
-> AC tick have no exception.
->
-> Report back three lists, verbatim lines the sweep can paste: **Needs you** (appears-
-> satisfied / appears-redundant, ✋ pings that got no ticket and why, linked items whose
-> claim you could not verify), **Done** (tickets filed with keys; descriptions updated —
-> which ticket, which section, what changed; each edit a verified point licensed, with
-> that point's id),
-> and the commit sha of the digest writeback (or "no writeback").
+> Report back two lists, verbatim lines the sweep can paste: **Needs you** (every flag the
+> plan returned, every ticket held because Foundry is running it, and anything you could
+> not verify) and **Done** (tickets filed with keys; bodies edited — which ticket, which
+> section, what changed).
 
-## 6a. File tickets from ✋ items
+## The action table
 
-Every unmarked item in the digest's ✋ section that carries a real deliverable (build,
-fix, review, write, decide-with-follow-up) and **does not already link a ticket** gets a
-Liamai ticket (a linked item is 6b's — the digest linked it because the work is already
-ticketed):
+`ticket-plan` reads each event's kind and returns the edits. The kinds are the record's
+closed set, and each one does one thing:
 
-- **Where:** the **Alden Portal** project — the project is the tag. Assignee me, the
-  Slack permalink as the body's anchor, title from the item.
-- **One ticket per bullet, one bullet per ask.** The digest splits a multi-ask thread
-  into one ✋ bullet per deliverable (slack-digest step 7); if a bullet still bundles
-  several independent asks, file one ticket per ask (linear-ticket's granularity rule)
-  and write every key into its marker (` → LIA-a, LIA-b`). Never an omnibus: 6d
-  nominates and Foundry executes per ticket, so one ask still waiting on a name would
-  hold its siblings off the cockpit's Send button. An ask already landed gets no ticket —
-  cite the PR in the siblings' Out of Scope; an ask that cannot yet be made concrete
-  gets its own ticket carrying the Pending, so the block stays with it alone.
-- **No labels at filing** — linear-ticket step 4 owns the rule. A filed ticket is a
-  queue entry, never a dispatch; readiness is decided per ticket in the cockpit (6d
-  nominates, the user sends from Pensieve).
-- **Pure reply/ack pings get no ticket** — they stay in the report; a queue buried in
-  micro-tasks stops being read.
-- **Dedupe is a writeback:** after filing, append ` → LIA-xx` to the end of the item's
-  source line in the digest file — the italic last line of its card (`skills/sweep/
-  style.md`, "The card"), the one carrying the stamp and permalink; the headline and
-  detail stay untouched. An item is *unmarked* when its source line carries no marker.
-  A marked item is invisible to every later tick, which is what makes the catch-up case
-  free.
-- **Backstop before filing:** the file-then-mark pair isn't atomic, so search the Alden
-  Portal project's issues for the item's Slack permalink first. A hit means a prior tick
-  crashed mid-pair — write the missing marker instead of filing twice.
+| kind | what it does to the ticket | who decides |
+| --- | --- | --- |
+| `answers-question` | deletes the Pending bullet the question was paired with, and adds one sentence to Technical Notes | nobody — apply it |
+| `contract-change`, `claimed-landing` | with a landing behind it, writes the fact into Technical Notes and clears its own unverified bullet; without one, adds a Pending bullet reading "announced on Slack, unverified against the base branch" | nobody — apply it |
+| `verified-landing` | clears the unverified bullet its claim left | nobody — apply it |
+| `new-ask` | files a ticket when the workstream has none | nobody — apply it |
+| `deadline` | sets `dueDate` from the workstream's milestone, and nothing else | nobody — apply it |
+| `directed-at-person` | nothing; it is already on the board under Needs you | the reader |
+| `chat` | nothing; it is not recorded as an event at all | — |
 
-## 6b. Fold linked items into their tickets
+Everything else the plan returns is a **flag**: a Scope sentence a fact may have unsaid, a
+question nobody has paired with a bullet, a ticket Foundry is running. Flags go to Needs
+you. They are never applied.
 
-The digest links an item to `LIA-xx` when the thread names or clearly concerns that open
-ticket (slack-digest step 6). For each such item new since the previous tick, read the
-item, its thread, and the ticket body, and edit the body under Autonomy:
+**Deleting a Pending bullet needs no approval.** The user settled that on 2026-09-09: once
+the question is answered, the bullet is wrong, and a bullet annotated "Answered:" reads as
+still open. Delete it and fold anything worth keeping into Technical Notes.
 
-- A thread that **answers a Pending bullet** (a design call made, a field name
-  published, an endpoint confirmed) — delete the bullet; fold any detail worth keeping
-  into Technical Notes. Never leave it annotated "Answered:" / "Landed" — a kept bullet
-  reads as still open.
-- A thread that **changes the contract or the ask** — rewrite the sentences it made
-  false (Background, Scope, Acceptance Criteria, Technical Notes) so
-  the body reads as one executable task.
-  No dated paragraph, no Slack quote; the digest already holds the narrative.
-- A stated **deadline or priority** — set `dueDate` / `priority`; nothing else on the
-  ticket changes for that.
-- New scope in an old thread updates the ticket it links, never a second ticket.
+## Pairing a question to its bullet
 
-The thread's technical claims are still claims: a thread saying an endpoint shipped is
-grounds for a *Pending* bullet ("announced on Slack — unverified against `origin/dev`")
-until you verify it against a pinned ref, and only then for deleting one. What you
-cannot verify goes in Needs-you, not the body — where the user confirms it, and it comes
-back to a later tick as a verified point (6e). Idempotent by construction — a second
-pass over the same item finds nothing left to change — so a re-run is harmless.
+`open_questions[].q` and a Pending bullet are both prose, so the first time a ticket's
+question meets its bullet, you make the pairing and record it:
 
-## 6c. Review tickets against refreshed reality
+```sh
+bun run marauder pending <slug> --question "<the first words of the question>" --bullet "<the bullet, exactly>"
+```
 
-Skip entirely on a tick that refreshed nothing. Otherwise, for each feature whose docs
-or journal changed this tick, re-read the open tickets naming that feature against the
-fresh docs:
+Stored on the question as `pending_ref`, the deletion afterwards is an exact string, and no
+later tick reads the same two texts again. A bullet you cannot pair stays, and the question
+comes back as a flag next tick.
 
-- Pending items now landed?
-- ACs satisfied or mooted? Your own reading that one now holds is appears-satisfied —
-  Needs-you, never a ticked AC.
-- Scope lines pointing at files that no longer exist?
-- File / line references drifted?
+Once the edits are applied, take the question off the record:
 
-This catches what the join can't: the join only sees tickets a *new landing* touches; a
-review triggers whenever the ticket's ground truth moves. Findings follow Autonomy —
-verified facts (a named Pending artifact now exists, a line anchor moved and was
-re-verified against the pinned sha, a BE dependency landed and deployed so its regen is
-now a Scope step) are written into the ticket body; appears-satisfied / appears-redundant
-go in Needs-you, and come back as a verified point once the user confirms them (6e).
+```sh
+bun run marauder resolved <slug> <LIA-nn> --question "<the first words>"
+```
 
-## 6e. Make the edits verified points license
+That drops the question and stamps the event that answered it with
+`action: "pending deleted on LIA-nn"`, so the board and the changelog say what happened.
 
-A verified point is the user's answer to an *appears* line an earlier tick reported: they
-read it and confirmed it. That confirmation is the fact Autonomy's "write inference into
-a ticket" rule was waiting for, and it licenses **exactly the edit the point named**. The
-point's own subject, ask and detail are the instruction — there is no separate field
-saying what to do, and nothing to widen it with.
+## Applying
 
-- **A point naming a ticket** — delete the Pending bullet it says is satisfied, rewrite
-  the Background sentence a landing made false, fold in the huddle ask it says shipped.
-  Ordinary body edits under 6b's rules: the section the fact belongs to, no dated
-  paragraph, no comment.
-- **Still never** close or cancel the ticket, and never tick or untick an AC — a verdict
-  on one inference is not a verdict on the ticket. An appears-redundant point the user
-  verified means the body should say what is left of the ask, not that the ticket is
-  closed; say so in **Done**, and leave the close to them.
-- **A point whose ask needs no write** — a closure they accept as it stands — gets no
-  edit, and is not restated as a new Needs-you line. It was answered; raising it again is
-  the loop the verdict exists to end.
-- **Idempotent by inspection, not by a marker.** A decision file is never edited after it
-  is written, so it cannot record that you acted. Read the current ticket body and
-  compare it against the edit the point names: when the bullet is already gone or the
-  sentence already reads right, change nothing and report nothing. That only happens on a
-  tick that died between the edit and the report — the point drops out of the report at
-  step 9, so the normal case is a single pass.
-- **Report each edit in Done with the point id**, e.g. `LIA-79 — deleted the Pending
-  bullet on the retainer cap (verify/lia-79)`. The id is what makes the line traceable
-  back to the file that licensed it.
+One `save_issue` `patch` per ticket, with every edit in one array: a failed anchor aborts
+the whole save, so a half-applied body never exists. `delete-pending` and the Technical
+Notes edits are `replace` with an exact `old_string`; `due-date` is the `dueDate` field.
+
+## Filing
+
+A `fileAsks` entry, or an unlinked ✋ digest item carrying a real deliverable, gets a ticket:
+
+- **Where:** the **Alden Portal** project — the project is the tag. Assignee me, the title
+  prefixed `[FE]` or `[BE]` for the repo it lands in, the Slack permalink as the body's
+  anchor. Draft it with the `linear-ticket` skill.
+- **One ticket per ask.** Never an omnibus: one ask still waiting on a name would hold its
+  siblings off the cockpit's Send button.
+- **No labels at filing.** A filed ticket is a queue entry, never a dispatch.
+- **Pure reply or acknowledgement pings get no ticket** — they stay in the report.
+- **Write the key back**, so no later tick files it twice:
+
+  ```sh
+  bun run marauder ticket <slug> <event-id> <LIA-nn>
+  ```
+
+  For a digest item, also append ` → LIA-xx` to the end of its source line in the digest
+  file, which is what the old path dedupes on.
+- **Backstop before filing:** search the Alden Portal project for the item's permalink
+  first. A hit means a prior tick crashed between filing and recording — write the missing
+  key instead of filing twice.
+
+## Reviewing
+
+Skip on a tick that refreshed nothing. Otherwise re-read the open tickets naming each
+refreshed feature against the fresh docs: Pending items now landed, Scope lines pointing at
+files that no longer exist, line anchors that drifted. A drift re-verified against the
+pinned sha is a fact and is written in. Your own reading that an acceptance criterion now
+holds is *appears-satisfied* — Needs you, never a ticked box.
+
+## A ticket Foundry is running
+
+When the ticket's Linear state is In Progress and a `decisions/` file with
+`action: "sent"` names it, `ticket-plan` marks the plan held and you **apply nothing**.
+Put the diff in front of the reader instead:
+
+```sh
+bun run marauder held <slug> <LIA-nn>
+```
+
+That writes a `directed-at-person` event carrying the edits, so the board shows it under
+Needs you and the reader decides whether to interrupt the run.
+
+## Never
+
+Unchanged from Autonomy, and worth restating because this worker is the only writer:
+
+- never close or cancel a ticket — a landing may implement half of one;
+- never tick or untick an acceptance criterion — the boxes are the implementer's record;
+- never rewrite the ask itself; that is a flag;
+- never a comment where a body edit belongs, never a dated "Landed …" paragraph, never a
+  Slack quote. The journal owns history; the ticket is the current task.

@@ -25,19 +25,22 @@ import { homedir } from "node:os";
 const ROOT = new URL("../../..", import.meta.url).pathname.replace(/\/$/, "");
 const FEATURES_DIR = join(ROOT, "alden/alden-portal/features");
 
-const REPOS = {
+export const REPOS = {
   fe: { path: join(homedir(), "git/alden-portal-fe"), slug: "aldenstudios/alden-portal-fe", ref: "origin/staging" },
   be: { path: join(homedir(), "git/alden-connect-portal-be"), slug: "aldenstudios/alden-connect-portal-be", ref: "origin/dev" },
 } as const;
-type RepoKind = keyof typeof REPOS;
+export type RepoKind = keyof typeof REPOS;
 
 const TICKET_RE = /\b([A-Z][A-Z0-9]{1,9}-\d{1,6})\b/g;
 /** bitbucket writes `Merged in <branch> (pull request #N)` as the merge subject */
-const MERGE_RE = /^Merged in (\S+) \(pull request #(\d+)\)/;
+export const MERGE_RE = /^Merged in (\S+) \(pull request #(\d+)\)/;
+/** ids that look like tickets and are not: business rules, mismatch rows, and http talk */
+export const NOT_A_TICKET = /^(BR|MM|PR|CI|BE|FE|UI|API|HTTP|UTF|SHA|ISO|RGB)-/;
 
-type Repo = { kind: RepoKind; path: string; slug: string; ref: string };
+export type Repo = { kind: RepoKind; path: string; slug: string; ref: string };
+export const repoOf = (kind: RepoKind): Repo => ({ kind, ...REPOS[kind] });
 
-async function git(repo: Repo, ...args: string[]): Promise<string> {
+export async function git(repo: Repo, ...args: string[]): Promise<string> {
   const p = Bun.spawnSync(["git", "-C", repo.path, ...args], { stdout: "pipe", stderr: "pipe" });
   if (p.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${p.stderr.toString().trim()}`);
   return p.stdout.toString().trimEnd();
@@ -261,6 +264,58 @@ function render(repo: Repo, f: Facts, feats: Feats): string {
   return out.join("\n");
 }
 
+/**
+ * Every landing on the repo's base branch since `from`, as data rather than a printed
+ * table — what `marauder ingest --landings` consumes (LIA-156). One `git log` for the
+ * whole list: the merge subject carries the branch and the PR number, and a merge's body
+ * carries the PR title, so nothing here needs a second call or the network. `--since` is
+ * given a time because git's approxidate otherwise fills in NOW and hides the morning.
+ */
+export type Landing = {
+  repo: RepoKind;
+  /** `fe#417`, or `fe@ac1caffd6` for a commit pushed straight at the branch */
+  ref: string;
+  sha: string;
+  short: string;
+  /** the commit date of the merge, which is when it reached the branch */
+  at: string;
+  date: string;
+  author: string;
+  pr: number | null;
+  url: string | null;
+  branch: string | null;
+  title: string;
+  tickets: string[];
+};
+
+export async function landingsSince(repo: Repo, from: string): Promise<Landing[]> {
+  const since = /^\d{4}-\d{2}-\d{2}$/.test(from) ? `${from} 00:00` : from;
+  const log = await git(
+    repo, "log", "--first-parent", `--since=${since}`,
+    "--format=%H%x1f%cI%x1f%cd%x1f%an%x1f%s%x1f%b%x1e", "--date=short", repo.ref,
+  );
+  return log
+    .split("\x1e")
+    .map(r => r.replace(/^\n/, ""))
+    .filter(r => r.trim())
+    .map(record => {
+      const [sha, at, date, author, subject, body] = record.split("\x1f");
+      const m = subject!.match(MERGE_RE);
+      const pr = m ? Number(m[2]) : null;
+      const branch = m?.[1] ?? null;
+      const title = (m ? (body ?? "").split("\n").find(Boolean) : subject) ?? subject!;
+      const tickets = [...new Set(
+        [...`${branch ?? ""}\n${title}\n${subject}`.toUpperCase().matchAll(TICKET_RE)].map(x => x[1]!),
+      )].filter(t => !NOT_A_TICKET.test(t));
+      return {
+        repo: repo.kind, sha: sha!, short: sha!.slice(0, 9), at: at!, date: date!, author: author!,
+        pr, branch, title: title.trim(), tickets,
+        ref: pr ? `${repo.kind}#${pr}` : `${repo.kind}@${sha!.slice(0, 9)}`,
+        url: pr ? `https://bitbucket.org/${repo.slug}/pull-requests/${pr}` : null,
+      };
+    });
+}
+
 async function since(repo: Repo, date: string) {
   // git's approxidate fills a missing time with NOW, so a bare `2026-08-28` means
   // "since this afternoon" and silently hides everything that landed this morning
@@ -298,6 +353,7 @@ if (import.meta.main) {
 
   pr-facts <pr-number>          e.g. 363
   pr-facts <sha>                which landing carried this commit
+  pr-facts --since <date> --json  the same landings as JSON, for marauder ingest
   pr-facts --since <date>       landings since <date>, whether the journal names them, and
                                 the features an unjournaled one touches
   flags: --be (backend repo) · --ref <ref> · --no-fetch`);
@@ -308,6 +364,10 @@ if (import.meta.main) {
     Bun.spawnSync(["git", "-C", repo.path, "fetch", "--quiet", "origin"], { stdout: "ignore", stderr: "ignore" });
 
   const sinceFlag = argv.indexOf("--since");
+  if (sinceFlag >= 0 && argv.includes("--json")) {
+    console.log(JSON.stringify(await landingsSince(repo, argv[sinceFlag + 1]!), null, 2));
+    process.exit(0);
+  }
   if (sinceFlag >= 0) { await since(repo, argv[sinceFlag + 1]!); process.exit(0); }
 
   if (!target) { console.error("error: give a PR number or a sha"); process.exit(1); }
