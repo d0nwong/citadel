@@ -28,6 +28,7 @@ import {
   MessagesSquare,
   ScrollText,
   SparklesIcon,
+  Waypoints,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "#/components/theme";
@@ -284,6 +285,16 @@ function AppSidebar() {
                 <Link to="/">
                   <Inbox />
                   <span>Today</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {/* Beside Today, not under Reading: the points on one and the initiatives on
+                the other are the same work, asked about at two altitudes (LIA-149). */}
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive(pathname, "/arcs")}>
+                <Link to="/arcs">
+                  <Waypoints />
+                  <span>Arcs</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

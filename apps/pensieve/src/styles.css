@@ -332,3 +332,16 @@ body {
 .prose-loose :where(h2 + ul, h3 + ul) {
   margin-top: 0.6rem;
 }
+
+/* An arc's "Where we are" on a card in the index: one paragraph among chrome, so it sits
+   at the page's reading size without the leading a whole document needs. */
+.prose-tight {
+  font-size: 15px;
+  line-height: 1.55;
+}
+.prose-tight :where(p, ul, ol) {
+  margin: 0.4rem 0 0;
+}
+.prose-tight :where(p:first-child) {
+  margin-top: 0;
+}

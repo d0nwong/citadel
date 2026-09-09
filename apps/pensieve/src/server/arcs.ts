@@ -298,6 +298,13 @@ export async function closeArc(
   if (!isArcSlug(want)) {
     return { error: `"${slug}" is not an arc slug`, ok: false };
   }
+  // The verdict already on disk is the answer: the sweep flips `status: closed` on its next
+  // tick, so between the press and that tick the arc file still reads open and a second
+  // press would otherwise write a second, later close (LIA-149 AC3).
+  const already = await readArcDecision(want, sources.decisionsDir);
+  if (already?.action === "closed") {
+    return { decision: already, ok: true, replay: true };
+  }
   const arc = (await sources.arcs()).find((a) => a.slug === want);
   if (!arc) {
     return {

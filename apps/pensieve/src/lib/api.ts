@@ -12,8 +12,10 @@
  */
 
 import type { UIMessage } from "@tanstack/ai";
+import type { MarkdownDocument } from "@tanstack/markdown";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { ARC_SLUG_RE, byLastRewrite } from "#/lib/arcs";
 import { isPointId, POINT_ID_RE } from "#/lib/points";
 import type {
   AskStatus,
@@ -30,7 +32,7 @@ import type {
   JobStatus,
 } from "#/server/foundry";
 import type { LinearConfig } from "#/server/linear";
-import type { Json, Point } from "#/server/workspace";
+import type { ArcFile, ArcMeta, Json, Point } from "#/server/workspace";
 
 /** The sidebar's docs tree and the top bar's workspace path — what the shell shows on every page. */
 export interface Navigation {
@@ -368,6 +370,8 @@ const threadId = z
 export const askChat = createServerFn({ method: "POST" })
   .validator(
     z.object({
+      /** The arc the conversation was opened on; stored on the thread's first run. */
+      arc: z.string().regex(ARC_SLUG_RE).optional(),
       messages: z.array(
         z.custom<UIMessage>(
           (v) =>
@@ -565,6 +569,110 @@ export const fileTicket = createServerFn({ method: "POST" })
     })().finally(() => filing.delete(key));
     filing.set(key, task);
     return task;
+  });
+
+// ── arcs: the pages that read them (LIA-149) ───────────────────────────────────
+
+/** One card on `/arcs`: the arc, its paragraph, and how many of its points are still open. */
+export interface ArcCard {
+  meta: ArcMeta;
+  openCount: number;
+  /** `## Where we are` — the whole paragraph, which is what the index is for. */
+  where: MarkdownDocument;
+}
+
+export interface ArcsIndex {
+  /** Closed arcs, last rewrite first — the collapsed half of the page. */
+  closed: ArcMeta[];
+  open: ArcCard[];
+}
+
+/**
+ * Every arc the sweep has written, open ones first with what each is about (AC1). The open
+ * count is the live one — `points.json` with `decisions/` over it — not the file's Open
+ * list, which is a tick behind whatever was decided since.
+ */
+export const listArcs = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ArcsIndex> => {
+    const ws = await import("#/server/workspace");
+    const dec = await import("#/server/decisions");
+    const { openArcsFirst } = await import("#/server/queue");
+    const { openPointsOf } = await import("#/features/points/arcs");
+    const [arcs, file, onDisk] = await Promise.all([
+      ws.listArcs(),
+      ws.readPoints(),
+      dec.readDecisions(),
+    ]);
+    const points = dec.mergeDecisions(file?.points ?? [], onDisk);
+    const open: ArcCard[] = [];
+    for (const meta of openArcsFirst(arcs)) {
+      const arc = await ws.readArcFile(meta.slug);
+      open.push({
+        meta,
+        openCount: openPointsOf(meta.slug, arc?.open ?? [], points).length,
+        where: arc?.doc ?? EMPTY_DOC,
+      });
+    }
+    return {
+      closed: arcs.filter((a) => a.status === "closed").sort(byLastRewrite),
+      open,
+    };
+  }
+);
+
+/** An arc that has no paragraph yet — the sweep writes one on the tick that opens it. */
+const EMPTY_DOC: MarkdownDocument = {
+  children: [],
+  headings: [],
+  type: "root",
+};
+
+/** One arc's frontmatter by slug — what the card above an Ask conversation needs (AC4). */
+export const getArcMeta = createServerFn({ method: "GET" })
+  .validator((slug: string) => slug)
+  .handler(async ({ data }): Promise<ArcMeta | null> => {
+    const ws = await import("#/server/workspace");
+    const { isArcSlug } = await import("#/lib/arcs");
+    return isArcSlug(data) ? ws.readArc(data) : null;
+  });
+
+export interface ArcPage {
+  arc: ArcFile | null;
+  /** The `closed` verdict, when one is on disk — the sweep flips the file a tick later. */
+  closed: { at: string } | null;
+  foundry: FoundryConfig;
+  /** The last tick's points with `decisions/` over them — the arc's Open rows, live. */
+  points: Point[];
+  repos: FoundryRepo[];
+}
+
+/**
+ * One arc's page: its file, and everything its Open rows need to carry the same controls
+ * the Points page does (AC2). The join between the two — which points are this arc's — is
+ * `features/points/arcs`, so the page and the queue's grouping cannot drift.
+ */
+export const getArc = createServerFn({ method: "GET" })
+  .validator((slug: string) => slug)
+  .handler(async ({ data }): Promise<ArcPage> => {
+    const ws = await import("#/server/workspace");
+    const dec = await import("#/server/decisions");
+    const fd = await import("#/server/foundry");
+    const { isArcSlug } = await import("#/lib/arcs");
+    const [arc, file, onDisk, foundry, repos, decision] = await Promise.all([
+      ws.readArcFile(data),
+      ws.readPoints(),
+      dec.readDecisions(),
+      fd.foundryConfig(),
+      fd.trackedRepos(),
+      isArcSlug(data) ? dec.readArcDecision(data) : null,
+    ]);
+    return {
+      arc,
+      closed: decision?.action === "closed" ? { at: decision.at ?? "" } : null,
+      foundry,
+      points: dec.mergeDecisions(file?.points ?? [], onDisk),
+      repos,
+    };
   });
 
 // ── arcs: opening and closing one (LIA-147) ────────────────────────────────────

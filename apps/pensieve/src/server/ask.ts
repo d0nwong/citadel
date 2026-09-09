@@ -67,6 +67,7 @@ import {
   withSandbox,
 } from "@tanstack/ai-sandbox";
 import { localProcessSandbox } from "@tanstack/ai-sandbox-local-process";
+import { isArcSlug } from "../lib/arcs";
 import {
   ACCIO_WRITE_VERBS,
   BASE_TOOLS,
@@ -190,6 +191,14 @@ You cannot write files, edit tickets or comments, or run the sweep. To ignore or
  */
 export const pointPrompt = (point: string) =>
   `This conversation was opened on the Needs-you point \`${point}\`. "it" in a question or a verdict means that point unless the user names another; \`bun run accio point ${point}\` is its record.`;
+
+/**
+ * The same for a conversation opened on an arc (LIA-149 AC4): the initiative is the
+ * subject, and `accio arc` is where its record is. No verdict rides on it — an arc is
+ * closed on its own page, not from a card — so the line only fixes what "it" means.
+ */
+export const arcPrompt = (arc: string) =>
+  `This conversation was opened on the arc \`arcs/${arc}.md\` — the running story of that initiative. "it" in a question means that arc unless the user names something else; \`bun run accio arc ${arc}\` is its record.`;
 
 export type AuthMode = "host" | "api-key";
 
@@ -637,6 +646,13 @@ export const SESSION_KEY = "sessionId";
 export const POINT_KEY = "point";
 
 /**
+ * The arc this conversation is about, when it was opened from one (LIA-149). Written once,
+ * on the first run that names it, and never again — an arc is a conversation's subject the
+ * same way a point is.
+ */
+export const ARC_KEY = "arc";
+
+/**
  * Where a filed ticket lives: `metadata[<threadId>]["ticket:<toolCallId>"]`. One key per
  * proposal, which is what makes File idempotent per card (LIA-113 AC3): a second click, or
  * a click after a reload replayed the tool part, answers the issue the first press filed
@@ -746,6 +762,8 @@ export const readSessionId = async (
 // ── the run ────────────────────────────────────────────────────────────────────
 
 export interface AskInput {
+  /** The arc the conversation was opened on — stored on the first run, ignored after. */
+  arc?: string;
   /**
    * The full transcript (what `useChat` sends), or `[]` to continue the stored one as it
    * stands — TanStack's "send the full transcript, or none of it". A delta would replace
@@ -804,6 +822,17 @@ export function pointOf(
     return stored;
   }
   return isPointId(asked) ? asked : undefined;
+}
+
+/** The arc a run is about, on the same rule: the stored one wins, and only a slug counts. */
+export function arcOf(
+  stored: unknown,
+  asked: string | undefined
+): string | undefined {
+  if (isArcSlug(stored)) {
+    return stored;
+  }
+  return isArcSlug(asked) ? asked : undefined;
 }
 
 const errorChunks = (
@@ -977,6 +1006,7 @@ export async function* askStream(
       await metadata.get(input.threadId, POINT_KEY),
       input.point
     );
+    const arc = arcOf(await metadata.get(input.threadId, ARC_KEY), input.arc);
     const harness = harnessLog();
     let lastError: LastError | undefined;
     const recordError = async (message: string, code: string | undefined) => {
@@ -1043,6 +1073,12 @@ export async function* askStream(
         ) {
           await metadata.set(input.threadId, POINT_KEY, input.point);
         }
+        if (
+          isArcSlug(input.arc) &&
+          (await metadata.get(input.threadId, ARC_KEY)) === null
+        ) {
+          await metadata.set(input.threadId, ARC_KEY, input.arc);
+        }
       },
     });
     const middleware: ChatMiddleware[] = [
@@ -1060,7 +1096,11 @@ export async function* askStream(
       adapter: finishedIsFinished(opts.adapter ?? askAdapter(), late),
       // Each tool's `execute` runs here, in this process, through the adapter's MCP bridge —
       // which is provisioned only because `tools` below is non-empty (LIA-111).
-      context: { threadId: input.threadId, ...(point ? { point } : {}) },
+      context: {
+        threadId: input.threadId,
+        ...(point ? { point } : {}),
+        ...(arc ? { arc } : {}),
+      },
       debug: harness.debug,
       messages: convertMessagesToModelMessages(input.messages),
       middleware,
@@ -1069,6 +1109,7 @@ export async function* askStream(
       systemPrompts: [
         ASK_SYSTEM_PROMPT,
         ...(point ? [pointPrompt(point)] : []),
+        ...(arc ? [arcPrompt(arc)] : []),
       ],
       threadId: input.threadId,
       tools: [proposeDecisionTool, proposeTicketTool, proposeArcTool],
@@ -1092,6 +1133,8 @@ export async function* askStream(
 // ── reads for the pages ────────────────────────────────────────────────────────
 
 export interface Conversation {
+  /** The arc this conversation was opened on, when it was (LIA-149). */
+  arc?: string;
   createdAt: string;
   /** `'length'` when the last run stopped at the turn cap — the page says so under the answer. */
   finishReason?: "length";
@@ -1131,9 +1174,11 @@ export async function getConversation(
   const sessionId = f.metadata[SESSION_KEY];
   const lastError = lastErrorOf(f.metadata[LAST_ERROR_KEY]);
   const point = f.metadata[POINT_KEY];
+  const arc = f.metadata[ARC_KEY];
   return {
     messages: modelMessagesToUIMessages(f.messages),
     threadId: f.threadId,
+    ...(isArcSlug(arc) ? { arc } : {}),
     ...(isPointId(point) ? { point } : {}),
     ...(typeof sessionId === "string" && sessionId ? { sessionId } : {}),
     ...(f.metadata[FINISH_REASON_KEY] === "length"

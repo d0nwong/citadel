@@ -33,6 +33,8 @@ const {
   ADAPTER_CONFIG,
   ASK_SYSTEM_PROMPT,
   AUTH_ERROR_RE,
+  arcOf,
+  arcPrompt,
   pointPrompt,
   diagnosisLine,
   titleOf,
@@ -451,6 +453,88 @@ describe("LIA-109 AC1/AC6/AC7 — the point a conversation was opened on", () =>
     // Nor one that reached the file some other way — a hand edit, an older shape.
     await store.persistence.stores.metadata.set("tp3", "point", "not a point");
     expect((await getConversation("tp3", store))?.point).toBeUndefined();
+  });
+});
+
+describe("LIA-149 AC4 — the arc a conversation was opened on", () => {
+  test("written on the first run that names it, and never overwritten", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    const adapter = new FakeClaude({ sessionId: "sess-A1" });
+    await collect(
+      askStream(
+        {
+          arc: "invoice-emails",
+          messages: [user("where does this arc stand")],
+          threadId: "ta1",
+        },
+        { adapter, middleware: [], status: available, store }
+      )
+    );
+    expect((await readJson(dir, "ta1")).metadata.arc).toBe("invoice-emails");
+    expect((await getConversation("ta1", store))?.arc).toBe("invoice-emails");
+
+    await collect(
+      askStream(
+        {
+          arc: "entity-billing",
+          messages: [user("and now")],
+          threadId: "ta1",
+        },
+        { adapter, middleware: [], status: available, store }
+      )
+    );
+    expect((await readJson(dir, "ta1")).metadata.arc).toBe("invoice-emails");
+  });
+
+  test("no arc given: none stored, and none on the wire", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    await collect(
+      askStream(
+        { messages: [user("plain question")], threadId: "ta2" },
+        {
+          adapter: new FakeClaude({ sessionId: "sess-A2" }),
+          middleware: [],
+          status: available,
+          store,
+        }
+      )
+    );
+    expect((await readJson(dir, "ta2")).metadata.arc).toBeUndefined();
+    expect((await getConversation("ta2", store))?.arc).toBeUndefined();
+  });
+
+  test("a value that is not an arc slug is neither stored nor returned", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    await collect(
+      askStream(
+        {
+          arc: "../../etc/passwd",
+          messages: [user("hi")],
+          threadId: "ta3",
+        },
+        {
+          adapter: new FakeClaude({ sessionId: "sess-A3" }),
+          middleware: [],
+          status: available,
+          store,
+        }
+      )
+    );
+    expect((await readJson(dir, "ta3")).metadata.arc).toBeUndefined();
+    // Nor one that reached the file some other way — a hand edit, an older shape.
+    await store.persistence.stores.metadata.set("ta3", "arc", "Not A Slug");
+    expect((await getConversation("ta3", store))?.arc).toBeUndefined();
+  });
+
+  test("the arc rides with the run as a system prompt and as tool context", () => {
+    expect(arcPrompt("invoice-emails")).toContain("arcs/invoice-emails.md");
+    expect(arcPrompt("invoice-emails")).toContain("accio arc invoice-emails");
+    expect(arcOf("invoice-emails", "entity-billing")).toBe("invoice-emails");
+    expect(arcOf(null, "entity-billing")).toBe("entity-billing");
+    expect(arcOf(null, "Not A Slug")).toBeUndefined();
   });
 });
 
