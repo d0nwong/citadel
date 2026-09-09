@@ -9,6 +9,7 @@
  *   marauder ingest --landings     merges on the base branches become events
  *   marauder ingest --slack        what the channel said becomes events
  *   marauder attach <id> <slug>    move an unsorted item onto a workstream, and learn from it
+ *   marauder dismiss <id>          drop an unsorted item that goes nowhere
  *   marauder suggest <id> <slug>   leave it unsorted, but say where it probably goes
  *   marauder new <id> --name "…"   open a workstream from a proposal
  *   marauder split <slug> --into   cut one workstream in two
@@ -38,9 +39,10 @@ import {
 } from "../skills/sweep/scripts/marauder/record.ts";
 import { busy, formatCheck } from "../skills/sweep/scripts/marauder/coherence.ts";
 import {
-  attach, defaultWho, newFrom, pairPending, proposeSplit, recordHeld, recordTicket,
+  attach, defaultWho, dismiss, newFrom, pairPending, proposeSplit, recordHeld, recordTicket,
   resolveQuestion, setStage, split, suggest, type State,
 } from "../skills/sweep/scripts/marauder/correct.ts";
+import { apply, formatApplied, readDecisions } from "../skills/sweep/scripts/marauder/decisions.ts";
 import { formatPlan, heldEvent, planTicket, type TicketPlan } from "../skills/sweep/scripts/marauder/ticket-diff.ts";
 import { checkStyle, formatStyleProblems, renderBoard, renderChangelog, renderWorkstream, OUT_DIR } from "../skills/sweep/scripts/marauder/render.ts";
 import { run as ingestLandings, formatChanges } from "../skills/sweep/scripts/marauder/ingest-landings.ts";
@@ -53,6 +55,7 @@ const HELP = `marauder — where the work stands
   marauder attach <id> <slug>       move an unsorted item onto a workstream, and learn from it
   marauder suggest <id> <slug>      leave it unsorted, but say where it probably goes
   marauder new <id> --name "…"      open a workstream from a proposal
+  marauder dismiss <id> --reason "…"  drop an unsorted item that goes nowhere
   marauder split <slug> --into <slug> --name "…" --events <id,…>
   marauder stage <slug> <fe|be> <stage>
   marauder changed --since <ISO>    which workstreams gained an event, and which
@@ -151,6 +154,23 @@ if (!verb || verb === "help" || verb === "--help" || verb === "-h") {
 const since = flag("--since");
 const canvas = flag("--canvas");
 
+/**
+ * `decisions/marauder/*.json` — what a person decided in Pensieve — applied to the records
+ * through the same correction functions the command line goes through (LIA-160 AC4). The
+ * files are left where they are: they are the history of who decided what, and the entry
+ * leaving the queue is what stops one being applied a second time.
+ */
+async function applyDecisions(root: string, dryRun: boolean) {
+  const { decisions, unreadable } = await readDecisions(root);
+  for (const u of unreadable) console.error(`marauder: decisions/${u.file} — ${u.error}`);
+  if (!decisions.length) return { applied: 0, written: [] as string[] };
+  const before = await loadState(root);
+  const { state, changes } = apply(before, decisions);
+  if (changes.length) console.error(formatApplied(changes));
+  const written = changes.length && !dryRun ? await saveState(root, before, state) : [];
+  return { applied: changes.length, written };
+}
+
 // ingest reads and writes the records, so it runs before they are loaded to be rendered
 if (verb === "ingest") {
   const wantsLandings = args.includes("--landings");
@@ -163,6 +183,10 @@ if (verb === "ingest") {
     let attached = 0;
     let queued = 0;
     const written: string[] = [];
+    // The verdicts a person gave in Pensieve, before anything new arrives: a decision names
+    // an entry in the queue as it stands now, and ingest is about to change that queue.
+    const decided = await applyDecisions(root, dryRun);
+    written.push(...decided.written);
     if (wantsLandings) {
       const r = await ingestLandings({ root, since, now, dryRun });
       if (r.changes.length) console.error(formatChanges(r.changes));
@@ -180,7 +204,7 @@ if (verb === "ingest") {
       if (dryRun && queued) console.error(`\nthe open list, for reading the queue against:\n${openList(r.workstreams)}`);
     }
     console.error(
-      `marauder: ${attached} attached · ${queued} left to read · ` +
+      `marauder: ${decided.applied ? `${decided.applied} decided · ` : ""}${attached} attached · ${queued} left to read · ` +
         `${written.length} file${written.length === 1 ? "" : "s"} written${dryRun ? " · (dry run)" : ""}`,
     );
     process.exit(0);
@@ -190,7 +214,7 @@ if (verb === "ingest") {
   }
 }
 
-const CORRECTIONS = ["attach", "suggest", "new", "split", "stage", "propose-split", "pending", "resolved", "ticket", "held"];
+const CORRECTIONS = ["attach", "suggest", "new", "dismiss", "split", "stage", "propose-split", "pending", "resolved", "ticket", "held"];
 
 /** a `sent` decision naming this ticket means Foundry is executing it (PLAN "Shared contracts") */
 async function sentTickets(root: string): Promise<Set<string>> {
@@ -250,6 +274,7 @@ if (verb === "check" || verb === "changed" || verb === "ticket-plan" || CORRECTI
       verb === "attach" ? attach(before, need(a, "an unsorted id"), need(b, "a workstream slug"), { ...who, auto: args.includes("--auto"), kind: flag("--kind") as never })
       : verb === "suggest" ? suggest(before, need(a, "an unsorted id"), need(b, "a workstream slug"))
       : verb === "new" ? newFrom(before, need(a, "an unsorted id"), { ...who, name: need(flag("--name"), "--name"), features: list(flag("--features")), driver: flag("--driver") })
+      : verb === "dismiss" ? dismiss(before, need(a, "an unsorted id"), { ...who, reason: need(who.reason, "--reason") })
       : verb === "split" ? split(before, need(a, "a workstream slug"), { ...who, into: need(flag("--into"), "--into"), name: need(flag("--name"), "--name"), events: list(flag("--events")) })
       : verb === "stage" ? setStage(before, need(a, "a workstream slug"), need(b, "fe or be") as Side, need(args[3], "a stage") as Stage, who)
       : verb === "pending" ? pairPending(before, need(a, "a workstream slug"), need(flag("--question"), "--question"), need(flag("--bullet"), "--bullet"))

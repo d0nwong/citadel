@@ -65,6 +65,8 @@ const POINTS = join(REPORTS, "points.json");
 const DECISIONS = join(ROOT, "decisions");
 /** the one decision group that is not a verdict on a point — `decisions/arc/<slug>.json` (LIA-145) */
 export const ARC_GROUP = "arc";
+/** nor is this one — `decisions/marauder/<slug>.json`, which `marauder ingest` applies (LIA-160) */
+export const MARAUDER_GROUP = "marauder";
 const TITLES = join(ROOT, ".state/linear-titles.json");
 const MANIFEST = join(ROOT, "alden/alden-portal/.doc-workspace/feature-manifest.json");
 
@@ -82,7 +84,10 @@ export type Decision = {
  * `decisions/arc/<slug>.json` — the user's verdict that an initiative is worth a running
  * story, or that its story is over (LIA-145). It travels as a decision file like every
  * other verdict, but it is not a verdict on a Needs-you point, so it never joins the
- * points: `readDecisions` leaves `arc/` alone and `readArcDecisions` reads it.
+ * points: `readDecisions` leaves `arc/` alone and `readArcDecisions` reads it. The
+ * `marauder/` group is skipped the same way — Pensieve writes those on an unsorted entry
+ * and `marauder ingest` applies them, so a point audit that read them would report every
+ * one as a file it could not parse (LIA-160).
  */
 export type ArcDecision = {
   /** `arc/<slug>` — the slug is the arc's file name under `arcs/` */
@@ -521,7 +526,8 @@ async function decisionFiles(dir: string, keep: (name: string) => boolean) {
 export async function readDecisions(dir = DECISIONS): Promise<{ decisions: Map<string, Decision>; unreadable: Unreadable[] }> {
   const decisions = new Map<string, Decision>();
   const unreadable: Unreadable[] = [];
-  for (const { file, text } of await decisionFiles(dir, (n) => !n.startsWith(`${ARC_GROUP}/`))) {
+  const notAPoint = (n: string) => n.startsWith(`${ARC_GROUP}/`) || n.startsWith(`${MARAUDER_GROUP}/`);
+  for (const { file, text } of await decisionFiles(dir, (n) => !notAPoint(n))) {
     const parsed = parseDecision(text);
     if ("error" in parsed) {
       unreadable.push({ file, error: parsed.error });
