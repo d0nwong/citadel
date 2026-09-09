@@ -29,6 +29,7 @@ import { loadAllJournals, type AppJournalEntry } from "../../../../scripts/lib/j
 import {
   UNSORTED_FILE,
   WORKSTREAMS_DIR,
+  humanStage,
   instantOf,
   serializeWorkstream,
   loadWorkstreams,
@@ -201,7 +202,22 @@ export function applyLandings({ workstreams, landings, journals, unsorted }: App
     const w = byslug.get(only.slug)!;
     const side = SIDE_OF[l.repo];
     const confidence: Confidence = only.how === "ref" ? "certain" : "likely";
-    const moved = advances(w.stage[side]);
+    // a person who said where this side really is outranks what a landing implies, until
+    // the next landing; when they said it is behind `landed`, the disagreement is queued
+    const held = humanStage(w, side);
+    if (held && rank[held.stage] < rank.landed) {
+      const item = unsortedItem(l, candidates);
+      const id = `${item.id}/stage`;
+      if (!seenUnsorted.has(id))
+        seenUnsorted.set(id, {
+          ...item,
+          id,
+          why: `${l.ref} is on the branch, and someone set ${w.slug}'s ${side} to ${held.stage} after the last landing`,
+          suggest: w.slug,
+          needs: "ask",
+        });
+    }
+    const moved = !held && advances(w.stage[side]);
     const event: WorkstreamEvent = {
       at: l.at,
       kind: "verified-landing",
