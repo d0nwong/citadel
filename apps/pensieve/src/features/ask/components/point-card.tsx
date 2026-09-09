@@ -1,8 +1,8 @@
 /**
  * The Needs-you point a conversation was opened on, above the transcript (LIA-109). One
  * line by default — the page below it is the conversation, and that is what the screen is
- * for — with the point's ask and detail behind a disclosure and the same Ignore / Send
- * controls the Points page uses (`features/points/verdict`), so the verdict can be given
+ * for — with the point's ask and detail behind a disclosure and the same Approve / Send /
+ * Dismiss controls the home page's queue uses (`features/points/verdict`), so the verdict can be given
  * here rather than back on the list.
  *
  * A point that already has a decision shows it and offers no controls. A conversation with
@@ -10,7 +10,7 @@
  */
 
 import { ChevronRight } from "lucide-react";
-import { TicketLink } from "#/components/bits";
+import { Inline, TicketLink } from "#/components/bits";
 import { DecidedLine, VerdictControls } from "#/features/points/verdict";
 import type { PointPage } from "#/lib/api";
 import { daysSince } from "#/lib/utils";
@@ -30,7 +30,7 @@ export function PointCard({ page }: { page: PointPage | null }) {
   }
   const subject = (
     <span className="min-w-0 truncate font-medium text-foreground leading-tight">
-      {point.subject}
+      <Inline text={point.subject} />
     </span>
   );
 
@@ -66,11 +66,11 @@ export function PointCard({ page }: { page: PointPage | null }) {
           </span>
         </summary>
         <p className="mt-1 pl-7 text-muted-foreground text-sm leading-snug">
-          {point.ask}
+          <Inline text={point.ask} />
         </p>
         {point.detail && (
           <p className="mt-1 max-w-[72ch] pl-7 text-sm text-subtle leading-snug">
-            {point.detail}
+            <Inline text={point.detail} />
           </p>
         )}
       </details>

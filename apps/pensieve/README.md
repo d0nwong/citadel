@@ -6,9 +6,9 @@ digests**, the per-landing **change journal**, and the dual-tier **feature docs*
 
 Pensieve is read-only by design, with one exception. The sweep in argus owns every
 file it shows; this app only parses and renders them, so there is never a second writer to
-the workflow state. The exception is `decisions/`: the **Points** page lists the sweep's
-Needs-you points and lets you *ignore* one with a reason, *verify* one in the Verify group,
-or *send* one to
+the workflow state. The exception is `decisions/`: the queue on the home page lists the sweep's
+Needs-you points and lets you *dismiss* one with a reason (`ignored`), *approve* one in the
+Verify group (`verified`), or *send* one to
 [Foundry](https://github.com/d0nwong/foundry), and each verdict is one JSON file there
 that the sweep reads back and commits. Nothing else is written into the blackboard from
 here — not the journal, docs, reports or tickets; those still go through Linear, Slack,
@@ -73,7 +73,7 @@ checkout — `git status` there is the same before and after a run.
 Sending a point needs Foundry's trigger-API token: `foundry auth --api` in the Foundry repo
 prints one, and `FOUNDRY_API_TOKEN` in this repo's `.env` is where Pensieve reads it from —
 the environment and nowhere else, fresh on every request. `FOUNDRY_URL` defaults to
-`http://localhost:3777`. With no token, the Points page still lets you ignore a point —
+`http://localhost:3777`. With no token, the queue still lets you dismiss or approve a point —
 Send is shown off, with the reason.
 
 Filing a ticket from a proposal card needs `LINEAR_API_KEY` in the same `.env` — a personal
@@ -123,8 +123,7 @@ state is `/data` on the named volume `pensieve-home`, so conversations survive
 
 | Route | Source in argus |
 |---|---|
-| `/` Inbox | `reports/<latest>.md` + `digests/<latest>.md`, and the count of open points |
-| `/points` | `reports/points.json` — Needs-you as data, grouped Decide / Verify / Confirm / On hold / Housekeeping, with `decisions/` laid over it. Ignore, Send, and — in the Verify group — Verify |
+| `/` Today | the queue: `reports/points.json` with `decisions/` laid over it, in three sections by who moves a point — Your call (Decide + Verify), Waiting on others (Confirm + On hold), Housekeeping — with Approve (Verify group), Send and Dismiss; then `reports/<latest>.md` without its Needs-you section, and a link to `digests/<latest>.md` |
 | `/reports`, `/reports/:day` | `reports/YYYY-MM-DD.md` — one per day, overwritten each tick |
 | `/digests`, `/digests/:day` | `digests/YYYY-MM-DD.md` |
 | `/journal` | every `<app>/features/**/journal/**/*.md` — frontmatter only, filterable by app / day / feature / status / text |
@@ -144,7 +143,7 @@ journal entries (`[[YYYY-MM-DD]]` to a day view), and HTML comments — the
 ## What it writes
 
 Into the blackboard, only `decisions/<group>/<slug>.json`, one per point acted on from
-`/points` or from the card an Ask proposes (below):
+the home page or from the card an Ask proposes (below):
 
 ```json
 { "point": "decide/lia-86", "action": "sent", "at": "2026-09-05T10:12:00.000Z",
@@ -253,16 +252,16 @@ path or pattern, and a second question sent while the first is answered waits in
 Stop — and a reload mid-answer, which drops the request the same way — ends the run and
 keeps the partial answer; the next question resumes the same Claude session. With no
 credential the composer is disabled and says what to do. Delete asks once and removes the
-file. Every point on `/points` has an Ask action that opens a conversation already asking
-about that point, with a breadcrumb back to the points; the question starts with `/ask`,
+file. Every point in the queue has an Ask action that opens a conversation already asking
+about that point, with a breadcrumb back home; the question starts with `/ask`,
 which loads argus's `ask` skill explicitly (a `/skill` prefix expands under `claude -p`),
 so the first tool call is `accio point`.
 
 A conversation opened from a point carries it: the URL adds `point=<id>` beside `q`, the
 first run stores it as `metadata.point`, and the page shows the point above the transcript
-— subject, ticket, ask — with the same Ignore / Verify / Send controls as `/points`
-(`src/features/points/verdict.tsx`, one component for both pages, so Verify shows here for
-a Verify-group point exactly as it does on the list). A point that already has a decision
+— subject, ticket, ask — with the same Approve / Send / Dismiss controls as the home page
+(`src/features/points/verdict.tsx`, one component for both pages, so Approve shows here for
+a Verify-group point exactly as it does in the queue). A point that already has a decision
 shows it and no controls; a conversation with no point shows nothing there.
 
 The model can propose a verdict too. `propose_decision` (`src/server/ask-tools.server.ts`)
@@ -274,7 +273,7 @@ the harness has no approval gate — so it only checks and never writes: the poi
 chat renders the proposal as a card (`decision-card.tsx`): the verdict, the reason as an
 editable field, the repo for a send — the same picker over Foundry's tracked repos, from
 the same list — and Confirm, which calls `decidePoint` / `sendPoint`, so the file is what
-the Points page would have written for the same input. The model is
+the queue would have written for the same input. The model is
 told to say a verdict is proposed and never that it is done; once a decision file exists
 the card shows the decided line and offers no second Confirm, on reload as well.
 Every other page refreshes when dragged down from

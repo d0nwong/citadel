@@ -208,3 +208,30 @@ export function FeatureLink({
     </Link>
   );
 }
+
+/**
+ * A one-line markdown string — a point's subject, ask or detail — with its `code` spans
+ * rendered and nothing else interpreted. The sweep writes these as markdown, and a
+ * backtick on screen reads as a typo.
+ */
+export function Inline({ text }: { text: string }) {
+  const parts = text.split(/(`[^`]+`)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("`") && part.endsWith("`") && part.length > 2 ? (
+          <code
+            className="rounded border border-border bg-muted px-1 py-px font-mono text-[0.85em]"
+            // biome-ignore lint/suspicious/noArrayIndexKey: the parts are positional text, with no identity of their own
+            key={i}
+          >
+            {part.slice(1, -1)}
+          </code>
+        ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: as above
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
+}

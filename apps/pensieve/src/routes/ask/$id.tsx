@@ -9,9 +9,9 @@
  * The next question resumes the same session — the id is stored server-side, never sent
  * from here (AC3).
  *
- * Opened from a point (`?q=…&from=points&point=<id>`): the question is sent as soon as a
+ * Opened from a point (`?q=…&from=home&point=<id>`): the question is sent as soon as a
  * credential is known to be available — or left in the composer when it is not — and the
- * kicker is a breadcrumb back to the points. The point itself travels with the run and is
+ * eyebrow is a breadcrumb back to the queue on the home page. The point itself travels with the run and is
  * stored as the conversation's own (`metadata.point`), so the card above the transcript
  * survives a reload; `q` and `point` leave the URL once the first answer has landed and
  * the file carries them (LIA-109).
@@ -38,14 +38,14 @@ import {
 } from "#/lib/api";
 import { isPointId } from "#/lib/points";
 
-type From = "points";
+type From = "home";
 
 export const Route = createFileRoute("/ask/$id")({
   validateSearch: (
     s: Record<string, unknown>
   ): { q?: string; from?: From; point?: string } => ({
     ...(typeof s.q === "string" && s.q.trim() ? { q: s.q } : {}),
-    ...(s.from === "points" ? { from: "points" as const } : {}),
+    ...(s.from === "home" ? { from: "home" as const } : {}),
     ...(isPointId(s.point) ? { point: s.point } : {}),
   }),
   loaderDeps: ({ search }) => ({ point: search.point }),
@@ -230,14 +230,14 @@ function AskConversationPage() {
       <header className="mb-3 flex items-center gap-2 border-border border-b pb-2 sm:mb-8 sm:flex-wrap sm:items-end sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:pb-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:block">
           <p className="kicker shrink-0 sm:mb-2">
-            {from === "points" ? (
+            {from === "home" ? (
               <span className="inline-flex items-center gap-1.5">
                 <Link
                   className="inline-flex items-center gap-1 hover:text-primary"
-                  to="/points"
+                  to="/"
                 >
                   <ArrowLeftIcon className="size-3" />{" "}
-                  <span className="hidden sm:inline">Points</span>
+                  <span className="hidden sm:inline">Today</span>
                 </Link>
                 <span aria-hidden className="hidden sm:inline">
                   ›

@@ -16,16 +16,16 @@ import type { ToolProps } from "@tanstack/ai-react/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, LoaderCircle } from "lucide-react";
 import { useState } from "react";
-import { TicketLink } from "#/components/bits";
+import { Tag, TicketLink } from "#/components/bits";
 import {
   DecidedLine,
+  FIELD_CLASS,
   RepoField,
   useVerdictCommit,
   VerdictError,
 } from "#/features/points/verdict";
 import { decidePoint, getPoint, sendPoint } from "#/lib/api";
 import { pickRepo, REPO_REQUIRED } from "#/lib/points";
-import { cn } from "#/lib/utils";
 import { toolResultText } from "../lib/tool-summary";
 import type { Opts } from "../model/chat-options";
 import { Block, Refusal, str } from "./card";
@@ -180,16 +180,9 @@ function Proposed({ proposal }: { proposal: Proposal }) {
       }}
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span
-          className={cn(
-            "inline-flex items-center rounded-full border px-2 py-0.5 font-medium text-xs",
-            send
-              ? "border-st-implemented/40 text-st-implemented"
-              : "border-st-superseded/40 text-st-superseded"
-          )}
-        >
-          {proposal.action}
-        </span>
+        <Tag tone={send ? "implemented" : "superseded"}>
+          {send ? "send" : "dismiss"}
+        </Tag>
         <span className="min-w-0 truncate font-medium text-foreground">
           {proposal.subject}
         </span>
@@ -216,10 +209,10 @@ function Proposed({ proposal }: { proposal: Proposal }) {
       ) : (
         <>
           <label className="kicker" htmlFor={`card-reason-${proposal.point}`}>
-            Why ignore it
+            Why dismiss it
           </label>
           <textarea
-            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-foreground text-sm placeholder:text-subtle focus:border-primary focus:outline-none"
+            className={FIELD_CLASS}
             id={`card-reason-${proposal.point}`}
             onChange={(e) => setReason(e.target.value)}
             placeholder="not worth a ticket / already handled in … / decided otherwise on …"

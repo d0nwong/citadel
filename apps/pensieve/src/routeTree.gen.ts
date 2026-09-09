@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BlocksRouteImport } from './routes/blocks'
-import { Route as PointsRouteImport } from './routes/points'
 import { Route as AskIndexRouteImport } from './routes/ask/index'
 import { Route as AskIdRouteImport } from './routes/ask/$id'
 import { Route as DigestsIndexRouteImport } from './routes/digests/index'
@@ -31,11 +30,6 @@ const IndexRoute = IndexRouteImport.update({
 const BlocksRoute = BlocksRouteImport.update({
   id: '/blocks',
   path: '/blocks',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PointsRoute = PointsRouteImport.update({
-  id: '/points',
-  path: '/points',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AskIndexRoute = AskIndexRouteImport.update({
@@ -92,7 +86,6 @@ const ReportsDayRoute = ReportsDayRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/blocks': typeof BlocksRoute
-  '/points': typeof PointsRoute
   '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
@@ -107,7 +100,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/blocks': typeof BlocksRoute
-  '/points': typeof PointsRoute
   '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
@@ -123,7 +115,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/blocks': typeof BlocksRoute
-  '/points': typeof PointsRoute
   '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
@@ -140,7 +131,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/blocks'
-    | '/points'
     | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
@@ -155,7 +145,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/blocks'
-    | '/points'
     | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
@@ -170,7 +159,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/blocks'
-    | '/points'
     | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
@@ -186,7 +174,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BlocksRoute: typeof BlocksRoute
-  PointsRoute: typeof PointsRoute
   AskIdRoute: typeof AskIdRoute
   DigestsDayRoute: typeof DigestsDayRoute
   DocsSplatRoute: typeof DocsSplatRoute
@@ -213,13 +200,6 @@ declare module '@tanstack/react-router' {
       path: '/blocks'
       fullPath: '/blocks'
       preLoaderRoute: typeof BlocksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/points': {
-      id: '/points'
-      path: '/points'
-      fullPath: '/points'
-      preLoaderRoute: typeof PointsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ask/': {
@@ -298,7 +278,6 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BlocksRoute: BlocksRoute,
-  PointsRoute: PointsRoute,
   AskIdRoute: AskIdRoute,
   DigestsDayRoute: DigestsDayRoute,
   DocsSplatRoute: DocsSplatRoute,
