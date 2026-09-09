@@ -31,6 +31,8 @@ export const WORKSPACE_DIR = resolve(
 );
 const REPORTS_DIR = join(WORKSPACE_DIR, "reports");
 const DIGESTS_DIR = join(WORKSPACE_DIR, "digests");
+/** The sweep's arcs — one running story per initiative (LIA-145). Read here, written there. */
+export const ARCS_DIR = join(WORKSPACE_DIR, "arcs");
 
 /** Workspace directories that are never an app, so the scan does not descend into them. */
 const NOT_APPS = new Set([
@@ -89,6 +91,8 @@ export type JournalStatus =
   | "superseded";
 
 export interface JournalEntry {
+  /** Documented rules this change rewrites — `BR-22h`, `MM-16`. An arc seeds on these. */
+  affects: string[];
   /** Which app's features tree this entry lives in, e.g. `foundry`. */
   app: string;
   date: string;
@@ -107,6 +111,8 @@ export interface JournalEntry {
   status?: JournalStatus;
   summary?: string;
   ticket?: string;
+  /** `ticket:` as a list — the field carries one key or several, and a seed matches any. */
+  tickets: string[];
   url?: string;
 }
 
@@ -389,6 +395,7 @@ function journalMeta(
   const feature = `${root.app}/${rel.slice(0, idx)}`;
   const slug = basename(abs, ".md");
   return {
+    affects: list(fm.affects),
     app: root.app,
     date,
     feature,
@@ -404,6 +411,7 @@ function journalMeta(
     status,
     summary: str(fm.summary),
     ticket: str(fm.ticket),
+    tickets: list(fm.ticket),
     url: str(fm.url),
   };
 }
@@ -561,6 +569,56 @@ export async function readDoc(
   const r = await render(p, featureOf(p, roots));
   const meta = docMeta(p, r.frontmatter, roots);
   return meta ? { ...r, meta } : null;
+}
+
+// ── arcs ───────────────────────────────────────────────────────────────────────
+
+/** An arc's frontmatter, as `skills/sweep/scripts/arcs.ts` renders it (LIA-145). */
+export interface ArcMeta {
+  /** The day of the last rewrite. */
+  opened: string;
+  path: string;
+  slug: string;
+  status: "open" | "closed";
+  title: string;
+}
+
+/**
+ * The arcs the sweep has written, by slug. Only the frontmatter: the paragraph, the Landed
+ * table and the Open list are the Arcs page's (LIA-149), and what this file answers is the
+ * two questions a verdict asks — is this slug taken, and is that arc still open (AC3, AC4).
+ */
+export async function listArcs(dir = ARCS_DIR): Promise<ArcMeta[]> {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: ArcMeta[] = [];
+  for (const name of names.filter((n) => n.endsWith(".md")).sort()) {
+    const abs = join(dir, name);
+    const fm = await readFrontmatter(abs);
+    const slug = basename(name, ".md");
+    out.push({
+      opened: str(fm.opened) ?? "",
+      path: relative(WORKSPACE_DIR, abs),
+      slug: str(fm.slug) ?? slug,
+      // A file whose frontmatter did not parse is an arc that exists and is not closed:
+      // the slug is taken either way, and a Close on it is refused rather than guessed.
+      status: str(fm.status) === "closed" ? "closed" : "open",
+      title: str(fm.title) ?? slug,
+    });
+  }
+  return out;
+}
+
+/** One arc's frontmatter by slug, or null when the sweep has not written that file. */
+export async function readArc(
+  slug: string,
+  dir = ARCS_DIR
+): Promise<ArcMeta | null> {
+  return (await listArcs(dir)).find((a) => a.slug === slug) ?? null;
 }
 
 // ── points ─────────────────────────────────────────────────────────────────────

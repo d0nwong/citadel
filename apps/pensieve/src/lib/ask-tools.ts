@@ -108,8 +108,8 @@ export const LINEAR_WRITE_TOOLS = linear([
 // ── the bridged tools ───────────────────────────────────────────────────────────
 
 /**
- * Tools Pensieve bridges into the run through `chat({ tools })` (LIA-111, LIA-113). The adapter
- * provisions them as an MCP server named `tanstack`, so the session sees them prefixed —
+ * Tools Pensieve bridges into the run through `chat({ tools })` (LIA-111, LIA-113,
+ * LIA-147). The adapter provisions them as an MCP server named `tanstack`, so the session sees them prefixed —
  * that is the spelling the allowlist needs, since an MCP tool absent from `--allowedTools`
  * is denied under `permissionMode: 'default'`. The adapter strips the prefix on the way
  * back, so the tool-call part the page renders carries the bare name.
@@ -117,7 +117,13 @@ export const LINEAR_WRITE_TOOLS = linear([
 export const PROPOSE_DECISION = "propose_decision";
 /** LIA-113: the same shape for a new Linear issue — it checks a draft, File writes it. */
 export const PROPOSE_TICKET = "propose_ticket";
-export const BRIDGED_TOOLS = [PROPOSE_DECISION, PROPOSE_TICKET] as const;
+/** LIA-147: the same shape again for an arc — it checks a draft, Open writes the seed file. */
+export const PROPOSE_ARC = "propose_arc";
+export const BRIDGED_TOOLS = [
+  PROPOSE_DECISION,
+  PROPOSE_TICKET,
+  PROPOSE_ARC,
+] as const;
 export const BRIDGED_MCP_PREFIX = "mcp__tanstack__";
 
 /** The bridged names as the session sees them — what goes on `--allowedTools`. */

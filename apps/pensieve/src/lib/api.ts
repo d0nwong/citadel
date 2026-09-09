@@ -2,9 +2,10 @@
  * Server functions — the only bridge between the client and the workspace on disk.
  * Each handler lazy-imports the fs reader so nothing node-only reaches the client bundle.
  *
- * Everything here reads, except the two verdicts (`decidePoint`, `sendPoint`) that write
- * one file each under `decisions/` through server/decisions.ts — the app's only writer
- * into the blackboard — `fileTicket`, which creates one Linear issue (LIA-113) and is the
+ * Everything here reads, except the verdicts (`decidePoint`, `sendPoint`, `verifyPoint`,
+ * and `openArc` / `closeArc` on an initiative's running story, LIA-147) that write one
+ * file each under `decisions/` through server/decisions.ts — the app's only writer into
+ * the blackboard — `fileTicket`, which creates one Linear issue (LIA-113) and is the
  * app's only writer outside it, and Argus, which writes its conversations under
  * `PENSIEVE_HOME` (server/ask.ts) and nowhere else. Nothing here is a public API —
  * TanStack Start RPC, same as the rest of the app.
@@ -19,6 +20,7 @@ import type {
   Conversation,
   ConversationSummary,
   FiledTicket,
+  OpenedArc,
 } from "#/server/ask";
 import type { Decision } from "#/server/decisions";
 import type {
@@ -563,4 +565,125 @@ export const fileTicket = createServerFn({ method: "POST" })
     })().finally(() => filing.delete(key));
     filing.set(key, task);
     return task;
+  });
+
+// ── arcs: opening and closing one (LIA-147) ────────────────────────────────────
+
+/** What the arc card asks on mount: was Open already pressed on this very proposal? */
+export interface ArcCardState {
+  opened: OpenedArc | null;
+}
+
+/**
+ * The card never trusts its own replayed tool output for whether the arc has been opened:
+ * a tool part is stored with the conversation and replayed on every reload, so the record
+ * under the thread's `arc:<toolCallId>` key is the truth (AC2).
+ */
+export const getOpenedArc = createServerFn({ method: "GET" })
+  .validator(z.object({ threadId, toolCallId }))
+  .handler(async ({ data }): Promise<ArcCardState> => {
+    const ask = await import("#/server/ask");
+    const opened = await ask.readOpenedArc(
+      ask.askStore,
+      data.threadId,
+      data.toolCallId
+    );
+    return { opened: opened ?? null };
+  });
+
+export type OpenArcResult =
+  | { ok: true; arc: OpenedArc; replay?: boolean }
+  | { ok: false; error: string };
+
+/**
+ * One Open press at a time per card, in this process: a double click writes once. Across
+ * processes the decision file does the same job, since `openArc` reads it back before
+ * writing and answers the file already there.
+ */
+const opening = new Map<string, Promise<OpenArcResult>>();
+
+const asOpened = (d: {
+  at: string;
+  slug: string;
+  subject: string;
+}): OpenedArc => ({ at: d.at, slug: d.slug, title: d.subject });
+
+/**
+ * Open the arc the card is showing: one `decisions/arc/<slug>.json` with
+ * `action: "opened"`, through the same writer every verdict uses. `arcs/<slug>.md` is the
+ * sweep's, on its next tick — nothing here creates, rewrites or deletes it.
+ *
+ * The draft is re-checked in `openArc` rather than trusted: the card's title is editable,
+ * so what is opened is not what `propose_arc` approved.
+ */
+export const openArc = createServerFn({ method: "POST" })
+  .validator(
+    z.object({
+      seeds: z.record(z.string(), z.array(z.string())),
+      slug: z.string(),
+      threadId,
+      title: z.string(),
+      toolCallId,
+    })
+  )
+  .handler(async ({ data }): Promise<OpenArcResult> => {
+    const ask = await import("#/server/ask");
+    const stored = await ask.readOpenedArc(
+      ask.askStore,
+      data.threadId,
+      data.toolCallId
+    );
+    if (stored) {
+      return { arc: stored, ok: true, replay: true };
+    }
+    const key = `${data.threadId}:${data.toolCallId}`;
+    const running = opening.get(key);
+    if (running) {
+      return running;
+    }
+    const task = (async (): Promise<OpenArcResult> => {
+      const arcs = await import("#/server/arcs");
+      const v = await arcs.openArc({
+        seeds: data.seeds,
+        slug: trimmed(data.slug),
+        title: trimmed(data.title),
+      });
+      if (!v.ok) {
+        return { error: v.error, ok: false };
+      }
+      const arc = asOpened(v.decision);
+      await ask.writeOpenedArc(
+        ask.askStore,
+        data.threadId,
+        data.toolCallId,
+        arc
+      );
+      return { arc, ok: true, ...(v.replay ? { replay: true } : {}) };
+    })().finally(() => opening.delete(key));
+    opening.set(key, task);
+    return task;
+  });
+
+export type CloseArcResult =
+  | { ok: true; arc: OpenedArc }
+  | { ok: false; error: string };
+
+/**
+ * Close an arc whose story is over: the same file with `action: "closed"`, which is the
+ * only thing that sets `status: closed` on the sweep's next tick. Refused unless
+ * `arcs/<slug>.md` is there and open — an arc with nothing left open is not necessarily
+ * finished, and the sweep is not the one to say so. This is what the Close control on the
+ * arc's page calls (LIA-149).
+ */
+export const closeArc = createServerFn({ method: "POST" })
+  .validator((input: { reason?: string; slug: string }) => ({
+    reason: trimmed(input.reason),
+    slug: trimmed(input.slug),
+  }))
+  .handler(async ({ data }): Promise<CloseArcResult> => {
+    const arcs = await import("#/server/arcs");
+    const v = await arcs.closeArc(data.slug, data.reason);
+    return v.ok
+      ? { arc: asOpened(v.decision), ok: true }
+      : { error: v.error, ok: false };
   });

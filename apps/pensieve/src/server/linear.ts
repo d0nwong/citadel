@@ -3,6 +3,7 @@
  * writes anywhere but the blackboard. Two operations of Linear's GraphQL API:
  *
  *   query    teams(key) { projects }, viewer { id }   → what `propose_ticket` validates against
+ *   query    issues(team, state not done)             → what `propose_arc`'s ticket seeds are
  *   mutation issueCreate(input)                       → what File on the ticket card does
  *
  * The write is `createIssue` and nothing else: no labels (the `linear-ticket` skill's
@@ -306,6 +307,75 @@ export async function knownProjects(
     : { projects: [], source: "none" };
   memo = { at: Date.now(), lookup };
   return lookup;
+}
+
+// ── the team's open issues ─────────────────────────────────────────────────────
+
+const OPEN_ISSUES_QUERY = `query OpenIssues($key: String!) {
+  issues(
+    filter: { team: { key: { eq: $key } }, state: { type: { nin: ["completed", "canceled"] } } }
+    first: 250
+    orderBy: updatedAt
+  ) { nodes { id identifier title } }
+}`;
+
+/** One open issue on the team, by the key an arc seeds on. */
+export interface OpenIssue {
+  id: string;
+  identifier: string;
+  title: string;
+}
+
+export interface OpenIssues {
+  issues: OpenIssue[];
+  /** `'live'` from Linear, `'none'` when the key is absent or Linear could not answer. */
+  source: "live" | "none";
+}
+
+let openMemo: { at: number; issues: OpenIssues } | undefined;
+
+/** Drops the in-process memo. Tests call it; nothing else needs to. */
+export const forgetOpenIssues = () => {
+  openMemo = undefined;
+};
+
+/**
+ * The team's issues that are neither done nor cancelled — what a `tickets` seed on a
+ * proposed arc is checked against (LIA-147 AC3). Never throws, and unlike `knownProjects`
+ * it is not cached to disk: a stale open list would refuse a seed on a ticket filed since,
+ * which is worse than saying the list could not be read. `source: 'none'` is exactly that,
+ * and the arc check then takes a well-formed key on trust and says the seeds are unverified.
+ */
+export async function openIssues(
+  fetchImpl: Fetch = fetch
+): Promise<OpenIssues> {
+  if (openMemo && Date.now() - openMemo.at < CACHE_TTL_MS) {
+    return openMemo.issues;
+  }
+  let issues: OpenIssues = { issues: [], source: "none" };
+  if (linearKey()) {
+    try {
+      const data = await graphql<{ issues: { nodes: OpenIssue[] } }>(
+        OPEN_ISSUES_QUERY,
+        { key: TEAM_KEY },
+        fetchImpl
+      );
+      issues = {
+        issues: data.issues.nodes.map((i) => ({
+          id: i.id,
+          identifier: i.identifier,
+          title: i.title,
+        })),
+        source: "live",
+      };
+    } catch (e) {
+      console.warn(
+        `[linear] the open-issue list could not be read — ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
+  }
+  openMemo = { at: Date.now(), issues };
+  return issues;
 }
 
 // ── the one mutation ───────────────────────────────────────────────────────────
