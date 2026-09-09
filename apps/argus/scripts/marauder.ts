@@ -13,6 +13,9 @@
  *   marauder new <id> --name "…"   open a workstream from a proposal
  *   marauder split <slug> --into   cut one workstream in two
  *   marauder stage <slug> fe|be    say where a side really is, and why
+ *   marauder changed --since <ISO>  which workstreams gained an event, and which
+ *   marauder ticket-plan <slug> <LIA-nn> --body <file>
+ *                                  what this tick's events make that ticket say
  *   marauder check                 which workstreams may have stopped being one thing
  *   marauder propose-split <slug>  queue a split for a person to accept
  *   marauder board                 where every open workstream stands, right now
@@ -34,7 +37,11 @@ import {
   type Side, type Stage, type UnsortedItem, type Workstream,
 } from "../skills/sweep/scripts/marauder/record.ts";
 import { busy, formatCheck } from "../skills/sweep/scripts/marauder/coherence.ts";
-import { attach, defaultWho, newFrom, proposeSplit, setStage, split, suggest, type State } from "../skills/sweep/scripts/marauder/correct.ts";
+import {
+  attach, defaultWho, newFrom, pairPending, proposeSplit, recordHeld, recordTicket,
+  resolveQuestion, setStage, split, suggest, type State,
+} from "../skills/sweep/scripts/marauder/correct.ts";
+import { formatPlan, heldEvent, planTicket, type TicketPlan } from "../skills/sweep/scripts/marauder/ticket-diff.ts";
 import { checkStyle, formatStyleProblems, renderBoard, renderChangelog, renderWorkstream, OUT_DIR } from "../skills/sweep/scripts/marauder/render.ts";
 import { run as ingestLandings, formatChanges } from "../skills/sweep/scripts/marauder/ingest-landings.ts";
 import { run as ingestSlack, formatChanges as formatSlackChanges, openList } from "../skills/sweep/scripts/marauder/ingest-slack.ts";
@@ -48,6 +55,12 @@ const HELP = `marauder — where the work stands
   marauder new <id> --name "…"      open a workstream from a proposal
   marauder split <slug> --into <slug> --name "…" --events <id,…>
   marauder stage <slug> <fe|be> <stage>
+  marauder changed --since <ISO>    which workstreams gained an event, and which
+  marauder ticket-plan <slug> <LIA-nn> --body <file> [--state "In Progress"]
+  marauder pending <slug> --question "…" --bullet "…"
+  marauder resolved <slug> <LIA-nn> --question "…"
+  marauder ticket <slug> <event-id> <LIA-nn>
+  marauder held <slug> <LIA-nn>
   marauder check                    which workstreams may have stopped being one thing
   marauder propose-split <slug> --groups '<json>'
   marauder board                    marauder/board.md — the one page to read
@@ -177,9 +190,26 @@ if (verb === "ingest") {
   }
 }
 
-const CORRECTIONS = ["attach", "suggest", "new", "split", "stage", "propose-split"];
+const CORRECTIONS = ["attach", "suggest", "new", "split", "stage", "propose-split", "pending", "resolved", "ticket", "held"];
 
-if (verb === "check" || CORRECTIONS.includes(verb)) {
+/** a `sent` decision naming this ticket means Foundry is executing it (PLAN "Shared contracts") */
+async function sentTickets(root: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  for await (const file of new Bun.Glob("**/*.json").scan({ cwd: join(root, "decisions"), absolute: true, onlyFiles: true })) {
+    try {
+      const d = (await Bun.file(file).json()) as { action?: string; ticket?: string; subject?: string; job?: unknown };
+      if (d.action !== "sent" || !d.job) continue;
+      for (const m of `${d.ticket ?? ""} ${d.subject ?? ""}`.matchAll(/\bLIA-\d+\b/g)) out.add(m[0]);
+    } catch { /* an unreadable decision file is the sweep's audit line, not this verb's */ }
+  }
+  return out;
+}
+
+/** the events a tick brought a workstream: everything newer than the last render */
+const sinceEvents = (w: { events: { at: string }[] }, from?: string) =>
+  from ? w.events.filter((e) => e.at >= from) : w.events;
+
+if (verb === "check" || verb === "changed" || verb === "ticket-plan" || CORRECTIONS.includes(verb)) {
   try {
     const before = await loadState(root);
     const who = defaultWho(flag("--reason"), now);
@@ -188,12 +218,44 @@ if (verb === "check" || CORRECTIONS.includes(verb)) {
       process.exit(0);
     }
     const [, a, b] = args;
+    if (verb === "changed") {
+      const from = need(since, "--since <ISO>");
+      const moved = before.workstreams
+        .map((x) => ({ w: x, events: x.events.filter((e) => e.at >= from) }))
+        .filter((x) => x.events.length);
+      for (const { w: x, events } of moved) {
+        console.log(`## ${x.slug} — ${x.name}`);
+        console.log(`   tickets: ${x.keys.tickets.join(", ") || "none"}`);
+        for (const e of events) console.log(`   ${e.kind.padEnd(20)} ${e.at}  ${e.summary}`);
+        for (const q of x.open_questions) console.log(`   open question${q.ticket ? ` (${q.ticket})` : ""}: ${q.q}${q.pending_ref ? " [paired]" : ""}`);
+        console.log("");
+      }
+      if (!moved.length) console.log("nothing gained an event in that window.");
+      process.exit(0);
+    }
+    if (verb === "ticket-plan") {
+      const w = before.workstreams.find((x) => x.slug === need(a, "a workstream slug"));
+      if (!w) throw new Error(`there is no workstream ${a}`);
+      const key = need(b, "a ticket key");
+      const plan = planTicket({
+        workstream: w,
+        ticket: { key, body: await Bun.file(need(flag("--body"), "--body <file>")).text(), state: flag("--state") ?? "", hasJob: (await sentTickets(root)).has(key) },
+        events: sinceEvents(w, flag("--since-event")),
+        milestones: before.milestones,
+      });
+      console.log(args.includes("--json") ? JSON.stringify(plan, null, 2) : formatPlan(plan));
+      process.exit(0);
+    }
     const result =
       verb === "attach" ? attach(before, need(a, "an unsorted id"), need(b, "a workstream slug"), { ...who, auto: args.includes("--auto"), kind: flag("--kind") as never })
       : verb === "suggest" ? suggest(before, need(a, "an unsorted id"), need(b, "a workstream slug"))
       : verb === "new" ? newFrom(before, need(a, "an unsorted id"), { ...who, name: need(flag("--name"), "--name"), features: list(flag("--features")), driver: flag("--driver") })
       : verb === "split" ? split(before, need(a, "a workstream slug"), { ...who, into: need(flag("--into"), "--into"), name: need(flag("--name"), "--name"), events: list(flag("--events")) })
       : verb === "stage" ? setStage(before, need(a, "a workstream slug"), need(b, "fe or be") as Side, need(args[3], "a stage") as Stage, who)
+      : verb === "pending" ? pairPending(before, need(a, "a workstream slug"), need(flag("--question"), "--question"), need(flag("--bullet"), "--bullet"))
+      : verb === "resolved" ? resolveQuestion(before, need(a, "a workstream slug"), need(flag("--question"), "--question"), need(b, "a ticket key"), who)
+      : verb === "ticket" ? recordTicket(before, need(a, "a workstream slug"), need(b, "an event id"), need(args[3], "a ticket key"))
+      : verb === "held" ? recordHeld(before, need(a, "a workstream slug"), heldEvent({ ticket: need(b, "a ticket key"), edits: [], flags: [], inFlight: true, unpaired: [], resolves: [], fileAsks: [] } as TicketPlan, now))
       : proposeSplit(before, need(a, "a workstream slug"), JSON.parse(need(flag("--groups"), "--groups")), who);
 
     for (const n of result.notes) console.error(`  ${n}`);

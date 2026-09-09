@@ -139,17 +139,21 @@ next tick.
 
 **6. Ticket pass.** Linear is the sweep's terminal surface — the queue the user actually
 reads — so this stage makes it current, through the `ticket-pass` worker (the loop's only
-Linear writer, Autonomy). Four parts run in **one `ticket-pass` subagent** — 6a file
-tickets from unlinked ✋ items, 6b fold digest items into the open tickets they link, 6c
-review open tickets against refreshed docs, 6e make the edit each verified point licensed
-— bulky readers of threads, doc trees and ticket bodies, per the dispatch rule; 6d stays
-inline because it is one judgement per ticket over a list the sweep already holds. The
-worker's procedure and prompt are `skills/sweep/ticket-pass.md`.
+Linear writer, Autonomy). The work runs in **one `ticket-pass` subagent** — a bulky reader
+of threads, doc trees and ticket bodies, per the dispatch rule; 6d stays inline because it
+is one judgement per ticket over a list the sweep already holds.
 
-**Skip the spawn** when there is nothing for it: no unmarked unlinked ✋ items, no
-ticket-linked digest item newer than the previous tick's `_Tick` stamp in
-`reports/<today>.md`, no feature refreshed this tick, *and* no step-3 verified point
-naming a ticket (step 9 drops that point's bullet whether or not the worker ran — skip
+Its inputs are this tick's workstream events (`bun run marauder changed --since <prev
+tick>`), and for each ticket the diff `bun run marauder ticket-plan` computes between the
+body and its workstream's `open_questions` and `facts`. Each event's kind decides its own
+action, and what needs a person comes back as a flag rather than an edit (LIA-159). Until
+the rewire, unlinked ✋ digest items are still an input beside it, deduped on the ticket
+key. The worker's procedure, its action table and its prompt are
+`skills/sweep/ticket-pass.md`.
+
+**Skip the spawn** when there is nothing for it: no workstream gained an event this tick,
+no unmarked unlinked ✋ items, no feature refreshed this tick, *and* no step-3 verified
+point naming a ticket (step 9 drops that point's bullet whether or not the worker ran — skip
 it and the edit is lost for good).
 
 Otherwise, **after dispatch has finished** (the worker writes the digest file and
@@ -166,7 +170,9 @@ never shown to the user, so an unrelayed finding is a lost one.
 
 **6d. Nominate ready tickets** (inline, every tick). Over the step-3 open-ticket list as
 refreshed after the worker returned: a ticket qualifies when its Pending section is
-absent, it has no blocked-by relation, and every Acceptance Criterion is concrete — an
+absent, **no open question on its workstream names it** (LIA-159 — a question with a
+`pending_ref` is a bullet in waiting, and a ticket is not ready while one is out), it has
+no blocked-by relation, and every Acceptance Criterion is concrete — an
 observable outcome with a Technical Note naming where it is met (linear-ticket's "ACs are
 executable" bar). A qualifying ticket gets a Decide line whose subject is the ticket key:
 "**LIA-xx is ready** — send to Foundry?". That shape is load-bearing: a subject naming
@@ -482,9 +488,18 @@ refer here rather than restating it.
   frontmatter, Landed table and Open list from the blackboard, and rewriting its "Where
   we are" paragraph** (7). The paragraph is current state, so it is a rewrite, never an
   appended dated sentence — the same rule as a ticket's Background;
-- filing Liamai tickets from unlinked digest ✋ deliverables (6a, with the digest-file
-  writeback marker) and folding linked digest items into their tickets (6b) — both in
-  `ticket-pass`, the loop's only Linear writer;
+- filing Liamai tickets from the asks a workstream carries and from unlinked digest ✋
+  deliverables, and folding a tick's events into the tickets their workstream names — both
+  in `ticket-pass`, the loop's only Linear writer. **The inputs changed with LIA-159 and
+  the policy did not:** the worker takes its work from workstream events rather than from
+  a keyword match in the digest, and diffs each ticket against its workstream's
+  `open_questions` and `facts`, which is a statement of what the work now is. Everything
+  below about what may and may not be written holds exactly as it did;
+- **deleting a Pending bullet once its question is answered**, and writing the answer into
+  Technical Notes. Settled 2026-09-09: the bullet is wrong the moment the question is
+  answered, and one annotated "Answered:" reads as still open. The pairing between a
+  question and its bullet is recorded on the question (`pending_ref`) the first time it is
+  made, so no later tick reads the same two texts again;
 - **Linear ticket description updates backed by verified facts.** The rules are
   linear-ticket's ("Keep the ticket current by editing it, not commenting on it" and
   "The ticket is the current task, not its history"); in sweep terms:
@@ -519,6 +534,13 @@ refer here rather than restating it.
 - leave a landing as a comment instead of updating the body;
 - tick or untick an AC — the boxes are the implementer's record, and a tick from
   the sweep's own reading is inference in the shared body;
+- **edit a ticket Foundry is executing** — one whose Linear state is In Progress and which
+  a `decisions/` file with `action: "sent"` names. The edits are computed and held, and
+  reach the reader as a `directed-at-person` event carrying the diff, so they decide
+  whether to interrupt the run;
+- **rewrite the ask itself.** A fact that may have unsaid a Scope sentence is a flag, not
+  an edit: the worker quotes the sentence and the fact in Needs you and leaves the body
+  alone;
 - write to Linear from any worker other than `ticket-pass` — `slack-digest` only reads
   it, to link items to the tickets they concern;
 - create, edit or delete a file under `decisions/` — Pensieve writes them, the sweep

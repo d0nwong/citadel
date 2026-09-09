@@ -95,6 +95,8 @@ export type OpenQuestion = {
   q: string;
   asked_by: string;
   at: string;
+  /** the exact Pending bullet on `ticket` this question is waiting on, once someone paired them */
+  pending_ref?: string;
   /** whose move it is; `you` is the user, and the board's Needs you reads this */
   owner?: string;
   ticket?: string;

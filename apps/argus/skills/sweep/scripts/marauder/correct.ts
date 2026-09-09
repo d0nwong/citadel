@@ -301,3 +301,64 @@ export function proposeSplit(state: State, slug: string, groups: Group[], who: W
 }
 
 export const defaultWho = (reason?: string, at = new Date().toISOString()): Who => ({ by: USER.name, reason, at });
+
+// ---------------------------------------------------------------- what the ticket pass writes back
+
+/**
+ * Pair an open question with the Pending bullet it is waiting on. Stored once, so the
+ * deletion later is an exact string rather than a second reading of the same two texts.
+ */
+export function pairPending(state: State, slug: string, question: string, bullet: string): Result {
+  const next = clone(state);
+  const w = next.workstreams.find((x) => x.slug === slug);
+  if (!w) return unchanged(state, `there is no workstream ${slug}`);
+  const q = w.open_questions.find((x) => x.q === question || x.q.startsWith(question));
+  if (!q) return unchanged(state, `${slug} has no open question like "${question}"`);
+  if (q.pending_ref === bullet) return unchanged(state, "that pairing is already recorded");
+  q.pending_ref = bullet;
+  return { state: next, changed: true, notes: [`paired "${q.q.slice(0, 40)}…" with ${bullet.slice(0, 50)}`] };
+}
+
+/**
+ * The question is answered: it comes off the record, and the event that answered it says
+ * what it did to the ticket. A bullet is never left annotated — a kept bullet reads as
+ * still open, which is the failure this replaces.
+ */
+export function resolveQuestion(state: State, slug: string, question: string, ticket: string, who: Who): Result {
+  const next = clone(state);
+  const w = next.workstreams.find((x) => x.slug === slug);
+  if (!w) return unchanged(state, `there is no workstream ${slug}`);
+  const before = w.open_questions.length;
+  w.open_questions = w.open_questions.filter((x) => !(x.q === question || x.q.startsWith(question)));
+  if (w.open_questions.length === before) return unchanged(state, `${slug} has no open question like "${question}"`);
+  const answered = [...w.events].reverse().find((e) => e.kind === "answers-question" && (!e.ticket || e.ticket === ticket));
+  if (answered) answered.action = `pending deleted on ${ticket}`;
+  w.updated = who.at;
+  return { state: next, changed: true, notes: [`${slug}: answered, and the bullet on ${ticket} is gone`] };
+}
+
+/** a filed ticket belongs to the ask that caused it and to the workstream it is on */
+export function recordTicket(state: State, slug: string, id: string, ticket: string): Result {
+  const next = clone(state);
+  const w = next.workstreams.find((x) => x.slug === slug);
+  if (!w) return unchanged(state, `there is no workstream ${slug}`);
+  const ids = eventKeys(w);
+  const i = ids.indexOf(id);
+  const already = w.keys.tickets.includes(ticket) && (i === -1 || w.events[i]!.ticket === ticket);
+  if (already) return unchanged(state, `${ticket} is already on ${slug}`);
+  if (i !== -1) w.events[i]!.ticket = ticket;
+  if (!w.keys.tickets.includes(ticket)) w.keys.tickets.push(ticket);
+  return { state: next, changed: true, notes: [`${ticket} recorded on ${slug}`] };
+}
+
+/** a ticket Foundry is running gets no edit; the diff waits for the reader instead */
+export function recordHeld(state: State, slug: string, event: WorkstreamEvent): Result {
+  const next = clone(state);
+  const w = next.workstreams.find((x) => x.slug === slug);
+  if (!w) return unchanged(state, `there is no workstream ${slug}`);
+  if (w.events.some((e) => e.kind === "directed-at-person" && e.ticket === event.ticket && e.action === event.action))
+    return unchanged(state, `${slug} already says those edits are waiting on you`);
+  w.events = [...w.events, event].sort(byAt);
+  w.updated = event.at;
+  return { state: next, changed: true, notes: [`${slug}: ${event.ticket} is held, and the diff is on the board`] };
+}
