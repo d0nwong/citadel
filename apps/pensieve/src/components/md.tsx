@@ -11,8 +11,18 @@ function A({
   ...rest
 }: AnchorHTMLAttributes<HTMLAnchorElement>) {
   if (href?.startsWith("/")) {
+    // A rewritten link may carry a query — `?tier=arch` on a feature doc — and the router
+    // takes the path and the search apart rather than as one string.
+    const [path, query] = href.split("?");
+    const search = query
+      ? Object.fromEntries(new URLSearchParams(query))
+      : undefined;
     return (
-      <Link to={href as "/"} {...(rest as object)}>
+      <Link
+        to={path as "/"}
+        {...(search ? { search } : {})}
+        {...(rest as object)}
+      >
         {children}
       </Link>
     );
