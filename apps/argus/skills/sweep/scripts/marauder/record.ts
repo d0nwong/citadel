@@ -143,12 +143,17 @@ export type Milestones = Record<string, Milestone>;
 /** an event that attached to nothing, or to more than one thing — the corrections queue */
 export type UnsortedItem = {
   id: string;
-  /** `new` is a proposal that this is a workstream nobody has opened yet */
-  kind: "landing" | "slack" | "new";
+  /** `new` proposes a workstream nobody has opened; `split` proposes cutting one in two */
+  kind: "landing" | "slack" | "new" | "split";
   summary: string;
   /** `new` only: the name proposed for it, in the item's own words */
   name?: string;
   features?: string[];
+  /** the item as it was said, so a correction can learn its vocabulary */
+  text?: string;
+  /** `split` only: the workstream to cut, and the grouping proposed for it */
+  slug?: string;
+  groups?: { name: string; events: string[] }[];
   /** who an ask is aimed at; `you` is the user, and the board's Needs you reads this */
   to?: string[];
   source?: EventSource;
@@ -335,6 +340,41 @@ export const instantOf = (at: string) => (at.length === 10 ? `${at}T23:59:59Z` :
 /** the latest event, by `at`; a workstream with no event has none */
 export const latestEvent = (w: Workstream): WorkstreamEvent | undefined =>
   [...w.events].sort((a, b) => instantOf(a.at).localeCompare(instantOf(b.at))).at(-1);
+
+/** how an event is named on the command line: its source, else the instant it happened */
+export const eventId = (e: WorkstreamEvent) => e.source?.ref ?? e.at;
+
+/**
+ * One name per event, unique inside its workstream — two rulings out of the same huddle
+ * share a source, so the second one gets its day appended and then a counter. `split`
+ * takes these, and `check` prints them.
+ */
+export function eventKeys(w: Workstream): string[] {
+  const counts = new Map<string, number>();
+  return w.events.map((e) => {
+    const base = eventId(e);
+    const n = (counts.get(base) ?? 0) + 1;
+    counts.set(base, n);
+    return n === 1 ? base : `${base}~${n}`;
+  });
+}
+
+/**
+ * The stage a person set by hand on this side, when they set it after the last landing.
+ * Ingest reads it before writing a stage: a landing is a fact, but so is someone saying
+ * the work is not done, and the person wins until the next landing says otherwise.
+ */
+export function humanStage(w: Workstream, side: Side): { stage: Stage; at: string } | null {
+  const at = (e: WorkstreamEvent) => instantOf(e.at);
+  const lastLanding = w.events.filter((e) => e.kind === "verified-landing" && e.side === side).map(at).sort().at(-1) ?? "";
+  const set = w.events
+    .filter((e) => e.attached.how === "human" && e.side === side && e.action?.startsWith("stage "))
+    .sort((a, b) => at(a).localeCompare(at(b)))
+    .at(-1);
+  if (!set || at(set) < lastLanding) return null;
+  const stage = set.action!.split("→").at(-1)!.trim() as Stage;
+  return (STAGES as readonly string[]).includes(stage) ? { stage, at: set.at } : null;
+}
 
 /** the sides this workstream records, in FE-then-BE order */
 export const sidesOf = (w: Workstream): Side[] => SIDES.filter((s) => w.stage[s] !== undefined);

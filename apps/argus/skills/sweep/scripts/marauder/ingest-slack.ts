@@ -194,7 +194,28 @@ const TICKET = /\b(LIA-\d+)\b/gi;
 const PR_REF = /\b((?:fe|be)#\d+)\b/gi;
 const bare = (s: string) => s.replace(/[`*_]/g, " ");
 
-const tokenIn = (text: string, token: string) =>
+const BACKTICKED = /`([^`\n]{2,60})`/g;
+const CAMEL = /\b[a-z][a-z0-9]*(?:[A-Z][A-Za-z0-9]*)+\b/g;
+const PASCAL = /\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b/g;
+const KEBAB = /\b[a-z][a-z0-9]*(?:-[a-z0-9]+){1,}\b/g;
+
+/**
+ * The identifiers a message uses: a field name, a route segment, a schema name. One
+ * tokenizer, so the rung that matches vocabulary and the correction that learns it agree
+ * on what a token is.
+ */
+export function identifiers(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(BACKTICKED)) {
+    const inner = m[1]!.trim();
+    if (/^[A-Za-z][\w.-]*$/.test(inner)) out.add(inner);
+    else for (const seg of inner.split(/[^A-Za-z0-9_-]+/)) if (/[A-Z-]/.test(seg) && seg.length > 3) out.add(seg);
+  }
+  for (const re of [CAMEL, PASCAL, KEBAB]) for (const m of text.matchAll(re)) out.add(m[0]);
+  return [...out].filter((t) => t.length > 3 && !/^(https?|api|com|www)$/i.test(t));
+}
+
+export const tokenIn = (text: string, token: string) =>
   new RegExp(`(^|[^A-Za-z0-9_-])${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9_-]|$)`, "i").test(text);
 
 /**
@@ -381,7 +402,12 @@ export function applySlack({ workstreams, items, unsorted, milestones }: ApplyIn
       continue;
     }
     if (item.canvas) {
-      queue.set(item.id, unsortedItem(item, [], `huddle notes nobody has read — split them with --canvas`));
+      // the file arrives as a reply to the notes it belongs to, so ask about the notes
+      if (canvasTakenIn(workstreams, item.threadTs ?? item.ts)) {
+        changes.push({ kind: "skipped", item, why: "these huddle notes are already taken in" });
+        continue;
+      }
+      queue.set(item.id, unsortedItem(item, [], "huddle notes nobody has read — split them with --canvas"));
       changes.push({ kind: "unsorted", item, why: "a huddle canvas, unread", candidates: [] });
       continue;
     }
@@ -448,6 +474,7 @@ const unsortedItem = (item: SlackItem, candidates: Candidate[], why: string, nam
   kind: name ? "new" : "slack",
   ...(name ? { name } : {}),
   summary: `${item.authorIsUser ? "You" : item.author}: ${clip(firstSentence(item.text) || item.text.trim(), 20)}`,
+  text: item.text.slice(0, 2000),
   source: { type: item.id.includes("#") ? "huddle" : "slack", ref: item.id, url: item.permalink },
   candidates,
   why,
