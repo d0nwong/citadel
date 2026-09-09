@@ -14,6 +14,19 @@
  * sweep's own inference needs no argument (LIA-115); `job: { id, url }` only for `sent`.
  * Written to a temp file in the same directory and renamed into place, so the sweep never
  * reads half a file. Never edited afterwards by either side.
+ *
+ * One group in that tree is not a verdict on a point, and travels the same path anyway
+ * (LIA-147):
+ *
+ *   decisions/arc/<slug>.json
+ *   { point: "arc/<slug>", action: "opened" | "closed", subject, seeds, at }
+ *
+ * It opens or closes an arc — the running story of an initiative the sweep keeps at
+ * `arcs/<slug>.md` (LIA-145) — and `seeds` is required on `opened`, since an arc with no
+ * keys files nothing. Same writer, same atomic rename, same "never edited afterwards": one
+ * exception to read-only, one code path, one audit line if a file is ever malformed. It
+ * joins no point, so `readDecisions` leaves the group alone and `readArcDecision` reads it,
+ * exactly as `parseArcDecision` / `readArcDecisions` do on the sweep's side.
  */
 
 import { randomBytes } from "node:crypto";
@@ -26,6 +39,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+import type { ArcSeeds } from "../lib/arcs";
+import { ARC_GROUP, allSeeds, arcId, isArcId, toSeeds } from "../lib/arcs";
 import { isPointId } from "../lib/points";
 import type { Point, PointGroup } from "./workspace";
 import { WORKSPACE_DIR } from "./workspace";
@@ -44,13 +59,35 @@ export interface Decision {
 }
 
 /**
+ * The arc group's file: the user's verdict that an initiative is worth a running story, or
+ * that its story is over. `subject` is the arc's title and `slug` is its file name under
+ * `arcs/` — derived from `point` rather than carried on the wire, as the sweep derives it.
+ */
+export interface ArcDecision {
+  action: "opened" | "closed";
+  at: string;
+  /** `arc/<slug>`. */
+  point: string;
+  reason?: string;
+  seeds: ArcSeeds;
+  slug: string;
+  subject: string;
+}
+
+/** Either file, as it comes off disk. */
+export type AnyDecision = Decision | ArcDecision;
+
+export const isArcDecision = (d: AnyDecision): d is ArcDecision =>
+  d.action === "opened" || d.action === "closed";
+
+/**
  * The file a point's decision lives in. Refuses any id that is not a well-formed point
  * id, and — belt and braces — any resolved path that does not sit under `dir`. The regex
  * already rules out `..`, `/` runs and absolute paths; the prefix check is the invariant
  * stated in code so a future loosening of the regex cannot silently widen the write.
  */
 export function decisionPath(pointId: string, dir = DECISIONS_DIR): string {
-  if (!isPointId(pointId)) {
+  if (!(isPointId(pointId) || isArcId(pointId))) {
     throw new Error(`refused: "${pointId}" is not a point id (<group>/<slug>)`);
   }
   const abs = resolve(dir, `${pointId}.json`);
@@ -60,23 +97,83 @@ export function decisionPath(pointId: string, dir = DECISIONS_DIR): string {
   return abs;
 }
 
+/** The text of one decision file, or null when there is none there to read. */
+async function decisionText(
+  pointId: string,
+  dir: string
+): Promise<string | null> {
+  try {
+    return await readFile(decisionPath(pointId, dir), "utf8");
+  } catch {
+    return null;
+  }
+}
+
 /** Read one point's decision, or null when none has been written. */
 export async function readDecision(
   pointId: string,
   dir = DECISIONS_DIR
 ): Promise<Decision | null> {
-  const p = decisionPath(pointId, dir);
-  let raw: string;
-  try {
-    raw = await readFile(p, "utf8");
-  } catch {
+  const raw = await decisionText(pointId, dir);
+  if (raw === null) {
     return null;
   }
-  return parseDecision(raw);
+  const d = parseDecision(raw);
+  return d && !isArcDecision(d) ? d : null;
 }
 
-/** A file's text as a Decision, or null when it is not one the sweep would accept. */
-export function parseDecision(text: string): Decision | null {
+/**
+ * Read one arc's file — `decisions/arc/<slug>.json` — or null when the arc has never been
+ * opened. The `closed` verdict is written to that same path, so this answers the last
+ * verdict given on the arc rather than only its opening (LIA-147 AC2, AC4).
+ */
+export async function readArcDecision(
+  slug: string,
+  dir = DECISIONS_DIR
+): Promise<ArcDecision | null> {
+  const raw = await decisionText(arcId(slug), dir);
+  if (raw === null) {
+    return null;
+  }
+  const d = parseDecision(raw);
+  return d && isArcDecision(d) ? d : null;
+}
+
+/**
+ * A file's text as an arc's verdict, or null when it is not one the sweep would accept —
+ * `parseArcDecision` in `skills/sweep/scripts/points.ts`, field for field. `seeds` is
+ * required on `opened` (an arc with no keys files nothing) and ignored on `closed`, which
+ * only flips the status of an arc that already exists.
+ */
+function parseArcDecision(d: Record<string, unknown>): ArcDecision | null {
+  if (!isArcId(d.point)) {
+    return null;
+  }
+  if (d.action !== "opened" && d.action !== "closed") {
+    return null;
+  }
+  const seeds = toSeeds(d.seeds);
+  if (d.action === "opened" && allSeeds(seeds).length === 0) {
+    return null;
+  }
+  return {
+    action: d.action,
+    at: typeof d.at === "string" ? d.at : "",
+    point: d.point,
+    reason: typeof d.reason === "string" ? d.reason : undefined,
+    seeds,
+    slug: d.point.slice(ARC_GROUP.length + 1),
+    subject: typeof d.subject === "string" ? d.subject : "",
+  };
+}
+
+/**
+ * A file's text as the verdict it carries, or null when it is not one the sweep would
+ * accept. The `arc/` group is a verdict on an initiative rather than on a point, so it
+ * parses to an `ArcDecision` — `isArcDecision` tells the two apart, and every caller that
+ * wants one and not the other says so.
+ */
+export function parseDecision(text: string): AnyDecision | null {
   let v: unknown;
   try {
     v = JSON.parse(text);
@@ -89,6 +186,9 @@ export function parseDecision(text: string): Decision | null {
   const d = v as Record<string, unknown>;
   if (typeof d.point !== "string" || !d.point) {
     return null;
+  }
+  if (d.point.startsWith(`${ARC_GROUP}/`)) {
+    return parseArcDecision(d);
   }
   if (
     d.action !== "sent" &&
@@ -123,8 +223,11 @@ export function parseDecision(text: string): Decision | null {
 }
 
 /**
- * Every decision on disk, keyed by point. Two files for one point (which the writer never
- * produces, but a hand edit might): the later `at` wins, as the sweep resolves it.
+ * Every verdict on a point that is on disk, keyed by point. Two files for one point (which
+ * the writer never produces, but a hand edit might): the later `at` wins, as the sweep
+ * resolves it. The `arc/` group is skipped whole — an arc is not a verdict on a point, so
+ * it must never land on one, nor be reported as a file that could not be read (AC5);
+ * `readArcDecision` is its reader, as `readArcDecisions` is the sweep's.
  */
 export async function readDecisions(
   dir = DECISIONS_DIR
@@ -137,15 +240,20 @@ export async function readDecisions(
     return out;
   }
   for (const name of names
-    .filter((n) => n.endsWith(".json") && !n.includes(".tmp-"))
+    .filter(
+      (n) =>
+        n.endsWith(".json") &&
+        !n.includes(".tmp-") &&
+        !n.startsWith(`${ARC_GROUP}/`)
+    )
     .sort()) {
-    let d: Decision | null;
+    let d: AnyDecision | null;
     try {
       d = parseDecision(await readFile(join(dir, name), "utf8"));
     } catch {
       continue;
     }
-    if (!d) {
+    if (!d || isArcDecision(d)) {
       continue;
     }
     const prev = out.get(d.point);
@@ -162,7 +270,7 @@ export async function readDecisions(
  * the walker above ignores, never a truncated `.json`.
  */
 export async function writeDecision(
-  d: Decision,
+  d: AnyDecision,
   dir = DECISIONS_DIR
 ): Promise<string> {
   if (d.point.split("/")[1] === undefined) {
@@ -175,13 +283,16 @@ export async function writeDecision(
     parent,
     `.${d.point.split("/")[1]}.json.tmp-${randomBytes(4).toString("hex")}`
   );
-  const body: Decision = {
+  // `slug` is derived from `point` by every reader, so it never goes on the wire; `seeds`
+  // does, since it is the arc's whole substance and nothing else carries it.
+  const body = {
     action: d.action,
     point: d.point,
     ...(d.reason === undefined ? {} : { reason: d.reason }),
     at: d.at,
     subject: d.subject,
-    ...(d.job ? { job: d.job } : {}),
+    ...(isArcDecision(d) ? { seeds: d.seeds } : {}),
+    ...(!isArcDecision(d) && d.job ? { job: d.job } : {}),
   };
   try {
     await writeFile(tmp, `${JSON.stringify(body, null, 2)}\n`, "utf8");

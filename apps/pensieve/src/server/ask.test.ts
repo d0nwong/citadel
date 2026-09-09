@@ -51,6 +51,7 @@ const {
   LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
   ASK_TOOL_PART_NAMES,
+  PROPOSE_ARC,
   PROPOSE_DECISION,
   PROPOSE_TICKET,
 } = await import("../lib/ask-tools");
@@ -648,6 +649,16 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
     );
     expect(ADAPTER_CONFIG.allowedTools).not.toContain(PROPOSE_TICKET);
   });
+  test("LIA-147 (AC6) — propose_arc is allowed under its prefix whenever the panel runs", () => {
+    expect(ADAPTER_CONFIG.allowedTools).toContain(
+      `${BRIDGED_MCP_PREFIX}${PROPOSE_ARC}`
+    );
+    expect(ADAPTER_CONFIG.allowedTools).toContain("mcp__tanstack__propose_arc");
+    // Every checkout arrangement carries it: the rule comes from BRIDGED_TOOLS, not from
+    // the per-checkout git rules, so a run with no checkouts at all still has it.
+    expect(allowedToolsFor([])).toContain("mcp__tanstack__propose_arc");
+    expect(ADAPTER_CONFIG.allowedTools).not.toContain(PROPOSE_ARC);
+  });
   test("the page can render every name a run may call: the allowlist collapsed to tool names, and the denied ones", () => {
     for (const t of [
       "Read",
@@ -660,6 +671,7 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
       // The adapter strips `mcp__tanstack__` on the way back, so the part carries the bare name.
       PROPOSE_DECISION,
       PROPOSE_TICKET,
+      PROPOSE_ARC,
       ...LINEAR_READ_TOOLS,
       ...LINEAR_WRITE_TOOLS,
     ]) {
@@ -674,7 +686,8 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
 
 describe("LIA-104 — the system prompt", () => {
   test("is short, says where the session is, how to retrieve, how to answer, and what it cannot do", () => {
-    expect(ASK_SYSTEM_PROMPT.split(/\s+/).length).toBeLessThan(260);
+    // A third bridged tool costs a sentence (LIA-147); it is still one screen of prose.
+    expect(ASK_SYSTEM_PROMPT.split(/\s+/).length).toBeLessThan(320);
     for (const re of [
       /not a terminal/i,
       /no permission dialog/i,
@@ -695,6 +708,10 @@ describe("LIA-104 — the system prompt", () => {
       /^You are Argus, a panel inside Pensieve/,
       /draft it per the linear-ticket skill and call `propose_ticket` once/,
       /never that it is filed/i,
+      // LIA-147: the arc's retrieval verb, and the one way an arc is opened.
+      /bun run accio arc/,
+      /call `propose_arc` once/,
+      /never say the arc exists/i,
     ]) {
       expect(ASK_SYSTEM_PROMPT).toMatch(re);
     }

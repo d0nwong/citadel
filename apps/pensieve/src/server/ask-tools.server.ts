@@ -1,6 +1,6 @@
 /**
  * Node-only. The tools Argus's session can call that are not a read of the checkout:
- * `propose_decision` (LIA-111) and `propose_ticket` (LIA-113).
+ * `propose_decision` (LIA-111), `propose_ticket` (LIA-113) and `propose_arc` (LIA-147).
  *
  * It is bridged, which decides its shape. `chat({ tools })` makes the adapter provision an
  * MCP server named `tanstack`; the session sees `mcp__tanstack__propose_decision` and the
@@ -9,7 +9,7 @@
  * (`docs/adapters/claude-code.md`). A tool that always executes must therefore be
  * read-only: each one checks a draft and answers a proposal. The write is a click, on the
  * card the chat renders from the tool's part (`features/ask/components/decision-card`,
- * `features/ask/components/ticket-card`).
+ * `features/ask/components/ticket-card`, `features/ask/components/arc-card`).
  *
  * The bridge hands `execute` the raw MCP arguments — the engine validates nothing on this
  * path — so the schema is applied here rather than trusted.
@@ -17,8 +17,15 @@
 
 import { toolDefinition } from "@tanstack/ai";
 import { z } from "zod";
-import { PROPOSE_DECISION, PROPOSE_TICKET } from "../lib/ask-tools";
+import { allSeeds } from "../lib/arcs";
+import {
+  PROPOSE_ARC,
+  PROPOSE_DECISION,
+  PROPOSE_TICKET,
+} from "../lib/ask-tools";
 import { POINT_ID_RE } from "../lib/points";
+import type { ArcSources } from "./arcs";
+import { checkArcDraft } from "./arcs";
 import { TEAM_NAME } from "./linear";
 import type { TicketSources } from "./ticket";
 import { checkDraft } from "./ticket";
@@ -211,4 +218,105 @@ export const proposeTicketTool = toolDefinition({
   outputSchema: ticketOutput,
 }).server<AskToolContext>((args, { context }) =>
   proposeTicket(args, context ?? {})
+);
+
+// ── propose_arc (LIA-147) ──────────────────────────────────────────────────────
+
+/**
+ * The four seed lists, each optional on the wire — the model names the kinds it has keys
+ * for. "At least one seed" is `checkArcDraft`'s refusal, with a sentence, rather than a
+ * schema error: an arc with no keys is a draft to fix, not unusable input.
+ */
+const arcInput = z.object({
+  seeds: z
+    .object({
+      features: z.array(z.string()).optional(),
+      prs: z.array(z.string()).optional(),
+      rules: z.array(z.string()).optional(),
+      tickets: z.array(z.string()).optional(),
+    })
+    .optional(),
+  slug: z.string(),
+  title: z.string(),
+});
+
+const seedList = z.array(z.string());
+
+const arcProposal = z.object({
+  seeds: z.object({
+    features: seedList,
+    prs: seedList,
+    rules: seedList,
+    tickets: seedList,
+  }),
+  slug: z.string(),
+  title: z.string(),
+  /** False when no open-ticket list could be read — the card says the seeds are unverified. */
+  verified: z.boolean(),
+});
+
+const arcOutput = z.union([
+  z.object({
+    note: z.string(),
+    ok: z.literal(true),
+    proposal: arcProposal,
+  }),
+  z.object({ error: z.string(), ok: z.literal(false) }),
+]);
+
+export type ArcProposal = z.infer<typeof arcProposal>;
+export type ProposeArcOutput = z.infer<typeof arcOutput>;
+
+/** Said back on every accepted draft, so the session cannot report the arc as opened. */
+export const ARC_NOTE =
+  "shown to Liam as a card; nothing is written until he presses Open";
+
+/**
+ * Check a drafted arc and answer a proposal, or say why there is none. Reads the arcs, the
+ * decisions, the journal and the team's open issues — it writes neither `decisions/arc/`
+ * nor `arcs/`. The write is Liam's press of Open on the card this tool's part renders as;
+ * the arc file itself is the sweep's, on its next tick.
+ */
+export async function proposeArc(
+  args: unknown,
+  context: AskToolContext = {},
+  sources?: ArcSources
+): Promise<ProposeArcOutput> {
+  const parsed = arcInput.safeParse(args);
+  const where = context.threadId ? ` · thread ${context.threadId}` : "";
+  if (!parsed.success) {
+    const [issue] = parsed.error.issues;
+    const error = `propose_arc: ${issue ? `${issue.path.join(".") || "input"} — ${issue.message}` : "unusable input"}`;
+    console.log(`[ask] propose_arc${where} · refused: ${error}`);
+    return { error, ok: false };
+  }
+  const check = await checkArcDraft(parsed.data, sources);
+  if (!check.ok) {
+    console.log(`[ask] propose_arc${where} · refused: ${check.error}`);
+    return { error: check.error, ok: false };
+  }
+  const { arc } = check;
+  console.log(
+    `[ask] propose_arc arc/${arc.slug} · ${allSeeds(arc.seeds).length} seeds${where} · proposed`
+  );
+  return {
+    note: ARC_NOTE,
+    ok: true,
+    proposal: {
+      seeds: arc.seeds,
+      slug: arc.slug,
+      title: arc.title,
+      verified: arc.verified,
+    },
+  };
+}
+
+export const proposeArcTool = toolDefinition({
+  description:
+    "Propose an arc — the running story of one initiative — for Liam to open. Takes { slug, title, seeds: { tickets, rules, prs, features } } per the ask skill's Arcs section: the slug free under arcs/ and decisions/arc/, and at least one seed, every one a key this conversation actually retrieved (a ticket as LIA-nn, a rule as BR-n / MM-n, a PR as the journal writes it, a feature dir). It checks the draft against the workspace and answers a proposal Pensieve shows as a card with an Open button, or { ok: false, error } when the arc cannot be opened. It writes nothing: the seed file is written only when Liam presses Open, and arcs/<slug>.md is written by the next sweep tick — so never say the arc exists, is open, or is tracking anything. Call it once per arc.",
+  inputSchema: arcInput,
+  name: PROPOSE_ARC,
+  outputSchema: arcOutput,
+}).server<AskToolContext>((args, { context }) =>
+  proposeArc(args, context ?? {})
 );

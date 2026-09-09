@@ -10,11 +10,13 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isPointId } from "../lib/points";
-import type { Decision } from "./decisions";
+import type { ArcDecision, Decision } from "./decisions";
 import {
   decisionPath,
+  isArcDecision,
   mergeDecisions,
   parseDecision,
+  readArcDecision,
   readDecision,
   readDecisions,
   writeDecision,
@@ -232,5 +234,115 @@ describe("AC8 — files on disk win over the sweep’s copy", () => {
       dir
     );
     expect((await readDecision("decide/one", dir))?.reason).toBe("r");
+  });
+});
+
+describe("LIA-147 — the arc group travels the same path and joins no point", () => {
+  const seeds = {
+    features: ["alden/invoicing"],
+    prs: [],
+    rules: ["BR-22h"],
+    tickets: ["LIA-133"],
+  };
+  const opened: ArcDecision = {
+    action: "opened",
+    at: "2026-09-09T09:00:00.000Z",
+    point: "arc/invoice-emails",
+    seeds,
+    slug: "invoice-emails",
+    subject: "Invoice emails",
+  };
+
+  test("an arc id maps to decisions/arc/<slug>.json, and a bad one is still refused", () => {
+    expect(decisionPath("arc/invoice-emails", dir)).toBe(
+      join(dir, "arc", "invoice-emails.json")
+    );
+    for (const id of ["arc/../x", "arc/UPPER", "arc/", "arc/a b"]) {
+      expect(() => decisionPath(id, dir)).toThrow(/refused/);
+    }
+  });
+
+  test("opened: the file carries the seeds and no slug key, and reads back", async () => {
+    const target = await writeDecision(opened, dir);
+    expect(target).toBe(join(dir, "arc", "invoice-emails.json"));
+    const raw = JSON.parse(await readFile(target, "utf8"));
+    expect(raw).toEqual({
+      action: "opened",
+      at: opened.at,
+      point: "arc/invoice-emails",
+      seeds,
+      subject: "Invoice emails",
+    });
+    expect(await readArcDecision("invoice-emails", dir)).toEqual(opened);
+    expect((await readdir(join(dir, "arc"))).sort()).toEqual([
+      "invoice-emails.json",
+    ]);
+  });
+
+  test("closed: the same path, the same writer, the status the sweep reads", async () => {
+    await writeDecision(opened, dir);
+    await writeDecision(
+      {
+        action: "closed",
+        at: "2026-09-20T09:00:00.000Z",
+        point: "arc/invoice-emails",
+        reason: "shipped",
+        seeds: { features: [], prs: [], rules: [], tickets: [] },
+        slug: "invoice-emails",
+        subject: "Invoice emails",
+      },
+      dir
+    );
+    const closed = await readArcDecision("invoice-emails", dir);
+    expect(closed).toMatchObject({ action: "closed", reason: "shipped" });
+    expect((await readdir(join(dir, "arc"))).sort()).toEqual([
+      "invoice-emails.json",
+    ]);
+  });
+
+  test("the sweep's parseArcDecision rules, restated: seeds required on opened", () => {
+    const arc = (body: Record<string, unknown>) =>
+      parseDecision(JSON.stringify(body));
+    expect(
+      arc({ action: "opened", point: "arc/x", seeds: { tickets: ["LIA-1"] } })
+    ).toMatchObject({
+      action: "opened",
+      slug: "x",
+    });
+    // An arc with no keys files nothing, so the file is not one the sweep would accept.
+    expect(arc({ action: "opened", point: "arc/x" })).toBeNull();
+    expect(arc({ action: "opened", point: "arc/x", seeds: {} })).toBeNull();
+    // `closed` only flips the status of an arc that exists — seeds are not its substance.
+    expect(arc({ action: "closed", point: "arc/x" })).toMatchObject({
+      action: "closed",
+    });
+    expect(arc({ action: "ignored", point: "arc/x", reason: "no" })).toBeNull();
+    expect(
+      arc({
+        action: "opened",
+        point: "decide/x",
+        seeds: { tickets: ["LIA-1"] },
+      })
+    ).toBeNull();
+  });
+
+  test("AC5 — an arc file is neither a verdict on a point nor an unreadable one", async () => {
+    await writeDecision(opened, dir);
+    await writeDecision(
+      {
+        action: "ignored",
+        at: "2026-09-09T10:00:00.000Z",
+        point: "decide/lia-86",
+        reason: "not now",
+        subject: "LIA-86",
+      },
+      dir
+    );
+    const onDisk = await readDecisions(dir);
+    expect([...onDisk.keys()]).toEqual(["decide/lia-86"]);
+    // A point that happened to share the id would still not be merged from an arc file.
+    expect(await readDecision("arc/invoice-emails", dir)).toBeNull();
+    const arc = await readArcDecision("invoice-emails", dir);
+    expect(arc && isArcDecision(arc)).toBe(true);
   });
 });

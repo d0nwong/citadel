@@ -9,10 +9,11 @@
  * the adapter's per-run runner files land in the checkout for the run's duration and are
  * removed in its `finally` — `git status` is unchanged afterwards.
  *
- * Two tools are bridged into the run: `propose_decision` (LIA-111) and `propose_ticket`
- * (LIA-113). A bridged tool always executes when the model calls it, so each only reads and
- * answers a proposal; the write is Liam's click on the card the chat renders from its tool
- * part — `decisions/` for a verdict, Linear's `issueCreate` for a ticket.
+ * Three tools are bridged into the run: `propose_decision` (LIA-111), `propose_ticket`
+ * (LIA-113) and `propose_arc` (LIA-147). A bridged tool always executes when the model
+ * calls it, so each only reads and answers a proposal; the write is Liam's click on the
+ * card the chat renders from its tool part — `decisions/` for a verdict or an arc's seed
+ * file, Linear's `issueCreate` for a ticket.
  *
  * Auth is decided per request: `ANTHROPIC_API_KEY` in the environment means `'api-key'`
  * (the container); otherwise `'host'` — the machine's `claude login`. With neither,
@@ -76,7 +77,11 @@ import {
   LINEAR_WRITE_TOOLS,
 } from "../lib/ask-tools";
 import { isPointId } from "../lib/points";
-import { proposeDecisionTool, proposeTicketTool } from "./ask-tools.server";
+import {
+  proposeArcTool,
+  proposeDecisionTool,
+  proposeTicketTool,
+} from "./ask-tools.server";
 import { WORKSPACE_DIR } from "./workspace";
 
 // ── configuration ──────────────────────────────────────────────────────────────
@@ -170,11 +175,11 @@ console.log(
  */
 export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus blackboard. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog, and nobody can grant, allow or approve anything. A tool that is denied stays denied for this run; say what you could not do in one sentence and answer from what you have. Never tell the user to grant, allow or approve anything, and never wait for approval.
 
-To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A point is \`bun run accio point <group>/<slug>\`; a ticket is \`bun run accio ticket LIA-nn\` then mcp__linear__get_issue; a day is \`bun run accio journal <YYYY-MM-DD>\`. Read the product checkouts with Read, Glob, Grep and \`git -C <repo> log\` / \`git -C <repo> show origin/<branch>:<path>\`. Never run git fetch, git branch, git checkout, find, python3, or cat/grep/ls through Bash — each is a denied turn.
+To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A point is \`bun run accio point <group>/<slug>\`; a ticket is \`bun run accio ticket LIA-nn\` then mcp__linear__get_issue; a day is \`bun run accio journal <YYYY-MM-DD>\`; an initiative is \`bun run accio arc <slug>\`. Read the product checkouts with Read, Glob, Grep and \`git -C <repo> log\` / \`git -C <repo> show origin/<branch>:<path>\`. Never run git fetch, git branch, git checkout, find, python3, or cat/grep/ls through Bash — each is a denied turn.
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
-You cannot write files, edit tickets or comments, or run the sweep. To ignore or send a point, call \`propose_decision\` once as the ask skill says; Liam confirms it on the card — say it is proposed in one sentence and never say it is done. To file a new ticket, draft it per the linear-ticket skill and call \`propose_ticket\` once; Liam files it on the card — say it is proposed, never that it is filed.`;
+You cannot write files, edit tickets or comments, or run the sweep. To ignore or send a point, call \`propose_decision\` once as the ask skill says; Liam confirms it on the card — say it is proposed in one sentence and never say it is done. To file a new ticket, draft it per the linear-ticket skill and call \`propose_ticket\` once; Liam files it on the card — say it is proposed, never that it is filed. To open an arc for an initiative, call \`propose_arc\` once as the ask skill's Arcs section says; Liam opens it on the card and the sweep writes the arc file on its next tick — never say the arc exists.`;
 
 /**
  * The extra system prompt a conversation opened on a point carries (LIA-109 stores it,
@@ -671,6 +676,53 @@ export const readFiledTicket = async (
     await store.persistence.stores.metadata.get(threadId, ticketKey(toolCallId))
   );
 
+/**
+ * Where an opened arc lives: `metadata[<threadId>]["arc:<toolCallId>"]`. One key per
+ * proposal, as `ticket:` is — a second press of Open, or a press after a reload replayed
+ * the card, answers the arc the first press opened rather than writing a second file
+ * (LIA-147 AC2). The decision file on disk says the same thing; this is what the card
+ * reads, since it is keyed by the card rather than by the slug.
+ */
+export const arcKey = (toolCallId: string) => `arc:${toolCallId}`;
+
+/** What a press of Open recorded: the arc's slug and title, and when the file was written. */
+export interface OpenedArc {
+  at: string;
+  slug: string;
+  title: string;
+}
+
+const asOpenedArc = (v: unknown): OpenedArc | undefined => {
+  if (!v || typeof v !== "object") {
+    return;
+  }
+  const a = v as Record<string, unknown>;
+  return typeof a.slug === "string" && a.slug
+    ? {
+        at: typeof a.at === "string" ? a.at : "",
+        slug: a.slug,
+        title: typeof a.title === "string" ? a.title : a.slug,
+      }
+    : undefined;
+};
+
+export const readOpenedArc = async (
+  store: ConversationStore,
+  threadId: string,
+  toolCallId: string
+): Promise<OpenedArc | undefined> =>
+  asOpenedArc(
+    await store.persistence.stores.metadata.get(threadId, arcKey(toolCallId))
+  );
+
+export const writeOpenedArc = (
+  store: ConversationStore,
+  threadId: string,
+  toolCallId: string,
+  arc: OpenedArc
+): Promise<void> =>
+  store.persistence.stores.metadata.set(threadId, arcKey(toolCallId), arc);
+
 export const writeFiledTicket = (
   store: ConversationStore,
   threadId: string,
@@ -1019,7 +1071,7 @@ export async function* askStream(
         ...(point ? [pointPrompt(point)] : []),
       ],
       threadId: input.threadId,
-      tools: [proposeDecisionTool, proposeTicketTool],
+      tools: [proposeDecisionTool, proposeTicketTool, proposeArcTool],
     });
     let finished: StreamChunk | undefined;
     for await (const chunk of stream) {
