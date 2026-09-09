@@ -181,13 +181,18 @@ report them as a count with the feature ids ("4 product tiers still behind their
 tier, next tick: …"), not as a decision for the user; they clear as 5c works through
 the list.
 
-**8. Report.** One screen, in this order, skipping empty sections. **"One screen" is a
-budget: ≤ 1,200 words for a full day.** The 2026-09-01 report reached 3,981, almost all
-`Done today` written as per-tick essays, and had to be rewritten. A Done-today block is
-**1–3 bullets** naming what changed and the commit that holds it; the journal entry, the
-docs and the diff carry the detail, so link rather than retell. Consecutive quiet ticks
-collapse onto one line (`### 14:19 · 15:18 · 17:17`). Needs you follows the digest's
-current-state rule: each bullet says what is open *now*, not how it got there.
+**8. Report.** One screen, in this order, skipping empty sections, written to
+`skills/sweep/style.md`: summary sentence and TL;DR first, cards for Needs-you items,
+tables for Done today and Linear today, one-liners for holds, Housekeeping and Audit.
+**"One screen" is a budget: ≤ 1,200 words for a full day.** The 2026-09-01 report
+reached 3,981, almost all `Done today` written as per-tick essays, and had to be
+rewritten; 2026-09-07 hit 2,280 the same way before its reformat. A Done-today block is
+**a table plus at most one sentence**: one row per thing that changed (landing
+journaled, ticket filed or updated, feature refreshed, decision journaled) — what, where
+it went, the commit — and the journal entry, the docs and the diff carry the detail, so
+link rather than retell. Consecutive quiet ticks collapse onto one heading
+(`### 14:19 · 15:18 · 17:17`) over the line `Nothing new.` Needs you follows the
+digest's current-state rule: each card says what is open *now*, not how it got there.
 
 1. **Needs you** — grouped by what is being asked of the user, as bold labels in
    this fixed order, empty groups omitted:
@@ -207,19 +212,23 @@ current-state rule: each bullet says what is open *now*, not how it got there.
      `implemented`-not-`documented` entries). One line with the count; Audit holds
      the list.
 
-   Every Decide / Verify / Confirm item is **one headline and at most one detail
-   line**:
+   Every Decide / Verify / Confirm item is **a card** (style.md, "The card"): headline,
+   blank line, at most one detail paragraph — and no source line, since nothing on
+   Slack backs it:
 
    ```markdown
    - **<subject>** — <the ask, ≤ 12 words> · <age>
+
      <the one fact needed to act, ≤ 25 words>
    ```
 
-   The subject is the ticket key or PR when there is one. The ask is a verb phrase or
-   a question ("revert, or accept the churn?", "ticket them?", "Foong"). The detail
-   line is the fact, never the history — link the journal entry, doc, ticket or diff
-   rather than retell it. ✋ items that got tickets appear by key, not restated. Three rules come from `points.ts` (below), which owns ids, ages and
-   decisions:
+   The blank line is what makes the two render apart. The subject is the ticket key
+   or PR when there is one. The ask is a verb phrase or a question ("revert, or accept
+   the churn?", "ticket them?", "Foong"). The detail is the fact, never the history —
+   link the journal entry, doc, ticket or diff rather than retell it. ✋ items that got
+   tickets appear by key, not restated. On hold and Housekeeping bullets stay one line
+   (style.md, "One-liners"). Three rules come from `points.ts` (below), which owns ids,
+   ages and decisions:
    - **The subject is the item's identity** — the point's id derives from it, so an
      open item keeps its subject text verbatim from tick to tick; rewording restarts
      its age and brings a decided point back as a new one.
@@ -229,12 +238,15 @@ current-state rule: each bullet says what is open *now*, not how it got there.
      compose this section; the script drops decided points. A point you leave out
      because "it was decided" is one the script can no longer tell apart from one whose
      condition cleared.
-2. **Done today** — entries written, docs refreshed, tickets filed (6a) and updated
-   (keys + PRs), one `### HH:MM` sub-block per tick that did something.
-3. **Linear today** — every Liamai ticket created or updated since local midnight, one
-   line each: key, title, `created` or `updated`, and by what (sweep update, digest
-   filing, or outside activity — the last flagged, since it's news). Built from the
-   step-3 query, not tick memory, so every tick restates the full day.
+2. **Done today** — one `### HH:MM` sub-block per tick that did something, each a
+   table `| What | Went to | Commit |` — one row per entry written, doc refreshed,
+   ticket filed (6a) or updated (keys + PRs), decision journaled — followed by at most
+   one sentence of notes.
+3. **Linear today** — a table `| Ticket | Change | By |`: every Liamai ticket created
+   or updated since local midnight — key and short title; `created` or `updated` and
+   which sections; and by what (sweep, digest filing, or **outside activity**, bolded
+   since it's news). Built from the step-3 query, not tick memory, so every tick
+   restates the full day.
 4. **Audit** — every remaining problem, **one line each, grouped by kind**, none
    omitted: keep the feature or journal file and the kind, drop the boilerplate
    suffix (`bun run accio audit` reprints it in full). Shape:
@@ -259,12 +271,20 @@ Format:
 ```markdown
 # sweep — 2026-08-28
 
+_Two landings journaled and one ticket updated; one revert to decide, one thread to confirm with Foong._
+
 _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
+
+> **TL;DR**
+> - Decide: keep or revert fe#396's formatting churn.
+> - Confirm with Foong: the capacity-unit direction, huddle and code disagree.
+> - Blocked: fe#401 waits on LIA-78's usage endpoint.
 
 ## Needs you
 
 **Decide**
 - **fe#396 quoteStyle flip** — revert, or accept the churn? · 4d
+
   Only touched files were reformatted; the next repo-wide format run churns the rest.
 
 **Verify**
@@ -272,6 +292,7 @@ _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 
 **Confirm with someone**
 - **Capacity-unit direction** — Foong · 2d
+
   Huddle: 1 unit = 2.5 h. Shipped: 2.5 units = 1 h.
 
 **On hold**
@@ -281,13 +302,33 @@ _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 - 3 product tiers behind their arch tier (see Audit) — clears over the next ticks
 
 ## Done today
+
 ### 12:25
-- …
+
+| What | Went to | Commit |
+|---|---|---|
+| fe#402 — usage page credit bar | [journal](…) · admin-usage docs | `9334bc4` |
+| LIA-79 — Pending bullet on the retainer cap deleted | ticket body | — |
+
+### 14:19 · 15:18
+
+Nothing new.
+
 ### 16:54
-- …
+
+| What | Went to | Commit |
+|---|---|---|
+| be#758 — subtask capacity resolver | [journal](…) · tasks, admin-usage docs | `130fe4a` |
+
+Filed LIA-116 (Urgent): be#760 deleted the snapshot-edit route the FE still calls.
 
 ## Linear today
-…
+
+| Ticket | Change | By |
+|---|---|---|
+| LIA-116 — History save 404s | created, Urgent | ticket-pass |
+| LIA-79 — retainer cap | updated: Pending | ticket-pass |
+| LIA-53 — pr-facts scanner | updated: Done | **outside activity** |
 
 ## Audit
 
@@ -299,9 +340,9 @@ _Tick 16:54 · digest writeback `6433b4e` · staging@8815ba968 · dev@c9c52464_
 ```
 
 Each tick: read the existing file (create it from the template if today's doesn't
-exist), replace the `_Tick …_` line, replace the bodies of Needs you / Linear today /
-Audit, append a `### HH:MM` block under Done today if this tick wrote anything, write it
-back, then run
+exist), rewrite the summary sentence, the `_Tick …_` line and the TL;DR, replace the
+bodies of Needs you / Linear today / Audit, append a `### HH:MM` block under Done today
+if this tick wrote anything, write it back, then run
 
 ```sh
 bun skills/sweep/scripts/points.ts        # reports/<today>.md → reports/points.json, ages synced
