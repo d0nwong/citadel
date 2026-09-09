@@ -91,15 +91,14 @@ export function dropSection(
  * keeps the summary sentence. The document itself comes back when there is none.
  */
 export function dropTldr(doc: MarkdownDocument): MarkdownDocument {
-  for (let i = 0; i < doc.children.length; i++) {
-    const node = doc.children[i]!;
+  for (const [i, node] of doc.children.entries()) {
     if (node.type === "heading" && node.depth === 2) {
       break;
     }
     if (node.type !== "blockquote") {
       continue;
     }
-    const first = node.children[0];
+    const [first] = node.children;
     const text =
       first && "children" in first && Array.isArray(first.children)
         ? inlineText(first.children as InlineNode[]).trim()

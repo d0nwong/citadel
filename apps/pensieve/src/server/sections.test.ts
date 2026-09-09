@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { parseMarkdown } from "@tanstack/markdown/parser";
-import { dropSection, dropTitle, dropTldr, headingText, outline } from "./sections";
+import {
+  dropSection,
+  dropTitle,
+  dropTldr,
+  headingText,
+  outline,
+} from "./sections";
 
 const REPORT = `# sweep — 2026-09-07
 
@@ -159,7 +165,9 @@ _Tick 19:16 · staging@815a6aa31_
   test("answers the same document when there is no TL;DR before the first h2", () => {
     const doc = parse(REPORT);
     expect(dropTldr(doc)).toBe(doc);
-    const later = parse("_lede_\n\n## Done today\n\n> **TL;DR** not at the top\n");
+    const later = parse(
+      "_lede_\n\n## Done today\n\n> **TL;DR** not at the top\n"
+    );
     expect(dropTldr(later)).toBe(later);
   });
 
