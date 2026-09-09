@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ChevronDown } from "lucide-react";
 import { useMemo } from "react";
 import {
   Empty,
@@ -81,19 +82,20 @@ function JournalPage() {
     () => Array.from(new Set(all.map((e) => e.app))).sort(),
     [all]
   );
-  // The feature list follows the app filter: every feature of every app at once is a
-  // wall of names, and a feature only means something inside its app.
-  const features = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          all
-            .filter((e) => !search.app || e.app === search.app)
-            .map((e) => e.feature)
-        )
-      ).sort(),
-    [all, search.app]
-  );
+  // The feature picker follows the app filter, and groups by app when none is set — a
+  // feature only means something inside its app, and the key's app half is the group's name.
+  const featureGroups = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const e of all) {
+      if (search.app && e.app !== search.app) {
+        continue;
+      }
+      m.set(e.app, (m.get(e.app) ?? new Set()).add(e.feature));
+    }
+    return Array.from(m.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([app, fs]) => [app, Array.from(fs).sort()] as const);
+  }, [all, search.app]);
   const shown = useMemo(
     () => all.filter((e) => matches(e, search)),
     [all, search]
@@ -186,26 +188,46 @@ function JournalPage() {
             value={search.q ?? ""}
           />
         </div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1">
-          {features.map((f) => (
-            <button
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="kicker" htmlFor="journal-feature">
+            Feature
+          </label>
+          <div className="relative w-full sm:w-80">
+            <select
               className={cn(
-                "mono transition-colors",
-                search.feature === f
-                  ? "text-primary underline underline-offset-4"
-                  : "text-subtle hover:text-foreground"
+                "w-full cursor-pointer appearance-none rounded-md border border-input bg-background py-1.5 pr-9 pl-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25",
+                search.feature ? "text-foreground" : "text-subtle"
               )}
-              key={f}
-              onClick={() =>
-                set({ feature: search.feature === f ? undefined : f })
-              }
+              id="journal-feature"
+              onChange={(e) => set({ feature: e.target.value || undefined })}
+              value={search.feature ?? ""}
+            >
+              <option value="">all features</option>
+              {featureGroups.map(([app, fs]) => (
+                <optgroup key={app} label={app}>
+                  {fs.map((f) => (
+                    <option key={f} value={f}>
+                      {f.startsWith(`${app}/`) ? f.slice(app.length + 1) : f}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <ChevronDown
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-subtle"
+              strokeWidth={1.75}
+            />
+          </div>
+          {search.feature && (
+            <button
+              className="text-subtle text-xs hover:text-foreground"
+              onClick={() => set({ feature: undefined })}
               type="button"
             >
-              {search.app && f.startsWith(`${search.app}/`)
-                ? f.slice(search.app.length + 1)
-                : f}
+              clear
             </button>
-          ))}
+          )}
         </div>
       </div>
 
