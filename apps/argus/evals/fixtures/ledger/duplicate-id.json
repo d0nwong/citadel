@@ -234,7 +234,7 @@
       "title": "[FE] Payment term on the billing profile",
       "body": "## Summary\n\nMoves the editable payment term from the invoice to the billing profile.\n",
       "asks": [
-        "A-2"
+        "A-1"
       ],
       "at": "2026-09-10"
     }
