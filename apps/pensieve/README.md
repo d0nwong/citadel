@@ -140,7 +140,7 @@ state is `/data` on the named volume `pensieve-home`, so conversations survive
 | `/journal` | every `<app>/features/**/journal/**/*.md` — frontmatter only, filterable by app / day / feature / status / text |
 | `/journal/:feature/:slug` | one entry, frontmatter as marginalia |
 | `/docs`, `/docs/:feature?tier=` | `<app>/features/**/docs/{product,arch}.md`, grouped by app, with `last_verified` ages |
-| `/archive` (`/reports`, `/digests`, `/arcs`) | what the loop wrote before 2026-09-09 — a sweep report and a Slack digest per day, and the arcs — readable as history, written by nothing |
+| `/archive` (`/reports`, `/digests`, `/arcs`) | what the loop wrote before 2026-09-09 — a sweep report and a Slack digest per day, readable as history and written by nothing; `/arcs/` redirects too, so the arcs are files only |
 
 `<app>` is discovered, not configured: any directory one or two levels under
 `WORKSPACE_DIR` holding a `features/` tree is an app — `foundry` and `pensieve` are one
