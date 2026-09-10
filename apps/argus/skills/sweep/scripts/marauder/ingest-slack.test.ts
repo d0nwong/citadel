@@ -1,5 +1,5 @@
 /**
- * ingest-slack.ts — what the channel said becomes events (LIA-157).
+ * ingest-slack.ts — what the channel said becomes events (ARG-157).
  *
  * The cases are the ticket's AC7, against the real 2026-09-09 pull: the thread rung, the
  * reference rung, the vocabulary match on `billedBy`, the huddle canvas left for a reader,
@@ -86,8 +86,8 @@ describe("the ladder", () => {
   });
 
   test("a message naming a ticket a workstream owns attaches for certain", () => {
-    const item = { ...byTs(BILLING), text: "this is the FE half of LIA-116" };
-    const owner = w({ slug: "history-editing", keys: { ...w().keys, threads: [], tickets: ["LIA-116"], vocab: [] } });
+    const item = { ...byTs(BILLING), text: "this is the FE half of ALD-2" };
+    const owner = w({ slug: "history-editing", keys: { ...w().keys, threads: [], tickets: ["ALD-2"], vocab: [] } });
     expect(slackCandidates(item, [owner])[0]).toMatchObject({ slug: "history-editing", how: "ref" });
   });
 

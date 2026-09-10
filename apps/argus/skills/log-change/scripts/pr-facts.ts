@@ -266,7 +266,7 @@ function render(repo: Repo, f: Facts, feats: Feats): string {
 
 /**
  * Every landing on the repo's base branch since `from`, as data rather than a printed
- * table — what `marauder ingest --landings` consumes (LIA-156). One `git log` for the
+ * table — what `marauder ingest --landings` consumes (ARG-156). One `git log` for the
  * whole list: the merge subject carries the branch and the PR number, and a merge's body
  * carries the PR title, so nothing here needs a second call or the network. `--since` is
  * given a time because git's approxidate otherwise fills in NOW and hides the morning.

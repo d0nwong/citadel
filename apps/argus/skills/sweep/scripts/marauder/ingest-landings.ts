@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * marauder ingest --landings — a merge on a base branch becomes an event (LIA-156).
+ * marauder ingest --landings — a merge on a base branch becomes an event (ARG-156).
  *
  * A landing is the one input that is a fact rather than a claim: it is on the base branch
  * or it is not. So it attaches without anyone confirming, and moves that side's stage to
@@ -101,7 +101,7 @@ export function landingSummary(l: Landing): string {
 
 export type Candidate = { slug: string; how: AttachHow; why: string };
 
-const TICKET_IN_BRANCH = /\b(lia-\d+)\b/gi;
+const TICKET_IN_BRANCH = /\b((?:arg|ald)-\d+)\b/gi;
 
 /** every ticket a landing names, from its branch and its title, upper-cased */
 export const ticketsOf = (l: Landing): string[] => [

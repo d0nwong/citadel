@@ -175,7 +175,7 @@ of ticket bodies and doc trees.
 Its inputs are this tick's workstream events (`bun run marauder changed --since <prev
 tick ISO>`), and for each ticket the diff `bun run marauder ticket-plan` computes between
 the body and its workstream's `open_questions` and `facts`. Each event's kind decides its
-own action, and what needs a person comes back as a flag rather than an edit (LIA-159).
+own action, and what needs a person comes back as a flag rather than an edit (ARG-159).
 The worker's procedure, its action table and its prompt are `skills/sweep/ticket-pass.md`.
 
 **Skip the spawn** when there is nothing for it: no workstream gained an event this tick
@@ -254,8 +254,8 @@ rather than restating it.
   (step 5). The proposal is a queue entry; the cut happens when a person accepts it;
 - **the ticket pass's own corrections** — `marauder ticket` writing back the key it filed,
   `pending` recording a question-to-bullet pairing, `resolved` taking an answered question
-  off the record, `held` putting a withheld edit in front of the reader (LIA-159);
-- filing Liamai tickets from the asks a workstream carries, and folding a tick's events
+  off the record, `held` putting a withheld edit in front of the reader (ARG-159);
+- filing Alden tickets from the asks a workstream carries, and folding a tick's events
   into the tickets its workstream names — both in `ticket-pass`, the loop's only Linear
   writer;
 - **deleting a Pending bullet once its question is answered**, and writing the answer into

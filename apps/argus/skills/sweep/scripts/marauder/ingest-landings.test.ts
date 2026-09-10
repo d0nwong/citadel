@@ -1,5 +1,5 @@
 /**
- * ingest-landings.ts — a merge on a base branch becomes an event (LIA-156).
+ * ingest-landings.ts — a merge on a base branch becomes an event (ARG-156).
  *
  * The cases are the ticket's AC5, over fixtures rather than a repo: a PR match, a
  * ticket-in-branch match, a two-candidate ambiguity, a no-match, a re-run, and a landing on
@@ -50,7 +50,7 @@ const w = (over: Partial<Workstream> = {}): Workstream => ({
   overlay: null,
   parked: false,
   milestone: null,
-  keys: { tickets: ["LIA-116"], prs: ["fe#417"], threads: [], vocab: [], people: [] },
+  keys: { tickets: ["ALD-2"], prs: ["fe#417"], threads: [], vocab: [], people: [] },
   open_questions: [],
   facts: [],
   events: [],
@@ -94,8 +94,8 @@ describe("the ladder", () => {
 
   test("a ticket in the branch attaches, and the PR joins the keys it was missing", () => {
     const { workstreams, changes } = apply({
-      workstreams: [w({ keys: { tickets: ["LIA-153"], prs: [], threads: [], vocab: [], people: [] } })],
-      landings: [landing({ ref: "fe#419", pr: 419, branch: "yickkiuleung/lia-153-join-credit-weights", title: "join the credit weights on the asset type" })],
+      workstreams: [w({ keys: { tickets: ["ALD-1"], prs: [], threads: [], vocab: [], people: [] } })],
+      landings: [landing({ ref: "fe#419", pr: 419, branch: "yickkiuleung/ald-1-join-credit-weights", title: "join the credit weights on the asset type" })],
     });
     expect(changes[0]).toMatchObject({ kind: "attached", how: "ref", confidence: "certain" });
     expect(workstreams[0]!.keys.prs).toEqual(["fe#419"]);
@@ -201,12 +201,12 @@ describe("the summary", () => {
   });
 
   test("a title that is only a link carries no sentence, so the summary says only what happened", () => {
-    expect(plainSentence("https://linear.app/liamai/issue/LIA-153/fe-join-historys-credit").weak).toBe(true);
-    expect(landingSummary(landing({ title: "https://linear.app/liamai/issue/LIA-153/fe-join" }))).toBe("You landed a frontend change.");
+    expect(plainSentence("https://linear.app/liamai/issue/ALD-1/fe-join-historys-credit").weak).toBe(true);
+    expect(landingSummary(landing({ title: "https://linear.app/liamai/issue/ALD-1/fe-join" }))).toBe("You landed a frontend change.");
   });
 
   test("a leading ticket key or repo tag comes off, so no summary starts with an id", () => {
-    expect(plainSentence("LIA-116 fix the history save").text).toBe("fix the history save");
+    expect(plainSentence("ALD-2 fix the history save").text).toBe("fix the history save");
     expect(plainSentence("[FE] Render the entity name").text).toBe("render the entity name");
   });
 });
@@ -228,6 +228,6 @@ describe("the window", () => {
   });
 
   test("tickets are read from the branch as well as the title, case-insensitively", () => {
-    expect(ticketsOf(landing({ branch: "yickkiuleung/lia-116-history-save", title: "fix it" }))).toEqual(["LIA-116"]);
+    expect(ticketsOf(landing({ branch: "yickkiuleung/ald-2-history-save", title: "fix it" }))).toEqual(["ALD-2"]);
   });
 });

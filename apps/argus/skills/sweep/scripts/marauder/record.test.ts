@@ -1,5 +1,5 @@
 /**
- * record.ts — the workstream record (LIA-154).
+ * record.ts — the workstream record (ARG-154).
  *
  * The cases are the ticket's AC2: a valid record, a missing required field, an unknown
  * stage value, an unknown event kind, and an event attached by hand that does not say by
@@ -39,7 +39,7 @@ const valid = (over: Partial<Workstream> = {}): Workstream => ({
   overlay: null,
   parked: false,
   milestone: null,
-  keys: { tickets: ["LIA-116"], prs: ["fe#417", "be#768"], threads: ["1788774985.655159"], vocab: ["assetEntityId"], people: ["Sam O"] },
+  keys: { tickets: ["ALD-2"], prs: ["fe#417", "be#768"], threads: ["1788774985.655159"], vocab: ["assetEntityId"], people: ["Sam O"] },
   open_questions: [],
   facts: [],
   events: [
@@ -50,7 +50,7 @@ const valid = (over: Partial<Workstream> = {}): Workstream => ({
       summary: "Sam landed the backend that keys History rows on asset entity.",
       source: { type: "pr", ref: "be#768" },
       attached: { how: "ref", confidence: "certain" },
-      ticket: "LIA-116",
+      ticket: "ALD-2",
     },
   ],
   opened: "2026-09-07",

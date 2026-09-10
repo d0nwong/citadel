@@ -107,7 +107,7 @@ the create is one `propose_ticket` call, below.
 Splitting into sub-issues is a three-pass create and terminal-only, because relations
 need keys that don't exist yet: (1) create the parent, (2) create each sub-issue in
 execution order with `parentId` set to the parent's key, (3) one `save_issue` per
-dependent sub-issue with `blockedBy: ["LIA-yy"]`, then `patch` the parent's Execution
+dependent sub-issue with `blockedBy: ["ALD-yy"]`, then `patch` the parent's Execution
 order list to swap the drafted placeholders for the real keys. Report the parent key
 followed by the sub-issue keys in execution order, so the reply reads as the running
 order.
@@ -216,11 +216,11 @@ ticket touches.
   ticket does get them, two things are non-negotiable:
   - The parent body ends with an **Execution order** section — a numbered list, one line
     per sub-issue, in the order they should be worked, each naming what blocks it
-    (`blocked by: none`, `blocked by LIA-yy`). Nobody should have to open four tickets to
+    (`blocked by: none`, `blocked by ALD-yy`). Nobody should have to open four tickets to
     learn what to start on.
   - Every dependency is a **real Linear relation** (`blockedBy` / `blocks` on
     `save_issue`), not only prose, and each sub-issue's body opens with its own position
-    line: `Step 2 of 4 — blocked by LIA-xx (<what it needs from it>); blocks LIA-zz`.
+    line: `Step 2 of 4 — blocked by ALD-xx (<what it needs from it>); blocks ALD-zz`.
   Order and blocking are different facts and both get stated even when they agree: the
   order is how a human should sequence the work, the blockers are which ones *cannot*
   start yet. Steps that can run in parallel say so (`blocked by: none — can run alongside

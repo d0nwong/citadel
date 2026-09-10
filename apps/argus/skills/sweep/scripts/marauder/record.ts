@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The workstream record (LIA-154).
+ * The workstream record (ARG-154).
  *
  * A workstream is something a person asks "is that done yet?" about — "History tab:
  * editing asset quantities per billing cycle", "Rollover credits instead of a retainer
@@ -65,7 +65,7 @@ export type SourceType = (typeof SOURCE_TYPES)[number];
 
 export type EventSource = {
   type: SourceType;
-  /** `fe#417`, a Slack `ts`, `LIA-116`, a journal path — whatever identifies the thing */
+  /** `fe#417`, a Slack `ts`, `ALD-2`, a journal path — whatever identifies the thing */
   ref: string;
   url?: string;
   sha?: string;

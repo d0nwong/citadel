@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * marauder ingest --slack — what the channel said becomes events (LIA-157).
+ * marauder ingest --slack — what the channel said becomes events (ARG-157).
  *
  * The accuracy is in the ladder, not in a classifier. A reply in a thread a workstream
  * already owns belongs to that workstream; a message naming a ticket or a PR it owns
@@ -17,7 +17,7 @@
  * A huddle canvas is not split here. The message carrying it goes to the queue as notes
  * nobody has read; the sweep reads them and records its key points with `marauder huddle`.
  *
- * The cursor is this script's since the rewire (LIA-161). It reads through
+ * The cursor is this script's since the rewire (ARG-161). It reads through
  * `slack-pull --json`, which advances `workstreams/.state.next.json`; the sweep promotes
  * that to `workstreams/.state.json` only after the tick's commit succeeds, so a crashed
  * tick replays the channel instead of skipping it. A dry run passes `--no-next` and moves
@@ -122,7 +122,7 @@ export function itemsOf(pull: Pull): SlackItem[] {
 
 export type Candidate = { slug: string; how: AttachHow; why: string };
 
-const TICKET = /\b(LIA-\d+)\b/gi;
+const TICKET = /\b((?:ARG|ALD)-\d+)\b/gi;
 const PR_REF = /\b((?:fe|be)#\d+)\b/gi;
 const bare = (s: string) => s.replace(/[`*_]/g, " ");
 

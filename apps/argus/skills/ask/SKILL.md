@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Answer a question about the argus blackboard, read-only — "where are we on the History asset editing", "what's left on entity billing", "what does LIA-71 say / where is LIA-71", "what shipped on 2026-09-04 / yesterday", "why is X waiting / parked", "what rule covers Y / what is BR-57", "what do the docs say about the usage page". Use for any question-shaped prompt about a workstream, ticket, day, rule id, feature, decision or landing in this checkout, from a terminal, from Pensieve's Ask, or mid-sweep. Retrieves with `marauder show` / `marauder changelog` / `marauder board`, `accio find` and the Linear read tools, reads the FE/BE checkouts without writing or switching anything, and answers in a fixed shape with every path cited. Also covers correcting what the loop got wrong — "that belongs to invoicing", "ignore that", "do that" after a recommendation — and filing a new ticket — "file this", "make a ticket for that" — each of which is proposed for the user's confirmation, never performed.
+description: Answer a question about the argus blackboard, read-only — "where are we on the History asset editing", "what's left on entity billing", "what does ALD-6 say / where is ALD-6", "what shipped on 2026-09-04 / yesterday", "why is X waiting / parked", "what rule covers Y / what is BR-57", "what do the docs say about the usage page". Use for any question-shaped prompt about a workstream, ticket, day, rule id, feature, decision or landing in this checkout, from a terminal, from Pensieve's Ask, or mid-sweep. Retrieves with `marauder show` / `marauder changelog` / `marauder board`, `accio find` and the Linear read tools, reads the FE/BE checkouts without writing or switching anything, and answers in a fixed shape with every path cited. Also covers correcting what the loop got wrong — "that belongs to invoicing", "ignore that", "do that" after a recommendation — and filing a new ticket — "file this", "make a ticket for that" — each of which is proposed for the user's confirmation, never performed.
 ---
 
 # ask — answer a question about the blackboard, read-only
@@ -44,7 +44,7 @@ the map; you do not need to rediscover it.
 | The question names | Class | First tool call |
 |---|---|---|
 | a piece of work — "where are we on the History asset editing", "what's left on entity billing" | workstream | `bun run marauder show <slug>` (section 2 for the slug) |
-| `LIA-nn` | ticket | `bun run marauder board`, find the workstream whose tickets name it, `marauder show <slug>`, then `mcp__linear__get_issue LIA-nn` with relations |
+| `ALD-nn` | ticket | `bun run marauder board`, find the workstream whose tickets name it, `marauder show <slug>`, then `mcp__linear__get_issue ALD-nn` with relations |
 | a date, "today", "yesterday", "what shipped / landed" | day | `bun run marauder changelog <YYYY-MM-DD>` |
 | "what needs me", "what am I blocked on", "what is Foong sitting on" | board | `bun run marauder board` — it is already grouped that way |
 | `BR-n` / `MM-n` | rule | Grep `^\| BR-n \|` in `*/features/*/docs/{product,arch}.md`, scoped to the feature the question is about |
@@ -60,7 +60,7 @@ rather than deriving it, since the name is the user's and the file is the record
 
 A **workstream** question is a noun phrase with no id in it and a "where are we" / "what's
 left" / "how is X going" verb. When the question names a key as well — "where are we on
-LIA-133" — it is a ticket question: the workstream is still the retrieval, and the ticket
+ALD-16" — it is a ticket question: the workstream is still the retrieval, and the ticket
 body is the second call.
 
 ## 2. Retrieve
@@ -85,7 +85,7 @@ moved since the last event you can see explained.
 `git show`, plus the `marauder` read verbs): Read `workstreams/<slug>.json` directly — it is
 the record every page is rendered from, and its `events` list is the story in order; Glob
 `workstreams/*.json` when the slug is a guess; Read `marauder/board.md` for the same thing
-already written out. Grep `ticket: \[?LIA-nn` over `*/features/**/journal` and
+already written out. Grep `ticket: \[?ALD-nn` over `*/features/**/journal` and
 `features: \[.*<feature>` for the feature; Grep `^\| BR-n \|` in the feature's docs; Glob
 `**/<basename>` in the checkout for a path token. Same evidence, more calls — note the
 denial once and carry on.
@@ -137,7 +137,7 @@ older than the landing, a ticket body).
 
 **Sources:** — one footer line of short labels separated by ` · `, one per thing read:
 `journal 2026-09-04 decided-history-rolls-up` · `history-tab-content.tsx @ origin/staging`
-· `workstreams/usage-page.json` · `LIA-71 in Linear`. Paths and line numbers live here and only
+· `workstreams/usage-page.json` · `ALD-6 in Linear`. Paths and line numbers live here and only
 here; the prose above names things the way a colleague would ("the 4 Sep decision",
 "the History tab component").
 
@@ -169,7 +169,7 @@ you recommend":
 > - The decision entry is still marked decided; nothing has superseded it.
 > - The code on staging matches the drill-down, not the rollup.
 > - "Task detail only on edit" was never built. The decision itself warned this needed a real gate.
-> - Five LIA-71 landings since; none claims the rollup.
+> - Five ALD-6 landings since; none claims the rollup.
 >
 > **My call:** raise it. Ask Sam whether the rollup was dropped. If the drill-down is now
 > the plan, record that as a decision and update the seven usage rules it touches.

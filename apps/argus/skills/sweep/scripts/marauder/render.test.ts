@@ -1,5 +1,5 @@
 /**
- * render.ts — the board, one workstream's page, and the day's changelog (LIA-155).
+ * render.ts — the board, one workstream's page, and the day's changelog (ARG-155).
  *
  * The cases are the ticket's acceptance criteria: the board's sections and their order
  * (AC1), the line shape and the style checker that refuses a bad one (AC2), the workstream
@@ -47,7 +47,7 @@ const w = (over: Partial<Workstream> = {}): Workstream => ({
   overlay: null,
   parked: false,
   milestone: null,
-  keys: { tickets: ["LIA-116"], prs: ["fe#417"], threads: [], vocab: [], people: [] },
+  keys: { tickets: ["ALD-2"], prs: ["fe#417"], threads: [], vocab: [], people: [] },
   open_questions: [],
   facts: [],
   events: [ev()],
@@ -195,7 +195,7 @@ describe("the changelog", () => {
 
 describe("checkStyle", () => {
   test("a line of reader text starting with a ticket key is refused", () => {
-    const problems = checkStyle("LIA-116 is still open.");
+    const problems = checkStyle("ALD-2 is still open.");
     expect(problems).toHaveLength(1);
     expect(problems[0]!.rule).toContain("starts with an id");
   });
@@ -217,7 +217,7 @@ describe("checkStyle", () => {
   });
 
   test("an id inside a link label is still an id when it opens the line", () => {
-    expect(checkStyle("[LIA-116](https://example.test)")[0]!.rule).toContain("starts with an id");
+    expect(checkStyle("[ALD-2](https://example.test)")[0]!.rule).toContain("starts with an id");
   });
 
   test("prose that follows the rules passes", () => {

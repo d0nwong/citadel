@@ -201,7 +201,7 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     const { parseJournalEntry } = await import("./lib/journal.ts");
     const entry = parseJournalEntry([
       "---", "date: 2026-09-01", 'source: "huddle in #dev-team — https://alden-studios.slack.com/archives/C07KG06L601/p1788226477509519"',
-      "pr: null # decided, not yet in code", "ticket: [LIA-61]", "features: [admin-invoicings]", "scope: product", "status: decided",
+      "pr: null # decided, not yet in code", "ticket: [ALD-25]", "features: [admin-invoicings]", "scope: product", "status: decided",
       "affects: [BR-22h, MM-16]", "summary: Two per-line edit lanes; the redistribute lane is dropped", "---", "body",
     ].join("\n"), "admin/invoicing/journal/x.md", "/x.md");
     expect(entry.status).toBe("decided");
@@ -210,7 +210,7 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     expect(entry.source).toContain("#dev-team");            // a `#` inside quotes is not a comment
     const section = renderDecidedSection([entry]);
     expect(section).toContain("**2026-09-01** — Two per-line edit lanes");
-    expect(section).toContain("LIA-61");
+    expect(section).toContain("ALD-25");
     expect(section).toContain("[source](https://alden-studios.slack.com/archives/C07KG06L601/p1788226477509519)");
     expect(section).toContain("rewrites `BR-22h`, `MM-16`");
     expect(renderDecidedSection([])).toContain("Nothing decided is waiting to land");
@@ -340,7 +340,7 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     const index = await Bun.file(`${ROOT}/.state/accio-index.json`).json();
     const dir = `${ROOT}/.state/test-audit-sha`;
     const entry = (merge: string) => [
-      "---", "date: 2026-08-28", "pr: fe#370", `merge: ${merge}`, "ticket: LIA-51",
+      "---", "date: 2026-08-28", "pr: fe#370", `merge: ${merge}`, "ticket: ALD-35",
       "features: [tasks]", "scope: architecture", "status: implemented",
       "summary: s", "---",
     ].join("\n");
@@ -366,7 +366,7 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
   });
 
   // a `be#N` entry's merge sha lives in the BE repo and is measured against
-  // `last_verified_be` — before LIA-53 it was asked of the FE repo, came back "unknown",
+  // `last_verified_be` — before ARG-53 it was asked of the FE repo, came back "unknown",
   // and the same-day date rule nagged about every BE landing that shared a refresh day
   test.skipIf(!existsSync(`${process.env.HOME}/git/alden-connect-portal-be`) || !existsSync(`${process.env.HOME}/git/alden-portal-fe`))(
     "audit routes each merge sha to the repo its pr kind names", async () => {
@@ -426,7 +426,7 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
 // ---------------------------------------------------------------- the journal walker
 
 /**
- * `accio point` / `ticket` / `arc` and their tests went with the report (LIA-161). What
+ * `accio point` / `ticket` / `arc` and their tests went with the report (ARG-161). What
  * survives them is the walker under all three: `marauder ingest --landings` matches a
  * landing to its entries with it, and `accio audit` reads every app's journal through it.
  */
@@ -443,9 +443,9 @@ describe("journal walker — every app's features/**/journal", () => {
     await w("alden/alden-portal/features/tasks/docs/product.md", doc("tasks"));
     const entry = (date: string, ticket: string, features: string, status: string, summary: string, affects = "[]") =>
       `---\ndate: ${date}\npr: null\nticket: ${ticket}\nfeatures: ${features}\nscope: both\nstatus: ${status}\naffects: ${affects}\nsummary: ${summary}\n---\nbody\n`;
-    await w("alden/alden-portal/features/admin/usage/journal/2026-09/2026-09-04/2026-09-04-a.md", entry("2026-09-04", "[LIA-71]", "[admin-usage]", "documented", "the usage landing", "[BR-57]"));
-    await w("alden/alden-portal/features/tasks/journal/2026-09-01-b.md", entry("2026-09-01", "[LIA-80]", "[tasks, admin-usage]", "decided", "shares a feature only"));
-    await w("foundry/features/jobs/journal/2026-09-02-c.md", entry("2026-09-02", "[LIA-71]", "[jobs]", "implemented", "another app, same ticket"));
+    await w("alden/alden-portal/features/admin/usage/journal/2026-09/2026-09-04/2026-09-04-a.md", entry("2026-09-04", "[ALD-6]", "[admin-usage]", "documented", "the usage landing", "[BR-57]"));
+    await w("alden/alden-portal/features/tasks/journal/2026-09-01-b.md", entry("2026-09-01", "[ALD-21]", "[tasks, admin-usage]", "decided", "shares a feature only"));
+    await w("foundry/features/jobs/journal/2026-09-02-c.md", entry("2026-09-02", "[ALD-6]", "[jobs]", "implemented", "another app, same ticket"));
     await w("alden/alden-portal/features/dashboard/journal/2026-08-30-d.md", entry("2026-08-30", "null", "[dashboard]", "documented", "unrelated"));
     await w("alden/alden-portal/features/admin/usage/journal/2026-09-03-e-decided.md", entry("2026-09-03", "null", "[admin-usage, entities]", "decided", "history rolls up by project and month"));
     // Pensieve has a feature *named* journal — its docs are not journal entries
@@ -465,7 +465,7 @@ describe("journal walker — every app's features/**/journal", () => {
       "alden/alden-portal/features/tasks/journal/2026-09-01-b.md",
       "alden/alden-portal/features/dashboard/journal/2026-08-30-d.md",
     ]);
-    expect(entries.find(e => e.rel.startsWith("foundry"))).toMatchObject({ app: "foundry", featureDir: "jobs", tickets: ["LIA-71"] });
+    expect(entries.find(e => e.rel.startsWith("foundry"))).toMatchObject({ app: "foundry", featureDir: "jobs", tickets: ["ALD-6"] });
   });
 
   test("help names the verbs accio still has, and none it does not", async () => {

@@ -8,7 +8,7 @@
     { "kind": "new-ask", "slug": "invoicing-page-defects", "to": ["you"],
       "summary": "Foong asked you to fix the invoicing page issues and push them to staging for testing.",
       "why": "the demo tonight is on that staging batch",
-      "text": "@Liam Leung will fix invoicing page issues and push to staging for testing. See LIA-152." },
+      "text": "@Liam Leung will fix invoicing page issues and push to staging for testing. See ALD-22." },
     { "kind": "deadline", "slug": null, "name": "Launch", "date": "2026-09-10", "owner": "Foong Leung",
       "summary": "Foong tests staging, shows Angie tonight, and launches tomorrow with the New York team." },
     { "kind": "contract-change", "slug": null, "name": "New inputs for rendering credit maths",

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * marauder check — is this still one thing? (LIA-158)
+ * marauder check — is this still one thing? (ARG-158)
  *
  * The opposite failure to a bad attachment. Over-merging is what turned "Invoicing" into a
  * bucket: a workstream quietly absorbs a second capability, and its page stops meaning

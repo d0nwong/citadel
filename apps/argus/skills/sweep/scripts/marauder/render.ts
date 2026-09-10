@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * marauder render — every page a person reads, from `workstreams/*.json` alone (LIA-155).
+ * marauder render — every page a person reads, from `workstreams/*.json` alone (ARG-155).
  *
  * Three pages. `board.md` says where every open workstream stands right now: what needs
  * the reader, what is in flight by area, what waits on someone else, what shipped this
@@ -43,7 +43,7 @@ export const BANNED_PREFIXES = ["BR-", "MM-"];
 /** rule 3 */
 export const SENTENCE_WORDS = 25;
 
-const ID_AT_START = /^(LIA-\d+|fe#\d+|be#\d+|BR-[A-Za-z0-9-]+|MM-\d+)\b/;
+const ID_AT_START = /^((?:ARG|ALD)-\d+|fe#\d+|be#\d+|BR-[A-Za-z0-9-]+|MM-\d+)\b/;
 const LINK = /\[([^\]]*)\]\([^)]*\)/g;
 
 /** a line of nothing but links joined by the separator is an evidence line, not prose */

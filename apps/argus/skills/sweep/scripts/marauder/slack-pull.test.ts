@@ -79,7 +79,7 @@ test("render: quiet run says so", () => {
 });
 
 /**
- * The cursor moved out of `digests/` when the digest was retired (LIA-161). Losing a
+ * The cursor moved out of `digests/` when the digest was retired (ARG-161). Losing a
  * message and re-reading a day are both silent failures, so the move is tested rather than
  * trusted: it carries the old values over, it deletes the old file, and it happens once.
  */

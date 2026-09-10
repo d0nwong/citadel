@@ -14,7 +14,7 @@
  *   accio audit                    hold the docs to what code and spec actually back
  *
  * The API surface and the docs are all of it. Where the work stands — a workstream, a
- * ticket, a day, what needs you — is `marauder`, which reads `workstreams/` (LIA-161).
+ * ticket, a day, what needs you — is `marauder`, which reads `workstreams/` (ARG-161).
  *
  * Subcommands dispatch by rewriting argv and importing the command module, so each
  * command file also still runs standalone (`bun scripts/commands/sync.ts`).
@@ -60,7 +60,7 @@ if (!first || first === "help" || first === "--help" || first === "-h") {
 }
 
 /**
- * The four verbs `marauder` took over (LIA-161). A pointer, not a search result: someone
+ * The four verbs `marauder` took over (ARG-161). A pointer, not a search result: someone
  * typing `accio arc` wants where the work stands, and the answer is one command away.
  */
 const MOVED: Record<string, [command: string, why: string]> = {

@@ -1,5 +1,5 @@
 /**
- * correct.ts — the corrections (LIA-158).
+ * correct.ts — the corrections (ARG-158).
  *
  * The cases are the ticket's acceptance criteria: attaching an item and learning enough
  * from it that the next one attaches itself (AC1), opening a workstream from a proposal
@@ -40,7 +40,7 @@ const item = (over: Partial<UnsortedItem> = {}): UnsortedItem => ({
   id: "1788927279.211769",
   kind: "slack",
   summary: "Sam O: In a PR but that should be up today.",
-  text: "@Liam Leung @Carlos Lopes\n\nIn a PR but that should be up today. LIA-116 covers it.\n`billedBy` and `sendAutomatedEmails` on PATCH `/api/v1/invoices/entity/{entityId}/billed-by`",
+  text: "@Liam Leung @Carlos Lopes\n\nIn a PR but that should be up today. ALD-2 covers it.\n`billedBy` and `sendAutomatedEmails` on PATCH `/api/v1/invoices/entity/{entityId}/billed-by`",
   source: { type: "slack", ref: "1788927279.211769", url: "https://alden-studios.slack.com/archives/C07KG06L601/p1788927279211769?thread_ts=1788921273.173019&cid=C07KG06L601" },
   candidates: [],
   suggest: null,
@@ -65,7 +65,7 @@ describe("attach", () => {
   test("it learns the thread, the ticket and the identifiers the item used", () => {
     const keys = attach(state(), item().id, "entity-invoice-sender", WHO).state.workstreams[0]!.keys;
     expect(keys.threads).toEqual(["1788921273.173019"]);
-    expect(keys.tickets).toEqual(["LIA-116"]);
+    expect(keys.tickets).toEqual(["ALD-2"]);
     expect(keys.vocab).toContain("billedBy");
     expect(keys.vocab).toContain("sendAutomatedEmails");
     expect(keys.vocab).toContain("billed-by");
@@ -137,10 +137,10 @@ describe("split", () => {
   const busy = w({
     slug: "invoicing",
     name: "Invoicing",
-    keys: { tickets: ["LIA-132", "LIA-79"], prs: ["fe#418", "be#748"], threads: [], vocab: ["due-on-receipt", "manual entry"], people: ["Sam O"] },
+    keys: { tickets: ["ALD-3", "ALD-29"], prs: ["fe#418", "be#748"], threads: [], vocab: ["due-on-receipt", "manual entry"], people: ["Sam O"] },
     events: [
-      { at: "2026-09-08T09:00:00Z", kind: "verified-landing", side: "be", summary: "Sam landed the due-on-receipt route.", source: { type: "pr", ref: "fe#418" }, attached: { how: "ref", confidence: "certain" }, ticket: "LIA-132" },
-      { at: "2026-09-02T09:00:00Z", kind: "verified-landing", side: "be", summary: "Sam landed the manual entry route.", source: { type: "pr", ref: "be#748" }, attached: { how: "ref", confidence: "certain" }, ticket: "LIA-79" },
+      { at: "2026-09-08T09:00:00Z", kind: "verified-landing", side: "be", summary: "Sam landed the due-on-receipt route.", source: { type: "pr", ref: "fe#418" }, attached: { how: "ref", confidence: "certain" }, ticket: "ALD-3" },
+      { at: "2026-09-02T09:00:00Z", kind: "verified-landing", side: "be", summary: "Sam landed the manual entry route.", source: { type: "pr", ref: "be#748" }, attached: { how: "ref", confidence: "certain" }, ticket: "ALD-29" },
     ],
   });
   const opts = { ...WHO, into: "manual-invoice-entry", name: "Manual entry on the Create invoice dialog", events: ["be#748"] };
@@ -152,9 +152,9 @@ describe("split", () => {
     const from = next.workstreams.find((x) => x.slug === "invoicing")!;
     expect(into.events.map((e) => e.source?.ref)).toContain("be#748");
     expect(into.keys.prs).toEqual(["be#748"]);
-    expect(into.keys.tickets).toEqual(["LIA-79"]);
+    expect(into.keys.tickets).toEqual(["ALD-29"]);
     expect(from.keys.prs).toEqual(["fe#418"]);
-    expect(from.keys.tickets).toEqual(["LIA-132"]);
+    expect(from.keys.tickets).toEqual(["ALD-3"]);
     expect(into.keys.vocab).toEqual(["manual entry"]);
     expect(from.keys.vocab).toEqual(["due-on-receipt"]);
   });

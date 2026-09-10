@@ -1,5 +1,5 @@
 /**
- * ticket-diff.ts — what a tick's events make a ticket say (LIA-159).
+ * ticket-diff.ts — what a tick's events make a ticket say (ARG-159).
  *
  * The cases are the ticket's AC6: a Pending bullet matched to a question, a fact already
  * in the body, a fact that names what a Scope sentence names, a ticket Foundry is running,
@@ -38,7 +38,7 @@ In scope: render \`roleName\` on each task row of the Usage Active tab.
 * \`use-usage-rows.ts\` maps the payload.
 `;
 
-const ticket = (over: Partial<TicketState> = {}): TicketState => ({ key: "LIA-150", body: BODY, state: "Backlog", hasJob: false, ...over });
+const ticket = (over: Partial<TicketState> = {}): TicketState => ({ key: "ALD-24", body: BODY, state: "Backlog", hasJob: false, ...over });
 
 const ev = (over: Partial<WorkstreamEvent> = {}): WorkstreamEvent => ({
   at: "2026-09-09T18:00:00Z",
@@ -46,7 +46,7 @@ const ev = (over: Partial<WorkstreamEvent> = {}): WorkstreamEvent => ({
   summary: "Foong said a Usage row shows the assignee role.",
   source: { type: "slack", ref: "1789000000.1" },
   attached: { how: "thread", confidence: "certain" },
-  ticket: "LIA-150",
+  ticket: "ALD-24",
   ...over,
 });
 
@@ -60,8 +60,8 @@ const w = (over: Partial<Workstream> = {}): Workstream => ({
   overlay: null,
   parked: false,
   milestone: null,
-  keys: { tickets: ["LIA-150"], prs: [], threads: [], vocab: [], people: [] },
-  open_questions: [{ q: "Which roles should a Usage row show?", asked_by: "sweep", at: "2026-09-09", ticket: "LIA-150", pending_ref: "- Which roles show on a Usage row? Foong has not said." }],
+  keys: { tickets: ["ALD-24"], prs: [], threads: [], vocab: [], people: [] },
+  open_questions: [{ q: "Which roles should a Usage row show?", asked_by: "sweep", at: "2026-09-09", ticket: "ALD-24", pending_ref: "- Which roles show on a Usage row? Foong has not said." }],
   facts: [],
   events: [],
   opened: "2026-09-09",
@@ -102,7 +102,7 @@ describe("an answered question", () => {
 
   test("once the question is off the record, a second pass finds nothing", () => {
     const state: State = { workstreams: [w({ events: [answered] })], unsorted: [], milestones: MILESTONES };
-    const after = resolveQuestion(state, "usage-roles-on-rows", "Which roles", "LIA-150", WHO).state;
+    const after = resolveQuestion(state, "usage-roles-on-rows", "Which roles", "ALD-24", WHO).state;
     const body = BODY.replace("- Which roles show on a Usage row? Foong has not said.\n", "");
     expect(plan(after.workstreams[0]!, [answered], ticket({ body })).edits).toEqual([]);
   });
@@ -211,18 +211,18 @@ describe("what the worker writes back", () => {
 
   test("answering drops the question and stamps the event that answered it", () => {
     const answered = ev();
-    const { state: next } = resolveQuestion(state({ workstreams: [w({ events: [answered] })] }), "usage-roles-on-rows", "Which roles", "LIA-150", WHO);
+    const { state: next } = resolveQuestion(state({ workstreams: [w({ events: [answered] })] }), "usage-roles-on-rows", "Which roles", "ALD-24", WHO);
     expect(next.workstreams[0]!.open_questions).toEqual([]);
-    expect(next.workstreams[0]!.events.at(-1)!.action).toBe("pending deleted on LIA-150");
+    expect(next.workstreams[0]!.events.at(-1)!.action).toBe("pending deleted on ALD-24");
   });
 
   test("a filed ticket lands on the ask and on the keys, once", () => {
     const ask = ev({ kind: "new-ask", ticket: undefined, source: { type: "slack", ref: "1789000000.9" } });
     const fresh = state({ workstreams: [w({ keys: { ...w().keys, tickets: [] }, events: [ask] })] });
-    const { state: next, changed } = recordTicket(fresh, "usage-roles-on-rows", "1789000000.9", "LIA-163");
+    const { state: next, changed } = recordTicket(fresh, "usage-roles-on-rows", "1789000000.9", "ARG-163");
     expect(changed).toBe(true);
-    expect(next.workstreams[0]!.keys.tickets).toEqual(["LIA-163"]);
-    expect(next.workstreams[0]!.events[0]!.ticket).toBe("LIA-163");
-    expect(recordTicket(next, "usage-roles-on-rows", "1789000000.9", "LIA-163").changed).toBe(false);
+    expect(next.workstreams[0]!.keys.tickets).toEqual(["ARG-163"]);
+    expect(next.workstreams[0]!.events[0]!.ticket).toBe("ARG-163");
+    expect(recordTicket(next, "usage-roles-on-rows", "1789000000.9", "ARG-163").changed).toBe(false);
   });
 });

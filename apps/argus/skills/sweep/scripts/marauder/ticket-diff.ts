@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * ticket-diff — what a tick's events make a Linear ticket say (LIA-159).
+ * ticket-diff — what a tick's events make a Linear ticket say (ARG-159).
  *
  * The old worker read the digest and patched a ticket message by message: it could not
  * reliably tell which ticket a thread concerned, and it had no statement of what the work

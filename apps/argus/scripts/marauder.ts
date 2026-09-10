@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * marauder — the map of the work (LIA-155).
+ * marauder — the map of the work (ARG-155).
  *
  * `accio` summons the API surface. `marauder` says where the work stands: one JSON record
  * per workstream under `workstreams/`, and the pages a person reads rendered from those
@@ -16,7 +16,7 @@
  *   marauder split <slug> --into   cut one workstream in two
  *   marauder stage <slug> fe|be    say where a side really is, and why
  *   marauder changed --since <ISO>  which workstreams gained an event, and which
- *   marauder ticket-plan <slug> <LIA-nn> --body <file>
+ *   marauder ticket-plan <slug> <ARG-nn> --body <file>
  *                                  what this tick's events make that ticket say
  *   marauder check                 which workstreams may have stopped being one thing
  *   marauder propose-split <slug>  queue a split for a person to accept
@@ -62,11 +62,11 @@ const HELP = `marauder — where the work stands
   marauder split <slug> --into <slug> --name "…" --events <id,…>
   marauder stage <slug> <fe|be> <stage>
   marauder changed --since <ISO>    which workstreams gained an event, and which
-  marauder ticket-plan <slug> <LIA-nn> --body <file> [--state "In Progress"]
+  marauder ticket-plan <slug> <ARG-nn> --body <file> [--state "In Progress"]
   marauder pending <slug> --question "…" --bullet "…"
-  marauder resolved <slug> <LIA-nn> --question "…"
-  marauder ticket <slug> <event-id> <LIA-nn>
-  marauder held <slug> <LIA-nn>
+  marauder resolved <slug> <ARG-nn> --question "…"
+  marauder ticket <slug> <event-id> <ARG-nn>
+  marauder held <slug> <ARG-nn>
   marauder check                    which workstreams may have stopped being one thing
   marauder propose-split <slug> --groups '<json>'
   marauder board                    marauder/board.md — the one page to read
@@ -158,7 +158,7 @@ const since = flag("--since");
 
 /**
  * `decisions/marauder/*.json` — what a person decided in Pensieve — applied to the records
- * through the same correction functions the command line goes through (LIA-160 AC4). The
+ * through the same correction functions the command line goes through (ARG-160 AC4). The
  * files are left where they are: they are the history of who decided what, and the entry
  * leaving the queue is what stops one being applied a second time.
  */
@@ -222,7 +222,7 @@ const CORRECTIONS = ["huddle", "attach", "suggest", "new", "dismiss", "split", "
  * A `sent` decision naming this ticket means Foundry is executing it (PLAN "Shared
  * contracts"). Every group under `decisions/` is scanned, so this reads both the old
  * point-keyed files and `decisions/send/<ticket>.json` — `{ ticket, action: "sent", job }`,
- * what Pensieve writes once Send moves onto the workstream page (LIA-162).
+ * what Pensieve writes once Send moves onto the workstream page (ARG-162).
  */
 async function sentTickets(root: string): Promise<Set<string>> {
   const out = new Set<string>();
@@ -230,7 +230,7 @@ async function sentTickets(root: string): Promise<Set<string>> {
     try {
       const d = (await Bun.file(file).json()) as { action?: string; ticket?: string; subject?: string; job?: unknown };
       if (d.action !== "sent" || !d.job) continue;
-      for (const m of `${d.ticket ?? ""} ${d.subject ?? ""}`.matchAll(/\bLIA-\d+\b/g)) out.add(m[0]);
+      for (const m of `${d.ticket ?? ""} ${d.subject ?? ""}`.matchAll(/\b(?:ARG|ALD)-\d+\b/g)) out.add(m[0]);
     } catch { /* an unreadable decision file is the sweep's audit line, not this verb's */ }
   }
   return out;

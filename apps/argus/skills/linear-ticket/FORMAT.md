@@ -112,17 +112,17 @@ the same AC twice.
 ```markdown
 ## Execution order
 
-1. LIA-xx — <sub-issue title> — blocked by: none
-2. LIA-yy — <sub-issue title> — blocked by LIA-xx (<what it needs from it>)
-3. LIA-zz — <sub-issue title> — blocked by: none — can run alongside step 2
-4. LIA-aa — <sub-issue title> — blocked by LIA-yy, LIA-zz
+1. ALD-xx — <sub-issue title> — blocked by: none
+2. ALD-yy — <sub-issue title> — blocked by ALD-xx (<what it needs from it>)
+3. ALD-zz — <sub-issue title> — blocked by: none — can run alongside step 2
+4. ALD-aa — <sub-issue title> — blocked by ALD-yy, ALD-zz
 ```
 
 Each sub-issue is a full ticket in its own right (same five sections, same AC and grounding
 bar) and opens with a single position line above `## Summary`:
 
 ```markdown
-Step 2 of 4 of LIA-pp — blocked by LIA-xx (needs the regenerated client); blocks LIA-aa.
+Step 2 of 4 of ALD-pp — blocked by ALD-xx (needs the regenerated client); blocks ALD-aa.
 
 ## Summary
 …
@@ -159,10 +159,10 @@ fact lives in a different section in each:
 
 ## Worked example (the reference — match this register)
 
-Title: `Swap the Usage page's dummy transport for the usage endpoint` (LIA-78)
+Title: `Swap the Usage page's dummy transport for the usage endpoint` (ALD-10)
 
 ```markdown
-Step 8 of 8 of LIA-71 — blocked by LIA-73 (the `getUsage` seam it replaces) and LIA-81
+Step 8 of 8 of ALD-6 — blocked by ALD-13 (the `getUsage` seam it replaces) and ALD-7
 (the `entityIds` and month-paging parameters `getUsage` has to honour). The BE endpoint it
 reads is live and deployed, so nothing gates it; worked last, after steps 3–7; blocks
 nothing.

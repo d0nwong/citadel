@@ -1,5 +1,5 @@
 /**
- * coherence.ts — is this still one thing? (LIA-158)
+ * coherence.ts — is this still one thing? (ARG-158)
  *
  * The check prints and stops, so what there is to test is which workstreams it asks about
  * and which it leaves alone: busy enough to hide a second capability, not parked, and not

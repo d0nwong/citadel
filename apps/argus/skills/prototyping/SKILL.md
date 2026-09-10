@@ -1,6 +1,6 @@
 ---
 name: prototyping
-description: Read a Linear issue and implement it as a prototype — no tests written or run, only TS errors fixed along the way, one build check before the PR, business logic documented inline as it is written. Reuses the repo's design system through its Storybook MCP when one is configured. Use when the user says "prototype <issue>", "spike this", "quick implementation of LIA-N", or wants working code fast without the full test/changeset flow.
+description: Read a Linear issue and implement it as a prototype — no tests written or run, only TS errors fixed along the way, one build check before the PR, business logic documented inline as it is written. Reuses the repo's design system through its Storybook MCP when one is configured. Use when the user says "prototype <issue>", "spike this", "quick implementation of ARG-N", or wants working code fast without the full test/changeset flow.
 ---
 
 # prototyping — implement a Linear issue fast, leave the reasoning behind
@@ -72,7 +72,7 @@ re-deriving them.
    package-scoped equivalent. This must pass; it is the one gate. If it fails on something
    pre-existing and unrelated to your change, report it and ask before proceeding.
 
-8. **Commit** with the issue key in the message (e.g. `LIA-82: short description`).
+8. **Commit** with the issue key in the message (e.g. `ARG-82: short description`).
 
 9. **Confirm with the user** — "Happy with the prototype?"
    - Yes → open the PR. Title carries the issue key. Body: what was built, the business-logic

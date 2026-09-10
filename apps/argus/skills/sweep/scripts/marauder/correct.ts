@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The corrections (LIA-158) — fixing what ingest got wrong, once.
+ * The corrections (ARG-158) — fixing what ingest got wrong, once.
  *
  * Accuracy here comes from accretion, not from a better classifier. When a person moves an
  * item onto the workstream it belongs to, they are making the one judgment that matters,
@@ -51,7 +51,7 @@ const byAt = (a: { at: string }, b: { at: string }) => instantOf(a.at).localeCom
 // ---------------------------------------------------------------- learning from an item
 
 const THREAD_IN_URL = /[?&]thread_ts=([\d.]+)/;
-const TICKET = /\b(LIA-\d+)\b/gi;
+const TICKET = /\b((?:ARG|ALD)-\d+)\b/gi;
 const PR_REF = /\b((?:fe|be)#\d+)\b/gi;
 
 export type Learned = { threads: string[]; tickets: string[]; prs: string[]; vocab: string[]; people: string[] };
@@ -363,7 +363,7 @@ export function resolveQuestion(state: State, slug: string, question: string, ti
 export const CONFIRMED = "confirmed:";
 
 /**
- * The user saying yes to what one event asked them (LIA-161, for LIA-162's Verify button).
+ * The user saying yes to what one event asked them (ARG-161, for ARG-162's Verify button).
  *
  * A `directed-at-person` event is the one thing the loop computes and then refuses to
  * apply — a held edit on a ticket Foundry is running, a fact that may have unsaid a Scope

@@ -54,7 +54,7 @@ landing with no entry, and gets a `features:` line naming where it would route.
 
 **2. Confirm the ticket.** The keys `pr-facts` reports are the ones someone *typed* — most
 commits state none, and a branch name like `foundry/does-this-match-1cc8974d` states
-nothing. Check Linear (team `Liamai`) for an issue matching the change and use its key;
+nothing. Check Linear (team `Alden`) for an issue matching the change and use its key;
 `ticket:` takes a list when one landing closes or advances several. `null` is honest for
 untracked work — an audit nag, not an error. **A ticket the landing implements but does not
 close stays open; say so under `## Watch out` rather than assuming a merge means done.**
@@ -87,7 +87,7 @@ date: 2026-08-28 # the day it landed on staging
 pr: fe#363 # fe#N | be#N | direct | null (decided, not yet in code)
 url: https://bitbucket.org/aldenstudios/alden-portal-fe/pull-requests/363
 merge: 597bfbdf3 # the staging commit; diff = 597bfbdf3^1..597bfbdf3
-ticket: [LIA-48] # Linear keys / Trello links, or null
+ticket: [ALD-33] # Linear keys / Trello links, or null
 features: [admin-invoicings] # manifest ids, FLOW style — greppable routing
 scope: both # product | architecture | both
 status: implemented # decided | implemented | documented | superseded

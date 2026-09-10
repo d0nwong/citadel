@@ -32,7 +32,7 @@ const WATCH_EXPIRY_S = 48 * 3600;
 const ROOT = new URL("../../../..", import.meta.url).pathname.replace(/\/$/, "");
 const STATE = join(ROOT, "workstreams/.state.json");
 const STATE_NEXT = join(ROOT, "workstreams/.state.next.json");
-/** where the cursor lived while the digest owned it; adopted once, then deleted (LIA-161) */
+/** where the cursor lived while the digest owned it; adopted once, then deleted (ARG-161) */
 const DIGEST_STATE = join(ROOT, "digests/.state.json");
 const USER_CACHE = join(ROOT, ".state/slack-users.json");
 
@@ -343,7 +343,7 @@ async function loadUsers(): Promise<Users> {
 }
 
 /**
- * The cursor, moving itself out of `digests/` the first time it is asked for (LIA-161).
+ * The cursor, moving itself out of `digests/` the first time it is asked for (ARG-161).
  *
  * Adopting the digest's `last_ts` and `watched_threads` verbatim is what makes the rewire
  * lossless: a fresh cursor would default to 24 hours back and re-read a day, and an empty

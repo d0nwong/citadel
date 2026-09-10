@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The decisions a person made in Pensieve, applied (LIA-160 AC4).
+ * The decisions a person made in Pensieve, applied (ARG-160 AC4).
  *
  * Pensieve is read-only over the blackboard with one exception: it writes decision files.
  * A click on an Unsorted entry lands as `decisions/marauder/<slug>.json`, and this is the
@@ -14,7 +14,7 @@
  *
  * `verified` is the odd one: its `id` names an *event* rather than a queue entry, and it
  * is the user answering what a `directed-at-person` event asked them — the go-ahead for
- * the one edit that event named. It stamps the event and nothing else (LIA-161).
+ * the one edit that event named. It stamps the event and nothing else (ARG-161).
  *
  * The other group Pensieve writes is `decisions/send/<ticket>.json`,
  * `{ ticket, action: "sent", job, at, by }` — a ticket handed to Foundry. Nothing here

@@ -5,7 +5,7 @@ finished, `model: "opus"`. It is the **only** thing in the loop that writes to L
 Write policy is the sweep's Autonomy section; ticket shape and editing rules are the
 `linear-ticket` skill. Neither changed when the work's source did.
 
-The work comes from workstream events, and from nothing else since LIA-161. A ticket belongs to a workstream, so "which
+The work comes from workstream events, and from nothing else since ARG-161. A ticket belongs to a workstream, so "which
 ticket does this affect" is a choice among that workstream's one or two tickets rather
 than among every open one; and the workstream's `open_questions` and `facts` are a
 statement of what the work now is, so the pass diffs the ticket against them instead of
@@ -24,13 +24,13 @@ Fill every `{…}`:
 > - The workstreams that gained an event this tick, and the events they gained:
 >   `{bun run marauder changed --since {prev tick ISO}}`.
 > - Features refreshed this tick: `{ids}`.
-> - Team `Liamai`; assignee = me. Linear tools are `mcp__linear__*` — ToolSearch them if
+> - Team `Alden`; assignee = me. Linear tools are `mcp__linear__*` — ToolSearch them if
 >   deferred.
 >
 > Read this file and the Autonomy section of `skills/sweep/SKILL.md` before starting.
 > For each workstream with new events, for each ticket in its `keys.tickets`: read the
 > ticket body with `get_issue`, write it to a temp file, and run
-> `bun run marauder ticket-plan <slug> <LIA-nn> --body <file> --state "<its Linear state>"`.
+> `bun run marauder ticket-plan <slug> <ALD-nn> --body <file> --state "<its Linear state>"`.
 > Apply the plan per the action table below. Then Part B — file a ticket for every
 > `fileAsks` entry, per "Filing" — and Part C — review the tickets naming a refreshed
 > feature, per "Reviewing".
@@ -79,11 +79,11 @@ comes back as a flag next tick.
 Once the edits are applied, take the question off the record:
 
 ```sh
-bun run marauder resolved <slug> <LIA-nn> --question "<the first words>"
+bun run marauder resolved <slug> <ALD-nn> --question "<the first words>"
 ```
 
 That drops the question and stamps the event that answered it with
-`action: "pending deleted on LIA-nn"`, so the board and the changelog say what happened.
+`action: "pending deleted on ALD-nn"`, so the board and the changelog say what happened.
 
 ## Applying
 
@@ -106,7 +106,7 @@ A `fileAsks` entry — a `new-ask` event on a workstream that has no ticket — 
 - **Write the key back**, so no later tick files it twice:
 
   ```sh
-  bun run marauder ticket <slug> <event-id> <LIA-nn>
+  bun run marauder ticket <slug> <event-id> <ALD-nn>
   ```
 
 - **Backstop before filing:** search the Alden Portal project for the ask's permalink
@@ -128,7 +128,7 @@ When the ticket's Linear state is In Progress and a `decisions/` file with
 Put the diff in front of the reader instead:
 
 ```sh
-bun run marauder held <slug> <LIA-nn>
+bun run marauder held <slug> <ALD-nn>
 ```
 
 That writes a `directed-at-person` event carrying the edits, so the board shows it under

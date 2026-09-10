@@ -41,7 +41,7 @@ are:
 Sam landed the backend this afternoon and your fix for the wrong credit weight is still
 in review.
 
-[Sam's message](permalink) · [the backend PR](url) · [LIA-116](url)
+[Sam's message](permalink) · [the backend PR](url) · [ALD-2](url)
 ```
 
 Never in a heading, never at the start of a line, never as the subject of a sentence.
@@ -75,7 +75,7 @@ value. Feature names, ticket keys, PR numbers and people are plain text.
 
 The renderer applies these and fails loudly, naming the offending line:
 
-1. **No line of reader text starts with an id** — not `LIA-116`, not `fe#417`, not `BR-` or
+1. **No line of reader text starts with an id** — not `ALD-2`, not `fe#417`, not `BR-` or
    `MM-` anything. Ids belong on the evidence line, and even there they are inside a link.
 2. **None of these words appears in reader text**: tick, tier, arc, point, supersedes,
    corroborated, `BR-`, `MM-`. They are the system's own dialect, and a reader has to

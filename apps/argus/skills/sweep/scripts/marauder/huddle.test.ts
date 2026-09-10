@@ -39,7 +39,7 @@ const w = (over: Partial<Workstream> = {}): Workstream => ({
   updated: "2026-09-07",
   ...over,
 });
-const defects = () => w({ slug: "invoicing-page-defects", name: "The invoicing page defects from Angie's review", done: "Every defect Angie named is fixed.", keys: { tickets: ["LIA-152"], prs: [], threads: [], vocab: [], people: [] } });
+const defects = () => w({ slug: "invoicing-page-defects", name: "The invoicing page defects from Angie's review", done: "Every defect Angie named is fixed.", keys: { tickets: ["ALD-22"], prs: [], threads: [], vocab: [], people: [] } });
 const holder = (id: string, url: string): UnsortedItem => ({ id, kind: "slack", summary: "Slackbot: ", text: "", source: { type: "slack", ref: id, url }, candidates: [], why: unreadCanvasWhy(TS), suggest: null, needs: "read", at: "2026-09-09T02:34:00Z" });
 const state = (over: Partial<State> = {}): State => ({ workstreams: [w(), defects()], unsorted: [holder(TS, NOTES.url!)], milestones: {}, ...over });
 const point = (over: Partial<Point>): Point => ({ kind: "contract-change", slug: "rollover-credits", summary: "Sam moves the retainer line to the foot.", ...over });
@@ -63,7 +63,7 @@ describe("what the reader may write", () => {
 
   test("the sentence rules are the page's, counted with the date the page puts in front: no id first, no dialect", () => {
     const long = `Foong ${"really ".repeat(20)}wants it.`;
-    const problems = validatePoints({ points: [point({ summary: long }), point({ summary: "LIA-152 is what Foong wants fixed." }), point({ summary: "Foong made a point about the tick." })] }, [w()]);
+    const problems = validatePoints({ points: [point({ summary: long }), point({ summary: "ALD-22 is what Foong wants fixed." }), point({ summary: "Foong made a point about the tick." })] }, [w()]);
     expect(problems.some((p) => /over the 25-word ceiling once the page puts the date in front/.test(p))).toBe(true);
     expect(validatePoints({ points: [point({ summary: `Foong ${"really ".repeat(17)}wants it.` })] }, [w()])).toEqual([]);
     expect(problems.some((p) => /starts with an id/.test(p))).toBe(true);
@@ -127,7 +127,7 @@ describe("recording the reading", () => {
   });
 
   test("the workstreams learn what attach would: the point's tickets, and the notes as a thread", () => {
-    expect(page.keys.tickets).toEqual(["LIA-152"]);
+    expect(page.keys.tickets).toEqual(["ALD-22"]);
     expect(rollover.keys.threads).toEqual([TS]);
     expect(page.keys.threads).toEqual([TS]);
     for (const x of after.workstreams) expect(validate(x, x.slug)).toEqual([]);
