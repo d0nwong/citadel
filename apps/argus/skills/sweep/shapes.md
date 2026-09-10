@@ -40,7 +40,9 @@ Evidence, exactly one of:
 { "kind": "assumption", "note": "<why you assume it>" }
 ```
 
-`to` is a first name, `"you"` for the user, or `null`. `blocker` is the index in the
+`by` is the asker's name, or `"someone"` when the message does not say. An ask `update`
+may omit `status` to add evidence without moving it. `to` is a first name, `"you"` for
+the user, or `null`. `blocker` is the index in the
 ticket's blockers list. Landings are already on the ledger when you read it; `link` names
 the asks a landing served. `origin.kind` is `slack` or `huddle`. A permalink is the
 `https://alden-studios.slack.com/archives/…` link printed on the message.

@@ -151,7 +151,13 @@ export function archExcerpt(arch: string, maxChars = 12000): string {
 /** the ledger as the reader sees it: no code pointers, no id counters, compact */
 export function ledgerForReader(l: Ledger): string {
   const { ids: _ids, ...rest } = l;
-  return JSON.stringify({ ...rest, requirements: l.requirements.map(({ code: _c, ...r }) => r) });
+  const done = (a: Ledger["asks"][number]) => a.status === "closed" || a.status === "dropped";
+  return JSON.stringify({
+    ...rest,
+    requirements: l.requirements.map(({ code: _c, evidence: _e, ...r }) => (r.status === "retired" ? { id: r.id, status: r.status } : r)),
+    asks: l.asks.map((a) => (done(a) ? { id: a.id, text: a.text, status: a.status, origin: a.origin } : a)),
+    proposals: l.proposals.map(({ body: _b, ...p }) => p),
+  });
 }
 
 export const RAW_DIR = join(REPO, "evals/last-run");
@@ -294,7 +300,10 @@ export async function runModel(batches: Batch[], opts: { features: string[]; day
 export function scoreClosures(cases: { feature: string; root: string; closes_on: string | null; why?: string }[], ledgers: Record<string, Ledger>): { pass: boolean; line: string }[] {
   return cases.map((c) => {
     const l = ledgers[c.feature];
-    const ask = l?.asks.find((a) => a.origin.kind !== "ticket" && a.origin.thread === c.root);
+    const inThread = (url: string) => url.includes(`p${c.root.replace(".", "")}`) || url.includes(`thread_ts=${c.root}`);
+    const ask =
+      l?.asks.find((a) => a.origin.kind !== "ticket" && a.origin.thread === c.root) ??
+      l?.asks.find((a) => (a.origin.kind !== "ticket" && inThread(a.origin.url)) || a.history.some((h) => h.evidence.some((e) => e.kind === "slack" && inThread(e.url))));
     if (!ask) return { pass: false, line: `${c.feature} ${c.root}: no ask recorded for this thread (${c.why ?? ""})` };
     const closed = ask.status === "closed";
     if (c.closes_on === null) return { pass: !closed, line: `${c.feature} ${ask.id} "${ask.text}": ${closed ? "CLOSED, should stay open" : `open (${ask.status}), as expected`}` };

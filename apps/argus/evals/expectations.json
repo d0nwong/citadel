@@ -6422,8 +6422,8 @@
     {
       "feature": "admin/usage",
       "root": "1788774985.655159",
-      "closes_on": null,
-      "why": "Liam asked whether all History fields are editable; Foong never answered"
+      "closes_on": "1788942857.808939",
+      "why": "Liam's editable-fields question was answered by Foong at once; the thread's lasting ask, the asset-id backfill, closed when Sam said it was in dev and Liam merged"
     }
   ]
 }

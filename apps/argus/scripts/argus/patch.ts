@@ -18,7 +18,8 @@ export type Patch = {
   };
   asks?: {
     add?: Omit<Ask, "id" | "history" | "status">[];
-    update?: { id: string; status: AskStatus; at: string; evidence: Evidence[]; to?: string | null; ticket?: string | null; requirements?: string[] }[];
+    /** `status` omitted = more evidence on the current status */
+    update?: { id: string; status?: AskStatus; at: string; evidence: Evidence[]; to?: string | null; ticket?: string | null; requirements?: string[] }[];
   };
   tickets?: { clear?: { key: string; blocker: number; at: string; evidence: Evidence[]; deployed?: boolean }[] };
   landings?: { add?: Landing[]; link?: { ref: string; asks: string[] }[] };
@@ -87,13 +88,13 @@ export function parsePatch(v: unknown): Patch {
     p.asks = { add: [], update: [] };
     list(asks, "asks", "add").forEach((a, i) => {
       const path = `patch.asks.add[${i}]`;
-      if (!isObj(a) || typeof a.text !== "string" || typeof a.by !== "string" || typeof a.at !== "string" || !isObj(a.origin)) throw err(path, "expected { text, by, to, at, origin }");
-      p.asks!.add!.push({ text: a.text, by: a.by, to: typeof a.to === "string" ? a.to : null, at: a.at, origin: a.origin as Ask["origin"], ...(Array.isArray(a.requirements) ? { requirements: a.requirements as string[] } : {}), ...(typeof a.ticket === "string" ? { ticket: a.ticket } : {}) });
+      if (!isObj(a) || typeof a.text !== "string" || typeof a.at !== "string" || !isObj(a.origin)) throw err(path, "expected { text, by, to, at, origin }");
+      p.asks!.add!.push({ text: a.text, by: typeof a.by === "string" && a.by ? a.by : "someone", to: typeof a.to === "string" ? a.to : null, at: a.at, origin: a.origin as Ask["origin"], ...(Array.isArray(a.requirements) ? { requirements: a.requirements as string[] } : {}), ...(typeof a.ticket === "string" ? { ticket: a.ticket } : {}) });
     });
     list(asks, "asks", "update").forEach((a, i) => {
       const path = `patch.asks.update[${i}]`;
-      if (!isObj(a) || typeof a.id !== "string" || typeof a.status !== "string" || typeof a.at !== "string") throw err(path, "expected { id, status, at, evidence }");
-      p.asks!.update!.push({ id: a.id, status: a.status as AskStatus, at: a.at, evidence: evidenceList(a.evidence, `${path}.evidence`), ...(a.to !== undefined ? { to: a.to as string | null } : {}), ...(a.ticket !== undefined ? { ticket: a.ticket as string | null } : {}), ...(Array.isArray(a.requirements) ? { requirements: a.requirements as string[] } : {}) });
+      if (!isObj(a) || typeof a.id !== "string" || typeof a.at !== "string") throw err(path, "expected { id, status?, at, evidence }");
+      p.asks!.update!.push({ id: a.id, at: a.at, evidence: evidenceList(a.evidence, `${path}.evidence`), ...(typeof a.status === "string" ? { status: a.status as AskStatus } : {}), ...(a.to !== undefined ? { to: a.to as string | null } : {}), ...(a.ticket !== undefined ? { ticket: a.ticket as string | null } : {}), ...(Array.isArray(a.requirements) ? { requirements: a.requirements as string[] } : {}) });
     });
   }
   const tickets = section("tickets", ["clear"]);
@@ -114,7 +115,7 @@ export function parsePatch(v: unknown): Patch {
     });
   }
   const proposals = section("proposals", ["add"]);
-  if (proposals) p.proposals = { add: list(proposals, "proposals", "add") as Omit<Proposal, "id">[] };
+  if (proposals) p.proposals = { add: (list(proposals, "proposals", "add") as Omit<Proposal, "id">[]).map((pr) => ({ ...pr, asks: Array.isArray(pr.asks) ? pr.asks : [] })) };
   if (v.notes !== undefined) {
     if (!Array.isArray(v.notes) || v.notes.some((n) => typeof n !== "string")) throw err("patch.notes", "expected an array of strings");
     p.notes = v.notes as string[];
@@ -142,8 +143,9 @@ export function applyPatch(l: Ledger, p: Patch): Ledger {
   for (const u of p.asks?.update ?? []) {
     const a = next.asks.find((x) => x.id === u.id);
     if (!a) throw err("patch.asks.update", `${u.id} is not an ask`);
-    a.status = u.status;
-    a.history.push({ at: u.at, status: u.status, evidence: u.evidence });
+    const status = u.status ?? a.status;
+    a.status = status;
+    a.history.push({ at: u.at, status, evidence: u.evidence });
     if (u.to !== undefined) a.to = u.to;
     if (u.ticket !== undefined) a.ticket = u.ticket;
     if (u.requirements !== undefined) a.requirements = u.requirements;

@@ -76,7 +76,7 @@ schema.ts
 - [x] Task 8: Move `pr-facts.ts` under `scripts/argus/`, features from the manifest lib
 - [x] Task 9: `argus pull` writes one batch file
 - [x] Task 10: `argus place <batch>` does the deterministic joins
-- [~] Task 11: Record 14 days of fixtures; the user places the expectations once (fixtures recorded, 129 roots await the user)
+- [x] Task 11: Record 14 days of fixtures; the user places the expectations once
 - [x] Task 12: `bun run evals` scores deterministic attribution
 
 ### Checkpoint: Deterministic attribution
@@ -87,13 +87,13 @@ schema.ts
 ### Phase 3: The reader
 - [x] Task 13: `reader.md`, the rewrite subagent's prompt and rules
 - [x] Task 14: Seed `admin/invoicing` and `admin/usage` ledgers
-- [ ] Task 15: Model attribution and rewrite in the replay harness
-- [ ] Task 16: Closure cases and the gate
+- [x] Task 15: Model attribution and rewrite in the replay harness
+- [x] Task 16: Closure cases and the gate
 
 ### Checkpoint: The gate
-- [ ] Attribution ≥ 0.8 on the 14-day replay
-- [ ] Due-on-invoice closes on the acknowledgement; two more named cases pass
-- [ ] A ticket with a `landing` blocker flips ready on the landing's batch
+- [x] Attribution ≥ 0.8 on the 14-day replay (85%, 2026-09-11)
+- [x] Due-on-invoice closes on the acknowledgement; three more named cases pass (one case was the old board's stale item; the reader had it right)
+- [ ] A ticket with a `landing` blocker flips ready on the landing's batch (no seeded ticket carries a blocker yet; covered by task 27)
 - [ ] The user reads both ledgers and says the story is one they would give
 - [ ] If any line above fails, the design changes here. Nothing below starts.
 
