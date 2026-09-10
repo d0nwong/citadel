@@ -18,6 +18,7 @@ import { validateDoc, validateLedger, ValidationError } from "./argus/validate.t
 import { archDocPath, isFeature } from "./argus/paths.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
+import { seedFeature } from "./argus/seed.ts";
 import { closeAsk, confirmRequirement, placeMessage, recordTicket } from "./argus/verbs.ts";
 import { readLedger, writeLedger } from "./argus/write.ts";
 
@@ -52,6 +53,7 @@ const USAGE = `argus — the ledger CLI
   argus confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]
   argus place <message-id> <feature>
   argus ticket <feature> <P-n> <ALD-key>
+  argus seed <feature>...|--all [--force]  requirement rows from the product doc's BR table
 
 flags: --dry-run  --json  --user (the write is a person's, not the model's)
 root: ${root()}`;
@@ -148,6 +150,20 @@ const verbs: Record<string, Verb> = {
     const [feature, proposalId, key] = f.rest;
     if (!feature || !proposalId || !key) throw new Usage("ticket <feature> <P-n> <ALD-key>");
     return report(f, feature, await recordTicket(feature, proposalId, key, { dryRun: f.dryRun }));
+  },
+
+  async seed(f) {
+    const features = f.opts.all === "true" ? await listFeatures() : f.rest;
+    if (!features.length) throw new Usage("seed <feature>...|--all [--force]");
+    const results = [];
+    for (const feature of features) results.push(await seedFeature(feature, { dryRun: f.dryRun, force: f.opts.force === "true" }));
+    if (f.json) console.log(JSON.stringify({ ok: true, results: results.map((r) => ({ ...r, write: r.write ? { wrote: r.write.wrote, diff: r.write.diff.length } : null })) }));
+    else
+      for (const r of results) {
+        console.log(`${r.feature}: ${r.note ?? `${r.seeded} requirement(s) seeded${r.write?.wrote ? "" : f.dryRun ? " (dry run)" : ", unchanged"}`}`);
+        for (const s of r.skipped) console.log(`  skipped ${s.id} (${s.why}): ${s.rule}`);
+      }
+    return 0;
   },
 
   async show(f) {
