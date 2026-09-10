@@ -189,7 +189,7 @@ export function validateLedger(input: unknown, opts: ValidateOptions = {}): Prob
     for (const ns of ["R", "A"] as Namespace[]) {
       const before = new Set(idsOf(prev, ns));
       const after = new Set(idsOf(l, ns));
-      const max = maxId(before);
+      const max = Math.max(maxId(before), prev.ids?.[ns] ?? 0);
       for (const id of before)
         if (!after.has(id))
           out.push({ path: `ledger.${NAMESPACES[ns]}`, rule: `${id} was in the previous ledger and is gone; ${ns === "R" ? "retire" : "drop"} it instead` });
@@ -197,7 +197,7 @@ export function validateLedger(input: unknown, opts: ValidateOptions = {}): Prob
         if (!before.has(id) && idNumber(id) <= max)
           out.push({ path: `ledger.${NAMESPACES[ns]}`, rule: `${id} is new but not above the previous highest ${ns}-${max}; ids are never reused` });
     }
-    const prevP = maxId(idsOf(prev, "P"));
+    const prevP = Math.max(maxId(idsOf(prev, "P")), prev.ids?.P ?? 0);
     const beforeP = new Set(idsOf(prev, "P"));
     for (const id of idsOf(l, "P"))
       if (!beforeP.has(id) && idNumber(id) <= prevP)

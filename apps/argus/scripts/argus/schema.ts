@@ -113,10 +113,14 @@ export type Proposal = {
   at: string;
 };
 
+/** the highest id ever allocated per namespace, so a removed proposal's id is never reused */
+export type IdCounters = { R: number; A: number; P: number };
+
 export type Ledger = {
   feature: string;
   as_of: string;
   summary: string;
+  ids?: IdCounters;
   story: Story;
   requirements: Requirement[];
   asks: Ask[];
@@ -366,7 +370,7 @@ export function parseLedger(v: unknown): Ledger {
   if ("on_you" in obj(o.story ?? {}, "ledger.story"))
     throw new SchemaError("ledger.story.on_you", "on_you is derived from asks, never written");
   const story = obj(o.story, "ledger.story");
-  return {
+  const l: Ledger = {
     feature: str(o, "feature", "ledger"),
     as_of: str(o, "as_of", "ledger"),
     summary: str(o, "summary", "ledger"),
@@ -377,6 +381,11 @@ export function parseLedger(v: unknown): Ledger {
     landings: arr(o, "landings", "ledger").map((l, i) => landing(l, `ledger.landings[${i}]`)),
     proposals: arr(o, "proposals", "ledger").map((p, i) => proposal(p, `ledger.proposals[${i}]`)),
   };
+  if (o.ids !== undefined) {
+    const ids = obj(o.ids, "ledger.ids");
+    l.ids = { R: num(ids, "R", "ledger.ids"), A: num(ids, "A", "ledger.ids"), P: num(ids, "P", "ledger.ids") };
+  }
+  return l;
 }
 
 /** One serializer so every writer produces the same bytes and a `git diff` stays readable. */
