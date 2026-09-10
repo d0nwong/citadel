@@ -8,8 +8,8 @@
       "kind": "message",
       "by": "Carlos Lopes",
       "at": "2026-08-27 02:00",
-      "text": "updates\n• new fields on billing profile form (`billingAddress` // `rolloverCreditsWorth`)\n• date filters on invoices/retainers tabs\n• rename and realocate buttons (approve to save)\n• new draft card on",
-      "feature": "?"
+      "text": "updates\n\u2022 new fields on billing profile form (`billingAddress` // `rolloverCreditsWorth`)\n\u2022 date filters on invoices/retainers tabs\n\u2022 rename and realocate buttons (approve to save)\n\u2022 new draft card on",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787794221.954469",
@@ -17,7 +17,7 @@
       "by": "you",
       "at": "2026-08-27 08:30",
       "text": "I have added the ability to create a new invoice from the invoices tab",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787794269.373479",
@@ -25,7 +25,7 @@
       "by": "you",
       "at": "2026-08-27 08:31",
       "text": "Currently looking at splitting invoices but is blocked by the second issue above, will have a look later today",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787794291.700759",
@@ -33,39 +33,39 @@
       "by": "Foong Leung",
       "at": "2026-08-27 08:31",
       "text": "Thanks for checking on this today",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787794313.220069",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-08-27 08:31",
-      "text": "let’s me focus ont he alden-portal issue",
-      "feature": "?"
+      "text": "let\u2019s me focus ont he alden-portal issue",
+      "feature": null
     },
     {
       "id": "1787795900.896119",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-08-27 08:58",
-      "text": "hey just an idea and wanna @here your guy’s thoughts on this (like what i did there… i’m a dad… so i do)\n\nANYWAYS\n\nall tasks (and subtasks for that matter) share the exact same name as the project. I ",
-      "feature": "?"
+      "text": "hey just an idea and wanna @here your guy\u2019s thoughts on this (like what i did there\u2026 i\u2019m a dad\u2026 so i do)\n\nANYWAYS\n\nall tasks (and subtasks for that matter) share the exact same name as the project. I ",
+      "feature": "dashboard"
     },
     {
       "id": "1787795919.468679",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-08-27 08:58",
-      "text": "@Carlos Lopes can we also make it so that if a task is marked as complete… can we disable editting the task or adding subtask to it?",
-      "feature": "?"
+      "text": "@Carlos Lopes can we also make it so that if a task is marked as complete\u2026 can we disable editting the task or adding subtask to it?",
+      "feature": "dashboard"
     },
     {
       "id": "1787799927.542979",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-08-27 10:05",
-      "text": "oh no @Carlos Lopes\n\nI realised i didn’t paste the link i was trying to paste here…. rumor has it Cyber Leek has been caught",
-      "feature": "?"
+      "text": "oh no @Carlos Lopes\n\nI realised i didn\u2019t paste the link i was trying to paste here\u2026. rumor has it Cyber Leek has been caught",
+      "feature": null
     },
     {
       "id": "1787801168.993519",
@@ -73,8 +73,8 @@
       "thread": "1787795900.896119",
       "by": "you",
       "at": "2026-08-27 10:26",
-      "text": "Yeah I think that's an excellent idea, just to test the waters a bit, can a task also have a name so it’s more clear they are a task ? ie. The task name should describe the expected outcome of that ta",
-      "feature": "?"
+      "text": "Yeah I think that's an excellent idea, just to test the waters a bit, can a task also have a name so it\u2019s more clear they are a task ? ie. The task name should describe the expected outcome of that ta",
+      "feature": "dashboard"
     },
     {
       "id": "1787801752.554059",
@@ -82,7 +82,7 @@
       "by": "you",
       "at": "2026-08-27 10:35",
       "text": "Question - was there some changes on the draft invoice line items ? \n\nI remember we saw a version where the projects in the invoice include credits. Should we get that merged in as well. Otherwise we ",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787802839.501249",
@@ -91,7 +91,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 10:53",
       "text": "lol we do have a field for it we just default it to project name right now",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787802848.744069",
@@ -100,7 +100,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 10:54",
       "text": "it used to be editable (or addable) also.. taken away",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787803360.883649",
@@ -109,7 +109,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 11:02",
       "text": "like there was one where we had a credit per line item?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787803375.142209",
@@ -118,7 +118,7 @@
       "by": "you",
       "at": "2026-08-27 11:02",
       "text": "Yeah, but I can't see it on staging",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787803396.537839",
@@ -127,7 +127,7 @@
       "by": "you",
       "at": "2026-08-27 11:03",
       "text": "If there is one then I don't want to end up overwriting it",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787803427.474429",
@@ -135,8 +135,8 @@
       "thread": "1787801752.554059",
       "by": "Foong Leung",
       "at": "2026-08-27 11:03",
-      "text": "I don’t recall us having a credit per line item… it was always price per line item",
-      "feature": "?"
+      "text": "I don\u2019t recall us having a credit per line item\u2026 it was always price per line item",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787803855.781179",
@@ -145,7 +145,7 @@
       "by": "you",
       "at": "2026-08-27 11:10",
       "text": "Ok I could be wrong then, looking into it",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787804795.823549",
@@ -154,15 +154,15 @@
       "by": "you",
       "at": "2026-08-27 11:26",
       "text": "icic. Depends on what is best for them Ia",
-      "feature": "?"
+      "feature": "dashboard"
     },
     {
       "id": "1787808978.643379",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-08-27 12:36",
-      "text": "@Liam Leung\nYo sorry i’m gonna push up a PR on FE to hide the invoice tab again and push to prod.. just so we can get projects page up",
-      "feature": "?"
+      "text": "@Liam Leung\nYo sorry i\u2019m gonna push up a PR on FE to hide the invoice tab again and push to prod.. just so we can get projects page up",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787809635.678069",
@@ -171,7 +171,7 @@
       "by": "you",
       "at": "2026-08-27 12:47",
       "text": "Ok",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787812374.665949",
@@ -179,16 +179,16 @@
       "thread": "1787801752.554059",
       "by": "you",
       "at": "2026-08-27 13:32",
-      "text": "Potentially an issue here…might need your help to confirm on the BE\n\n`PUT /api/v1/invoices/{invoiceId}` identifies project lines only by number+name and supports just two outcomes per line — update on",
-      "feature": "?"
+      "text": "Potentially an issue here\u2026might need your help to confirm on the BE\n\n`PUT /api/v1/invoices/{invoiceId}` identifies project lines only by number+name and supports just two outcomes per line \u2014 update on",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787813252.158689",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-08-27 13:47",
-      "text": "@Carlos Lopes Small adjustment (this is already in prod)\n\nthe arrow to click down and show the subtasks…Can we make it.. bigger?\n\nnot the arrow itself but the clickable surface does seem a little “tig",
-      "feature": "?"
+      "text": "@Carlos Lopes Small adjustment (this is already in prod)\n\nthe arrow to click down and show the subtasks\u2026Can we make it.. bigger?\n\nnot the arrow itself but the clickable surface does seem a little \u201ctig",
+      "feature": null
     },
     {
       "id": "1787813317.144759",
@@ -197,7 +197,7 @@
       "by": "you",
       "at": "2026-08-27 13:48",
       "text": "Clicking on the task name also expands the row",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787813361.433589",
@@ -206,14 +206,14 @@
       "by": "you",
       "at": "2026-08-27 13:49",
       "text": "Maybe we can remove the hover effect on the arrow, let me do it",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787813422.788109",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-08-27 13:50",
-      "text": "@Carlos Lopes @Liam Leung too this page the meeting page.. just a touch up.. it’s spread that you have to scroll across but there is a lot of space in the middle we can just fine tuen",
+      "text": "@Carlos Lopes @Liam Leung too this page the meeting page.. just a touch up.. it\u2019s spread that you have to scroll across but there is a lot of space in the middle we can just fine tuen",
       "feature": "meetings",
       "prefilled_by": "key"
     },
@@ -224,7 +224,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 13:50",
       "text": "no no",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787813435.989529",
@@ -233,7 +233,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 13:50",
       "text": "i think clicking on the name opens the task page",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787813456.249159",
@@ -242,7 +242,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 13:50",
       "text": "oh wait just the name it does",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787813473.050449",
@@ -251,7 +251,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 13:51",
       "text": "but the gap inbetween the name and the arrow also open the task card",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787813479.784079",
@@ -260,7 +260,7 @@
       "by": "you",
       "at": "2026-08-27 13:51",
       "text": "It does too",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787813480.897659",
@@ -268,8 +268,8 @@
       "thread": "1787813252.158689",
       "by": "Foong Leung",
       "at": "2026-08-27 13:51",
-      "text": "can we just expand the “clickable” area to shoot it down",
-      "feature": "?"
+      "text": "can we just expand the \u201cclickable\u201d area to shoot it down",
+      "feature": "admin/projects"
     },
     {
       "id": "1787813506.026029",
@@ -278,7 +278,7 @@
       "by": "you",
       "at": "2026-08-27 13:51",
       "text": "The whole task name column expands it",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787813596.625319",
@@ -287,7 +287,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 13:53",
       "text": "not this spot lol",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787813605.756489",
@@ -296,7 +296,7 @@
       "by": "you",
       "at": "2026-08-27 13:53",
       "text": "Yikes",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787813606.422389",
@@ -305,7 +305,7 @@
       "by": "you",
       "at": "2026-08-27 13:53",
       "text": "Ok",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787813749.501759",
@@ -314,7 +314,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 13:55",
       "text": "Thanks dude loool i just kind of felt like a balancing act when finding the right place to click and knowing their comments recently",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787813775.320439",
@@ -323,7 +323,7 @@
       "by": "you",
       "at": "2026-08-27 13:56",
       "text": "Yeah it makes perfect sense",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787813799.837359",
@@ -332,7 +332,7 @@
       "by": "you",
       "at": "2026-08-27 13:56",
       "text": "I thought I changed this yesterday but it failed some tests, maybe Claude changed it back",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787814185.713429",
@@ -341,7 +341,7 @@
       "by": "you",
       "at": "2026-08-27 14:03",
       "text": "@Foong Leung lmk on this",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787814680.977139",
@@ -350,7 +350,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 14:11",
       "text": "meetings right now get back to you later",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787815997.894839",
@@ -359,7 +359,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 14:33",
       "text": "yup, you hit this nail on the head",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787816003.596839",
@@ -368,7 +368,7 @@
       "by": "Foong Leung",
       "at": "2026-08-27 14:33",
       "text": "let me take a look at what can be done",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787816019.128869",
@@ -377,7 +377,7 @@
       "by": "you",
       "at": "2026-08-27 14:33",
       "text": "thanks boss man",
-      "feature": "?"
+      "feature": "admin/projects"
     },
     {
       "id": "1787816054.539609",
@@ -385,8 +385,8 @@
       "thread": "1787801752.554059",
       "by": "Foong Leung",
       "at": "2026-08-27 14:34",
-      "text": "I’ll get started in like an hour i have 1 more meeting to get to",
-      "feature": "?"
+      "text": "I\u2019ll get started in like an hour i have 1 more meeting to get to",
+      "feature": null
     },
     {
       "id": "1787816147.854049",
@@ -395,7 +395,7 @@
       "by": "you",
       "at": "2026-08-27 14:35",
       "text": "All good man no rush",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787817281.896599",
@@ -423,7 +423,7 @@
       "thread": "1787813422.788109",
       "by": "Foong Leung",
       "at": "2026-08-27 14:56",
-      "text": "i’ll leave that decision to you for me it’s just the width thing",
+      "text": "i\u2019ll leave that decision to you for me it\u2019s just the width thing",
       "feature": "meetings",
       "prefilled_by": "key"
     },
@@ -433,16 +433,16 @@
       "thread": "1787801752.554059",
       "by": "Foong Leung",
       "at": "2026-08-27 16:47",
-      "text": "@Sam O for when you’re back\n\nthis needs to be relooked at\n\nessentially doesn’t work the way it is because if i delete and change names in a single request.. we’re super effed\n\nespecially cause we’re m",
-      "feature": "?"
+      "text": "@Sam O for when you\u2019re back\n\nthis needs to be relooked at\n\nessentially doesn\u2019t work the way it is because if i delete and change names in a single request.. we\u2019re super effed\n\nespecially cause we\u2019re m",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787824551.575479",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-08-27 16:55",
-      "text": "Hey @Sam O and @Liam Leung, on this page (invoices page) i realise there is no tab for “draft” invoices? can we add one? and we can edit on this page too? so not everything has to be done in the “toda",
-      "feature": "?"
+      "text": "Hey @Sam O and @Liam Leung, on this page (invoices page) i realise there is no tab for \u201cdraft\u201d invoices? can we add one? and we can edit on this page too? so not everything has to be done in the \u201ctoda",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787824656.620179",
@@ -451,7 +451,7 @@
       "by": "you",
       "at": "2026-08-27 16:57",
       "text": "I am pretty sure we saw one version that has it last night :see_no_evil:",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787825208.237519",
@@ -459,8 +459,8 @@
       "thread": "1787824551.575479",
       "by": "Foong Leung",
       "at": "2026-08-27 17:06",
-      "text": "i think that was on the “today” tab but i can’t find it in this build",
-      "feature": "?"
+      "text": "i think that was on the \u201ctoday\u201d tab but i can\u2019t find it in this build",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787837198.388739",
@@ -469,7 +469,7 @@
       "by": "Carlos Lopes",
       "at": "2026-08-27 20:26",
       "text": "I removed it LOL\nI asked if we should remove it yesterday since we have it on the \"Today\" tab, and I thought you guys agreed with the decision",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787837211.660729",
@@ -478,7 +478,7 @@
       "by": "Carlos Lopes",
       "at": "2026-08-27 20:26",
       "text": "but no prob it's a quick fix",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787837241.493119",
@@ -486,8 +486,8 @@
       "thread": "1787824551.575479",
       "by": "Foong Leung",
       "at": "2026-08-27 20:27",
-      "text": "sorry just realising it’s probably a good idea to have it back",
-      "feature": "?"
+      "text": "sorry just realising it\u2019s probably a good idea to have it back",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787837251.645289",
@@ -495,8 +495,8 @@
       "thread": "1787824551.575479",
       "by": "Foong Leung",
       "at": "2026-08-27 20:27",
-      "text": "caught us in a moment of weakness when we’re tired",
-      "feature": "?"
+      "text": "caught us in a moment of weakness when we\u2019re tired",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787837268.026699",
@@ -504,8 +504,8 @@
       "thread": "1787824551.575479",
       "by": "Foong Leung",
       "at": "2026-08-27 20:27",
-      "text": "I’ll be giving Angie access today",
-      "feature": "?"
+      "text": "I\u2019ll be giving Angie access today",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787838602.803399",
@@ -513,8 +513,8 @@
       "thread": "1787794269.373479",
       "by": "Foong Leung",
       "at": "2026-08-27 20:50",
-      "text": "sorry what’s the second issue above",
-      "feature": "?"
+      "text": "sorry what\u2019s the second issue above",
+      "feature": null
     },
     {
       "id": "1787842973.643429",
@@ -523,7 +523,7 @@
       "by": "you",
       "at": "2026-08-27 22:02",
       "text": "The delete line items thing",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787852388.184239",
@@ -532,7 +532,7 @@
       "by": "Carlos Lopes",
       "at": "2026-08-28 00:39",
       "text": "in staging :white_check_mark:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787855737.454579",
@@ -541,7 +541,7 @@
       "by": "Carlos Lopes",
       "at": "2026-08-28 01:35",
       "text": "I deployed it to staging and honestly I liked it; we might make some visual updates (maybe @Liam Leung can handle that :laughing:), but overall, it looks good to me",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787856746.941549",
@@ -550,7 +550,7 @@
       "by": "Carlos Lopes",
       "at": "2026-08-28 01:52",
       "text": "done :white_check_mark:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787871459.512629",
@@ -558,7 +558,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 05:57",
       "text": "@Carlos Lopes https://www.instagram.com/reel/DcjD2BxmUHp/?igsi=MXZtNW5vaXBzdm16eA== (https://www.instagram.com/reel/DcjD2BxmUHp/?igsi=MXZtNW5vaXBzdm16eA==)",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787871462.461019",
@@ -566,7 +566,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 05:57",
       "text": "Is this real",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787871752.606429",
@@ -574,7 +574,7 @@
       "by": "Carlos Lopes",
       "at": "2026-08-28 06:02",
       "text": "Broo watch the trailer",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787871755.480899",
@@ -582,7 +582,7 @@
       "by": "Carlos Lopes",
       "at": "2026-08-28 06:02",
       "text": "Fucking insane",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787871797.998449",
@@ -591,7 +591,7 @@
       "by": "Carlos Lopes",
       "at": "2026-08-28 06:03",
       "text": "LOOOL YES",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787880528.464149",
@@ -600,7 +600,7 @@
       "by": "Sam O",
       "at": "2026-08-28 08:28",
       "text": "Okay so this needs to be altered for sure.",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787880642.854459",
@@ -609,7 +609,7 @@
       "by": "Sam O",
       "at": "2026-08-28 08:30",
       "text": "@Liam Leung @Carlos Lopes\nwe should be passing back credits as well so that we can recreate the invoice.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787880663.409829",
@@ -618,7 +618,7 @@
       "by": "Sam O",
       "at": "2026-08-28 08:31",
       "text": "yeah we were matching name and number and then appending new ones.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787880677.739379",
@@ -627,7 +627,7 @@
       "by": "Sam O",
       "at": "2026-08-28 08:31",
       "text": "but in theory we should be able to alter the logic ti just accept the new items.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787882154.469289",
@@ -636,7 +636,7 @@
       "by": "you",
       "at": "2026-08-28 08:55",
       "text": "awesome, let's align one more time later, then i will get this and the spliting live today",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787882257.899699",
@@ -645,7 +645,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 08:57",
       "text": "Yea let's tb on this there are 2.methids.of editing",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787884123.213259",
@@ -653,8 +653,8 @@
       "thread": "1787871459.512629",
       "by": "Foong Leung",
       "at": "2026-08-28 09:28",
-      "text": "i don’t understand what is this?!?!?!",
-      "feature": "?"
+      "text": "i don\u2019t understand what is this?!?!?!",
+      "feature": null
     },
     {
       "id": "1787884213.285339",
@@ -662,7 +662,7 @@
       "by": "Slackbot",
       "at": "2026-08-28 09:30",
       "text": "",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787885703.249179",
@@ -671,7 +671,7 @@
       "by": "Slackbot",
       "at": "2026-08-28 09:55",
       "text": "AI huddle notes are ready. Edit, share, assign action items, or just squirrel them away for later. :chipmunk:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787887116.475269",
@@ -679,7 +679,7 @@
       "by": "you",
       "at": "2026-08-28 10:18",
       "text": "For the FE repo I think we might want to avoid pushing stuff directly to staging now that we have CI tests in place, we wouldn't want to keep deploying untested code\n\nthe tests takes only a few mins t",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787887999.888709",
@@ -688,7 +688,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:33",
       "text": "how does the test work now?",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888008.317849",
@@ -697,7 +697,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:33",
       "text": "i know i rarely do but sometimes i do it",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888011.099769",
@@ -706,7 +706,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:33",
       "text": "on fe",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888020.115489",
@@ -715,7 +715,7 @@
       "by": "you",
       "at": "2026-08-28 10:33",
       "text": "CI tests that run in the PR pipeline",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888095.816349",
@@ -724,7 +724,7 @@
       "by": "you",
       "at": "2026-08-28 10:34",
       "text": "technically these tests will be run at least once before the code make it to production, cuz now we are still deploying by merging staging into main\n\nbut if we can catch failing tests in small amounts",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888129.651919",
@@ -733,7 +733,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:35",
       "text": "so when does it run right now? when submit a PR to staging?",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888143.476669",
@@ -742,7 +742,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:35",
       "text": "for BE we run our code when we try push code onto bit bucket",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888146.360409",
@@ -751,7 +751,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:35",
       "text": "*tests",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888312.261419",
@@ -760,7 +760,7 @@
       "by": "you",
       "at": "2026-08-28 10:38",
       "text": "for a complete test suit, we should run it in the pipeline, because they can take long to run, for example:\n\n1. unit tests <- fastest, but a codebase like ours should have thousands of them, right now",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888343.086109",
@@ -769,7 +769,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:39",
       "text": "yea we only run unit tests end of the day on the be",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888346.673299",
@@ -778,7 +778,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:39",
       "text": "hahahah",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888351.715729",
@@ -787,7 +787,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:39",
       "text": "how long do the e2e test run",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888363.499309",
@@ -796,7 +796,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:39",
       "text": "can we run it on the staging pipeline then?",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888367.269289",
@@ -805,7 +805,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:39",
       "text": "when we merge it in",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888373.893709",
@@ -813,8 +813,8 @@
       "thread": "1787887116.475269",
       "by": "Foong Leung",
       "at": "2026-08-28 10:39",
-      "text": "if it fails we just … well not merge lol",
-      "feature": "?"
+      "text": "if it fails we just \u2026 well not merge lol",
+      "feature": null
     },
     {
       "id": "1787888379.186639",
@@ -823,7 +823,7 @@
       "by": "you",
       "at": "2026-08-28 10:39",
       "text": "and because of all the hidden logic from creating a task, as it transition from incoming drafts -> unassigned -> need reassignment\n\nthe fields become read-only at different points in time...i want to ",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888473.847779",
@@ -832,7 +832,7 @@
       "by": "you",
       "at": "2026-08-28 10:41",
       "text": "> can we run it on the staging pipeline then?\ntechnically yes, but if we are pushing code, we should at least verify the code works / doesn't break something else\n\notherwise we might be pushing a bunc",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888482.124379",
@@ -841,7 +841,7 @@
       "by": "you",
       "at": "2026-08-28 10:41",
       "text": "haha",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787888563.215389",
@@ -850,7 +850,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 10:42",
       "text": "fair fair fair",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1787891199.184379",
@@ -858,7 +858,7 @@
       "by": "you",
       "at": "2026-08-28 11:26",
       "text": "hi broskis\n\nif we split an invoice, is the original still supposed to exist ?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787898945.419359",
@@ -867,7 +867,7 @@
       "by": "Foong Leung",
       "at": "2026-08-28 13:35",
       "text": "in the database it will",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787898957.690399",
@@ -875,8 +875,8 @@
       "thread": "1787891199.184379",
       "by": "Foong Leung",
       "at": "2026-08-28 13:35",
-      "text": "let’s say yes",
-      "feature": "?"
+      "text": "let\u2019s say yes",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787898972.382829",
@@ -885,7 +885,7 @@
       "by": "you",
       "at": "2026-08-28 13:36",
       "text": "ok cool",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1787924231.170339",
@@ -894,7 +894,7 @@
       "by": "Carlos Lopes",
       "at": "2026-08-28 20:37",
       "text": "HAHAHAHA me too\nIt's a new game for gen Z\nI don't know how this came about but it became a meme or something similar\n\nI'm old, I don't know about these things anymore LOL\n\nthere's a new one also relat",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788139886.784069",
@@ -902,7 +902,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 08:31",
       "text": "1 second guys",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788140269.501649",
@@ -910,7 +910,7 @@
       "by": "Slackbot",
       "at": "2026-08-31 08:37",
       "text": "",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788147695.518579",
@@ -918,7 +918,7 @@
       "by": "Sam O",
       "at": "2026-08-31 10:41",
       "text": "@Liam Leung @Carlos Lopes\nThis is currently getting merged\n\nPUT\n_`/api/v1/invoices/{invoiceId}`_\n\nThe edit invoice route, there will be 2 main ways to edit:\n\n(1) - Sample body\n`{ editByCredit: true, c",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788148385.381769",
@@ -926,15 +926,15 @@
       "by": "Sam O",
       "at": "2026-08-31 10:53",
       "text": "Invoice Discounts - can only be applied to invoices that are considered drafts:\n\nPOST\n_`/api/v1/invoices/{invoiceId}/discounts`_\nSample Body\n```{\n  \"discountAmount\": number,\n  \"discountName\": string\n}",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788151252.843369",
       "kind": "message",
       "by": "you",
       "at": "2026-08-31 11:40",
-      "text": "Secret blocker tracker dashboard\nclaude.ai/design/p/…?file=Blocker+Tracker+%28B…&via=share (https://claude.ai/design/p/dafd0ad2-b80e-4b19-93b4-b67a50acd601?file=Blocker+Tracker+%28Basic%29.dc.html&via",
-      "feature": "?"
+      "text": "Secret blocker tracker dashboard\nclaude.ai/design/p/\u2026?file=Blocker+Tracker+%28B\u2026&via=share (https://claude.ai/design/p/dafd0ad2-b80e-4b19-93b4-b67a50acd601?file=Blocker+Tracker+%28Basic%29.dc.html&via",
+      "feature": "admin/blocker-tracker"
     },
     {
       "id": "1788156021.190779",
@@ -942,8 +942,8 @@
       "thread": "1788151252.843369",
       "by": "Foong Leung",
       "at": "2026-08-31 13:00",
-      "text": "Project can’t be found",
-      "feature": "?"
+      "text": "Project can\u2019t be found",
+      "feature": null
     },
     {
       "id": "1788156070.212029",
@@ -952,7 +952,7 @@
       "by": "you",
       "at": "2026-08-31 13:01",
       "text": "What does he actually need to see ? Blockers by the person, subtask and project as well",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788156150.301059",
@@ -961,7 +961,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 13:02",
       "text": "no as in",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788156159.432769",
@@ -970,7 +970,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 13:02",
       "text": "lol",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788156162.643159",
@@ -979,7 +979,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 13:02",
       "text": "your link",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788156362.037479",
@@ -988,7 +988,7 @@
       "by": "you",
       "at": "2026-08-31 13:06",
       "text": "Ah",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788156364.085279",
@@ -997,7 +997,7 @@
       "by": "you",
       "at": "2026-08-31 13:06",
       "text": "Shittt",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788156372.313269",
@@ -1006,7 +1006,7 @@
       "by": "you",
       "at": "2026-08-31 13:06",
       "text": "Sorry :rolling_on_the_floor_laughing::rolling_on_the_floor_laughing:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788157001.069699",
@@ -1014,8 +1014,8 @@
       "thread": "1788151252.843369",
       "by": "Foong Leung",
       "at": "2026-08-31 13:16",
-      "text": "hahaha let us know when it’s up",
-      "feature": "?"
+      "text": "hahaha let us know when it\u2019s up",
+      "feature": null
     },
     {
       "id": "1788160471.186359",
@@ -1023,7 +1023,7 @@
       "by": "Sam O",
       "at": "2026-08-31 14:14",
       "text": "When first loading an invoice detail - make sure the invoiceTotal is the value of `amountDue`\nIf there are discounts then they should be applied / shown",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788160552.237429",
@@ -1032,7 +1032,7 @@
       "by": "you",
       "at": "2026-08-31 14:15",
       "text": "https://claude.ai/code/artifact/924c31db-36c7-4b61-9b0c-e672fce0068b",
-      "feature": "?"
+      "feature": "admin/blocker-tracker"
     },
     {
       "id": "1788160554.863579",
@@ -1041,7 +1041,7 @@
       "by": "you",
       "at": "2026-08-31 14:15",
       "text": "try again",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788160659.264279",
@@ -1050,7 +1050,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 14:17",
       "text": "yeap can see now",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788160944.882659",
@@ -1059,7 +1059,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 14:22",
       "text": "okay this requires quite a bit of change",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788163640.055319",
@@ -1067,7 +1067,7 @@
       "by": "you",
       "at": "2026-08-31 15:07",
       "text": "Just something I noticed, want to check with you guys\n\nAre we making one cloud storage roundtrip per invoice in the `GET /invoices` call ? it takes 3000ms to get all the invoices, around 6s from click",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788165768.928549",
@@ -1076,7 +1076,7 @@
       "by": "Sam O",
       "at": "2026-08-31 15:42",
       "text": "Yeah, we generate a signedURL for each invoice, I can make alter that route so that we do not retrieve the url.\nThen create another route to get the invoice pdf signed url given an invoice id.\n@Foong ",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788166376.241149",
@@ -1085,7 +1085,7 @@
       "by": "Sam O",
       "at": "2026-08-31 15:52",
       "text": "to get the signed URL we will need to call\nGET\n`/api/v1/invoices/:invoiceId/pdf-url`\n\nIn a PR",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788166452.570579",
@@ -1094,7 +1094,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 15:54",
       "text": "i just merged it",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788166902.015709",
@@ -1102,7 +1102,7 @@
       "by": "you",
       "at": "2026-08-31 16:01",
       "text": "Can someone remind me when do we allow editing a invoice line item by amount and when do we use credit ?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788167032.310629",
@@ -1111,7 +1111,7 @@
       "by": "you",
       "at": "2026-08-31 16:03",
       "text": "Thanks boys",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788167069.964879",
@@ -1120,7 +1120,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 16:04",
       "text": "when they pick to do so",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788167072.921049",
@@ -1128,8 +1128,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 16:04",
-      "text": "it’s one at a time",
-      "feature": "?"
+      "text": "it\u2019s one at a time",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788167074.537089",
@@ -1138,7 +1138,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 16:04",
       "text": "not both",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788167084.479999",
@@ -1146,8 +1146,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 16:04",
-      "text": "so it woul dhave to be a “switch” to go between the 2 options",
-      "feature": "?"
+      "text": "so it woul dhave to be a \u201cswitch\u201d to go between the 2 options",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788167087.478239",
@@ -1155,8 +1155,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 16:04",
-      "text": "when it’s a draft",
-      "feature": "?"
+      "text": "when it\u2019s a draft",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788167110.019489",
@@ -1165,7 +1165,7 @@
       "by": "you",
       "at": "2026-08-31 16:05",
       "text": "And that is per invoice right ? Or per item ?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788167166.057109",
@@ -1174,7 +1174,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 16:06",
       "text": "per invoice",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788167168.359649",
@@ -1183,7 +1183,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 16:06",
       "text": "cannot be per item",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788167188.466949",
@@ -1191,8 +1191,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 16:06",
-      "text": "so you can’t be like\n\nproject 1 i edit amount\n\nproject2 i edit credit\n\nit’s a\n\n“PICK A DAMN LANE”",
-      "feature": "?"
+      "text": "so you can\u2019t be like\n\nproject 1 i edit amount\n\nproject2 i edit credit\n\nit\u2019s a\n\n\u201cPICK A DAMN LANE\u201d",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788168024.227229",
@@ -1201,7 +1201,7 @@
       "by": "you",
       "at": "2026-08-31 16:20",
       "text": "Gotcha bosss",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788168029.720279",
@@ -1210,7 +1210,7 @@
       "by": "you",
       "at": "2026-08-31 16:20",
       "text": "It will be done this evening",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788168297.986959",
@@ -1219,15 +1219,15 @@
       "by": "Foong Leung",
       "at": "2026-08-31 16:24",
       "text": "danke",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788172036.431139",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-08-31 17:27",
-      "text": "@Carlos Lopes\n\nI added in a new field for tasks called “billableQuantity” that we are going to need to show on the task modal… this is going to be next to quantity level\n\nnow not many new routes were ",
-      "feature": "?"
+      "text": "@Carlos Lopes\n\nI added in a new field for tasks called \u201cbillableQuantity\u201d that we are going to need to show on the task modal\u2026 this is going to be next to quantity level\n\nnow not many new routes were ",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788173053.770969",
@@ -1236,7 +1236,7 @@
       "by": "you",
       "at": "2026-08-31 17:44",
       "text": "how much change ?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788173064.784109",
@@ -1245,7 +1245,7 @@
       "by": "you",
       "at": "2026-08-31 17:44",
       "text": "we can potentially modify the design based on what's available",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788173114.229529",
@@ -1254,7 +1254,7 @@
       "by": "you",
       "at": "2026-08-31 17:45",
       "text": "alternatively...we might be able to do a POC using a postgres `view` even, might be a good option if this is going to be for peter only",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788173865.947399",
@@ -1263,7 +1263,7 @@
       "by": "you",
       "at": "2026-08-31 17:57",
       "text": "if i edit by amount, then we drop the credit rate, that's clear\n\nthen we don't need to show the credits anymore right ?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788174286.361089",
@@ -1271,7 +1271,7 @@
       "by": "you",
       "at": "2026-08-31 18:04",
       "text": "I have an invoice here for 10k, it it has no line items, is this normal ?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788183624.295439",
@@ -1279,8 +1279,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 20:40",
-      "text": "eerrr…. we show it for reference?",
-      "feature": "?"
+      "text": "eerrr\u2026. we show it for reference?",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788183624.768889",
@@ -1289,7 +1289,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 20:40",
       "text": "not sure",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788183706.223029",
@@ -1298,7 +1298,7 @@
       "by": "you",
       "at": "2026-08-31 20:41",
       "text": "then the current logic is incorrect then ? the credits doesn't get updated if you save a edit the line item by amount\n\nand also, at what point would someone edit the total credits and let it \"redistri",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184044.836659",
@@ -1307,7 +1307,7 @@
       "by": "Carlos Lopes",
       "at": "2026-08-31 20:47",
       "text": "send me the tooltip text",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788184259.873009",
@@ -1315,8 +1315,8 @@
       "thread": "1788172036.431139",
       "by": "Foong Leung",
       "at": "2026-08-31 20:50",
-      "text": "“Quantity to bill client if different from produced quantity. Please CLEAR if not used anymore”",
-      "feature": "?"
+      "text": "\u201cQuantity to bill client if different from produced quantity. Please CLEAR if not used anymore\u201d",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184294.346769",
@@ -1324,8 +1324,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 20:51",
-      "text": "well editing line by line essentially is allowing them to “override” the credit distrubution",
-      "feature": "?"
+      "text": "well editing line by line essentially is allowing them to \u201coverride\u201d the credit distrubution",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184298.457429",
@@ -1334,7 +1334,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 20:51",
       "text": "without having to calculate backwards",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184310.778979",
@@ -1342,8 +1342,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 20:51",
-      "text": "so they have to pick… they either choose to edit by credits and we re-distrubute",
-      "feature": "?"
+      "text": "so they have to pick\u2026 they either choose to edit by credits and we re-distrubute",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184314.090029",
@@ -1352,7 +1352,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 20:51",
       "text": "or they are over riding it",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184347.596329",
@@ -1361,7 +1361,7 @@
       "by": "you",
       "at": "2026-08-31 20:52",
       "text": "Right now credit mode takes one invoice-level `creditsUsed` and redistributes it across lines proportionally by their existing share. That works fine for a single-line invoice, but on a multi-line one",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184580.523499",
@@ -1370,7 +1370,7 @@
       "by": "you",
       "at": "2026-08-31 20:56",
       "text": "maybe credit mode needs to accept per-line credits",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184883.461669",
@@ -1379,7 +1379,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 21:01",
       "text": "oh what then yes that is an error",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184890.213419",
@@ -1388,7 +1388,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 21:01",
       "text": "@Sam O can we take a look at this logic tmr morning",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184906.609049",
@@ -1396,8 +1396,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 21:01",
-      "text": "both modes should be a “per line” entry point",
-      "feature": "?"
+      "text": "both modes should be a \u201cper line\u201d entry point",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788184915.933809",
@@ -1405,8 +1405,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 21:01",
-      "text": "Just that one is entering “credit” per line and the other “amount”",
-      "feature": "?"
+      "text": "Just that one is entering \u201ccredit\u201d per line and the other \u201camount\u201d",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185188.116949",
@@ -1415,7 +1415,7 @@
       "by": "you",
       "at": "2026-08-31 21:06",
       "text": "Just to confirm I am not hallucinating....(which i do these days) :sweat_smile:\n\nWe are supposed to be able to:\n1. override by amount OR credit on each line (set on invoice level)\n2. and an additional",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185212.313479",
@@ -1424,7 +1424,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 21:06",
       "text": "no no you PICK one or the other",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185232.490919",
@@ -1433,7 +1433,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 21:07",
       "text": "so you have 2 edit modes:\n1. Credit editing\n2. amount editing\nAnd these cannot work together",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185266.839989",
@@ -1442,7 +1442,7 @@
       "by": "you",
       "at": "2026-08-31 21:07",
       "text": "ah shit",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185267.507379",
@@ -1451,7 +1451,7 @@
       "by": "you",
       "at": "2026-08-31 21:07",
       "text": "my bad",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185269.323809",
@@ -1460,7 +1460,7 @@
       "by": "you",
       "at": "2026-08-31 21:07",
       "text": "type",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185273.700809",
@@ -1468,8 +1468,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 21:07",
-      "text": "Credit editting:\nPer line, you decide how many credits you want to assign to each project and use\n\nBackend will then take that number… take the invoice amount and re-churn out the distrubution of the ",
-      "feature": "?"
+      "text": "Credit editting:\nPer line, you decide how many credits you want to assign to each project and use\n\nBackend will then take that number\u2026 take the invoice amount and re-churn out the distrubution of the ",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185303.064029",
@@ -1478,7 +1478,7 @@
       "by": "you",
       "at": "2026-08-31 21:08",
       "text": "updated to\n\n> 1. override by amount OR credit on each line (set on invoice level)",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185306.941549",
@@ -1487,7 +1487,7 @@
       "by": "you",
       "at": "2026-08-31 21:08",
       "text": "you are right i just miswrote it",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185308.204089",
@@ -1496,7 +1496,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 21:08",
       "text": "AMount editting:\n\nThis is the hard reset  like overriding any pre-done calculation:\n\nyou literally assign dollar amounts to each line and the backend will just take it and disregard any credit amounts",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185454.501539",
@@ -1505,7 +1505,7 @@
       "by": "you",
       "at": "2026-08-31 21:10",
       "text": "Got it, that's what I was hoping :sweat_smile: So to lock it in for Sam tomo:\n\n1. One mode per invoice, \"pick a lane\" no mixing credit on one project and amount on another\n2. Both modes are per-line e",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185548.296569",
@@ -1513,8 +1513,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 21:12",
-      "text": "I think in the “credit” method you have a change to edit the final amount too … so you can also redistrubute a “higher” amount if needed",
-      "feature": "?"
+      "text": "I think in the \u201ccredit\u201d method you have a change to edit the final amount too \u2026 so you can also redistrubute a \u201chigher\u201d amount if needed",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185560.144539",
@@ -1522,8 +1522,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 21:12",
-      "text": "but the “amount editting” then no neeed cause we’re literally just adding in the amounts you have",
-      "feature": "?"
+      "text": "but the \u201camount editting\u201d then no neeed cause we\u2019re literally just adding in the amounts you have",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788185992.712859",
@@ -1532,7 +1532,7 @@
       "by": "you",
       "at": "2026-08-31 21:19",
       "text": "yes sir",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788188759.680069",
@@ -1540,8 +1540,8 @@
       "thread": "1788166902.015709",
       "by": "you",
       "at": "2026-08-31 22:05",
-      "text": "Summarsing the points I shared tonight so nothing gets lost:\n\n*Proposing three lanes, pick one per draft:*\n1. per-line $ amount, credits untouched\n2. per-line credits, each line's $ = its credits × it",
-      "feature": "?"
+      "text": "Summarsing the points I shared tonight so nothing gets lost:\n\n*Proposing three lanes, pick one per draft:*\n1. per-line $ amount, credits untouched\n2. per-line credits, each line's $ = its credits \u00d7 it",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788188810.526969",
@@ -1549,8 +1549,8 @@
       "thread": "1788166902.015709",
       "by": "Foong Leung",
       "at": "2026-08-31 22:06",
-      "text": "Let’s discuss this tmr morning @Sam O",
-      "feature": "?"
+      "text": "Let\u2019s discuss this tmr morning @Sam O",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788188888.099559",
@@ -1558,7 +1558,7 @@
       "by": "Foong Leung",
       "at": "2026-08-31 22:08",
       "text": "@here Feature creep for invoice section (and yes only getting them now):\n1. we need to have the ability to bill client based on one of the three entities:\n    a. Alden studios\n    b. Alden Technologie",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788194142.904899",
@@ -1567,7 +1567,7 @@
       "by": "you",
       "at": "2026-08-31 23:35",
       "text": "pretty important piece of info to leave out :sweat_smile:\n\n\n#2, there is also something called quickbooks... And I think we are already using it anyway ? :laughing: \nthe more manageable course of acti",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788211916.199999",
@@ -1575,8 +1575,8 @@
       "thread": "1788151252.843369",
       "by": "Carlos Lopes",
       "at": "2026-09-01 04:31",
-      "text": "available in branch `feat/admin-blocker-tracker`\n\nfor now, I’ve implemented whitelist logic using env vars to control who can view or access this page. This will only work in prod; therefore, there is",
-      "feature": "?"
+      "text": "available in branch `feat/admin-blocker-tracker`\n\nfor now, I\u2019ve implemented whitelist logic using env vars to control who can view or access this page. This will only work in prod; therefore, there is",
+      "feature": "admin/blocker-tracker"
     },
     {
       "id": "1788212012.544399",
@@ -1584,8 +1584,8 @@
       "thread": "1788151252.843369",
       "by": "Carlos Lopes",
       "at": "2026-09-01 04:33",
-      "text": "Liam, there are a few minor differences in the interface that I kept just to reuse components we already have in the app (like the tables—so I kept the title with the icon next to it, instead of just ",
-      "feature": "?"
+      "text": "Liam, there are a few minor differences in the interface that I kept just to reuse components we already have in the app (like the tables\u2014so I kept the title with the icon next to it, instead of just ",
+      "feature": "admin/blocker-tracker"
     },
     {
       "id": "1788214202.736969",
@@ -1594,7 +1594,7 @@
       "by": "Carlos Lopes",
       "at": "2026-09-01 05:10",
       "text": "in staging :white_check_mark:",
-      "feature": "?"
+      "feature": "admin/blocker-tracker"
     },
     {
       "id": "1788224623.910869",
@@ -1603,7 +1603,7 @@
       "by": "Sam O",
       "at": "2026-09-01 08:03",
       "text": "It was billing day and no projects were logged in the last month - so I guess this is an invoice that we should be able to delete? @Foong Leung",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788224695.151259",
@@ -1612,7 +1612,7 @@
       "by": "Sam O",
       "at": "2026-09-01 08:04",
       "text": "oh wow thats new information Foong. but okay",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788224704.367489",
@@ -1621,7 +1621,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 08:05",
       "text": "Or give them a button to atleast",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788224773.395599",
@@ -1630,7 +1630,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 08:06",
       "text": "Don't work on this today",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788224791.688809",
@@ -1639,7 +1639,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 08:06",
       "text": "They're not using quickbooks moving forward",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788224831.299029",
@@ -1648,7 +1648,7 @@
       "by": "Sam O",
       "at": "2026-09-01 08:07",
       "text": "I mean I need to make the route too but yeah",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788224850.241719",
@@ -1657,7 +1657,7 @@
       "by": "Sam O",
       "at": "2026-09-01 08:07",
       "text": "okay",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788225510.395129",
@@ -1666,7 +1666,7 @@
       "by": "Sam O",
       "at": "2026-09-01 08:18",
       "text": "Hard delete yeah?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788225550.365149",
@@ -1675,7 +1675,7 @@
       "by": "Sam O",
       "at": "2026-09-01 08:19",
       "text": "I can change DB to facilitate soft delete.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788225979.266079",
@@ -1684,7 +1684,7 @@
       "by": "you",
       "at": "2026-09-01 08:26",
       "text": "Why aren't they using quickbooks tho ? It's the accounting standard in a few continents",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788226017.611369",
@@ -1693,7 +1693,7 @@
       "by": "you",
       "at": "2026-09-01 08:26",
       "text": "What they are asking now is literally quickbooks",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788226477.509519",
@@ -1701,7 +1701,7 @@
       "by": "Slackbot",
       "at": "2026-09-01 08:34",
       "text": "",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788228747.131349",
@@ -1710,15 +1710,15 @@
       "by": "Slackbot",
       "at": "2026-09-01 09:12",
       "text": "AI huddle notes are ready. Edit, share, assign action items, or just squirrel them away for later. :chipmunk:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788229345.147239",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-01 09:22",
-      "text": "@here\n\nHey guys are we using the company Gemeni alot? i’m just reviewing our costs and i some how see Gemeni costs to be rather high? (350 usd) but not entirely sure why? i don’t think we use it in ou",
-      "feature": "?"
+      "text": "@here\n\nHey guys are we using the company Gemeni alot? i\u2019m just reviewing our costs and i some how see Gemeni costs to be rather high? (350 usd) but not entirely sure why? i don\u2019t think we use it in ou",
+      "feature": null
     },
     {
       "id": "1788229633.061749",
@@ -1727,7 +1727,7 @@
       "by": "you",
       "at": "2026-09-01 09:27",
       "text": "Isn't Gemini included in the company Google workspace subscription ?",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788229829.957029",
@@ -1736,7 +1736,7 @@
       "by": "Sam O",
       "at": "2026-09-01 09:30",
       "text": "Ive not really touched gemeni in ages.",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788229853.155329",
@@ -1745,7 +1745,7 @@
       "by": "Sam O",
       "at": "2026-09-01 09:30",
       "text": "I guess if Lisa is using that app I built to take PDFs and insert into miro boards it could be that? but otherwise I dont use it no.",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788230016.311929",
@@ -1754,7 +1754,7 @@
       "by": "Sam O",
       "at": "2026-09-01 09:33",
       "text": "Does it show what apps are using it?",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788230123.138609",
@@ -1763,7 +1763,7 @@
       "by": "you",
       "at": "2026-09-01 09:35",
       "text": "I use it to analyse our meeting notes sometimes but it should never cross that threshold",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788230900.766069",
@@ -1771,8 +1771,8 @@
       "thread": "1788229345.147239",
       "by": "Foong Leung",
       "at": "2026-09-01 09:48",
-      "text": "no no you’re right and it’s fine to use it as such",
-      "feature": "?"
+      "text": "no no you\u2019re right and it\u2019s fine to use it as such",
+      "feature": null
     },
     {
       "id": "1788230944.429109",
@@ -1780,8 +1780,8 @@
       "thread": "1788229345.147239",
       "by": "Foong Leung",
       "at": "2026-09-01 09:49",
-      "text": "I’m just trying to understand which one is for which cause ultimately we have lke 3 different AI subscriptions so just trying to figure out what we’re doing with it… im more just surprised cause 350 i",
-      "feature": "?"
+      "text": "I\u2019m just trying to understand which one is for which cause ultimately we have lke 3 different AI subscriptions so just trying to figure out what we\u2019re doing with it\u2026 im more just surprised cause 350 i",
+      "feature": null
     },
     {
       "id": "1788230958.877539",
@@ -1789,8 +1789,8 @@
       "thread": "1788229345.147239",
       "by": "Foong Leung",
       "at": "2026-09-01 09:49",
-      "text": "or taht we’re using cursor or claude more",
-      "feature": "?"
+      "text": "or taht we\u2019re using cursor or claude more",
+      "feature": null
     },
     {
       "id": "1788234543.199809",
@@ -1799,15 +1799,15 @@
       "by": "Foong Leung",
       "at": "2026-09-01 10:49",
       "text": "it just says aldenstudios.com (http://aldenstudios.com)",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788235355.760409",
       "kind": "message",
       "by": "Sam O",
       "at": "2026-09-01 11:02",
-      "text": "@Liam Leung\n\nHey the edits for invoices are working as we discussed this morning.\nThe creditsUsed will update the edited invoice’s amount values\nThe amount will update the edited invoice’s creditsUsed",
-      "feature": "?"
+      "text": "@Liam Leung\n\nHey the edits for invoices are working as we discussed this morning.\nThe creditsUsed will update the edited invoice\u2019s amount values\nThe amount will update the edited invoice\u2019s creditsUsed",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788235494.041659",
@@ -1816,7 +1816,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 11:04",
       "text": "so @Carlos Lopes i noticed you only put your email in for now.. so if we add more just comma seperated?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788235525.141639",
@@ -1824,7 +1824,7 @@
       "by": "Sam O",
       "at": "2026-09-01 11:05",
       "text": "@Liam Leung @Carlos Lopes\n\nDelete invoice route:\n\nDelete\n`/api/v1/invoices/{invoiceId}`\nThis is a soft delete and is toggleable - can call this on the same invoiceId to swap from true to false etc.\n\nG",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788236078.876259",
@@ -1833,7 +1833,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 11:14",
       "text": "@Liam Leung can we merge this into staging?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788239891.038549",
@@ -1841,7 +1841,7 @@
       "by": "you",
       "at": "2026-09-01 12:18",
       "text": "Hi guys, `EditInvoiceBody` seems to be empty now in the API schema, might need to bring the types back :man-bowing::pray:",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788239997.201259",
@@ -1849,7 +1849,7 @@
       "by": "you",
       "at": "2026-09-01 12:19",
       "text": "And re the soft delete route, if you call\nit again to toggle, it seems to result in 404 because it looks up `{id, isDeleted: false}`",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788240286.258139",
@@ -1858,7 +1858,7 @@
       "by": "you",
       "at": "2026-09-01 12:24",
       "text": "Yeah I think",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788240346.351499",
@@ -1867,7 +1867,7 @@
       "by": "you",
       "at": "2026-09-01 12:25",
       "text": "Are there any api keys generated in firebase ?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788240760.298789",
@@ -1876,7 +1876,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 12:32",
       "text": "merging",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788240778.433019",
@@ -1885,7 +1885,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 12:32",
       "text": "our default biling account is falled firebase 2024",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788240779.358269",
@@ -1894,7 +1894,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 12:32",
       "text": "lol",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788242365.098219",
@@ -1903,7 +1903,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 12:59",
       "text": "the rquest body schema?\n\nPUshing that up in a PR right now",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788242397.636599",
@@ -1912,7 +1912,7 @@
       "by": "you",
       "at": "2026-09-01 12:59",
       "text": "Yes sir, thank you !!",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788242529.252159",
@@ -1920,8 +1920,8 @@
       "thread": "1788239997.201259",
       "by": "Foong Leung",
       "at": "2026-09-01 13:02",
-      "text": "This is designed to be a one way delete.. is this meant to be a “toggle”?",
-      "feature": "?"
+      "text": "This is designed to be a one way delete.. is this meant to be a \u201ctoggle\u201d?",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788242572.612549",
@@ -1930,7 +1930,7 @@
       "by": "Sam O",
       "at": "2026-09-01 13:02",
       "text": "oh I made it a toggle as might need to bring a deleted invoice back.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788242665.942589",
@@ -1939,7 +1939,7 @@
       "by": "Sam O",
       "at": "2026-09-01 13:04",
       "text": "I thought I pushed up a fix for that.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788242909.460189",
@@ -1948,7 +1948,7 @@
       "by": "Sam O",
       "at": "2026-09-01 13:08",
       "text": "Its in a PR right now apologies. thought I finished that but then started checking invoice data.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788242931.083459",
@@ -1957,7 +1957,7 @@
       "by": "you",
       "at": "2026-09-01 13:08",
       "text": "All good boss, thanks ! :man-bowing:",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788243896.485509",
@@ -1965,7 +1965,7 @@
       "by": "Sam O",
       "at": "2026-09-01 13:24",
       "text": "InvoiceBody should be there for edit invoice.\nAnd then delete toggle is now operational on dev",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788248582.835329",
@@ -1974,7 +1974,7 @@
       "by": "Sam O",
       "at": "2026-09-01 14:43",
       "text": "@Liam Leung Have you hooked this up yet?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788248687.519109",
@@ -1983,15 +1983,15 @@
       "by": "Sam O",
       "at": "2026-09-01 14:44",
       "text": "So you call the route when clicking into the invoice?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788249384.229079",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-01 14:56",
-      "text": "@Liam Leung sorry i know quite a lot of things are going up invoice wise today while you’re in the office",
-      "feature": "?"
+      "text": "@Liam Leung sorry i know quite a lot of things are going up invoice wise today while you\u2019re in the office",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788249394.721589",
@@ -1999,7 +1999,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 14:56",
       "text": "but let me know when i can merge staging into prod",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788249400.852289",
@@ -2007,7 +2007,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 14:56",
       "text": "(fe)",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788255706.191469",
@@ -2015,8 +2015,8 @@
       "thread": "1788151252.843369",
       "by": "Foong Leung",
       "at": "2026-09-01 16:41",
-      "text": "@Carlos Lopes for the blocker tracker.. you haven’t incorproated the data from the API right? i just had a look through it and it’s all dummy data",
-      "feature": "?"
+      "text": "@Carlos Lopes for the blocker tracker.. you haven\u2019t incorproated the data from the API right? i just had a look through it and it\u2019s all dummy data",
+      "feature": "admin/blocker-tracker"
     },
     {
       "id": "1788259500.473689",
@@ -2025,7 +2025,7 @@
       "by": "you",
       "at": "2026-09-01 17:45",
       "text": "Hey I am on my way home now. Will get it done tonight then we can merge",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788259973.913799",
@@ -2033,8 +2033,8 @@
       "thread": "1788163640.055319",
       "by": "you",
       "at": "2026-09-01 17:52",
-      "text": "Hey sorry I haven’t. I will do this tonight :man-bowing:",
-      "feature": "?"
+      "text": "Hey sorry I haven\u2019t. I will do this tonight :man-bowing:",
+      "feature": null
     },
     {
       "id": "1788261983.778419",
@@ -2043,7 +2043,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 18:26",
       "text": "All good all good it is Tuesday",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788269486.151469",
@@ -2052,7 +2052,7 @@
       "by": "Carlos Lopes",
       "at": "2026-09-01 20:31",
       "text": "yea not yet. Thats the plan for today",
-      "feature": "?"
+      "feature": "admin/blocker-tracker"
     },
     {
       "id": "1788269903.248339",
@@ -2060,7 +2060,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 20:38",
       "text": "@here guys can we push the team meet back to thursday night this week? otherwise for tmr i might be 30 mins late",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788270310.082519",
@@ -2069,7 +2069,7 @@
       "by": "you",
       "at": "2026-09-01 20:45",
       "text": "all good with me",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788272068.242689",
@@ -2085,16 +2085,16 @@
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-01 22:02",
-      "text": "@here new page / features we’re going to have to continue pushing out this month for invoicing\n\nyou guys are going to love (hate) this one tmr",
-      "feature": "?"
+      "text": "@here new page / features we\u2019re going to have to continue pushing out this month for invoicing\n\nyou guys are going to love (hate) this one tmr",
+      "feature": null
     },
     {
       "id": "1788274977.150589",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-01 22:02",
-      "text": "I’ll brief you guys in the morning",
-      "feature": "?"
+      "text": "I\u2019ll brief you guys in the morning",
+      "feature": null
     },
     {
       "id": "1788275089.447939",
@@ -2102,15 +2102,15 @@
       "by": "Foong Leung",
       "at": "2026-09-01 22:04",
       "text": "summary:\n1. Cap portal view\n    a. View page by entity\n    b. list ALL tasks for that month \n    c. show how much roll over credits they have for this period (and how much overage they may incur from ",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788275371.337359",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-01 22:09",
-      "text": "the only correct answer to this is… yay Yay YAy YAY YAY",
-      "feature": "?"
+      "text": "the only correct answer to this is\u2026 yay Yay YAy YAY YAY",
+      "feature": "admin/usage"
     },
     {
       "id": "1788275831.103559",
@@ -2118,7 +2118,7 @@
       "by": "you",
       "at": "2026-09-01 22:17",
       "text": "will Lisa be doing the design for us ? :smile:",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788276095.523169",
@@ -2126,7 +2126,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 22:21",
       "text": "nope because these ones are not coming from lisa",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788276098.963909",
@@ -2134,7 +2134,7 @@
       "by": "Foong Leung",
       "at": "2026-09-01 22:21",
       "text": "YAY",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788276288.494139",
@@ -2172,7 +2172,7 @@
       "by": "you",
       "at": "2026-09-01 22:25",
       "text": "haha, ok",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788276366.014639",
@@ -2180,23 +2180,23 @@
       "by": "you",
       "at": "2026-09-01 22:26",
       "text": "let's talk more tomo on this, might have a catch all solution",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788276496.641489",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-01 22:28",
-      "text": "sweet yea let’s have a look",
-      "feature": "?"
+      "text": "sweet yea let\u2019s have a look",
+      "feature": "admin/usage"
     },
     {
       "id": "1788276504.592119",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-01 22:28",
-      "text": "im pushing up a PR for a DB change we’ll need for this",
-      "feature": "?"
+      "text": "im pushing up a PR for a DB change we\u2019ll need for this",
+      "feature": "admin/usage"
     },
     {
       "id": "1788291551.710529",
@@ -2204,7 +2204,7 @@
       "by": "Carlos Lopes",
       "at": "2026-09-02 02:39",
       "text": "in staging :white_check_mark:\ncheck If i forgot something\n\nBtw i created a filter date cuze i noticed api accept filter by date. Since the default is getting the current month, we are in september so ",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788293502.393189",
@@ -2222,7 +2222,7 @@
       "by": "Carlos Lopes",
       "at": "2026-09-02 04:37",
       "text": "one thing whose functionality I couldn't identify is this \"low sample\" button",
-      "feature": "?"
+      "feature": "admin/signals"
     },
     {
       "id": "1788312755.075069",
@@ -2230,8 +2230,8 @@
       "thread": "1788298657.940029",
       "by": "you",
       "at": "2026-09-02 08:32",
-      "text": "It's ok, that just means is not enough data for any meaningful insight, it’s just an chip to show that",
-      "feature": "?"
+      "text": "It's ok, that just means is not enough data for any meaningful insight, it\u2019s just an chip to show that",
+      "feature": "admin/signals"
     },
     {
       "id": "1788316405.694339",
@@ -2240,7 +2240,7 @@
       "by": "Sam O",
       "at": "2026-09-02 09:33",
       "text": "Can do",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788316544.820559",
@@ -2248,7 +2248,7 @@
       "by": "Slackbot",
       "at": "2026-09-02 09:35",
       "text": "",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788317959.039669",
@@ -2256,7 +2256,7 @@
       "by": "you",
       "at": "2026-09-02 09:59",
       "text": "https://trello.com/c/E6SYrXsV",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788318420.559729",
@@ -2265,7 +2265,7 @@
       "by": "Slackbot",
       "at": "2026-09-02 10:07",
       "text": "AI huddle notes are ready. Edit, share, assign action items, or just squirrel them away for later. :chipmunk:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788319761.812429",
@@ -2273,7 +2273,7 @@
       "by": "you",
       "at": "2026-09-02 10:29",
       "text": "can i get a screenshot of that capacity page :pray:",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788319881.004179",
@@ -2281,7 +2281,7 @@
       "by": "Sam O",
       "at": "2026-09-02 10:31",
       "text": "",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788319886.549559",
@@ -2289,7 +2289,7 @@
       "by": "you",
       "at": "2026-09-02 10:31",
       "text": "thanks man",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788319888.892889",
@@ -2297,7 +2297,7 @@
       "by": "Sam O",
       "at": "2026-09-02 10:31",
       "text": "That enough?",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788319893.302059",
@@ -2305,7 +2305,7 @@
       "by": "you",
       "at": "2026-09-02 10:31",
       "text": "yup !",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788319893.381219",
@@ -2313,7 +2313,7 @@
       "by": "Sam O",
       "at": "2026-09-02 10:31",
       "text": "I took one in the meeting haha",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788319901.574019",
@@ -2321,7 +2321,7 @@
       "by": "you",
       "at": "2026-09-02 10:31",
       "text": "yeah i should have done it too :laughing:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788319958.900119",
@@ -2329,7 +2329,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 10:32",
       "text": "oh was that you? i heard a snap some reason i thought it was Liam haha",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788320143.548639",
@@ -2337,7 +2337,7 @@
       "by": "you",
       "at": "2026-09-02 10:35",
       "text": "are we going to defer the issue re soft deleted invoices blocking future generations ?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788320308.575079",
@@ -2345,15 +2345,15 @@
       "by": "Foong Leung",
       "at": "2026-09-02 10:38",
       "text": "sam found the bug already",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788320315.022719",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-02 10:38",
-      "text": "he’s putting a fix up into his next pr",
-      "feature": "?"
+      "text": "he\u2019s putting a fix up into his next pr",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788320320.836909",
@@ -2361,7 +2361,7 @@
       "by": "you",
       "at": "2026-09-02 10:38",
       "text": "icic, gotcha",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788320462.949469",
@@ -2369,7 +2369,7 @@
       "by": "Sam O",
       "at": "2026-09-02 10:41",
       "text": "Yeah its in PR now.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788320510.074469",
@@ -2377,7 +2377,7 @@
       "by": "you",
       "at": "2026-09-02 10:41",
       "text": "thank you sir :bow:",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788323550.323719",
@@ -2385,7 +2385,7 @@
       "by": "you",
       "at": "2026-09-02 11:32",
       "text": "hi guys, i am just closing the gaps in the invoicing page and another issue might have surfaced, could just be a business logic issue:\n\n> Editing a draft changes how it's priced, and nobody is told.\n>",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788323715.691939",
@@ -2393,8 +2393,8 @@
       "thread": "1788323550.323719",
       "by": "Sam O",
       "at": "2026-09-02 11:35",
-      "text": "I see so if we have a smaller amount of credits used than the base credits, the total invoice amount is lower - I was told that should be the source of truth, but you’re probably right, we should over",
-      "feature": "?"
+      "text": "I see so if we have a smaller amount of credits used than the base credits, the total invoice amount is lower - I was told that should be the source of truth, but you\u2019re probably right, we should over",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788323809.351339",
@@ -2403,7 +2403,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 11:36",
       "text": "yup, the retainer should always be the minimum that is charged",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788323811.884399",
@@ -2412,7 +2412,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 11:36",
       "text": "if they want a discount",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788323814.264729",
@@ -2421,7 +2421,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 11:36",
       "text": "they add a discount line",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788323934.213879",
@@ -2430,7 +2430,7 @@
       "by": "Sam O",
       "at": "2026-09-02 11:38",
       "text": "This is for both editing credits and amounts right?\nIE\nif the amount is lower then total retainer we still bill for retainer amount\nif the credit comes to lower than the total retainer we still bill f",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788324020.939139",
@@ -2439,7 +2439,7 @@
       "by": "Sam O",
       "at": "2026-09-02 11:40",
       "text": "As previously you said we take the project lines as the sole source of truth, do we just charge them fully but the lines dont match the invoiced amount?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788324253.257639",
@@ -2448,7 +2448,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 11:44",
       "text": "i think the amount edit would be like a",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788324257.564679",
@@ -2457,7 +2457,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 11:44",
       "text": "compelte overide",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788324270.574909",
@@ -2466,7 +2466,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 11:44",
       "text": "so if it is edit by amount",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788324284.745609",
@@ -2474,8 +2474,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 11:44",
-      "text": "and the total amount comes out LESS … well .. .nothing much we can do we dno where to add the “missing” amount to",
-      "feature": "?"
+      "text": "and the total amount comes out LESS \u2026 well .. .nothing much we can do we dno where to add the \u201cmissing\u201d amount to",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788324429.032749",
@@ -2484,7 +2484,7 @@
       "by": "Sam O",
       "at": "2026-09-02 11:47",
       "text": "Okay so if its edit by credit, we take the retainer amount as final (if its lower) - we would then take the difference between calculated amount and retainer amount and split between project lines?\n\nI",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788325613.979169",
@@ -2493,7 +2493,7 @@
       "by": "Sam O",
       "at": "2026-09-02 12:06",
       "text": "Okay\nIf lower then we split the difference between the project lines\nand edit as amount is the final value\nIn PR",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788326453.150829",
@@ -2502,7 +2502,7 @@
       "by": "you",
       "at": "2026-09-02 12:20",
       "text": "Thank you sirs",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788326519.371499",
@@ -2511,7 +2511,7 @@
       "by": "Sam O",
       "at": "2026-09-02 12:21",
       "text": "Merging now into dev, in 7 minutes you should be able to test.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788326782.956499",
@@ -2520,7 +2520,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 12:26",
       "text": "honestly speaking.. once they try this.. .they might have their own opinions too",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788327214.342499",
@@ -2529,7 +2529,7 @@
       "by": "you",
       "at": "2026-09-02 12:33",
       "text": "I am wondering how can we prevent similar situations from happening again. We were literally gathering requirements for weeks before starting work, and we still ending up find this out ourselves at la",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788327223.734479",
@@ -2537,7 +2537,7 @@
       "by": "Sam O",
       "at": "2026-09-02 12:33",
       "text": "@Liam Leung @Carlos Lopes\nNew create manual invoice route - with own billing cycle.\n\nPOST\n_`/api/v1/invoices`_\n\nThis route allows the user to add a invoice manually - inserting each project, creditsUs",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788327795.118019",
@@ -2546,7 +2546,7 @@
       "by": "you",
       "at": "2026-09-02 12:43",
       "text": "I am not talking about us either",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788327838.673959",
@@ -2555,7 +2555,7 @@
       "by": "you",
       "at": "2026-09-02 12:43",
       "text": "Thanks man :pray:",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788327948.691429",
@@ -2564,7 +2564,7 @@
       "by": "Sam O",
       "at": "2026-09-02 12:45",
       "text": "Lol I dont disagree here, but unfortunately they sometimes think of things later and forget to tell us.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788328334.649819",
@@ -2572,8 +2572,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 12:52",
-      "text": "yes i know and i’ve already also voiced this out… (not just this time) but.. when it happens.. what can you do",
-      "feature": "?"
+      "text": "yes i know and i\u2019ve already also voiced this out\u2026 (not just this time) but.. when it happens.. what can you do",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788328345.206889",
@@ -2581,8 +2581,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 12:52",
-      "text": "they know we’re scrambling.. but they also it’s not cause we “missed” anything",
-      "feature": "?"
+      "text": "they know we\u2019re scrambling.. but they also it\u2019s not cause we \u201cmissed\u201d anything",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788328422.001469",
@@ -2591,7 +2591,7 @@
       "by": "you",
       "at": "2026-09-02 12:53",
       "text": "Hopefully I can output better designs and business requirements once I am FT and closer to this",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788328434.344059",
@@ -2600,7 +2600,7 @@
       "by": "you",
       "at": "2026-09-02 12:53",
       "text": "We are getting there !",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788330096.141409",
@@ -2609,7 +2609,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 13:21",
       "text": "Oui!",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788330117.495089",
@@ -2617,8 +2617,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 13:21",
-      "text": "Don’t forget! this app is being used daily and HEAVILY actually.. and is already solving daily issues",
-      "feature": "?"
+      "text": "Don\u2019t forget! this app is being used daily and HEAVILY actually.. and is already solving daily issues",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788334319.043229",
@@ -2627,15 +2627,15 @@
       "by": "you",
       "at": "2026-09-02 14:31",
       "text": "ok guys, so we cleared the question of \"what happens if they use less credits than they paid for\"\n\nbut what about if they used more ?\n\nSay 120 of 100 credits, and their overage rate is $80/credit. The",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788334748.704529",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-02 14:39",
-      "text": "ho @Sam O noticed one thing in the invoice.. the bank details seem to “interupt” the invoice .. can we place them belw the “balance”",
-      "feature": "?"
+      "text": "ho @Sam O noticed one thing in the invoice.. the bank details seem to \u201cinterupt\u201d the invoice .. can we place them belw the \u201cbalance\u201d",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788334814.176489",
@@ -2644,7 +2644,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 14:40",
       "text": "oui",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788334830.218109",
@@ -2652,8 +2652,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 14:40",
-      "text": "and if they want to bring it back down to “base” rate",
-      "feature": "?"
+      "text": "and if they want to bring it back down to \u201cbase\u201d rate",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788334832.763209",
@@ -2662,7 +2662,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 14:40",
       "text": "they can add a discount",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788334841.431279",
@@ -2670,7 +2670,7 @@
       "by": "Sam O",
       "at": "2026-09-02 14:40",
       "text": "Sure let me restructure.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788334956.452889",
@@ -2679,7 +2679,7 @@
       "by": "Sam O",
       "at": "2026-09-02 14:42",
       "text": "so overage and rollover credits apply to edited invoices now?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335046.606359",
@@ -2688,7 +2688,7 @@
       "by": "SWE Slack To Trello",
       "at": "2026-09-02 14:44",
       "text": "Ticket has been created by Foong Leung, you can track progress with the commands `/summary` or `/summary:all`, or visit our trello board at https://trello.com/invite/b/6a20ed52a8d9725b59ceb3bb/ATTI395",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335049.195979",
@@ -2696,8 +2696,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 14:44",
-      "text": "okay let’s play this out",
-      "feature": "?"
+      "text": "okay let\u2019s play this out",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335067.027859",
@@ -2705,8 +2705,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 14:44",
-      "text": "if i have 100 base credits… and my retainer is at $100",
-      "feature": "?"
+      "text": "if i have 100 base credits\u2026 and my retainer is at $100",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335069.341979",
@@ -2715,7 +2715,7 @@
       "by": "Sam O",
       "at": "2026-09-02 14:44",
       "text": "To get this straight -\n\nIf we do editByCredits - we can apply rolloverCredits as well as overage\n\nBut if we are editing by amounts - overage/ rollover change the source of truth",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335083.871219",
@@ -2724,7 +2724,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 14:44",
       "text": "i edit my projects to be 60 and 60.. so now my credit usage is 120 for this invoice.. but my base credits is at 100 still",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335158.646969",
@@ -2732,8 +2732,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 14:45",
-      "text": "to answer your question sam… yes? it seems possible to do right?",
-      "feature": "?"
+      "text": "to answer your question sam\u2026 yes? it seems possible to do right?",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335164.042609",
@@ -2741,8 +2741,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 14:46",
-      "text": "sorry i know we’ve been messy with this logic",
-      "feature": "?"
+      "text": "sorry i know we\u2019ve been messy with this logic",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335292.706149",
@@ -2751,7 +2751,7 @@
       "by": "you",
       "at": "2026-09-02 14:48",
       "text": "move fast and break things haha",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788335298.473359",
@@ -2760,7 +2760,7 @@
       "by": "you",
       "at": "2026-09-02 14:48",
       "text": "said by Zuck himself",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788335316.248499",
@@ -2769,7 +2769,7 @@
       "by": "Sam O",
       "at": "2026-09-02 14:48",
       "text": "Okay so editByCredit, (now that we are not doing splits and passing in all projects with credits)\nShould be fine to apply both rollover credits and overage to the invoice\n\nBut edit by amount I dont th",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335630.011579",
@@ -2777,8 +2777,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 14:53",
-      "text": "unless… we backward calculate credit from final amount?",
-      "feature": "?"
+      "text": "unless\u2026 we backward calculate credit from final amount?",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335634.928439",
@@ -2787,7 +2787,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 14:53",
       "text": "but that might introduce something insane",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335636.314669",
@@ -2796,7 +2796,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 14:53",
       "text": "lol",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335705.315219",
@@ -2805,7 +2805,7 @@
       "by": "you",
       "at": "2026-09-02 14:55",
       "text": "i wonder how ie law firms handling billing ?\n\ni mean different levels of lawyers will have different hourly rates\n\nand each task has billable hours and actual hours worked\n\nalso operates on retainer e",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335708.235899",
@@ -2814,7 +2814,7 @@
       "by": "Sam O",
       "at": "2026-09-02 14:55",
       "text": "Well we will be backward calculating credits, so technically I guess we could",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335713.189209",
@@ -2823,7 +2823,7 @@
       "by": "you",
       "at": "2026-09-02 14:55",
       "text": "there must be something we can steal right",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335735.411319",
@@ -2832,7 +2832,7 @@
       "by": "Sam O",
       "at": "2026-09-02 14:55",
       "text": "Let me see if I can make something happen",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335833.435519",
@@ -2841,7 +2841,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 14:57",
       "text": "lawyers have to log hours",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335834.767949",
@@ -2849,8 +2849,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 14:57",
-      "text": "so it’s like",
-      "feature": "?"
+      "text": "so it\u2019s like",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335837.249629",
@@ -2859,7 +2859,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 14:57",
       "text": "a button on their comp",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335839.305979",
@@ -2867,8 +2867,8 @@
       "thread": "1788323550.323719",
       "by": "Foong Leung",
       "at": "2026-09-02 14:57",
-      "text": "“start task”",
-      "feature": "?"
+      "text": "\u201cstart task\u201d",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335844.392829",
@@ -2877,7 +2877,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 14:57",
       "text": "and when they take a shit they have to press pause",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335850.461299",
@@ -2886,7 +2886,7 @@
       "by": "you",
       "at": "2026-09-02 14:57",
       "text": "and we log capacity riht",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335852.721319",
@@ -2895,7 +2895,7 @@
       "by": "you",
       "at": "2026-09-02 14:57",
       "text": "right*",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335866.177879",
@@ -2904,7 +2904,7 @@
       "by": "you",
       "at": "2026-09-02 14:57",
       "text": "so someone put in a number in the task / subtask",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788335885.732269",
@@ -2913,7 +2913,7 @@
       "by": "you",
       "at": "2026-09-02 14:58",
       "text": "and that's what we end up billing ? correct me if i am wrong hto",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336010.183029",
@@ -2922,7 +2922,7 @@
       "by": "Sam O",
       "at": "2026-09-02 15:00",
       "text": "We record loads - which get translated into credits (external) and capacity (internal)",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336069.679409",
@@ -2931,7 +2931,7 @@
       "by": "you",
       "at": "2026-09-02 15:01",
       "text": "yeah yeah, but it's actually the same thing tho - just a number, the higher it is the more you get paid",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336099.965669",
@@ -2940,7 +2940,7 @@
       "by": "Sam O",
       "at": "2026-09-02 15:01",
       "text": "We should be able to backwards track it and then come up with a new figure, then apply available rollover credits and overage - just need to add it in as previously we said no, we wont.\nIt also means ",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336118.299029",
@@ -2949,7 +2949,7 @@
       "by": "Sam O",
       "at": "2026-09-02 15:01",
       "text": "Yes until you hit overage which is a different amount per credit.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336139.274299",
@@ -2958,7 +2958,7 @@
       "by": "you",
       "at": "2026-09-02 15:02",
       "text": "yeah so that's if you have a lawyer on retainer but you got sued 5 times this month instead of the usual 2 times",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336142.166059",
@@ -2967,7 +2967,7 @@
       "by": "you",
       "at": "2026-09-02 15:02",
       "text": "and he charges you more because the work exceeds the inital retainer amount you both agreed to",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336143.617299",
@@ -2976,7 +2976,7 @@
       "by": "you",
       "at": "2026-09-02 15:02",
       "text": "right",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336259.458089",
@@ -2985,7 +2985,7 @@
       "by": "Sam O",
       "at": "2026-09-02 15:04",
       "text": "And also if we are doing line by line per project based off amount\ntechnically we could back track credits, then see how much we are over then charge regular rates for all base credits , then charge r",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336300.888419",
@@ -2994,7 +2994,7 @@
       "by": "Sam O",
       "at": "2026-09-02 15:05",
       "text": "Which is why we originally took it out.\n\nIf we edit projects by credits per projects, thats easy to apply rollover and overage to, but then doing edit projects by amount, it becomes more murky..",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336412.995599",
@@ -3002,8 +3002,8 @@
       "thread": "1788323550.323719",
       "by": "Sam O",
       "at": "2026-09-02 15:06",
-      "text": "So my suggestion would be to state, if we edit projects by credit we can apply rollover / overage — but if we do it by amount we cannot.",
-      "feature": "?"
+      "text": "So my suggestion would be to state, if we edit projects by credit we can apply rollover / overage \u2014 but if we do it by amount we cannot.",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336460.685589",
@@ -3012,7 +3012,7 @@
       "by": "you",
       "at": "2026-09-02 15:07",
       "text": "i wonder if we really need to make things this cryptic for the customers haha\n\nso essentially right now a ine on an invoice is being asked to carry two different meanings at once:\n\n1. how much work ha",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336467.431569",
@@ -3021,7 +3021,7 @@
       "by": "Sam O",
       "at": "2026-09-02 15:07",
       "text": "Also technically if you have multiple invoices within the same billing period and we start playing with rollover credits we could end up promising those credits to multiple invoices.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336514.448439",
@@ -3029,8 +3029,8 @@
       "thread": "1788323550.323719",
       "by": "Sam O",
       "at": "2026-09-02 15:08",
-      "text": "I dont disagree with you but this is what Angie and Peter have been doing the whole time and I think they want to retain a similar invoice structure…",
-      "feature": "?"
+      "text": "I dont disagree with you but this is what Angie and Peter have been doing the whole time and I think they want to retain a similar invoice structure\u2026",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336615.181819",
@@ -3038,8 +3038,8 @@
       "thread": "1788323550.323719",
       "by": "you",
       "at": "2026-09-02 15:10",
-      "text": "why don't we split the invoice into two kind of lines:\n\n1. *Usage, so* one per project, always`credits × base rate`. Never touched by retainer, rollover, or overage logic. Editing credits here is safe",
-      "feature": "?"
+      "text": "why don't we split the invoice into two kind of lines:\n\n1. *Usage, so* one per project, always`credits \u00d7 base rate`. Never touched by retainer, rollover, or overage logic. Editing credits here is safe",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336661.149829",
@@ -3048,7 +3048,7 @@
       "by": "you",
       "at": "2026-09-02 15:11",
       "text": "if we edit by amount, it's a complete override, everything gets dropped and the amount written on the line is the final truth",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336746.799459",
@@ -3057,7 +3057,7 @@
       "by": "you",
       "at": "2026-09-02 15:12",
       "text": "otherwise we are inventing a new billing system for a problem every professional service firm in the world already solved :sweat_smile:",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788336906.839289",
@@ -3066,7 +3066,7 @@
       "by": "Sam O",
       "at": "2026-09-02 15:15",
       "text": "Foong is currently in a meeting with candidates. Lets see what he says when he is back.\n\nI can easily add rollover/ overage to invoices that were editByCredit true.\nIts just the editByCredit false one",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788337038.018979",
@@ -3075,7 +3075,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 15:17",
       "text": "can we hop on a call in 10 mins",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788337040.441619",
@@ -3084,7 +3084,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 15:17",
       "text": "just catch me up",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788337046.197109",
@@ -3093,7 +3093,7 @@
       "by": "Sam O",
       "at": "2026-09-02 15:17",
       "text": "sure",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788337053.396519",
@@ -3102,7 +3102,7 @@
       "by": "you",
       "at": "2026-09-02 15:17",
       "text": "yup yup",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788337301.218439",
@@ -3111,7 +3111,7 @@
       "by": "you",
       "at": "2026-09-02 15:21",
       "text": "actually i need 20 minutes",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788339458.816409",
@@ -3120,7 +3120,7 @@
       "by": "you",
       "at": "2026-09-02 15:57",
       "text": "ok just wirting here",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788339526.860629",
@@ -3129,7 +3129,7 @@
       "by": "you",
       "at": "2026-09-02 15:58",
       "text": "Edit by credits:\n\n1. under retainer -> credits will be distributed amongst the projects\n2. over retainer -> one line overage charge\nEdit by amount:\n\n1. discard all overage, underage, retainer logic, w",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788339644.673499",
@@ -3138,7 +3138,7 @@
       "by": "Sam O",
       "at": "2026-09-02 16:00",
       "text": "perfect",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788340605.235189",
@@ -3146,7 +3146,7 @@
       "by": "Sam O",
       "at": "2026-09-02 16:16",
       "text": "Couple of questions regarding rollover credits:\n\n1. For any invoice, should we only be able to apply full rollover credits? - For now I am saying this is going to be true - must be full credits\n2. Whe",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788342439.699049",
@@ -3155,7 +3155,7 @@
       "by": "Sam O",
       "at": "2026-09-02 16:47",
       "text": "I am going to make it so we can do that, but I will be applying an additional line into the saved / returned description show that we are using up a rollover credit to even it out.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788342786.973019",
@@ -3164,7 +3164,7 @@
       "by": "Sam O",
       "at": "2026-09-02 16:53",
       "text": "The additional rollover credits applied to an invoice, in the description should look like this:\n```\"additionalRollover\": {\n  \"description\": \"Additional Rollover Credits Applied\",\n  \"quantity\": \"1\",\n ",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788343023.842999",
@@ -3173,7 +3173,7 @@
       "by": "Sam O",
       "at": "2026-09-02 16:57",
       "text": "So one more thing to display for the FE",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788343168.388309",
@@ -3182,7 +3182,7 @@
       "by": "Sam O",
       "at": "2026-09-02 16:59",
       "text": "This is what the invoice will look like now with that I applied.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788343621.681599",
@@ -3191,7 +3191,7 @@
       "by": "Sam O",
       "at": "2026-09-02 17:07",
       "text": "This is all in PR currently.",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788344183.723449",
@@ -3200,7 +3200,7 @@
       "by": "you",
       "at": "2026-09-02 17:16",
       "text": "rollover = have credits left = underage (not meet retainer) right ?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788344414.900279",
@@ -3209,7 +3209,7 @@
       "by": "Sam O",
       "at": "2026-09-02 17:20",
       "text": "If we dont meet retainer - underage, so we spread amount across projects to hit the total - so we meet retainer\n\nif we hit base credits with creditsUsed we hit retainer.\n\nIf we are over by just a litt",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788344441.978989",
@@ -3217,8 +3217,8 @@
       "thread": "1788340605.235189",
       "by": "Sam O",
       "at": "2026-09-02 17:20",
-      "text": "{“projects”: […], “invoiceTotal”: “100.00”, “additionalRollover”: {“rate”: “2.00\", “amount”: “-1.33\", “display”: “1 @ $2.00 = -$1.33\", “quantity”: “1\", “description”: “Additional Rollover Credits Appl",
-      "feature": "?"
+      "text": "{\u201cprojects\u201d: [\u2026], \u201cinvoiceTotal\u201d: \u201c100.00\u201d, \u201cadditionalRollover\u201d: {\u201crate\u201d: \u201c2.00\", \u201camount\u201d: \u201c-1.33\", \u201cdisplay\u201d: \u201c1 @ $2.00 = -$1.33\", \u201cquantity\u201d: \u201c1\", \u201cdescription\u201d: \u201cAdditional Rollover Credits Appl",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788344473.175079",
@@ -3227,7 +3227,7 @@
       "by": "Sam O",
       "at": "2026-09-02 17:21",
       "text": "Does that make sense?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788344991.442599",
@@ -3236,7 +3236,7 @@
       "by": "you",
       "at": "2026-09-02 17:29",
       "text": "yeah it does",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788344994.582919",
@@ -3245,7 +3245,7 @@
       "by": "you",
       "at": "2026-09-02 17:29",
       "text": "thanks for this man",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788345028.690159",
@@ -3254,7 +3254,7 @@
       "by": "Sam O",
       "at": "2026-09-02 17:30",
       "text": "np",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788345118.094959",
@@ -3263,7 +3263,7 @@
       "by": "Sam O",
       "at": "2026-09-02 17:31",
       "text": "merging now will be up in about 8 minutes",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788354089.694639",
@@ -3271,7 +3271,7 @@
       "by": "you",
       "at": "2026-09-02 20:01",
       "text": "No meeting tonight yeah",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788354110.644179",
@@ -3279,7 +3279,7 @@
       "by": "Sam O",
       "at": "2026-09-02 20:01",
       "text": "I think it was moved to tomorrow yeah",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788354169.201959",
@@ -3287,7 +3287,7 @@
       "by": "you",
       "at": "2026-09-02 20:02",
       "text": "Cool cool",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788354748.823939",
@@ -3295,7 +3295,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 20:12",
       "text": "Tmr tmr",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788354787.981739",
@@ -3303,7 +3303,7 @@
       "by": "Foong Leung",
       "at": "2026-09-02 20:13",
       "text": "Just FYI... Zapier and airtable is costing the company 1k usd per month (lol) alden portal dev.. Db and prod cost us roughly 600 in hosting",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788354809.392229",
@@ -3311,15 +3311,15 @@
       "by": "Foong Leung",
       "at": "2026-09-02 20:13",
       "text": "We need to roll off airtable ASAP..... I have the using it concurrently one more month but that maybe it",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788386868.215029",
       "kind": "message",
       "by": "Carlos Lopes",
       "at": "2026-09-03 05:07",
-      "text": "• fixed and in staging :white_check_mark:  https://alden-studios.slack.com/archives/C09E28P412L/p1788359510187719 (https://alden-studios.slack.com/archives/C09E28P412L/p1788359510187719), https://alde",
-      "feature": "?"
+      "text": "\u2022 fixed and in staging :white_check_mark:  https://alden-studios.slack.com/archives/C09E28P412L/p1788359510187719 (https://alden-studios.slack.com/archives/C09E28P412L/p1788359510187719), https://alde",
+      "feature": null
     },
     {
       "id": "1788397536.142169",
@@ -3327,15 +3327,15 @@
       "by": "Foong Leung",
       "at": "2026-09-03 08:05",
       "text": "sweet Thank you Carlos",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788397548.693539",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-03 08:05",
-      "text": "I’m going to make a push to prod this morning",
-      "feature": "?"
+      "text": "I\u2019m going to make a push to prod this morning",
+      "feature": null
     },
     {
       "id": "1788398584.047339",
@@ -3343,15 +3343,15 @@
       "by": "you",
       "at": "2026-09-03 08:23",
       "text": "I created a prototype for the usage pages last night. You can view it at /admin/usage\n\nIt might be faster to skip the design and prototype on the code directly \n\nWe can leverage the netlify preview th",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788398914.959369",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-03 08:28",
-      "text": "AI boys… it’s coming to take all our livelihoods",
-      "feature": "?"
+      "text": "AI boys\u2026 it\u2019s coming to take all our livelihoods",
+      "feature": null
     },
     {
       "id": "1788398940.089969",
@@ -3360,7 +3360,7 @@
       "by": "Foong Leung",
       "at": "2026-09-03 08:29",
       "text": "are they in preview now?\n\nI know carlos does that",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788399027.527259",
@@ -3368,8 +3368,8 @@
       "thread": "1788398584.047339",
       "by": "you",
       "at": "2026-09-03 08:30",
-      "text": "Now it’s on staging, it’s just static code and not in the nav bar so I merged it.\n\nBut I believe the preview it doesn't work because it redirects you to staging instead of the preview",
-      "feature": "?"
+      "text": "Now it\u2019s on staging, it\u2019s just static code and not in the nav bar so I merged it.\n\nBut I believe the preview it doesn't work because it redirects you to staging instead of the preview",
+      "feature": null
     },
     {
       "id": "1788399090.514169",
@@ -3377,8 +3377,8 @@
       "thread": "1788398584.047339",
       "by": "you",
       "at": "2026-09-03 08:31",
-      "text": "It would be good to get it working tho, then we can hold these new features in a branch with preview, and only merge when it’s ready to be released \n\nSo whatever on staging is always ready (and more i",
-      "feature": "?"
+      "text": "It would be good to get it working tho, then we can hold these new features in a branch with preview, and only merge when it\u2019s ready to be released \n\nSo whatever on staging is always ready (and more i",
+      "feature": null
     },
     {
       "id": "1788399128.926879",
@@ -3387,7 +3387,7 @@
       "by": "Foong Leung",
       "at": "2026-09-03 08:32",
       "text": "is it because of the auth system? it re-directs you to auth and then auth redirects you back to staging?",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788399135.603139",
@@ -3396,7 +3396,7 @@
       "by": "you",
       "at": "2026-09-03 08:32",
       "text": "I think so haha",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788399146.965689",
@@ -3404,8 +3404,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 08:32",
-      "text": "yea let’s think of a strat to combat that",
-      "feature": "?"
+      "text": "yea let\u2019s think of a strat to combat that",
+      "feature": null
     },
     {
       "id": "1788399155.572539",
@@ -3413,8 +3413,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 08:32",
-      "text": "maybe a fake user if you’re on preview",
-      "feature": "?"
+      "text": "maybe a fake user if you\u2019re on preview",
+      "feature": null
     },
     {
       "id": "1788399163.626959",
@@ -3423,7 +3423,7 @@
       "by": "you",
       "at": "2026-09-03 08:32",
       "text": "I didn't look into it in detail yet but I think thats along the lines of it",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788399165.747319",
@@ -3432,7 +3432,7 @@
       "by": "you",
       "at": "2026-09-03 08:32",
       "text": "Yeah yeah",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788399170.224329",
@@ -3441,7 +3441,7 @@
       "by": "you",
       "at": "2026-09-03 08:32",
       "text": "I can have a think today",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788399173.628719",
@@ -3450,7 +3450,7 @@
       "by": "you",
       "at": "2026-09-03 08:32",
       "text": "Do some research",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788399227.311279",
@@ -3458,8 +3458,8 @@
       "thread": "1788398584.047339",
       "by": "you",
       "at": "2026-09-03 08:33",
-      "text": "But yeah checkout the /admin/usage pages…see if it meets the requirements :man-bowing::pray:",
-      "feature": "?"
+      "text": "But yeah checkout the /admin/usage pages\u2026see if it meets the requirements :man-bowing::pray:",
+      "feature": null
     },
     {
       "id": "1788399282.160149",
@@ -3468,7 +3468,7 @@
       "by": "you",
       "at": "2026-09-03 08:34",
       "text": "die",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788399668.207329",
@@ -3477,7 +3477,7 @@
       "by": "Foong Leung",
       "at": "2026-09-03 08:41",
       "text": "nice okok thanks man",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788402170.588759",
@@ -3485,16 +3485,16 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 09:22",
-      "text": "Hey we need this to look a bit more like what the cap portal one.. this isn’t currently showing what we need and there are quite a few issues with this.\n\n“Active Tab”\n1. On the active page, this has t",
-      "feature": "?"
+      "text": "Hey we need this to look a bit more like what the cap portal one.. this isn\u2019t currently showing what we need and there are quite a few issues with this.\n\n\u201cActive Tab\u201d\n1. On the active page, this has t",
+      "feature": "admin/usage"
     },
     {
       "id": "1788402278.412049",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-03 09:24",
-      "text": "Let’s talk about this tonight.. because the usage of this page isn’t just another “information only” page there is very specific use case for this that they are used to so we need to make sure that’s ",
-      "feature": "?"
+      "text": "Let\u2019s talk about this tonight.. because the usage of this page isn\u2019t just another \u201cinformation only\u201d page there is very specific use case for this that they are used to so we need to make sure that\u2019s ",
+      "feature": "admin/usage"
     },
     {
       "id": "1788404543.206139",
@@ -3503,7 +3503,7 @@
       "by": "Sam O",
       "at": "2026-09-03 10:02",
       "text": "",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788404543.419849",
@@ -3512,7 +3512,7 @@
       "by": "Sam O",
       "at": "2026-09-03 10:02",
       "text": "Here is an example of the response I am currently working on to support the page it is above",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788404572.755169",
@@ -3520,8 +3520,8 @@
       "thread": "1788398584.047339",
       "by": "you",
       "at": "2026-09-03 10:02",
-      "text": "• Cat Portal View Requirements\n    ◦ @Foong Leung explained cat portal external view was originally client-side work but must move up due to invoicing implications from lack of foresight. [3:43]\n    ◦",
-      "feature": "?"
+      "text": "\u2022 Cat Portal View Requirements\n    \u25e6 @Foong Leung explained cat portal external view was originally client-side work but must move up due to invoicing implications from lack of foresight. [3:43]\n    \u25e6",
+      "feature": "admin/usage"
     },
     {
       "id": "1788404701.922849",
@@ -3529,8 +3529,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 10:05",
-      "text": "let’s discuss it tonight but even in there there are a few things missed:\n1. Current system lacks monthly view showing client charges and usage status; new page must display tasks with credit consumpt",
-      "feature": "?"
+      "text": "let\u2019s discuss it tonight but even in there there are a few things missed:\n1. Current system lacks monthly view showing client charges and usage status; new page must display tasks with credit consumpt",
+      "feature": "admin/usage"
     },
     {
       "id": "1788404816.396769",
@@ -3539,7 +3539,7 @@
       "by": "Sam O",
       "at": "2026-09-03 10:06",
       "text": "They wanted to follow the same design as show before, though instead of view by project, because we now have tasks, we are looking at displaying by task.\n\nSoo the project bar above, would show how muc",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788404876.842229",
@@ -3548,7 +3548,7 @@
       "by": "you",
       "at": "2026-09-03 10:07",
       "text": "Can we actually list out what we need ? Like \n\n1. item 1\n2. Item 2",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788404906.473249",
@@ -3557,7 +3557,7 @@
       "by": "you",
       "at": "2026-09-03 10:08",
       "text": "Because the screenshots shows projects but you guys are talking about tasks",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788404918.070329",
@@ -3566,7 +3566,7 @@
       "by": "you",
       "at": "2026-09-03 10:08",
       "text": "I think I am missing the context",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788404925.662199",
@@ -3575,7 +3575,7 @@
       "by": "Sam O",
       "at": "2026-09-03 10:08",
       "text": "Sure",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788404957.508299",
@@ -3584,7 +3584,7 @@
       "by": "Sam O",
       "at": "2026-09-03 10:09",
       "text": "Let me go through and compose that this afternoon - I will give examples with the api sample provided",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788404970.562189",
@@ -3593,7 +3593,7 @@
       "by": "you",
       "at": "2026-09-03 10:09",
       "text": "cool cool",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788405376.058719",
@@ -3601,8 +3601,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 10:16",
-      "text": "the naming convention (this was discussed yesterday) was different old portal to this portal… so while it is project name.. like our task portal.. it’s essentially just the name.. those are the “tasks",
-      "feature": "?"
+      "text": "the naming convention (this was discussed yesterday) was different old portal to this portal\u2026 so while it is project name.. like our task portal.. it\u2019s essentially just the name.. those are the \u201ctasks",
+      "feature": "admin/usage"
     },
     {
       "id": "1788405538.837179",
@@ -3611,7 +3611,7 @@
       "by": "Foong Leung",
       "at": "2026-09-03 10:18",
       "text": "not too sure what you mean about the upper right corner slider?\nif you click openthe slide there are room for those metadata to go in?\nwe can we need to edit data per month",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788405655.688389",
@@ -3620,7 +3620,7 @@
       "by": "you",
       "at": "2026-09-03 10:20",
       "text": "Sorry what's the task portal ?",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788405678.831409",
@@ -3629,7 +3629,7 @@
       "by": "you",
       "at": "2026-09-03 10:21",
       "text": "the corner slider, if you click on the button on the upper right corner, there are some bars",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788405882.276499",
@@ -3637,8 +3637,8 @@
       "thread": "1788398584.047339",
       "by": "you",
       "at": "2026-09-03 10:24",
-      "text": "Ok so what I am getting now is:\n\n1. It’s essentially the same as new projects task page, but we need to show the credits / load / asset type that is used for each task + subtask",
-      "feature": "?"
+      "text": "Ok so what I am getting now is:\n\n1. It\u2019s essentially the same as new projects task page, but we need to show the credits / load / asset type that is used for each task + subtask",
+      "feature": "admin/usage"
     },
     {
       "id": "1788405967.679539",
@@ -3646,8 +3646,8 @@
       "thread": "1788398584.047339",
       "by": "you",
       "at": "2026-09-03 10:26",
-      "text": "And the bars are:\n\n1. How much credit used by the task vs what’s available",
-      "feature": "?"
+      "text": "And the bars are:\n\n1. How much credit used by the task vs what\u2019s available",
+      "feature": "admin/usage"
     },
     {
       "id": "1788405969.742739",
@@ -3656,7 +3656,7 @@
       "by": "Foong Leung",
       "at": "2026-09-03 10:26",
       "text": "we can go through some of those design choices when we get a chance to talk about it tonight more.\n\n\ntask portal i just meant alden portal",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788405991.871119",
@@ -3664,8 +3664,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 10:26",
-      "text": "it’s kind of like the project task page.. however it’s not grouped by “projects” anymore",
-      "feature": "?"
+      "text": "it\u2019s kind of like the project task page.. however it\u2019s not grouped by \u201cprojects\u201d anymore",
+      "feature": "admin/usage"
     },
     {
       "id": "1788405997.175069",
@@ -3673,8 +3673,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 10:26",
-      "text": "it’s grouped by all tasks for an entity",
-      "feature": "?"
+      "text": "it\u2019s grouped by all tasks for an entity",
+      "feature": "admin/usage"
     },
     {
       "id": "1788406013.694709",
@@ -3682,8 +3682,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 10:26",
-      "text": "so it’s kind of like….",
-      "feature": "?"
+      "text": "so it\u2019s kind of like\u2026.",
+      "feature": "admin/usage"
     },
     {
       "id": "1788406097.914949",
@@ -3691,8 +3691,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 10:28",
-      "text": "if we took the admin projets page.. and chose “group by: entity” and instead of showing each project we just showed all the tasks that entity has for them",
-      "feature": "?"
+      "text": "if we took the admin projets page.. and chose \u201cgroup by: entity\u201d and instead of showing each project we just showed all the tasks that entity has for them",
+      "feature": "admin/usage"
     },
     {
       "id": "1788406145.280509",
@@ -3701,7 +3701,7 @@
       "by": "Foong Leung",
       "at": "2026-09-03 10:29",
       "text": "like this",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788406324.018509",
@@ -3709,8 +3709,8 @@
       "thread": "1788398584.047339",
       "by": "you",
       "at": "2026-09-03 10:32",
-      "text": "Thanks…that clears up the grouping. So this is how I understand it… please correct me if I am wrong :cold_face: \n\n1. The name on a row is the project name; two rows both saying \"Residence in Wilmette\"",
-      "feature": "?"
+      "text": "Thanks\u2026that clears up the grouping. So this is how I understand it\u2026 please correct me if I am wrong :cold_face: \n\n1. The name on a row is the project name; two rows both saying \"Residence in Wilmette\"",
+      "feature": "admin/usage"
     },
     {
       "id": "1788406546.572769",
@@ -3718,8 +3718,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 10:35",
-      "text": "yeap points 1-5 look good (we can go over and match it to @Sam O’s API tonight as well i think he’s already creating and doing some final testing today\n\nthe points 1, 2 and 3 of the second part i thin",
-      "feature": "?"
+      "text": "yeap points 1-5 look good (we can go over and match it to @Sam O\u2019s API tonight as well i think he\u2019s already creating and doing some final testing today\n\nthe points 1, 2 and 3 of the second part i thin",
+      "feature": "admin/usage"
     },
     {
       "id": "1788407122.366459",
@@ -3728,7 +3728,7 @@
       "by": "you",
       "at": "2026-09-03 10:45",
       "text": "Yup yup \n\nSorry guys seems I totally missed the mark there :sweat_smile:",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788407224.517949",
@@ -3736,8 +3736,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 10:47",
-      "text": "no all good.. this is in heavy reference to an app you didn’t built at all so alot of the flow / logic from back then would be hard to adapt to",
-      "feature": "?"
+      "text": "no all good.. this is in heavy reference to an app you didn\u2019t built at all so alot of the flow / logic from back then would be hard to adapt to",
+      "feature": "admin/usage"
     },
     {
       "id": "1788407252.848539",
@@ -3746,7 +3746,7 @@
       "by": "Foong Leung",
       "at": "2026-09-03 10:47",
       "text": "we arguably spent more time in proportion to complexity of the app thinking through those logics back int he day than we can afford to for the alden portal",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788411543.592579",
@@ -3755,7 +3755,7 @@
       "by": "you",
       "at": "2026-09-03 11:59",
       "text": "Just looking deeper into this:\n\nThe bar is 110/120\n\nI get that the 110 is the sum of the in progress and completed tasks capacity count \n\nIs 120 a fixed monthly allowance that resets every cycle, or t",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788411566.324339",
@@ -3764,7 +3764,7 @@
       "by": "you",
       "at": "2026-09-03 11:59",
       "text": "I am just digesting this so will post a bunch of questions, but we can go through them tonight for sure",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788412263.112389",
@@ -3773,7 +3773,7 @@
       "by": "you",
       "at": "2026-09-03 12:11",
       "text": "And modelling is counted in hours instead of capacity correct ?\n\n1. Each rows are tasks, expandable to show subtasks (model the project detail tasks)\n2. On click they open the task / subtask modal\n\nAc",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788413464.954139",
@@ -3781,8 +3781,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 12:31",
-      "text": "yea the calculations are.. always a bit funy (ultimately the tool tips we had back then were used to clear all those up.. or attempt to)\n\nthe modeling hours task bar will be fone…",
-      "feature": "?"
+      "text": "yea the calculations are.. always a bit funy (ultimately the tool tips we had back then were used to clear all those up.. or attempt to)\n\nthe modeling hours task bar will be fone\u2026",
+      "feature": "admin/usage"
     },
     {
       "id": "1788413498.243539",
@@ -3790,8 +3790,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 12:31",
-      "text": "120 is the fixed monthly allowance .. and in our version you’re right we’re going to add the rollover into there too.. so there will need to be some information area that indicate how much is base vs ",
-      "feature": "?"
+      "text": "120 is the fixed monthly allowance .. and in our version you\u2019re right we\u2019re going to add the rollover into there too.. so there will need to be some information area that indicate how much is base vs ",
+      "feature": "admin/usage"
     },
     {
       "id": "1788422451.219509",
@@ -3800,7 +3800,7 @@
       "by": "you",
       "at": "2026-09-03 15:00",
       "text": "Hey guys I merging an update to the prototype for the usage pages \n\nI think the initial entity list and the subsequent active tab should be closer to what you guys are expecting. I am sure some things",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788422518.286029",
@@ -3809,7 +3809,7 @@
       "by": "Sam O",
       "at": "2026-09-03 15:01",
       "text": "Understood",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788422649.115589",
@@ -3818,7 +3818,7 @@
       "by": "you",
       "at": "2026-09-03 15:04",
       "text": "Thanks man",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788422657.317449",
@@ -3826,8 +3826,8 @@
       "thread": "1788398584.047339",
       "by": "Foong Leung",
       "at": "2026-09-03 15:04",
-      "text": "got it… nice nice let’s walk through it tonight and have a gander",
-      "feature": "?"
+      "text": "got it\u2026 nice nice let\u2019s walk through it tonight and have a gander",
+      "feature": "admin/usage"
     },
     {
       "id": "1788422665.002419",
@@ -3836,7 +3836,7 @@
       "by": "Foong Leung",
       "at": "2026-09-03 15:04",
       "text": "yes i stole that word from Sam",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788422716.344859",
@@ -3845,7 +3845,7 @@
       "by": "Sam O",
       "at": "2026-09-03 15:05",
       "text": "Its a great word",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788424222.408929",
@@ -3853,15 +3853,15 @@
       "by": "Sam O",
       "at": "2026-09-03 15:30",
       "text": "Regarding the usage page:\n\nGET\n_`/api/v1/invoices/entity/{entityId}/current-cycle`_",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788443113.981219",
       "kind": "message",
       "by": "you",
       "at": "2026-09-03 20:45",
-      "text": "Hi guys I am still on the train home…going to join on my phone",
-      "feature": "?"
+      "text": "Hi guys I am still on the train home\u2026going to join on my phone",
+      "feature": null
     },
     {
       "id": "1788443472.916199",
@@ -3869,7 +3869,7 @@
       "by": "Foong Leung",
       "at": "2026-09-03 20:51",
       "text": "okay",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788443915.292699",
@@ -3877,7 +3877,7 @@
       "by": "Sam O",
       "at": "2026-09-03 20:58",
       "text": "So long as you can see my screen",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788443916.806169",
@@ -3885,7 +3885,7 @@
       "by": "Sam O",
       "at": "2026-09-03 20:58",
       "text": "hahah",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788443930.633499",
@@ -3893,7 +3893,7 @@
       "by": "you",
       "at": "2026-09-03 20:58",
       "text": "I have a big phone :grimacing:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788443939.120689",
@@ -3901,7 +3901,7 @@
       "by": "Sam O",
       "at": "2026-09-03 20:58",
       "text": "a foldable screen one?",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788443942.857319",
@@ -3909,7 +3909,7 @@
       "by": "you",
       "at": "2026-09-03 20:59",
       "text": "Not as big as yours tho :rolling_on_the_floor_laughing:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788443949.241879",
@@ -3917,7 +3917,7 @@
       "by": "you",
       "at": "2026-09-03 20:59",
       "text": "No just iPhone 17 pro max",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788443950.157129",
@@ -3925,7 +3925,7 @@
       "by": "you",
       "at": "2026-09-03 20:59",
       "text": "Hahaha",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788443953.765619",
@@ -3933,7 +3933,7 @@
       "by": "Sam O",
       "at": "2026-09-03 20:59",
       "text": "fair fiar",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788443974.537889",
@@ -3941,7 +3941,7 @@
       "by": "Slackbot",
       "at": "2026-09-03 20:59",
       "text": "",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788448615.558639",
@@ -3949,16 +3949,16 @@
       "by": "Foong Leung",
       "at": "2026-09-03 22:16",
       "text": "Carlos they are going to be:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788448638.379459",
       "kind": "message",
-      "thread": "1788443974.537889",
+      "thread": "17884\u00df43974.537889",
       "by": "Slackbot",
       "at": "2026-09-03 22:17",
       "text": "AI huddle notes are ready. Edit, share, assign action items, or just squirrel them away for later. :chipmunk:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788448651.543649",
@@ -3985,7 +3985,7 @@
       "by": "Foong Leung",
       "at": "2026-09-03 23:11",
       "text": "Confirmed.... Subtask credits are not effected by multipliers",
-      "feature": "?"
+      "feature": "admin/usage"
     },
     {
       "id": "1788466688.367229",
@@ -4013,7 +4013,7 @@
       "by": "Sam O",
       "at": "2026-09-04 08:00",
       "text": "Okay awesome",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788484506.763619",
@@ -4031,7 +4031,7 @@
       "by": "Sam O",
       "at": "2026-09-04 08:27",
       "text": "@Liam Leung @Carlos Lopes\nGoood morning gents,\n\nSlight issue with the Entity Billing Page (image 1):\nBilling Entity Name - should correspond to the legalName value that is in the response - right now ",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788488954.003999",
@@ -4039,7 +4039,7 @@
       "by": "you",
       "at": "2026-09-04 09:29",
       "text": "2mins",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788488992.176689",
@@ -4047,8 +4047,8 @@
       "thread": "1788488954.003999",
       "by": "Foong Leung",
       "at": "2026-09-04 09:29",
-      "text": "call it when you’re ready",
-      "feature": "?"
+      "text": "call it when you\u2019re ready",
+      "feature": null
     },
     {
       "id": "1788489086.543729",
@@ -4084,7 +4084,7 @@
       "by": "Sam O",
       "at": "2026-09-07 08:50",
       "text": "This is in regards to subtask hours right?\nI think its 2.\nbut let me check",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788745915.674669",
@@ -4092,7 +4092,7 @@
       "by": "Sam O",
       "at": "2026-09-07 08:51",
       "text": "1 hour = 2.5 capacity unit",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788745937.749709",
@@ -4100,7 +4100,7 @@
       "by": "Sam O",
       "at": "2026-09-07 08:52",
       "text": "The current code for it",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788746052.524249",
@@ -4108,7 +4108,7 @@
       "by": "Foong Leung",
       "at": "2026-09-07 08:54",
       "text": "the first",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788746052.900019",
@@ -4116,7 +4116,7 @@
       "by": "you",
       "at": "2026-09-07 08:54",
       "text": "Gotcha",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788746052.915149",
@@ -4124,7 +4124,7 @@
       "by": "Foong Leung",
       "at": "2026-09-07 08:54",
       "text": "yea",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788746070.868719",
@@ -4132,7 +4132,7 @@
       "by": "you",
       "at": "2026-09-07 08:54",
       "text": "Wait",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788746074.310549",
@@ -4140,7 +4140,7 @@
       "by": "you",
       "at": "2026-09-07 08:54",
       "text": "First or second ?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788746544.562549",
@@ -4148,7 +4148,7 @@
       "by": "Foong Leung",
       "at": "2026-09-07 09:02",
       "text": "sorry wait",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788746556.004529",
@@ -4156,7 +4156,7 @@
       "by": "Foong Leung",
       "at": "2026-09-07 09:02",
       "text": "1 hour is 2.5 cap",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788746613.919399",
@@ -4164,7 +4164,7 @@
       "by": "you",
       "at": "2026-09-07 09:03",
       "text": ":man-bowing::man-bowing:",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788748246.235359",
@@ -4191,15 +4191,15 @@
       "by": "Foong Leung",
       "at": "2026-09-07 11:10",
       "text": "wwait wait wait wait wait",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788754286.688799",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-07 11:11",
-      "text": "i’m going to shut up now",
-      "feature": "?"
+      "text": "i\u2019m going to shut up now",
+      "feature": null
     },
     {
       "id": "1788763603.604559",
@@ -4375,7 +4375,7 @@
       "by": "you",
       "at": "2026-09-07 14:11",
       "text": "Re this comment: miro.com/app/board/uXjVH5mGKaQ=?openComment=3458764682625787522 (https://miro.com/app/board/uXjVH5mGKaQ=/?openComment=3458764682625787522)\n\ni think it's not an issue anymore ? by defa",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788765145.365959",
@@ -4384,7 +4384,7 @@
       "by": "Foong Leung",
       "at": "2026-09-07 14:12",
       "text": "yea i think this is based off an older scren shot/",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1788765769.961079",
@@ -4411,7 +4411,7 @@
       "kind": "message",
       "by": "Sam O",
       "at": "2026-09-07 16:13",
-      "text": "@Liam Leung @Carlos Lopes  - Who ever is in charge of the email invoices:\n\n(Image One)\nIf an invoice has already been sent the subsequent emails should be “reminder” emails, which means you need to al",
+      "text": "@Liam Leung @Carlos Lopes  - Who ever is in charge of the email invoices:\n\n(Image One)\nIf an invoice has already been sent the subsequent emails should be \u201creminder\u201d emails, which means you need to al",
       "feature": "admin/invoicing",
       "prefilled_by": "work.json"
     },
@@ -4420,7 +4420,7 @@
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-07 16:21",
-      "text": "@Carlos Lopes we’ll go through this tonight but i want to ype a quick summary right now:\n\nthe attached i have the details in an MD file but i have also updated the PUT requests (and POST requests)\n\nfo",
+      "text": "@Carlos Lopes we\u2019ll go through this tonight but i want to ype a quick summary right now:\n\nthe attached i have the details in an MD file but i have also updated the PUT requests (and POST requests)\n\nfo",
       "feature": "tasks",
       "prefilled_by": "work.json"
     },
@@ -4498,7 +4498,7 @@
       "thread": "1788774985.655159",
       "by": "Foong Leung",
       "at": "2026-09-07 16:58",
-      "text": "for now for subtask edit though.. that one let’s just keep to edit what is already populated.. because.. we’re not even sure how to do it otherwise on the be",
+      "text": "for now for subtask edit though.. that one let\u2019s just keep to edit what is already populated.. because.. we\u2019re not even sure how to do it otherwise on the be",
       "feature": "admin/usage",
       "prefilled_by": "work.json"
     },
@@ -4558,7 +4558,7 @@
       "thread": "1788774985.655159",
       "by": "you",
       "at": "2026-09-07 17:12",
-      "text": "Ah nice…thanks man :man-bowing::pray:",
+      "text": "Ah nice\u2026thanks man :man-bowing::pray:",
       "feature": "admin/usage",
       "prefilled_by": "work.json"
     },
@@ -4717,14 +4717,14 @@
       "by": "Foong Leung",
       "at": "2026-09-08 13:41",
       "text": "@Carlos Lopes the subtask capacity hours still not up in staging?\n\nthese need to be changed according to my msg above just fyi",
-      "feature": "?"
+      "feature": "dashboard"
     },
     {
       "id": "1788858465.715459",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-08 16:07",
-      "text": "Hey @Liam Leung… this new design is awesome.. was just going through again and most things look relaly good… and i know there is a bunch of stuff from yesterday that isn’t on staging yest\n\njust wanted",
+      "text": "Hey @Liam Leung\u2026 this new design is awesome.. was just going through again and most things look relaly good\u2026 and i know there is a bunch of stuff from yesterday that isn\u2019t on staging yest\n\njust wanted",
       "feature": "tasks",
       "prefilled_by": "work.json"
     },
@@ -4795,7 +4795,7 @@
       "by": "Carlos Lopes",
       "at": "2026-09-08 21:54",
       "text": "in staging my dear fried",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788884865.412069",
@@ -4842,8 +4842,8 @@
       "kind": "message",
       "by": "Sam O",
       "at": "2026-09-09 09:34",
-      "text": "Let us know when you’re ready @Foong Leung",
-      "feature": "?"
+      "text": "Let us know when you\u2019re ready @Foong Leung",
+      "feature": null
     },
     {
       "id": "1788921273.173019",
@@ -4860,7 +4860,7 @@
       "by": "Foong Leung",
       "at": "2026-09-09 09:34",
       "text": "ready",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788921414.929109",
@@ -4937,7 +4937,7 @@
       "thread": "1788774985.655159",
       "by": "Foong Leung",
       "at": "2026-09-09 11:15",
-      "text": "i think you’ll need both Id’s @Sam O… there will be an assetTypeId.. but to link it to this project there will be an “entityAsset” id as well",
+      "text": "i think you\u2019ll need both Id\u2019s @Sam O\u2026 there will be an assetTypeId.. but to link it to this project there will be an \u201centityAsset\u201d id as well",
       "feature": "admin/usage",
       "prefilled_by": "work.json"
     },
@@ -5087,7 +5087,7 @@
       "thread": "1788774985.655159",
       "by": "Foong Leung",
       "at": "2026-09-09 13:53",
-      "text": "sorry was thinking about this and going through this again ( we can hop on a call to go over this logic if needed)\n\nso the taskAsset table is the one that containts a unique id… im guesing that thing ",
+      "text": "sorry was thinking about this and going through this again ( we can hop on a call to go over this logic if needed)\n\nso the taskAsset table is the one that containts a unique id\u2026 im guesing that thing ",
       "feature": "admin/usage",
       "prefilled_by": "work.json"
     },
@@ -5097,7 +5097,7 @@
       "thread": "1788774985.655159",
       "by": "Foong Leung",
       "at": "2026-09-09 13:55",
-      "text": "so essentially… when we link a task to an asset.. we link quantity.. an assetTypeId (this was the original link).. but because we started a many to many relationship.. the assetEntityId was more impor",
+      "text": "so essentially\u2026 when we link a task to an asset.. we link quantity.. an assetTypeId (this was the original link).. but because we started a many to many relationship.. the assetEntityId was more impor",
       "feature": "admin/usage",
       "prefilled_by": "work.json"
     },
@@ -5127,7 +5127,7 @@
       "thread": "1788774985.655159",
       "by": "Foong Leung",
       "at": "2026-09-09 15:48",
-      "text": "@Liam Leung lemme know when you’re able to push stuff into staging",
+      "text": "@Liam Leung lemme know when you\u2019re able to push stuff into staging",
       "feature": "admin/usage",
       "prefilled_by": "work.json"
     },
@@ -5224,7 +5224,7 @@
       "by": "Carlos Lopes",
       "at": "2026-09-09 21:29",
       "text": "x.com/hilbertspaess/status/2097476196791709843?s=20 (https://x.com/hilbertspaess/status/2097476196791709843?s=20)",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788964200.072479",
@@ -5232,7 +5232,7 @@
       "by": "Carlos Lopes",
       "at": "2026-09-09 21:30",
       "text": ":skull:",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788964285.301399",
@@ -5240,7 +5240,7 @@
       "by": "Carlos Lopes",
       "at": "2026-09-09 21:31",
       "text": "Ultron (openIA) versus Jarvis (anthropic)",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "1788964314.278629",
@@ -5307,7 +5307,7 @@
       "thread": "1788949866.296519",
       "by": "Foong Leung",
       "at": "2026-09-10 08:00",
-      "text": "crap sorry i was way too tired last night i’ll review this this morning",
+      "text": "crap sorry i was way too tired last night i\u2019ll review this this morning",
       "feature": "admin/usage",
       "prefilled_by": "work.json"
     },
@@ -5317,7 +5317,7 @@
       "thread": "1788949866.296519",
       "by": "Foong Leung",
       "at": "2026-09-10 08:01",
-      "text": "we’ll still probably launch wwith thie feature not working yest today",
+      "text": "we\u2019ll still probably launch wwith thie feature not working yest today",
       "feature": "admin/usage",
       "prefilled_by": "work.json"
     },
@@ -5327,7 +5327,7 @@
       "thread": "1788927279.211769",
       "by": "Sam O",
       "at": "2026-09-10 08:49",
-      "text": "Nice, that all looks great, there will be a slight change to this, you can keep what you built, as they like to be able to alter thing in many places… but here are the changes:\n\nSome changes to `isOnb",
+      "text": "Nice, that all looks great, there will be a slight change to this, you can keep what you built, as they like to be able to alter thing in many places\u2026 but here are the changes:\n\nSome changes to `isOnb",
       "feature": "admin/invoicing",
       "prefilled_by": "work.json"
     },
@@ -5336,7 +5336,7 @@
       "kind": "message",
       "by": "Sam O",
       "at": "2026-09-10 10:11",
-      "text": "@Liam Leung @Carlos Lopes\nChange here regarding what do display on the left hand side:\n\nThe route:\nGET\n`/api/v1/invoices/entity/{entityId}/current-cycle`\n\nNow returns the subtask’s studio name, we wan",
+      "text": "@Liam Leung @Carlos Lopes\nChange here regarding what do display on the left hand side:\n\nThe route:\nGET\n`/api/v1/invoices/entity/{entityId}/current-cycle`\n\nNow returns the subtask\u2019s studio name, we wan",
       "feature": "admin/usage",
       "prefilled_by": "work.json"
     },
@@ -5405,7 +5405,7 @@
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-10 16:30",
-      "text": "@Carlos Lopes can we look into subtask edits after a task is marked “reviewing”\n\nso right now i believe if a task is put into “reviewing” and “complete” we shut down completly the editting abilities\n\n",
+      "text": "@Carlos Lopes can we look into subtask edits after a task is marked \u201creviewing\u201d\n\nso right now i believe if a task is put into \u201creviewing\u201d and \u201ccomplete\u201d we shut down completly the editting abilities\n\n",
       "feature": "tasks",
       "prefilled_by": "work.json"
     },
@@ -5415,7 +5415,7 @@
       "thread": "1789032611.285019",
       "by": "you",
       "at": "2026-09-10 16:32",
-      "text": "Would be good to add tests to cover this scenario too…there are a lot of these cases :grimacing:",
+      "text": "Would be good to add tests to cover this scenario too\u2026there are a lot of these cases :grimacing:",
       "feature": "tasks",
       "prefilled_by": "work.json"
     },
@@ -5435,7 +5435,7 @@
       "thread": "1789032611.285019",
       "by": "Foong Leung",
       "at": "2026-09-10 16:33",
-      "text": "on this part we were pretty “blanket”",
+      "text": "on this part we were pretty \u201cblanket\u201d",
       "feature": "tasks",
       "prefilled_by": "work.json"
     },
@@ -5465,7 +5465,7 @@
       "by": "Foong Leung",
       "at": "2026-09-10 20:48",
       "text": "@Carlos Lopes some reason some of the credits are displaying twice?",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1789048155.386059",
@@ -5474,7 +5474,7 @@
       "by": "Carlos Lopes",
       "at": "2026-09-10 20:49",
       "text": "check if api is retuning like this",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1789048240.070769",
@@ -5483,7 +5483,7 @@
       "by": "Carlos Lopes",
       "at": "2026-09-10 20:50",
       "text": "yep",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1789048285.077629",
@@ -5492,15 +5492,15 @@
       "by": "Foong Leung",
       "at": "2026-09-10 20:51",
       "text": "mmm ok will havea look",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "1789049411.111289",
       "kind": "message",
       "by": "Foong Leung",
       "at": "2026-09-10 21:10",
-      "text": "B ug found: when calculating which way a subtask’s capacity is calculated, entering a hour flips the switch on it.. I’ll look into this tomorrow morning",
-      "feature": "?"
+      "text": "B ug found: when calculating which way a subtask\u2019s capacity is calculated, entering a hour flips the switch on it.. I\u2019ll look into this tomorrow morning",
+      "feature": "admin/invoicing"
     },
     {
       "id": "1789049444.022719",
@@ -5509,7 +5509,7 @@
       "by": "SWE Slack To Trello",
       "at": "2026-09-10 21:10",
       "text": "Ticket has been created by Foong Leung, you can track progress with the commands `/summary` or `/summary:all`, or visit our trello board at https://trello.com/invite/b/6a20ed52a8d9725b59ceb3bb/ATTI395",
-      "feature": "?"
+      "feature": "admin/invoicing"
     },
     {
       "id": "fe@305c81810",
@@ -5526,7 +5526,7 @@
       "by": "carlosdevv",
       "at": "2026-08-26",
       "text": "Merge branch 'staging' of https://bitbucket.org/aldenstudios/alden-portal-fe into staging [unmapped]",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "fe@c163b3522",
@@ -5867,7 +5867,7 @@
       "by": "alden-portal-fe-release-token",
       "at": "2026-09-01",
       "text": "Release changes v1.2.0 [unmapped]",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "fe#384",
@@ -5875,7 +5875,7 @@
       "by": "alden-portal-fe-release-token",
       "at": "2026-09-01",
       "text": "Release changes v1.2.1 [unmapped]",
-      "feature": "?"
+      "feature": null
     },
     {
       "id": "fe#385",
@@ -6197,7 +6197,7 @@
       "kind": "landing",
       "by": "lleung",
       "at": "2026-09-07",
-      "text": "LIA-116: [FE] History save 404s — snapshot edit still calls the route be#760 deleted [shared/http, admin/usage]",
+      "text": "LIA-116: [FE] History save 404s \u2014 snapshot edit still calls the route be#760 deleted [shared/http, admin/usage]",
       "feature": "shared/http",
       "prefilled_by": "landing"
     },
@@ -6332,7 +6332,7 @@
       "kind": "landing",
       "by": "lleung",
       "at": "2026-09-09",
-      "text": "https://linear.app/liamai/issue/LIA-153/fe-join-historys-credit-weights-on-assettypeid-not-assetent… [admin/usage]",
+      "text": "https://linear.app/liamai/issue/LIA-153/fe-join-historys-credit-weights-on-assettypeid-not-assetent\u2026 [admin/usage]",
       "feature": "admin/usage",
       "prefilled_by": "landing"
     },
