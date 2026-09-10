@@ -1,0 +1,240 @@
+{
+  "feature": "admin/invoicing",
+  "as_of": "2026-09-10T14:05:00Z",
+  "summary": "Invoices per entity, with credit usage, payment terms and the emails that go out.",
+  "story": {
+    "health": {
+      "text": "Going well. The launch build is on staging and Sam is closing the email defects.",
+      "evidence": [
+        {
+          "kind": "pr",
+          "repo": "be",
+          "number": 771,
+          "url": "https://bitbucket.org/aldenstudios/alden-connect-portal-be/pull-requests/771"
+        }
+      ]
+    },
+    "gaps": {
+      "text": "The frontend sends the payment term on the invoice and the backend reads it from the billing profile.",
+      "evidence": [
+        {
+          "kind": "file",
+          "repo": "fe",
+          "sha": "6dbc01f",
+          "path": "src/features/invoicing/lib/build-invoice.ts",
+          "line": 42
+        },
+        {
+          "kind": "file",
+          "repo": "be",
+          "sha": "0fa428a",
+          "path": "src/services/invoiceService.ts",
+          "line": 118
+        }
+      ]
+    },
+    "requirements": {
+      "text": "Eleven of fourteen rules are confirmed. Two are contradicted since Tuesday, both on the retainer floor.",
+      "evidence": [
+        {
+          "kind": "slack",
+          "url": "https://alden-studios.slack.com/archives/C07KG06L601/p1788927279211769"
+        }
+      ]
+    },
+    "architecture": {
+      "text": "Sound. The credit email builder duplicates the invoice total formula, which is worth one refactor.",
+      "evidence": [
+        {
+          "kind": "assumption",
+          "note": "read from the two files, not confirmed by anyone"
+        }
+      ]
+    }
+  },
+  "requirements": [
+    {
+      "id": "R-1",
+      "text": "A closed cycle that used more than its base credits is flagged.",
+      "status": "confirmed",
+      "by": "Foong Leung",
+      "at": "2026-09-04",
+      "evidence": [
+        {
+          "kind": "assumption"
+        }
+      ],
+      "code": [
+        {
+          "kind": "file",
+          "repo": "fe",
+          "sha": "6dbc01f",
+          "path": "src/features/usage/components/history-tab/history-tab-content.tsx",
+          "line": 88
+        }
+      ]
+    },
+    {
+      "id": "R-2",
+      "text": "An editable payment term lives on the invoice.",
+      "status": "contradicted",
+      "by": "Foong Leung",
+      "at": "2026-09-09",
+      "evidence": [
+        {
+          "kind": "slack",
+          "url": "https://alden-studios.slack.com/archives/C07KG06L601/p1788927279211769",
+          "quote": "it should be on the billing profile"
+        }
+      ]
+    },
+    {
+      "id": "R-3",
+      "text": "A light month rolls credits over instead of topping up.",
+      "status": "assumed",
+      "evidence": [
+        {
+          "kind": "assumption"
+        }
+      ]
+    }
+  ],
+  "asks": [
+    {
+      "id": "A-1",
+      "text": "Foong wants the Due header to follow the payment term.",
+      "by": "Foong Leung",
+      "to": "you",
+      "at": "2026-09-08",
+      "status": "closed",
+      "origin": {
+        "kind": "slack",
+        "url": "https://alden-studios.slack.com/archives/C07KG06L601/p1788927279211769",
+        "thread": "1788927279.211769"
+      },
+      "history": [
+        {
+          "at": "2026-09-09",
+          "status": "built",
+          "evidence": [
+            {
+              "kind": "pr",
+              "repo": "fe",
+              "number": 421,
+              "url": "https://bitbucket.org/aldenstudios/alden-portal-fe/pull-requests/421"
+            }
+          ]
+        },
+        {
+          "at": "2026-09-10",
+          "status": "acknowledged",
+          "evidence": [
+            {
+              "kind": "slack",
+              "url": "https://alden-studios.slack.com/archives/C07KG06L601/p1789004974957169",
+              "quote": "looks great thanks"
+            }
+          ]
+        },
+        {
+          "at": "2026-09-10",
+          "status": "closed",
+          "evidence": [
+            {
+              "kind": "slack",
+              "url": "https://alden-studios.slack.com/archives/C07KG06L601/p1789004974957169"
+            }
+          ]
+        }
+      ],
+      "requirements": [
+        "R-2"
+      ],
+      "ticket": "ALD-41"
+    },
+    {
+      "id": "A-2",
+      "text": "Sam asked you and Carlos who takes the front end for his three new billing fields.",
+      "by": "Sam O",
+      "to": "you",
+      "at": "2026-09-10",
+      "status": "asked",
+      "origin": {
+        "kind": "slack",
+        "url": "https://alden-studios.slack.com/archives/C07KG06L601/p1788927279211770",
+        "thread": "1788927279.211770"
+      },
+      "history": []
+    }
+  ],
+  "tickets": [
+    {
+      "key": "ALD-41",
+      "title": "[FE] Due header follows the payment term",
+      "asks": [
+        "A-1"
+      ],
+      "blockers": [
+        {
+          "kind": "landing",
+          "repo": "be",
+          "ref": "be#771",
+          "branch": "origin/dev",
+          "deployed": true,
+          "cleared": {
+            "at": "2026-09-10",
+            "evidence": [
+              {
+                "kind": "pr",
+                "repo": "be",
+                "number": 771,
+                "url": "https://bitbucket.org/aldenstudios/alden-connect-portal-be/pull-requests/771"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "answer",
+          "from": "Foong Leung",
+          "question": "on the invoice or the profile?",
+          "cleared": null
+        },
+        {
+          "kind": "ticket",
+          "key": "ALD-40",
+          "cleared": null
+        }
+      ],
+      "ready": false
+    }
+  ],
+  "landings": [
+    {
+      "at": "2026-09-10",
+      "repo": "be",
+      "number": 771,
+      "sha": "0fa428a1",
+      "title": "credit emails link to the production domain",
+      "by": "Sam O",
+      "url": "https://bitbucket.org/aldenstudios/alden-connect-portal-be/pull-requests/771",
+      "asks": [
+        "A-1"
+      ],
+      "files": [
+        "src/services/emailService.ts"
+      ]
+    }
+  ],
+  "proposals": [
+    {
+      "id": "P-1",
+      "kind": "ticket",
+      "title": "[FE] Payment term on the billing profile",
+      "body": "## Summary\n\nMoves the editable payment term from the invoice to the billing profile.\n",
+      "asks": [
+        "A-2"
+      ],
+      "at": "2026-09-10"
+    }
+  ]
+}
