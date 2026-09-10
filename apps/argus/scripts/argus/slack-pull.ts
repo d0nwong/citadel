@@ -127,15 +127,17 @@ export const isNoise = (m: SlackMessage) => !!m.subtype && NOISE_SUBTYPES.has(m.
 
 /** a canvas export is HTML; keep the headings and the text, drop the rest; mentions become names */
 export function canvasToText(html: string, users: Users = {}): string {
+  const name = (id: string) => `@${id === ME ? "you" : (users[id] ?? id)}`;
   return html
     .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<@([UW][A-Z0-9]+)(?:\|[^>]*)?>/g, (_, id) => name(id))
     .replace(/<\/(h[1-6]|p|li|div|tr|section)>/gi, "\n")
     .replace(/<(h[1-6])[^>]*>/gi, "\n## ")
     .replace(/<li[^>]*>/gi, "- ")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/<@([UW][A-Z0-9]+)(?:\|[^>]*)?>|@([UW][A-Z0-9]{8,})\b/g, (_, a, b) => { const id = a ?? b; return `@${id === ME ? "you" : (users[id] ?? id)}`; })
+    .replace(/@([UW][A-Z0-9]{8,})\b/g, (_, id) => name(id))
     .split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
 }
 
