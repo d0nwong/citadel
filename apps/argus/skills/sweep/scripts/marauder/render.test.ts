@@ -177,6 +177,20 @@ describe("the changelog", () => {
   test("it passes its own style rules", () => {
     expect(checkStyle(md)).toEqual([]);
   });
+
+  test("two same-day events on one workstream read as two sentences, not a run-on", () => {
+    const busy = w({
+      slug: "busy",
+      name: "Subtask rows",
+      events: [
+        ev({ at: "2026-09-09T09:00:00Z", summary: "Foong Leung: crap sorry i was way too tired last night i'll review this this morning" }),
+        ev({ at: "2026-09-09T09:01:00Z", summary: "Foong Leung: we'll still probably launch with the feature not working yet today" }),
+      ],
+    });
+    const page = renderChangelog([busy], "2026-09-09");
+    expect(page).toContain("this morning. Foong Leung: we'll");
+    expect(checkStyle(page)).toEqual([]);
+  });
 });
 
 describe("checkStyle", () => {

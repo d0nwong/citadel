@@ -363,6 +363,10 @@ const whenLabel = (at: string) => {
 
 // ---------------------------------------------------------------- the day
 
+/** a raw Slack-quote summary has no terminal punctuation; joining two of them with a
+ *  bare space reads as one run-on sentence and can trip the 25-word ceiling */
+const asSentence = (s: string) => (/[.!?]$/.test(s) ? s : `${s}.`);
+
 /** what changed in the project that day, and nothing about workstreams that did not move */
 export function renderChangelog(workstreams: Workstream[], day: string): string {
   const ctx: Ctx = { now: `${day}T00:00:00Z`, today: day, base: "../../" };
@@ -375,7 +379,7 @@ export function renderChangelog(workstreams: Workstream[], day: string): string 
   if (!moved.length) return `${out.join("\n")}Nothing moved.\n`;
   for (const { w, events } of moved) {
     const sorted = [...events].sort((a, b) => instantOf(a.at).localeCompare(instantOf(b.at)));
-    out.push(`**${w.name}**`, "", sorted.map((e) => e.summary).join(" "));
+    out.push(`**${w.name}**`, "", sorted.map((e) => asSentence(e.summary)).join(" "));
     const ev = evidenceLine(sorted.at(-1), ctx);
     if (ev) out.push("", ev);
     out.push("");
