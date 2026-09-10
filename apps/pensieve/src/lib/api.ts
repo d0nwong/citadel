@@ -233,7 +233,15 @@ export const sendTicket = createServerFn({ method: "POST" })
   });
 
 export type VerifyResult =
-  | { ok: true; decision: MarauderDecision; replay?: boolean }
+  | {
+      ok: true;
+      decision: MarauderDecision;
+      replay?: boolean;
+      /** Whether `marauder apply` took it in at the click (ARG-169). */
+      applied: boolean;
+      /** Why it did not — the file is on disk and the next sweep applies it. */
+      note?: string;
+    }
   | { ok: false; error: string };
 
 /**
@@ -253,7 +261,7 @@ export const verifyEvent = createServerFn({ method: "POST" })
     const check = await s.checkVerify(data.event);
     if (!check.ok) {
       return check.decided
-        ? { decision: check.decided, ok: true, replay: true }
+        ? { applied: false, decision: check.decided, ok: true, replay: true }
         : { error: check.error, ok: false };
     }
     const decision: MarauderDecision = {
@@ -264,7 +272,9 @@ export const verifyEvent = createServerFn({ method: "POST" })
       ...(data.note ? { reason: data.note } : {}),
     };
     await dec.writeMarauderDecision(decision);
-    return { decision, ok: true };
+    // Only after the rename: apply reads the file that is now whole on disk (ARG-169).
+    const m = await import("#/server/marauder");
+    return { decision, ok: true, ...(await m.applyDecisions()) };
   });
 
 export type JobLookup =
@@ -745,14 +755,23 @@ export const getDecided = createServerFn({ method: "GET" })
   });
 
 export type UnsortedVerdict =
-  | { ok: true; decision: MarauderDecision; replay?: boolean }
+  | {
+      ok: true;
+      decision: MarauderDecision;
+      replay?: boolean;
+      /** Whether `marauder apply` took it in at the click (ARG-169). */
+      applied: boolean;
+      /** Why it did not — the file is on disk and the next sweep applies it. */
+      note?: string;
+    }
   | { ok: false; error: string };
 
 /**
  * Decide one Unsorted entry: one `decisions/marauder/<slug>.json`, through the same atomic
- * writer every other verdict uses. No `work.json` is touched here — the next `marauder
- * ingest` applies the file through its correction functions, drops the entry from the queue
- * and commits, which is what keeps this app's one-writer rule (AC3, AC4).
+ * writer every other verdict uses, then `marauder apply` in the workspace so it takes effect
+ * now (ARG-169). No `work.json` is touched here — apply is argus's code under the sweep's
+ * lock, and when it cannot run the next `marauder ingest` applies the file instead, which
+ * is what keeps this app's one-writer rule (AC3, AC4).
  *
  * A second click on the same entry is a no-op that answers the file already there: a
  * decision file is never edited afterwards, and re-deciding would otherwise write a second,
@@ -781,7 +800,7 @@ export const decideUnsorted = createServerFn({ method: "POST" })
     }
     const already = await dec.readMarauderDecision(draft.id);
     if (already) {
-      return { decision: already, ok: true, replay: true };
+      return { applied: false, decision: already, ok: true, replay: true };
     }
     const decision: MarauderDecision = {
       action: draft.action as MarauderDecision["action"],
@@ -792,5 +811,7 @@ export const decideUnsorted = createServerFn({ method: "POST" })
       ...(draft.reason ? { reason: draft.reason } : {}),
     };
     await dec.writeMarauderDecision(decision);
-    return { decision, ok: true };
+    // Only after the rename: apply reads the file that is now whole on disk (ARG-169).
+    const m = await import("#/server/marauder");
+    return { decision, ok: true, ...(await m.applyDecisions()) };
   });
