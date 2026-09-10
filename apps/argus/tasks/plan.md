@@ -56,37 +56,37 @@ schema.ts
 ## Task List
 
 ### Phase 0: Freeze
-- [ ] Task 1: Tag, branch, commit the spec and plan
+- [x] Task 1: Tag, branch, commit the spec and plan
 
 ### Phase 1: Schema and verbs
-- [ ] Task 2: Ledger types, JSON schema, fixtures
-- [ ] Task 3: Validator with a refusal fixture per rule
-- [ ] Task 4: Read and write with id allocation and no-op detection
-- [ ] Task 5: The `argus` CLI skeleton, `bin`, `bun link`
-- [ ] Task 6: Click verbs: close, confirm, place, ticket
+- [x] Task 2: Ledger types, JSON schema, fixtures
+- [x] Task 3: Validator with a refusal fixture per rule
+- [x] Task 4: Read and write with id allocation and no-op detection
+- [x] Task 5: The `argus` CLI skeleton, `bin`, `bun link`
+- [x] Task 6: Click verbs: close, confirm, place, ticket
 
 ### Checkpoint: Foundation
-- [ ] `bun test` green, `bun run typecheck` clean
-- [ ] `argus validate` refuses every fixture violation by path
-- [ ] `argus write` on an unchanged ledger writes no byte
+- [x] `bun test` green, `bun run typecheck` clean
+- [x] `argus validate` refuses every fixture violation by path
+- [x] `argus write` on an unchanged ledger writes no byte
 - [ ] Review with the user
 
 ### Phase 2: Pull, place, replay
-- [ ] Task 7: Move `slack-pull.ts` under `scripts/argus/`, cursor to `state/`
-- [ ] Task 8: Move `pr-facts.ts` under `scripts/argus/`, features from the manifest lib
-- [ ] Task 9: `argus pull` writes one batch file
-- [ ] Task 10: `argus place <batch>` does the deterministic joins
-- [ ] Task 11: Record 14 days of fixtures; the user places the expectations once
-- [ ] Task 12: `bun run evals` scores deterministic attribution
+- [x] Task 7: Move `slack-pull.ts` under `scripts/argus/`, cursor to `state/`
+- [x] Task 8: Move `pr-facts.ts` under `scripts/argus/`, features from the manifest lib
+- [x] Task 9: `argus pull` writes one batch file
+- [x] Task 10: `argus place <batch>` does the deterministic joins
+- [~] Task 11: Record 14 days of fixtures; the user places the expectations once (fixtures recorded, 129 roots await the user)
+- [x] Task 12: `bun run evals` scores deterministic attribution
 
 ### Checkpoint: Deterministic attribution
-- [ ] A batch replays to the same per-feature split twice
-- [ ] The deterministic score is printed and written to `evals/scores.md`
+- [x] A batch replays to the same per-feature split twice
+- [x] The deterministic score is printed and written to `evals/scores.md` (45% before any thread is learned)
 - [ ] Review with the user: is the unplaced list the size we expected?
 
 ### Phase 3: The reader
-- [ ] Task 13: `reader.md`, the rewrite subagent's prompt and rules
-- [ ] Task 14: Seed `admin/invoicing` and `admin/usage` ledgers
+- [x] Task 13: `reader.md`, the rewrite subagent's prompt and rules
+- [x] Task 14: Seed `admin/invoicing` and `admin/usage` ledgers
 - [ ] Task 15: Model attribution and rewrite in the replay harness
 - [ ] Task 16: Closure cases and the gate
 
