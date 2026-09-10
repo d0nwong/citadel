@@ -16,14 +16,13 @@ import { join, relative, dirname } from "node:path";
 import {
   SPEC_JS_URL, SPEC_UI_URL, extractSwaggerDoc, flatten, indexOps,
   fingerprintOf, diffSpec, type Op, type SpecDiff,
-} from "../lib/spec.ts";
-import { analyzeRepo } from "../lib/analyze.ts";
-import { buildIndex, ATTR_DEPTH, type AccioIndex } from "../lib/index-store.ts";
-import { renderArchDoc, readAliases, renderDecidedSection, patchProductDecided, type DocMeta } from "../lib/docs.ts";
-import { loadManifest, saveManifest, expand, archDocPath, STATE, FEATURES_DIR, MANIFEST_PATH, ROOT } from "../lib/manifest.ts";
-import { readStamp, restamp, decideArchStamp, gitDiffNames, gitIsAncestor, gitShortSha, type StampReason } from "../lib/stamps.ts";
-import { loadJournal } from "../lib/journal.ts";
-import { auditDocs, auditJournal } from "./audit.ts";
+} from "./spec.ts";
+import { analyzeRepo } from "./analyze.ts";
+import { buildIndex, ATTR_DEPTH, type AccioIndex } from "./index-store.ts";
+import { renderArchDoc, readAliases, type DocMeta } from "./docs.ts";
+import { loadManifest, saveManifest, expand, archDocPath, STATE, FEATURES_DIR, MANIFEST_PATH, ROOT } from "./manifest.ts";
+import { readStamp, restamp, decideArchStamp, gitDiffNames, gitIsAncestor, gitShortSha, type StampReason } from "./stamps.ts";
+import { auditDocs } from "./audit.ts";
 
 const CACHE = join(STATE, "openapi.json");
 const FINGERPRINT = join(STATE, "openapi-fingerprint.json");
@@ -160,11 +159,10 @@ if (import.meta.main) {
     for (const id of index.ops[key]?.features ?? []) specChangedFeatures.add(id);
 
   const feHead = await gitShortSha(feRoot);
-  const journal = await loadJournal();
   const byReason: Record<StampReason, string[]> = {
     new: [], "no-product": [], "tree-behind": [], undecidable: [], "core-changed": [], "spec-changed": [], aligned: [],
   };
-  let wrote = 0, matched = 0, productPatched = 0;
+  let wrote = 0, matched = 0;
   for (const f of index.features) {
     if (ONLY && f.id !== ONLY) continue;
     matched++;
@@ -200,12 +198,6 @@ if (import.meta.main) {
       : renderArchDoc(f, opsByKey, { ...meta, feRev: decision.rev, date: decision.date }, existing);
     if (rendered !== existing) { await Bun.write(docPath, rendered); wrote++; }
 
-    // product tier: the one machine-owned region — decisions agreed but not yet in code
-    if (product) {
-      const decided = journal.filter(e => e.status === "decided" && e.features.includes(f.id));
-      const patched = patchProductDecided(product, renderDecidedSection(decided));
-      if (patched !== product) { await Bun.write(productPath, patched); productPatched++; }
-    }
   }
   if (ONLY && !matched) fail(`no feature "${ONLY}" — have: ${index.features.map(f => f.id).join(", ")}`);
 
@@ -220,11 +212,10 @@ if (import.meta.main) {
     console.log(`⚠ FE checkout \`${feRev}\` is OLDER than the docs — ${byReason["tree-behind"].length} changed feature(s) kept their newer stamp and regions: ${byReason["tree-behind"].join(", ")}`);
   if (byReason.undecidable.length)
     console.log(`⚠ could not diff ${byReason.undecidable.length} feature(s) against their product stamp (unknown sha?) — stamps left alone: ${byReason.undecidable.join(", ")}`);
-  if (productPatched) console.log(`product docs: "${"Decided, not yet landed"}" region updated in ${productPatched}`);
 
   if (!ONLY) await Bun.write(REPORT, renderReport(diff, index, doc, prevMeta?.fetchedAt ?? null, fetchedAt));
 
-  const problems = [...await auditDocs(index), ...await auditJournal(index)];
+  const problems = await auditDocs(index);
   if (problems.length) {
     console.log(`\n⚠ audit — docs claim things the code or spec no longer backs:`);
     for (const p of problems.slice(0, 12)) console.log(`   ${p}`);

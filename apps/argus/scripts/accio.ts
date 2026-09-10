@@ -13,19 +13,19 @@
  *   accio sync                     refetch the spec, reanalyze, regenerate docs + index
  *   accio audit                    hold the docs to what code and spec actually back
  *
- * The API surface and the docs are all of it. Where the work stands — a feature, a
- * ticket, a day, what needs you — is `marauder`, which reads each feature's `work.json` (ARG-161, ARG-164).
+ * The API surface and the arch docs are all of it. Where the work stands is each
+ * feature's `ledger.json`, kept by `argus`.
  *
  * Subcommands dispatch by rewriting argv and importing the command module, so each
  * command file also still runs standalone (`bun scripts/commands/sync.ts`).
  */
 
 const COMMANDS = {
-  find: { module: "./commands/find.ts", blurb: "summon the APIs behind a component or UI element" },
-  map: { module: "./commands/map.ts", blurb: "derive the feature manifest from the route tree" },
-  sync: { module: "./commands/sync.ts", blurb: "refetch the spec, reanalyze the frontend, regenerate docs" },
-  audit: { module: "./commands/audit.ts", blurb: "check the docs against code and spec" },
-  stale: { module: "./commands/stale.ts", blurb: "which features' docs drifted from the code, and why" },
+  find: { module: "./accio/find.ts", blurb: "summon the APIs behind a component or UI element" },
+  map: { module: "./accio/map.ts", blurb: "derive the feature manifest from the route tree" },
+  sync: { module: "./accio/sync.ts", blurb: "refetch the spec, reanalyze the frontend, regenerate docs" },
+  audit: { module: "./accio/audit.ts", blurb: "check the arch docs against code and spec, and every ledger" },
+  stale: { module: "./accio/stale.ts", blurb: "which features' docs drifted from the code, and why" },
 } as const;
 
 const HELP = `accio — summon the API surface

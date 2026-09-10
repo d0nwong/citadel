@@ -10,12 +10,12 @@
  *   accio map --dry      print what would change, write nothing
  */
 
-import { flatten, indexOps } from "../lib/spec.ts";
-import { analyzeRepo, type Analysis } from "../lib/analyze.ts";
+import { flatten, indexOps } from "./spec.ts";
+import { analyzeRepo, type Analysis } from "./analyze.ts";
 import {
   loadManifest, saveManifest, merge, humanize, expand,
   MANIFEST_PATH, STATE, DEFAULT_FE_REPO, DEFAULT_BE_REPO, type Manifest, type Feature,
-} from "../lib/manifest.ts";
+} from "./manifest.ts";
 import { join, relative } from "node:path";
 
 const DRY = process.argv.includes("--dry");

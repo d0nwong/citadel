@@ -17,8 +17,8 @@
  */
 
 import { join } from "node:path";
-import { STATE, FEATURES_DIR, ROOT } from "../lib/manifest.ts";
-import { ATTR_DEPTH, type AccioIndex, type IdxFeature, type IdxComponent } from "../lib/index-store.ts";
+import { STATE, FEATURES_DIR, ROOT } from "./manifest.ts";
+import { ATTR_DEPTH, type AccioIndex, type IdxFeature, type IdxComponent } from "./index-store.ts";
 import { relative } from "node:path";
 
 const argv = process.argv.slice(2);

@@ -11,7 +11,6 @@
  *                because core files or owned endpoints changed (lib/stamps.ts)
  *   fe-core      core files differ between the product stamp and the FE ref
  *   be-handlers  `be_files` (manifest) differ between `last_verified_be` and the BE ref
- *   journal      `implemented` entries naming the feature that no refresh has consumed
  *
  * Read-only. Exit 0 always — this is a report, `accio audit` is the gate.
  *
@@ -21,11 +20,10 @@
 import { join } from "node:path";
 import {
   loadManifest, expand, featureDir, allCoreFiles, FEATURES_DIR, DEFAULT_BE_REPO, type Manifest,
-} from "../lib/manifest.ts";
-import { readStamp, gitDiffNames } from "../lib/stamps.ts";
-import { loadJournal } from "../lib/journal.ts";
+} from "./manifest.ts";
+import { readStamp, gitDiffNames } from "./stamps.ts";
 
-export type StaleReason = { kind: "tiers" | "fe-core" | "be-handlers" | "journal"; detail: string };
+export type StaleReason = { kind: "tiers" | "fe-core" | "be-handlers"; detail: string };
 export type StaleReport = { id: string; dir: string; reasons: StaleReason[] };
 
 export async function computeStale(m: Manifest, opts: {
@@ -36,7 +34,6 @@ export async function computeStale(m: Manifest, opts: {
   const beRepo = expand(m.be_repo ?? DEFAULT_BE_REPO);
   const feRef = opts.feRef ?? "origin/staging";
   const beRef = opts.beRef ?? "origin/dev";
-  const journal = await loadJournal(dir);
   const out: StaleReport[] = [];
 
   for (const f of m.features) {
@@ -61,8 +58,6 @@ export async function computeStale(m: Manifest, opts: {
       else if (be.length) reasons.push({ kind: "be-handlers", detail: `${be.length} handler file${be.length === 1 ? "" : "s"} changed ${bs.sha}..${beRef}` });
     }
 
-    const open = journal.filter(e => e.status === "implemented" && !e.hold && e.features.includes(f.id));
-    if (open.length) reasons.push({ kind: "journal", detail: `${open.length} implemented entr${open.length === 1 ? "y" : "ies"} not yet documented: ${open.map(e => e.name.split("/").pop()).join(", ")}` });
 
     out.push({ id: f.id, dir: fdir, reasons });
   }
