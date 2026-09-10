@@ -97,6 +97,7 @@ describe("reading the files", () => {
     ["a dismiss with no reason", { id: "x", action: "dismiss" }],
     ["a new, which went with the workstreams", { id: "x", action: "new", name: "Something" }],
     ["a stage, which went with the workstreams", { id: "x", action: "stage", slug: "y", side: "fe", stage: "landed" }],
+    ["an attach naming a workstream slug and no feature", { id: "x", action: "attach", slug: "usage-page" }],
   ])("%s is reported, since nothing else in the sweep reads this group", async (_what, file) => {
     const root = await blackboard({ "bad.json": file });
     const { decisions, unreadable } = await readDecisions(root);
@@ -110,8 +111,10 @@ describe("reading the files", () => {
     expect(parsed).toMatchObject({ decision: { by: "Liam Leung", reason: "it is Sam's subtask thread", feature: "admin/usage" } });
   });
 
-  test("an attach written before the feature was the unit still parses, naming its slug", () => {
-    expect(parseDecision(JSON.stringify({ id: "x", action: "attach", slug: "usage-page", at: "", by: "Liam Leung" }))).toMatchObject({ decision: { feature: "usage-page" } });
+  test("an attach naming a workstream slug says so in one sentence", () => {
+    expect(parseDecision(JSON.stringify({ id: "x", action: "attach", slug: "usage-page", at: "", by: "Liam Leung" }))).toEqual({
+      error: 'attach names the workstream "usage-page", and workstreams are gone — name the feature instead',
+    });
   });
 });
 

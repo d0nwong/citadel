@@ -16,9 +16,9 @@
  *   marauder ticket-plan <feature> <ARG-nn> --body <file>
  *                                     what this run's events make that ticket say
  *   marauder board                    what needs you, then each feature that moved this week
- *   marauder show <feature>           one feature's story
+ *   marauder show <feature>           one feature's story — the page beside its docs, printed
  *   marauder changelog [day]          what changed in the project that day
- *   marauder render                   the board and today's changelog, which is what a run writes
+ *   marauder render                   the board, today's changelog and every feature's page, which is what a run writes
  *
  * `new`, `split`, `stage`, `check` and `propose-split` went with the workstreams: there is
  * nothing to open, cut or advance when the feature is the unit.
@@ -30,13 +30,15 @@
  */
 
 import { join } from "node:path";
-import { mkdir } from "node:fs/promises";
-import { loadState, saveState } from "../skills/sweep/scripts/marauder/record.ts";
+import { mkdir, rm } from "node:fs/promises";
+import { loadState, saveState, type FeatureRef, type Work } from "../skills/sweep/scripts/marauder/record.ts";
+import { appRoots } from "./lib/journal.ts";
+import { readStamp } from "./lib/stamps.ts";
 import { attach, defaultWho, dismiss, pairPending, recordHeld, recordTicket, resolveQuestion, suggest } from "../skills/sweep/scripts/marauder/correct.ts";
 import { apply, formatApplied, readDecisions } from "../skills/sweep/scripts/marauder/decisions.ts";
 import { applyHuddle, readNotes } from "../skills/sweep/scripts/marauder/huddle.ts";
 import { formatPlan, heldEvent, planTicket, type TicketPlan } from "../skills/sweep/scripts/marauder/ticket-diff.ts";
-import { checkStyle, featureTitle, formatStyleProblems, renderBoard, renderChangelog, renderFeature, OUT_DIR } from "../skills/sweep/scripts/marauder/render.ts";
+import { checkStyle, FEATURE_PAGE, featurePagePath, featureTitle, formatStyleProblems, renderBoard, renderChangelog, renderFeature, OUT_DIR, type FeatureMetas } from "../skills/sweep/scripts/marauder/render.ts";
 import { run as ingestLandings, formatChanges } from "../skills/sweep/scripts/marauder/ingest-landings.ts";
 import { run as ingestSlack, formatChanges as formatSlackChanges, openList } from "../skills/sweep/scripts/marauder/ingest-slack.ts";
 
@@ -55,9 +57,9 @@ const HELP = `marauder — where the work stands
   marauder ticket <feature> <event-id> <ARG-nn>
   marauder held <feature> <ARG-nn>
   marauder board                    marauder/board.md — the one page to read
-  marauder show <feature>           one feature's story, printed
-  marauder changelog [YYYY-MM-DD]   marauder/changelog/<day>.md — what changed that day
-  marauder render                   the board and today's changelog
+  marauder show <feature>           <app>/features/<feature>/board.md — one feature's story, printed
+  marauder changelog [YYYY-MM-DD]   marauder/changelog/<day>.md — what changed that day, by feature
+  marauder render                   the board, today's changelog, and a page beside each feature's docs
 
   <feature> is the feature's directory under its app's features/ — admin/usage, tasks.
 
@@ -263,28 +265,85 @@ if (verb === "changed" || verb === "ticket-plan" || CORRECTIONS.includes(verb)) 
   }
 }
 
-const { work, milestones, problems } = await loadState(root);
+const { work, milestones, features, problems } = await loadState(root);
 for (const p of problems) console.error(`marauder: ${p.file} — ${p.problems.join("; ")}`);
 
-const board = () => write(root, join(OUT_DIR, "board.md"), renderBoard({ work, milestones, now }), dryRun);
-const changelog = (day: string) => write(root, join(OUT_DIR, "changelog", `${day}.md`), renderChangelog(work, day), dryRun);
+/**
+ * What a page says of a feature beyond its record: the manifest's name, its app, and the
+ * `last_verified` stamps on its docs. Read here so rendering stays pure.
+ */
+async function featureMetas(refs: FeatureRef[]): Promise<FeatureMetas> {
+  const out: FeatureMetas = {};
+  const backend = new Map<string, boolean>();
+  for (const f of refs) {
+    if (!backend.has(f.app)) {
+      const m = Bun.file(join(root, f.app, ".doc-workspace/feature-manifest.json"));
+      backend.set(f.app, (await m.exists()) && Boolean(((await m.json()) as { be_repo?: string }).be_repo));
+    }
+    const docs = join(root, f.app, "features", f.feature, "docs");
+    const read = async (name: string) => ((await Bun.file(join(docs, name)).exists()) ? await Bun.file(join(docs, name)).text() : null);
+    const [product, arch] = [await read("product.md"), await read("arch.md")];
+    const stamp = (key: string) => {
+      const s = readStamp(product, key) ?? readStamp(arch, key);
+      return s ? { rev: s.rev, ...(s.date ? { date: s.date } : {}) } : undefined;
+    };
+    out[f.feature] = {
+      app: f.app,
+      ...(f.name ? { name: f.name } : {}),
+      docs: { product: product !== null, arch: arch !== null, fe: stamp("last_verified"), be: stamp("last_verified_be") },
+      hasBackend: backend.get(f.app),
+    };
+  }
+  return out;
+}
+
+const meta = await featureMetas(features.filter((f) => work.some((w) => w.feature === f.feature)));
+const pageOf = (w: Work) => featurePagePath(meta[w.feature]?.app ?? need(undefined, `an app holding ${w.feature}`), w.feature);
+
+const board = () => write(root, join(OUT_DIR, "board.md"), renderBoard({ work, milestones, now, meta }), dryRun);
+const changelog = (day: string) => write(root, join(OUT_DIR, "changelog", `${day}.md`), renderChangelog(work, day, meta), dryRun);
+const featurePage = (w: Work) => write(root, pageOf(w), renderFeature(w, milestones, now, meta), dryRun);
+
+/** a feature page left by an earlier run for a feature that no longer has a `work.json` */
+async function stalePages(): Promise<string[]> {
+  const keep = new Set(work.map(pageOf));
+  const out: string[] = [];
+  for (const { app, dir } of await appRoots(root))
+    for await (const f of new Bun.Glob(`**/${FEATURE_PAGE}`).scan({ cwd: dir, onlyFiles: true })) {
+      const rel = `${app}/features/${f}`;
+      if (!keep.has(rel)) out.push(rel);
+    }
+  return out.sort();
+}
 
 try {
   const written: Written[] = [];
+  const removed: string[] = [];
   if (verb === "board") written.push(await board());
   else if (verb === "show") {
     const feature = args[1];
     const w = work.find((x) => x.feature === feature);
-    if (!w) throw new Error(`${feature ?? "(none named)"} has nothing going on — features that do: ${work.map((x) => x.feature).join(", ")}`);
-    const text = renderFeature(w, milestones, now);
+    if (!w) {
+      const known = features.some((f) => f.feature === feature);
+      throw new Error(
+        `${feature ?? "(none named)"} ${known ? "has nothing going on — no work.json" : "is not a feature; the unit is the feature, its directory under features/"}` +
+          `\n  features with work: ${work.map((x) => x.feature).sort().join(", ")}`,
+      );
+    }
+    const text = renderFeature(w, milestones, now, meta);
     const bad = checkStyle(text);
-    if (bad.length) throw new Error(`${featureTitle(w.feature)} breaks the style rules\n${formatStyleProblems(w.feature, bad)}`);
+    if (bad.length) throw new Error(`${featureTitle(w.feature, meta)} breaks the style rules\n${formatStyleProblems(pageOf(w), bad)}`);
     process.stdout.write(text);
     process.exit(problems.length ? 1 : 0);
   } else if (verb === "changelog") written.push(await changelog(args[1] ?? now.slice(0, 10)));
   else if (verb === "render") {
     written.push(await board());
     written.push(await changelog(now.slice(0, 10)));
+    for (const w of work) written.push(await featurePage(w));
+    for (const rel of await stalePages()) {
+      if (!dryRun) await rm(join(root, rel));
+      removed.push(rel);
+    }
   } else throw new Error(`no verb ${verb}\n${HELP}`);
 
   if (verb === "board" || verb === "changelog") process.stdout.write(written[0]!.text);
@@ -292,6 +351,7 @@ try {
   console.error(
     `marauder: ${written.length} page${written.length === 1 ? "" : "s"} · ${changed.length} changed` +
       `${changed.length && verb === "render" ? ` (${changed.map((c) => c.path).join(", ")})` : ""}` +
+      `${removed.length ? ` · ${removed.length} removed (${removed.join(", ")})` : ""}` +
       `${dryRun ? " · (dry run)" : ""}`,
   );
   process.exit(problems.length ? 1 : 0);

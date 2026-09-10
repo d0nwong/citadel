@@ -21,7 +21,9 @@ import {
   BANNED_WORDS,
   SENTENCE_WORDS,
 } from "./render.ts";
-import { loadWork, type Milestones, type Work, type WorkEvent } from "./record.ts";
+import { loadFeatures, loadWork, type Milestones, type Work, type WorkEvent } from "./record.ts";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 const ROOT = new URL("../../../..", import.meta.url).pathname.replace(/\/$/, "");
 const NOW = "2026-09-09T13:00:00Z";
@@ -57,7 +59,7 @@ describe("the board", () => {
   ];
 
   test("what needs the reader comes first, then each feature that moved this week, newest first", () => {
-    expect(headings(renderBoard({ work: set, milestones: MILESTONES, now: NOW }))).toEqual(["Needs you", "Usage", "Tasks", "Invoicing"]);
+    expect(headings(renderBoard({ work: set, milestones: MILESTONES, now: NOW }))).toEqual(["Needs you", "Usage", "Tasks", "Invoicing", "Waiting on others"]);
   });
 
   test("a feature that did not move this week and waits on nobody is left off", () => {
@@ -199,5 +201,43 @@ describe("the folded records", () => {
     for (const page of pages) expect(checkStyle(page)).toEqual([]);
     expect(renderBoard({ work, milestones, now: NOW })).toBe(pages[0]!);
     expect(renderFeature(work[0]!, milestones, NOW)).toBe(pages[2]!);
+  });
+});
+
+describe("the real tree (ARG-166)", async () => {
+  const { work, milestones } = await loadWork(ROOT);
+  const features = await loadFeatures(ROOT);
+  const meta = Object.fromEntries(features.map((f) => [f.feature, { app: f.app, ...(f.name ? { name: f.name } : {}), docs: { product: true, arch: true, fe: { rev: "staging@abc1234", date: "2026-09-10" } } }]));
+  const relLinks = (md: string) => [...md.matchAll(/\]\(([^)]+)\)/g)].map((m) => m[1]!).filter((u) => !u.startsWith("http"));
+
+  test("the board heads each feature by its manifest name, linked to its page, and the links resolve", () => {
+    const md = renderBoard({ work, milestones, now: NOW, meta });
+    expect(md).toContain("[Admin Invoicings](../alden/alden-portal/features/admin/invoicing/board.md)");
+    expect(checkStyle(md)).toEqual([]);
+    for (const u of relLinks(md)) expect(existsSync(join(ROOT, "marauder", u.split("#")[0]!))).toBe(true);
+  });
+
+  test("the invoicing page names the feature, links its docs with their stamps, and every link resolves", () => {
+    const inv = work.find((x) => x.feature === "admin/invoicing")!;
+    const md = renderFeature(inv, milestones, NOW, meta);
+    const dir = join(ROOT, "alden/alden-portal/features/admin/invoicing");
+    expect(md).toStartWith("# Admin Invoicings\n");
+    expect(md).toContain("[product doc](docs/product.md)");
+    expect(md).toContain("`staging@abc1234` on 10 September");
+    expect(md).toContain("## What happened");
+    expect(checkStyle(md)).toEqual([]);
+    for (const u of relLinks(md)) expect(existsSync(join(dir, u.split("#")[0]!))).toBe(true);
+  });
+
+  test("a feature with no docs says so", () => {
+    const md = renderFeature(w({ feature: "tasks" }), {}, NOW, { tasks: { app: "alden/alden-portal", docs: { product: false, arch: false } } });
+    expect(md).toContain("This feature has no docs yet.");
+  });
+
+  test("the changelog groups the day by feature name", () => {
+    const md = renderChangelog(work, "2026-09-09", meta);
+    expect(md).toMatch(/\*\*\[Admin [A-Z][a-z]+\]\(\.\.\/\.\.\/alden\/alden-portal\/features\//);
+    expect(checkStyle(md)).toEqual([]);
+    for (const u of relLinks(md)) expect(existsSync(join(ROOT, "marauder/changelog", u))).toBe(true);
   });
 });
