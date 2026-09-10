@@ -11,11 +11,13 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Batch, Slice } from "../scripts/argus/batch.ts";
+import { applyPatch, parsePatch } from "../scripts/argus/patch.ts";
 import { placeBatch } from "../scripts/argus/place.ts";
 import { listFeatures, ledgerPath, root } from "../scripts/argus/paths.ts";
 import type { Ledger } from "../scripts/argus/schema.ts";
 import { flatten, type Msg } from "../scripts/argus/slack-pull.ts";
 import type { ThreadMap, Unplaced } from "../scripts/argus/state.ts";
+import { SchemaError } from "../scripts/argus/schema.ts";
 import { ValidationError } from "../scripts/argus/validate.ts";
 import { readLedger, writeLedger } from "../scripts/argus/write.ts";
 
@@ -102,11 +104,15 @@ export async function attribute(unplaced: Unplaced[], features: string[], day: s
   if (!unplaced.length) return {};
   const skill = await Bun.file(join(REPO, "skills/sweep/attribute.md")).text();
   const byId = new Map(allMessages.map((m) => [m.ts, m]));
-  const items = unplaced.map((u) => {
+  const groups = new Map<string, string[]>();
+  for (const u of unplaced) {
     const m = byId.get(u.id);
-    return m ? renderMessages([m]) : `[${u.id}] ${u.at} ${u.by} (landing)\n${u.text}`;
-  });
-  const prompt = `${skill}\n\n# Features\n\n${await summaries(features)}\n\n# Unplaced (${unplaced.length})\n\n${items.join("\n\n")}\n\nAnswer with the JSON object only.`;
+    const key = m ? m.thread : u.id;
+    const text = m ? renderMessages([m]) : `[${u.id}] ${u.at} ${u.by} (landing)\n${u.text}`;
+    groups.set(key, [...(groups.get(key) ?? []), text]);
+  }
+  const items = [...groups.entries()].map(([root, texts]) => `### thread ${root}\n\n${texts.join("\n\n")}`);
+  const prompt = `${skill}\n\n# Features\n\n${await summaries(features)}\n\n# Unplaced (${unplaced.length} messages in ${groups.size} threads)\n\n${items.join("\n\n")}\n\nAnswer with the JSON object only, one entry per message id.`;
   try {
     const r = await ask(ATTRIBUTE_MODEL, prompt, { label: `attribute ${day}` });
     const j = extractJson(r.text) as Record<string, { feature: string | null }>;
@@ -120,15 +126,37 @@ export async function attribute(unplaced: Unplaced[], features: string[], day: s
   }
 }
 
-export async function read(feature: string, slice: Slice, day: string, calls: Call[]): Promise<{ ok: boolean; diff: string[]; note?: string }> {
+/** the arch doc's mismatch and gap sections, capped */
+export function archExcerpt(arch: string, maxChars = 12000): string {
+  const out: string[] = [];
+  const lines = arch.split("\n");
+  let keep = false;
+  for (const l of lines) {
+    if (/^##\s/.test(l)) keep = /mismatch|gap|tech debt|failure/i.test(l);
+    if (keep) out.push(l);
+  }
+  const text = out.join("\n");
+  return text.length > maxChars ? `${text.slice(0, maxChars)}\n…` : text || "(the arch doc has no mismatch or gap section)";
+}
+
+/** the ledger as the reader sees it: no code pointers, no id counters, compact */
+export function ledgerForReader(l: Ledger): string {
+  const { ids: _ids, ...rest } = l;
+  return JSON.stringify({ ...rest, requirements: l.requirements.map(({ code: _c, ...r }) => r) });
+}
+
+export const RAW_DIR = join(REPO, "evals/last-run");
+
+export async function read(feature: string, slice: Slice, day: string, calls: Call[]): Promise<{ ok: boolean; diff: string[]; note?: string; notes?: string[] }> {
   const skill = await Bun.file(join(REPO, "skills/sweep/reader.md")).text();
-  const style = await Bun.file(join(REPO, "skills/sweep/style.md")).text();
+  const shapes = await Bun.file(join(REPO, "skills/sweep/shapes.md")).text();
   const ledger = await readLedger(feature);
   if (!ledger) return { ok: false, diff: [], note: "no ledger" };
   const archFile = Bun.file(join(root(), "alden/alden-portal/features", feature, "docs/arch.md"));
-  const arch = (await archFile.exists()) ? (await archFile.text()).split("\n").slice(0, 400).join("\n") : "(no arch doc)";
-  const base = `${skill}\n\n# style.md\n\n${style}\n\n# The feature: ${feature}\n\n# ledger.json (as it stands)\n\n\`\`\`json\n${JSON.stringify(ledger, null, 1)}\n\`\`\`\n\n# What is new (${day})\n\n${renderSlice(slice)}\n\n# docs/arch.md (first 400 lines)\n\n${arch}\n\nReturn the next ledger.json as one JSON object in a \`\`\`json fence, nothing else. Today is ${day}.`;
+  const arch = (await archFile.exists()) ? archExcerpt(await archFile.text()) : "(no arch doc)";
+  const base = `${skill}\n\n${shapes}\n\n# The feature: ${feature}\n\n# ledger.json as it stands (code pointers omitted)\n\n\`\`\`json\n${ledgerForReader(ledger)}\n\`\`\`\n\n# What is new (${day})\n\n${renderSlice(slice)}\n\n# From docs/arch.md\n\n${arch}\n\nToday is ${day}. Return the patch as one JSON object in a \`\`\`json fence, nothing else.`;
   let prompt = base;
+  const stamp = `${day}-${feature.replace("/", "_")}`;
   for (let attempt = 0; attempt < 2; attempt++) {
     let r;
     try {
@@ -137,16 +165,19 @@ export async function read(feature: string, slice: Slice, day: string, calls: Ca
       calls.push({ step: "read", feature, day, model: READER_MODEL, input: 0, output: 0, cost: 0, seconds: 0, ok: false, note: String((e as Error).message).slice(0, 200) });
       return { ok: false, diff: [], note: (e as Error).message };
     }
+    mkdirSync(RAW_DIR, { recursive: true });
+    await Bun.write(join(RAW_DIR, `${stamp}-${attempt}.md`), `${prompt}\n\n# ===== reply =====\n\n${r.text}`);
     try {
-      const next = extractJson(r.text) as Ledger;
+      const patch = parsePatch(extractJson(r.text));
+      const next = applyPatch(ledger, patch);
       const w = await writeLedger(feature, next, { actor: "model", now: new Date(`${day}T23:00:00Z`) });
       calls.push({ step: "read", feature, day, model: READER_MODEL, input: r.input, output: r.output, cost: r.cost, seconds: r.seconds, ok: true, note: attempt ? "after one retry" : undefined });
-      return { ok: true, diff: w.diff };
+      return { ok: true, diff: w.diff, notes: patch.notes };
     } catch (e) {
-      const problems = e instanceof ValidationError ? e.problems.map((p) => `${p.path}: ${p.rule}`).join("\n") : String((e as Error).message);
+      const problems = e instanceof ValidationError ? e.problems.map((p) => `${p.path}: ${p.rule}`).join("\n") : e instanceof SchemaError ? e.message : String((e as Error).message);
       calls.push({ step: "read", feature, day, model: READER_MODEL, input: r.input, output: r.output, cost: r.cost, seconds: r.seconds, ok: false, note: problems.slice(0, 300) });
       if (attempt) return { ok: false, diff: [], note: problems };
-      prompt = `${base}\n\n# Your previous answer was refused\n\n${problems}\n\nFix exactly those paths and return the whole ledger again.`;
+      prompt = `${base}\n\n# Your previous answer was refused\n\n\`\`\`\n${r.text.slice(0, 6000)}\n\`\`\`\n\nProblems:\n${problems}\n\nFix exactly those and return the whole patch again.`;
     }
   }
   return { ok: false, diff: [] };
@@ -156,6 +187,8 @@ export async function read(feature: string, slice: Slice, day: string, calls: Ca
 
 export type ModelRun = {
   got: Map<string, string[]>;
+  /** the days that ran, YYYY-MM-DD */
+  days: string[];
   calls: Call[];
   ledgers: Record<string, Ledger>;
   workspace: string;
@@ -222,7 +255,7 @@ export async function runModel(batches: Batch[], opts: { features: string[]; day
         const s = p.slices.get(f);
         if (!s || (!s.messages.length && !s.landings.length)) continue;
         const r = await read(f, s, day, calls);
-        log(`  read ${f}: ${r.ok ? r.diff.join(" · ") || "unchanged" : `FAILED ${r.note?.split("\n")[0]}`}`);
+        log(`  read ${f}: ${r.ok ? r.diff.join(" · ") || "unchanged" : `FAILED ${r.note?.split("\n")[0]}`}${r.notes?.length ? `\n    notes: ${r.notes.join(" | ")}` : ""}`);
       }
     }
     const ledgers: Record<string, Ledger> = {};
@@ -230,7 +263,7 @@ export async function runModel(batches: Batch[], opts: { features: string[]; day
       const l = await readLedger(f);
       if (l) ledgers[f] = l;
     }
-    return { got, calls, ledgers, workspace: ws };
+    return { got, calls, ledgers, workspace: ws, days: days.map((b) => b.id.slice(-10)) };
   } finally {
     if (prevRoot === undefined) delete process.env.ARGUS_ROOT;
     else process.env.ARGUS_ROOT = prevRoot;

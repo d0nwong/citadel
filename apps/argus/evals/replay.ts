@@ -92,7 +92,10 @@ async function model(days?: number, keep = false) {
   const e = await loadExpectations();
   const features = [...new Set(e.closures.map((c) => c.feature))].sort();
   const run = await runModel(batches, { features, days, keep, log: (l) => console.log(l) });
-  const s = score(run.got, resolved(e), e.items);
+  const ran = new Set(run.days);
+  const items = e.items.filter((i) => ran.has(i.at.slice(0, 10)));
+  const s = score(run.got, resolved(e), items);
+  if (process.argv.includes("--wrong")) for (const w of s.wrongOnes) console.log(`  wrong ${w.id}  ${w.by}: ${JSON.stringify(w.text.slice(0, 70))}  expected ${w.expected ?? "none"}, got ${w.got ?? "unplaced"}`);
   const closures = scoreClosures(e.closures, run.ledgers);
   const cost = run.calls.reduce((n, c) => n + c.cost, 0);
   const biggest = run.calls.reduce((m, c) => (c.input > m ? c.input : m), 0);

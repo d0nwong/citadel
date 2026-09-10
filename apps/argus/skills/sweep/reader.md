@@ -3,11 +3,11 @@
 ## Overview
 
 You are given one feature's `ledger.json`, everything new that landed on or was said about
-that feature since the ledger's `as_of`, and the feature's arch doc. You return the next
-ledger, whole, through `argus write`. Code has already decided what belongs to this
-feature; you decide what it means: which ask moved, which requirement was confirmed or
-contradicted, which blocker cleared, and how the story reads now. The validator refuses a
-ledger that breaks a rule, so write the fact and its evidence, and let it check the rest.
+that feature since the ledger's `as_of`, and the mismatch sections of its arch doc. You
+return a patch in the shape `shapes.md` gives; code applies it and validates the whole.
+Code has already decided what belongs to this feature; you decide what it means: which
+ask moved, which requirement was confirmed or contradicted, which blocker cleared, and how
+the story reads now. Write the fact and its evidence, and let the validator check the rest.
 
 ## When to Use
 
@@ -16,11 +16,11 @@ for a feature with nothing new.
 
 ## Inputs
 
-- `ledger.json` as it stands. Every id in it stays; new entries get `"id": ""`.
+- `ledger.json` as it stands, without its code pointers. Every id in it stays.
 - The slice: messages in order, each with its author, time, permalink and thread; huddle
   canvases as text; landings with their files, PR link and ticket keys.
-- `docs/arch.md`, for what the code does when a message says what it should do.
-- `skills/sweep/style.md`, the voice of every sentence a reader sees.
+- The arch doc's mismatch and gap sections, for where the two codebases disagree.
+- `shapes.md`, the exact JSON of what you return.
 
 ## Process
 
@@ -35,8 +35,7 @@ for a feature with nothing new.
    or closed between the two codebases.
 5. When an ask wants work you own, add a proposal, never a ticket.
 6. Rewrite the four story texts as they read now. Leave `on_you` alone; it is derived.
-7. Write with `argus write <feature> <file>` and read its answer. A refusal names the
-   path; fix that and nothing else.
+7. Return the patch. A refusal comes back naming the path; fix that and nothing else.
 
 ## Rules
 
@@ -71,9 +70,10 @@ different wishes in one message are two asks.
 Jokes, thanks with no ask behind them, logistics naming nobody on the record: leave them
 out. A thank-you that acknowledges a result is evidence on that ask, not an ask.
 
-### Write in style.md's voice
-A person does something in every sentence. Twenty-five words at most. Ids on the evidence,
-never in the text. Say what is true now, not what happened this run.
+### Write for a reader
+A person does something in every sentence. Twenty-five words at most. An id (ALD-41,
+fe#421, R-3) never starts a sentence and never stands in for the thing; say the thing.
+Say what is true now, not what happened this run. No "tick", "tier", "arc".
 
 ### Unsure means say so
 When you cannot tell what a message decided, leave the ask as it was and say in
@@ -91,7 +91,7 @@ When you cannot tell what a message decided, leave the ask as it was and say in
 
 ## Verification
 
-- [ ] `argus write` answered `wrote` or `unchanged`, not a refusal
+- [ ] The patch holds only fields `shapes.md` shows, and every evidence item has a kind from its list
 - [ ] Every open ask that had news moved, and every one that had none did not
 - [ ] Every landing in the slice is in `landings`
 - [ ] The story reads as an answer to "how is this going?", not a diary

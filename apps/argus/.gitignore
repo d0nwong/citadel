@@ -65,3 +65,4 @@ state/cursor.json
 state/cursor.next.json
 state/batches/
 state/slack-users.json
+evals/last-run/
