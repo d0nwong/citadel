@@ -2,13 +2,13 @@
 
 A one-person orchestration workspace for **alden-portal**: it watches the places where
 change happens — #dev-team Slack, Linear (team `Alden`), and the FE/BE repos — and keeps
-three durable records honest: one JSON file per piece of work (where it stands), a
-per-feature change journal (the "why" layer), and dual-tier feature docs (the "what"
-layer, verified against both repos). Built for a part-time schedule: everything is
+three records honest, all of them per feature: dual-tier docs (what is true, verified
+against both repos), a change journal (why it changed), and `work.json` (what is going
+on, if anything). Built for a part-time schedule: everything is
 incremental, idempotent, and catch-up-safe, so the first run after days away simply
 backfills.
 
-## The three systems, as of 2026-09-07
+## The three systems, as of 2026-09-10
 
 Three repos share this work. Each has one job, and the seams between them are files and
 one HTTP API — nothing else.
@@ -16,7 +16,7 @@ one HTTP API — nothing else.
 | | job | today | never |
 |---|---|---|---|
 | **argus** (this repo) | Knows. The blackboard is the single source of truth for everything not in Linear or a repo; the sweep keeps it current, reconciles landings against tickets, and surfaces what needs a decision. | Files (`features/*/docs`, `features/*/journal`, `features/*/work.json`, `queue/`, `marauder/`) plus skills run by `/loop` sessions. Renders a board; holds no queue. | Dispatch work. Close tickets. Run as a daemon. |
-| **Pensieve** (`~/git/pensieve`) | The decision surface. Where you read where the work stands and decide what to act on. | Renders the board, each workstream, the journal and the docs for every app under the blackboard; the Unsorted list places what attached to nothing; Ask answers over the checkout and proposes a correction that a click confirms. Writes `decisions/` and nothing else. | Hold workflow state of its own. Write any blackboard file other than `decisions/`. |
+| **Pensieve** (`~/git/pensieve`) | The decision surface. Where you read where the work stands and decide what to act on. | Renders the board, each feature's page, the journal and the docs for every app under the blackboard; the Unsorted list places what attached to nothing on a feature; Send and Verify sit on the feature page; Ask answers over the checkout and proposes a correction, a send or a ticket that a click confirms. Writes `decisions/` and nothing else — and, once ARG-169 lands, runs `marauder apply` so the click reaches the record at once. | Hold workflow state of its own. Write any blackboard file other than `decisions/` with its own code — the record changes only through `marauder`. |
 | **Foundry** (`~/git/foundry`) | Executes. Takes a job over HTTP, runs it in an ephemeral forge, pushes a PR, reports back. | Jobs, blueprints, repos, forges, the trigger API. The `agent-ready` ticket scanner that made it a decider too is gone (ARG-93). | Read the blackboard. Judge readiness. Choose what runs. |
 
 One line: **argus knows, you decide in Pensieve, Foundry does.**
@@ -26,29 +26,40 @@ feature that has something going on and renders the board from those, and Pensie
 ticket is sent to Foundry, or a held edit is confirmed. The `agent-ready` label that used
 to be the handoff is retired — inert on the tickets that carry it, applied by nothing, read
 by nothing — and Foundry's scanner is gone. From Ask, the model can propose a correction
-that a click confirms; the tool it calls never writes. That work landed as waves 1 to 9 of
-`improvements/` (one file per wave; its README is the index and `open-items.md` what is still open); the diagram is `canvas/setup.json`
-(`bun run canvas`, then `?g=setup`). "Downstream" at the bottom is the current contract.
+that a click confirms; the tool it calls never writes. That work landed as waves 1 to 10 of
+`improvements/` (one file per wave; its README is the index and `open-items.md` what is
+still open), and the verdict that takes effect at the click: Pensieve writes the decision
+file, then runs `marauder apply` — landed as ARG-168, under the lock every writing verb of
+the sweep holds — and the next tick finds nothing left to apply and commits what changed.
+The Pensieve half, running it at the click, is ARG-169, filed. The target diagram is
+`canvas/setup.json` and one tick is `canvas/graph.json` (`bun run canvas`, then
+`?g=setup` for the first). "Downstream" at the bottom is the current contract.
 
 ## The loop at a glance
 
 Each sweep tick walks five stages, each feeding the next; the board it renders is dashed
-into Pensieve, because what happens after it is your call:
+into Pensieve, because what happens after it is your call. A verdict given there comes
+back as a decision file: the next tick's ingest applies it, `marauder apply` (ARG-168)
+applies it on demand, and once ARG-169 lands the click itself runs that, so the record and
+the pages change at once:
 
 ```mermaid
 flowchart LR
-    ingest["1 · Ingest<br/>the channel + the base<br/>branches become events"]
+    ingest["1 · Ingest<br/>the channel + the base branches<br/>become events on the features they name"]
     journal["2 · Journal<br/>one entry per landing<br/>(the why)"]
     docs["3 · Docs<br/>dual-tier product + arch<br/>(the what)"]
     tickets["4 · Linear<br/>file what an event asks,<br/>fold events into open tickets"]
-    board["5 · Render<br/>marauder/board.md —<br/>where the work stands"]
+    board["5 · Render<br/>marauder/board.md +<br/>features/*/board.md"]
     decide(["you, in Pensieve"])
+    apply["marauder apply<br/>(ARG-168 — at the click once ARG-169 lands)"]
     foundry["Foundry executes<br/>(POST /api/jobs)"]
 
     ingest --> journal --> docs --> tickets --> board
     board -.-> decide
     decide -. "Send" .-> foundry
-    decide -. "attach · dismiss" .-> ingest
+    decide -. "attach · dismiss · verify<br/>→ decisions/" .-> apply
+    apply -. "the record and the pages, at once" .-> board
+    apply -. "what no click applied,<br/>the next tick does" .-> ingest
 ```
 
 ## Architecture
@@ -102,7 +113,8 @@ flowchart TB
     prfacts[["pr-facts --since<br/>deterministic: which landings<br/>are NOT JOURNALED"]]
     audit[["accio audit<br/>deterministic reconciler"]]
     ingest{"marauder ingest<br/>merges + messages → events,<br/>or the unsorted queue"}
-    board(["marauder render<br/>board.md — where the work stands"])
+    board(["marauder render<br/>board.md + features/*/board.md"])
+    decisions["decisions/marauder/*.json<br/>(a click in Pensieve)"]
 
     slack --> ingest
     staging --> ingest
@@ -121,6 +133,7 @@ flowchart TB
     journal --> audit
     docs --> audit
     ws --> board
+    decisions -. "marauder apply at the click,<br/>else the next ingest" .-> ws
 ```
 
 The one rule that keeps this safe to run unattended: **the sweep writes facts and
@@ -175,7 +188,7 @@ The derived files each cache one join so it is never recomputed:
 | Derived file | The join it caches |
 |---|---|
 | `features/*/work.json` | Everything a feature has been told lately, in one place: the messages, the merges, the tickets and the questions, joined by the keys the work is actually named by. Slack holds a fragment per day, Linear holds the ask, git holds the code; this holds what is going on in the feature, beside the docs that say what is true of it |
-| `marauder/` | Those records read out for a person, and nothing else — a page here can be deleted and re-rendered byte for byte, so it is never a source anything reads back |
+| `marauder/`, `features/*/board.md` | Those records read out for a person, and nothing else — a page here can be deleted and re-rendered byte for byte, so it is never a source anything reads back |
 | `features/*/journal/` | The spine: *this* decision + *this* ticket + *this* landing. That connection exists in no single external source — Slack doesn't know the PR, git doesn't know the why, Linear doesn't know the merge sha — which is why frontmatter is never guessed: a wrong key corrupts the only record of the join. |
 | `features/*/docs/` | The repos distilled to present-tense facts, sha-stamped (`last_verified` / `last_verified_be`) so staleness is detectable rather than suspected |
 | `.doc-workspace/` (manifest + OpenAPI) | Routing — which files and endpoints belong to which feature; what lets a diff or an endpoint named in Slack be attributed at all |
@@ -194,7 +207,7 @@ They stay readable in Pensieve as history, and nothing writes to them again.
 | `<app>/features/<dir>/work.json` | what is going on in one feature, if anything — `{ feature, keys, milestone, open_questions, events, updated }`. `keys` are what an event attaches by (tickets, PRs, thread roots, learned code vocabulary); the open questions carry whose move each is; the events are append-only, each saying which rung of the ladder put it there. A feature with nothing going on has no file. It keeps no stage and no facts: the docs say what is true, the journal says why, and Linear says where a ticket is. Written by `marauder ingest` and by the correction verbs, never by hand; read by `marauder render` and by `ask` (ARG-164, which folded the seventeen `workstreams/*.json` of ARG-154 into five of these) |
 | `queue/` | what waits outside any feature: `_unsorted.json` (what attached to nothing, or to more than one feature, with the candidates and why), `_milestones.json` (the dates records point at) and the gitignored Slack cursor `.state.json` / `.state.next.json` (ARG-161, ARG-164) |
 | `marauder/` | the pages a person reads, rendered from the features' `work.json` and nothing else: `board.md` (the milestone, what needs you, one section per feature with an event this week headed by its manifest name and linked to its page, then what you are waiting on others for, by owner) and `changelog/<day>.md` (what changed that day, by feature). Written by `bun run marauder render` and committed like every other rendered file; never hand-edited, and every page is held to `skills/sweep/style.md`'s three mechanical rules before it is written (ARG-155, ARG-166) |
-| `decisions/marauder/<id>.json` | one file per verdict on what the loop could not settle, `{ id, action, feature?, reason, at, by }`, `action` one of `attach` \| `dismiss` \| `verified` — `feature` is the directory under `features/`, and a file written before ARG-164 names a `slug` in its place. `new` and `stage` went with the workstreams and are reported, not applied. Written by Pensieve, only ever read and committed by the sweep: `marauder ingest` applies each through the same correction functions the command line goes through, before anything new arrives, and leaves the file where it is as the history of who decided what (ARG-160). `id` names the queue entry it decides — or, for `verified`, the event it answers: the user's go-ahead for the one edit a `directed-at-person` event named, stamped onto that event (ARG-161). `decisions/send/<ticket>.json`, `{ ticket, action: "sent", job, at, by }`, is the other group — a ticket handed to Foundry, read when a ticket plan asks whether one is running |
+| `decisions/marauder/<id>.json` | one file per verdict on what the loop could not settle, `{ id, action, feature?, reason, at, by }`, `action` one of `attach` \| `dismiss` \| `verified` — `feature` is the directory under `features/`, and a file written before ARG-164 names a `slug` in its place. `new` and `stage` went with the workstreams and are reported, not applied. Written by Pensieve and never edited after; `marauder ingest` applies each through the same correction functions the command line goes through, before anything new arrives, and the sweep commits the file where it is as the history of who decided what (ARG-160). `marauder apply` (ARG-168) applies it on demand under the queue lock; once ARG-169 lands Pensieve runs that right after the write, and the next tick finds nothing left to apply. `id` names the queue entry it decides — or, for `verified`, the event it answers: the user's go-ahead for the one edit a `directed-at-person` event named, stamped onto that event (ARG-161). `decisions/send/<ticket>.json`, `{ ticket, action: "sent", job, at, by }`, is the other group — a ticket handed to Foundry, read when a ticket plan asks whether one is running |
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
 | `<app>/features/<dir>/board.md` | one feature's page, beside its docs: the manifest name, a line linking `docs/product.md` and `docs/arch.md` with their `last_verified` stamps (or saying there are none yet), Needs you, Still open, and every event newest first. Rendered from the `work.json` beside it by `marauder render`, which removes the page when the feature has no `work.json`; `marauder show <feature>` prints it (ARG-166) |
 | `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
@@ -265,10 +278,10 @@ Criteria are concrete (observable outcomes, each grounded in a Technical Note, p
 linear-ticket house format) — but nothing acts on that alone. The handoff is two steps,
 judgement staying on this side:
 
-1. **You decide in Pensieve.** A workstream's page lists its tickets, and Send sits beside
+1. **You decide in Pensieve.** A feature's page lists its tickets, and Send sits beside
    one whose Pending section is empty. The board is what got you there: it says what the
    ticket is for, what landed toward it and what is still open, which is the judgement Send
-   is. An Ask opened from the workstream shows the same controls, and the model can propose
+   is. An Ask opened from the feature page shows the same controls, and the model can propose
    a correction or a send as a card whose Confirm is the same click. The verdict lands as
    `decisions/send/<ticket>.json`.
 2. **Foundry executes.** Send is a `POST /api/jobs` with `ticketId`, `repo` and the ticket
@@ -280,19 +293,18 @@ judgement staying on this side:
 The sweep no longer nominates a ready ticket: readiness was a line in a report, and the
 report is gone. It still refuses to touch a ticket Foundry is running — the edits are
 computed, held, and put in front of you as something the board shows (`skills/sweep/SKILL.md`,
-Autonomy). Moving Send onto the workstream page is ARG-162, and until it lands there is no
-button: send from Foundry directly, or wait for it.
+Autonomy). Send lives on the feature page (ARG-162, ARG-167).
 
 ```mermaid
 flowchart LR
     sweep["/sweep"] -- "events on a feature" --> ws["features/*/work.json"]
     ws --> board["marauder/board.md"]
-    board --> pensieve["Pensieve"]
+    board --> pensieve["Pensieve — the feature page"]
     pensieve -- "Send: POST /api/jobs" --> foundry["Foundry API"]
     foundry -- "job id + url" --> pensieve
     pensieve -. "action: sent, job" .-> decisions["decisions/send/*.json"]
     pensieve -. "attach · dismiss" .-> mdec["decisions/marauder/*.json"]
-    mdec -. "the next ingest applies it" .-> ws
+    mdec -. "marauder apply at the click (ARG-169),<br/>else the next ingest" .-> ws
     foundry -- "claim in Postgres,<br/>ignite" --> forge["job forge<br/>(ephemeral)"]
 ```
 
