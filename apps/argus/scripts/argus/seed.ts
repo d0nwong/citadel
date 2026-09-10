@@ -9,7 +9,8 @@
  */
 
 import { featureDirOf, loadManifest } from "./manifest.ts";
-import { featureDir } from "./paths.ts";
+import { unlink } from "node:fs/promises";
+import { featureDir, ledgerPath } from "./paths.ts";
 import { emptyLedger, type Evidence, type Ledger, type Requirement } from "./schema.ts";
 import { checkStyle } from "./validate.ts";
 import { readLedger, writeLedger, type WriteResult } from "./write.ts";
@@ -95,8 +96,14 @@ export async function seedFeature(feature: string, opts: { dryRun?: boolean; now
   const manifest = await loadManifest();
   const mf = manifest.features.find((f) => featureDirOf(f) === feature);
   const name = mf?.name ?? feature;
-  const existing = await readLedger(feature);
-  if (existing && existing.requirements.length && !opts.force) return { feature, write: null, seeded: 0, skipped: [], note: "already has requirements; --force to reseed" };
+  let existing = await readLedger(feature);
+  if (existing && existing.requirements.length) {
+    if (!opts.force) return { feature, write: null, seeded: 0, skipped: [], note: "already has requirements; --force to reseed" };
+    const onlySeed = !existing.asks.length && !existing.tickets.length && !existing.landings.length && !existing.proposals.length && existing.requirements.every((r) => r.status === "assumed");
+    if (!onlySeed) return { feature, write: null, seeded: 0, skipped: [], note: "holds more than seeded rows; reseeding would lose them" };
+    if (!opts.dryRun) await unlink(ledgerPath(feature));
+    existing = null;
+  }
   const doc = Bun.file(`${featureDir(feature)}/docs/product.md`);
   const markdown = (await doc.exists()) ? await doc.text() : "";
   const rows = parseRules(markdown);
