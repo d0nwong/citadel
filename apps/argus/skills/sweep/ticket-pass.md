@@ -6,12 +6,13 @@ Write policy is the sweep's Autonomy section; ticket shape and editing rules are
 `linear-ticket` skill. Neither changed when the work's source did.
 
 The work comes from the events on each feature's record, and from nothing else since
-ARG-161. An event names its ticket, or the feature's keys do, so "which ticket does this
-affect" is a choice among a few rather than among every open one; and the feature's
+ARG-161. An event folds into a ticket only when the event itself names it — its `ticket`,
+or a source naming it — since a feature's keys name many tickets and cannot say which one
+an event is about (ARG-165); and the feature's
 events and `open_questions` say what the work now is, so the pass diffs the ticket against
 them instead of patching it message by message. What is settled about the feature is its
-docs' business — a fact reaches a ticket through a landing or an answered question here,
-never through a second record (ARG-164). `marauder ticket-plan` computes that diff, and it is a
+docs' business — a Technical Notes line is written only from an event citing the journal
+entry that holds the why, never from a second record (ARG-164, ARG-165). `marauder ticket-plan` computes that diff, and it is a
 pure function of the record and the body — the worker holds the Linear key and applies it,
 because argus holds no key.
 
@@ -30,10 +31,12 @@ Fill every `{…}`:
 >   deferred.
 >
 > Read this file and the Autonomy section of `skills/sweep/SKILL.md` before starting.
-> For each feature with new events, for each ticket its new events name (or, for an
-> event naming none, each ticket in the feature's `keys.tickets`): read the ticket body
-> with `get_issue`, write it to a temp file, and run
+> For each feature with new events, for each ticket its new events name: read the ticket
+> body with `get_issue`, write it to a temp file, and run
 > `bun run marauder ticket-plan <feature> <ALD-nn> --body <file> --state "<its Linear state>"`.
+> An event naming no ticket folds into none. A feature whose new events name no ticket
+> still gets one plan for its asks: `bun run marauder ticket-plan <feature> - --body /dev/null`.
+> Every plan for a feature returns the same `fileAsks`; file each id once.
 > Apply the plan per the action table below. Then Part B — file a ticket for every
 > `fileAsks` entry, per "Filing" — and Part C — review the tickets naming a refreshed
 > feature, per "Reviewing".

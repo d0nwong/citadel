@@ -12,10 +12,10 @@
  *   decisions/marauder/<id>.json
  *   { id, action: "attach" | "dismiss" | "verified", feature?, reason, at, by }
  *
- * `attach` names the feature by its directory under `features/`. A file written before the
- * feature was the unit names a `slug` instead; those were all applied while workstreams
- * existed, so their entries are gone from the queue and they apply nothing now. `new` and
- * `stage` went with the workstreams: a file carrying one is said out loud, not applied.
+ * `attach` names the feature by its directory under `features/`. A file naming a `slug`
+ * instead, or carrying `new` or `stage`, is from the workstreams: it is said out loud in one
+ * sentence and not applied (ARG-165). Every such file on disk was applied while workstreams
+ * existed, so its entry is gone from the queue either way.
  *
  * `verified` is the odd one: its `id` names an *event* rather than a queue entry, and it
  * is the user answering what a `directed-at-person` event asked them — the go-ahead for
@@ -78,8 +78,8 @@ export function parseDecision(text: string): { decision: MarauderDecision } | { 
   if (RETIRED.includes(String(d.action))) return { error: `"${String(d.action)}" went with the workstreams — attach the entry to a feature instead` };
   if (!ACTIONS.includes(d.action as MarauderAction)) return { error: `action "${String(d.action)}" is not one of ${ACTIONS.join(", ")}` };
   const action = d.action as MarauderAction;
-  // a file from before the feature was the unit names a slug, and applies to nothing now
-  const feature = isStr(d.feature) ? d.feature : isStr(d.slug) ? d.slug : undefined;
+  const feature = isStr(d.feature) ? d.feature : undefined;
+  if (action === "attach" && !feature && isStr(d.slug)) return { error: `attach names the workstream "${d.slug}", and workstreams are gone — name the feature instead` };
   if (action === "attach" && !feature) return { error: "attach names no feature" };
   if (action === "dismiss" && !isStr(d.reason)) return { error: "dismiss gives no reason, and the reason is all that is left of the item" };
   return {

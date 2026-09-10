@@ -201,10 +201,10 @@ can propose. Say what you would change and leave it there. There is nothing to o
 advance: the feature already exists, and a stage is Linear's.
 
 **With the tool.** In Pensieve's Argus panel a tool named `propose_decision` is available.
-Call it once, with `{ id, action: "attach" | "dismiss", slug?, reason }` — `id` is the
+Call it once, with `{ id, action: "attach" | "dismiss", feature?, reason }` — `id` is the
 queue entry's own id from `queue/_unsorted.json` (a Slack `ts`, `fe#417`); for `attach`,
-`slug` carries the feature's directory (`admin/usage`) until Pensieve renames the field;
-and `reason` is the My-call sentence in ≤ 140 characters, required for `dismiss` and worth
+`feature` is the feature's directory (`admin/usage`) — a decision naming a `slug` is
+refused; and `reason` is the My-call sentence in ≤ 140 characters, required for `dismiss` and worth
 writing for every one: it is what the event keeps. One
 call per correction: if the ask carries two, propose the first and name the second.
 

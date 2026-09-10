@@ -59,7 +59,7 @@ export type TicketPlan = {
   unpaired: OpenQuestion[];
   /** questions this plan answers, to drop off the record once the edits land */
   resolves: string[];
-  /** asks with no ticket anywhere on the feature's record, for the worker to file */
+  /** this tick's asks that carry no ticket, for the worker to file — the same on every plan for the feature */
   fileAsks: { id: string; title: string; permalink?: string }[];
 };
 
@@ -98,8 +98,18 @@ export function withoutPending(body: string): string {
 
 // ---------------------------------------------------------------- the action table
 
-const backedBy = (w: Work, e: WorkEvent) =>
-  w.events.some((x) => x.kind === "verified-landing" && (!e.side || x.side === e.side) && instantOf(x.at) >= instantOf(e.at));
+/**
+ * An event is about a ticket when it says so: its own `ticket`, or a source naming it. A
+ * feature names many tickets, so its keys cannot say which one an event concerns (ARG-165).
+ */
+export const namesTicket = (e: WorkEvent, key: string) =>
+  e.ticket === key || e.source?.ref === key || new RegExp(`\\b${key}\\b`).test(e.source?.url ?? "");
+
+/** a note is written only from an event that cites the journal entry holding the why */
+const cited = (e?: WorkEvent) => Boolean(e && (e.evidence || e.source?.type === "journal"));
+
+const landingFor = (w: Work, e: WorkEvent) =>
+  w.events.find((x) => x.kind === "verified-landing" && (!e.side || x.side === e.side) && instantOf(x.at) >= instantOf(e.at));
 
 /** the Pending bullet a claim leaves behind, carrying the reference that later clears it */
 export const claimBullet = (e: WorkEvent) =>
@@ -123,7 +133,7 @@ export function planTicket({ work: w, ticket, events, milestones }: TicketInput)
   const flags: Flag[] = [];
   const resolves: string[] = [];
   const fileAsks: TicketPlan["fileAsks"] = [];
-  const mine = events.filter((e) => !e.ticket || e.ticket === ticket.key);
+  const mine = events.filter((e) => namesTicket(e, ticket.key));
   const pending = bullets(section(ticket.body, "Pending"));
   const settled = withoutPending(ticket.body);
 
@@ -133,7 +143,7 @@ export function planTicket({ work: w, ticket, events, milestones }: TicketInput)
       const bullet = q.pending_ref && pending.find((b) => b === q.pending_ref || b.includes(q.pending_ref!));
       if (!bullet) continue;
       edits.push({ kind: "delete-pending", old_string: bullet, why: `${e.summary} answers it` });
-      edits.push({ kind: "add-note", text: e.summary, why: `the answer to "${q.q}"` });
+      if (cited(e)) edits.push({ kind: "add-note", text: e.summary, why: `the answer to "${q.q}"` });
       resolves.push(q.q);
     }
   }
@@ -141,10 +151,11 @@ export function planTicket({ work: w, ticket, events, milestones }: TicketInput)
   // a claim is a claim until the branch says otherwise; a landing is what clears it
   for (const e of mine.filter((x) => x.kind === "contract-change" || x.kind === "claimed-landing")) {
     const bullet = claimBullet(e);
-    if (backedBy(w, e)) {
+    const landing = landingFor(w, e);
+    if (landing) {
       const stale = pending.find((b) => b.includes(`(${eventId(e)})`) && b.includes(UNVERIFIED));
       if (stale) edits.push({ kind: "delete-pending", old_string: stale, why: "a landing on the base branch backs it now" });
-      if (!says(settled, e.summary)) edits.push({ kind: "add-note", text: e.summary, why: "verified against the base branch" });
+      if ((cited(e) || cited(landing)) && !says(settled, e.summary)) edits.push({ kind: "add-note", text: e.summary, why: "verified against the base branch" });
     } else if (!pending.some((b) => b.includes(`(${eventId(e)})`))) {
       edits.push({ kind: "add-pending", text: bullet, why: "nothing on the base branch backs it yet" });
     }
@@ -161,10 +172,10 @@ export function planTicket({ work: w, ticket, events, milestones }: TicketInput)
     if (stone) edits.push({ kind: "due-date", value: stone.date, why: `${e.summary}` });
   }
 
-  // an ask with no ticket anywhere on the record is a ticket to file, titled in its own words
-  if (!w.keys.tickets.length)
-    for (const e of mine.filter((x) => x.kind === "new-ask" && !x.ticket))
-      fileAsks.push({ id: eventId(e), title: e.summary.replace(/\.$/, ""), ...(e.source?.url ? { permalink: e.source.url } : {}) });
+  // an ask carrying no ticket of its own is a ticket to file, titled in its own words —
+  // whatever else the feature's keys name, since those are about other work
+  for (const e of events.filter((x) => x.kind === "new-ask" && !x.ticket))
+    fileAsks.push({ id: eventId(e), title: e.summary.replace(/\.$/, ""), ...(e.source?.url ? { permalink: e.source.url } : {}) });
 
   for (const q of w.open_questions.filter((x) => x.ticket === ticket.key && !x.pending_ref))
     flags.push({ why: "no Pending bullet is paired with this question yet", detail: q.q });

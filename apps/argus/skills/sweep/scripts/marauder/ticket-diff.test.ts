@@ -50,6 +50,9 @@ const ev = (over: Partial<WorkEvent> = {}): WorkEvent => ({
   ...over,
 });
 
+/** the journal entry an event cites, which is what lets it write a note */
+const J = "alden/alden-portal/features/admin/usage/journal/2026-09-09-roles.md";
+
 const w = (over: Partial<Work> = {}): Work => ({
   feature: "admin/usage",
   keys: { tickets: ["ALD-24"], prs: [], threads: [], vocab: [] },
@@ -70,8 +73,31 @@ describe("reading the body", () => {
   });
 });
 
+describe("which events are about the ticket", () => {
+  test("an event on the feature naming no ticket contributes nothing", () => {
+    const loose = ev({ ticket: undefined, evidence: J });
+    const claim = ev({ kind: "contract-change", ticket: undefined });
+    expect(plan(w({ events: [loose, claim] }), [loose, claim]).edits).toEqual([]);
+  });
+
+  test("an event whose source names the ticket is about it", () => {
+    const viaSource = ev({ ticket: undefined, evidence: J, source: { type: "ticket", ref: "ALD-24" } });
+    expect(plan(w({ events: [viaSource] }), [viaSource]).edits).toHaveLength(2);
+  });
+
+  test("an event naming another ticket is not about this one", () => {
+    const other = ev({ ticket: "ALD-99", evidence: J });
+    expect(plan(w({ events: [other] }), [other]).edits).toEqual([]);
+  });
+});
+
 describe("an answered question", () => {
-  const answered = ev();
+  const answered = ev({ evidence: J });
+
+  test("without a journal entry it deletes the bullet and writes no note", () => {
+    const bare = ev();
+    expect(plan(w({ events: [bare] }), [bare]).edits.map((e) => e.kind)).toEqual(["delete-pending"]);
+  });
 
   test("deletes the bullet it was waiting on and leaves the answer in Technical Notes", () => {
     const p = plan(w({ events: [answered] }), [answered]);
@@ -99,7 +125,7 @@ describe("an answered question", () => {
 });
 
 describe("a claim and the landing that backs it", () => {
-  const claim = ev({ kind: "contract-change", side: "fe", summary: "Sam said the rows now carry roleName", ticket: undefined });
+  const claim = ev({ kind: "contract-change", side: "fe", summary: "Sam said the rows now carry roleName" });
 
   test("an unbacked claim adds a Pending bullet saying so", () => {
     const p = plan(w({ events: [claim] }), [claim]);
@@ -113,35 +139,42 @@ describe("a claim and the landing that backs it", () => {
   });
 
   test("a landing on the same side clears the bullet and writes the fact in", () => {
-    const landing = ev({ kind: "verified-landing", side: "fe", at: "2026-09-09T19:00:00Z", summary: "You landed the role column.", source: { type: "pr", ref: "fe#420" }, ticket: undefined });
+    const landing = ev({ kind: "verified-landing", side: "fe", at: "2026-09-09T19:00:00Z", summary: "You landed the role column.", source: { type: "pr", ref: "fe#420" }, ticket: undefined, evidence: J });
     const body = BODY.replace("## Technical Notes", `${claimBullet(claim)}\n\n## Technical Notes`);
     const p = plan(w({ events: [claim, landing] }), [claim], ticket({ body }));
     expect(p.edits).toContainEqual({ kind: "delete-pending", old_string: claimBullet(claim), why: "a landing on the base branch backs it now" });
     expect(p.edits).toContainEqual({ kind: "add-note", text: claim.summary, why: "verified against the base branch" });
   });
+
+  test("a landing no journal entry cites clears the bullet and writes no note", () => {
+    const landing = ev({ kind: "verified-landing", side: "fe", at: "2026-09-09T19:00:00Z", summary: "You landed the role column.", source: { type: "pr", ref: "fe#420" }, ticket: undefined });
+    const body = BODY.replace("## Technical Notes", `${claimBullet(claim)}\n\n## Technical Notes`);
+    expect(plan(w({ events: [claim, landing] }), [claim], ticket({ body })).edits.map((e) => e.kind)).toEqual(["delete-pending"]);
+  });
 });
 
 describe("deadlines and asks", () => {
   test("a deadline sets the due date and nothing else", () => {
-    const d = ev({ kind: "deadline", summary: "Foong launches tomorrow.", ticket: undefined });
+    const d = ev({ kind: "deadline", summary: "Foong launches tomorrow." });
     const p = plan(w({ milestone: "launch-2026-09-10", events: [d] }), [d]);
     expect(p.edits).toEqual([{ kind: "due-date", value: "2026-09-10", why: "Foong launches tomorrow." }]);
   });
 
-  test("an ask with no ticket anywhere on the record is one to file, titled in its own words", () => {
+  test("an ask carrying no ticket is one to file, whatever the feature's keys name", () => {
     const ask = ev({ kind: "new-ask", summary: "Sam asked for a client column.", ticket: undefined, source: { type: "slack", ref: "1789000000.9", url: "https://slack/x" } });
-    const p = plan(w({ keys: { ...w().keys, tickets: [] }, events: [ask] }), [ask]);
+    const p = plan(w({ events: [ask] }), [ask]);
+    expect(w().keys.tickets).toEqual(["ALD-24"]);
     expect(p.fileAsks).toEqual([{ id: "1789000000.9", title: "Sam asked for a client column", permalink: "https://slack/x" }]);
   });
 
-  test("an ask on a record that already has a ticket files nothing", () => {
-    const ask = ev({ kind: "new-ask", ticket: undefined });
-    expect(plan(w({ events: [ask] }), [ask]).fileAsks).toEqual([]);
+  test("an ask that carries a ticket files nothing", () => {
+    const ask = ev({ kind: "new-ask", ticket: "ALD-30" });
+    expect(plan(w({ keys: { ...w().keys, tickets: [] }, events: [ask] }), [ask]).fileAsks).toEqual([]);
   });
 });
 
 describe("a ticket Foundry is running", () => {
-  const answered = ev();
+  const answered = ev({ evidence: J });
 
   test("the plan is computed, marked held, and nothing is applied", () => {
     const p = plan(w({ events: [answered] }), [answered], ticket({ state: "In Progress", hasJob: true }));
