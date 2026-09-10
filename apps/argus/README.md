@@ -27,7 +27,7 @@ ticket is sent to Foundry, or a held edit is confirmed. The `agent-ready` label 
 to be the handoff is retired — inert on the tickets that carry it, applied by nothing, read
 by nothing — and Foundry's scanner is gone. From Ask, the model can propose a correction
 that a click confirms; the tool it calls never writes. That work landed as waves 1 to 9 of
-`PLAN.md`, which also holds what is still open; the diagram is `canvas/setup.json`
+`improvements/` (one file per wave; its README is the index and `open-items.md` what is still open); the diagram is `canvas/setup.json`
 (`bun run canvas`, then `?g=setup`). "Downstream" at the bottom is the current contract.
 
 ## The loop at a glance

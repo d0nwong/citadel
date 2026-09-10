@@ -172,7 +172,7 @@ export type UnsortedItem = {
 
 /**
  * A name to a slug: lowercased, runs of non-alphanumerics to one `-`, trimmed. It was the
- * point id's rule (PLAN.md, "Shared contracts") and outlived it — `new` and `split` name a
+ * point id's rule (`improvements/shared-contracts.md`) and outlived it — `new` and `split` name a
  * workstream file with it, so a workstream a person opens by typing its name lands at the
  * path everything else already expects.
  */
