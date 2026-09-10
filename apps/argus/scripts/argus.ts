@@ -16,6 +16,8 @@
 import { listFeatures, ledgerPath, root } from "./argus/paths.ts";
 import { validateDoc, validateLedger, ValidationError } from "./argus/validate.ts";
 import { archDocPath, isFeature } from "./argus/paths.ts";
+import { place as placeBatchFile } from "./argus/place.ts";
+import { pullBatch } from "./argus/pull.ts";
 import { closeAsk, confirmRequirement, placeMessage, recordTicket } from "./argus/verbs.ts";
 import { readLedger, writeLedger } from "./argus/write.ts";
 
@@ -42,6 +44,9 @@ const USAGE = `argus — the ledger CLI
   argus validate [<feature>...]      check every ledger and arch doc, or the ones named
   argus write <feature> <file>|-     validate and write the next ledger (--dry-run to preview)
   argus show <feature>               print the ledger
+
+  argus pull [--since <date>] [--no-slack] [--no-landings] [--no-fetch] [--out <dir>]
+  argus place <batch-id|path>        the deterministic joins → <batch>.placed.json + state/unplaced.json
 
   argus close <feature> <A-n> --reason "<why>"
   argus confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]
@@ -109,9 +114,30 @@ const verbs: Record<string, Verb> = {
     return report(f, feature, r);
   },
 
+  async pull(f) {
+    const r = await pullBatch({
+      since: f.opts.since,
+      noSlack: f.opts["no-slack"] === "true",
+      noLandings: f.opts["no-landings"] === "true",
+      fetch: f.opts["no-fetch"] !== "true",
+      outDir: f.opts.out,
+      dryRun: f.dryRun,
+    });
+    if (f.json) console.log(JSON.stringify({ ok: true, batch: r.batch?.id ?? null, path: r.path, reason: r.reason, messages: r.batch?.slack ? r.batch.slack.newTopLevel.length + r.batch.slack.threads.reduce((n, t) => n + t.replies.length, 0) : 0, landings: r.batch?.landings.length ?? 0 }));
+    else if (!r.batch) console.log(r.reason ?? "nothing new");
+    else console.log(`${f.dryRun ? "would write" : "wrote"} ${r.path}: ${r.batch.landings.length} landing(s), slack since ${r.batch.since.slack ?? "skipped"}`);
+    return 0;
+  },
+
   async place(f) {
     const [id, feature] = f.rest;
-    if (!id || !feature) throw new Usage("place <message-id> <feature>");
+    if (id && !feature) {
+      const p = await placeBatchFile(id, { dryRun: f.dryRun });
+      if (f.json) console.log(JSON.stringify({ ok: true, ...p }));
+      else console.log(`${p.batch}: ${p.slices.map((s) => `${s.feature} (${s.messages.length} msg, ${s.landings.length} landing)`).join(", ") || "nothing placed"}; ${p.unplaced.length} unplaced${f.dryRun ? " (dry run)" : ""}`);
+      return 0;
+    }
+    if (!id || !feature) throw new Usage("place <batch> | place <message-id> <feature>");
     const r = await placeMessage(id, feature, { dryRun: f.dryRun });
     if (f.json) console.log(JSON.stringify({ ok: true, ...r, ledger: r.ledger ? { wrote: r.ledger.wrote, diff: r.ledger.diff } : null }));
     else console.log(`${id} → ${feature}${r.thread ? ` (thread ${r.thread} remembered)` : ""}${r.ledger ? ", ledger opened" : ""}${f.dryRun ? " (dry run)" : ""}`);
