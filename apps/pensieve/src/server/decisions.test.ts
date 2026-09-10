@@ -59,8 +59,8 @@ const entry = (extra: Partial<MarauderDecision> = {}): MarauderDecision => ({
   action: "attach",
   at: "2026-09-09T20:00:00.000Z",
   by: "Liam Leung",
+  feature: "admin/usage",
   id: "fe#417",
-  slug: "usage-page",
   ...extra,
 });
 
@@ -73,9 +73,11 @@ describe("AC3 — the decision file a click writes", () => {
       action: "attach",
       at: "2026-09-09T20:00:00.000Z",
       by: "Liam Leung",
+      feature: "admin/usage",
       id: "fe#417",
-      slug: "usage-page",
     });
+    // AC3 — a feature, never a slug.
+    expect(await readFile(target, "utf8")).not.toContain("slug");
     // Nothing half-written is left behind for the sweep to read.
     expect(
       (await readdir(join(dir, "marauder"))).filter((n) => n.includes(".tmp-"))
@@ -85,7 +87,7 @@ describe("AC3 — the decision file a click writes", () => {
   test("a second click reads the file already there rather than writing a later one", async () => {
     await writeMarauderDecision(entry(), dir);
     const already = await readMarauderDecision("fe#417", dir);
-    expect(already).toMatchObject({ action: "attach", slug: "usage-page" });
+    expect(already).toMatchObject({ action: "attach", feature: "admin/usage" });
     // What `decideUnsorted` does with that: answer it, and write nothing more.
     const before = await readFile(join(dir, "marauder", "fe-417.json"), "utf8");
     expect(await readMarauderDecision("fe#417", dir)).toEqual(already);
@@ -120,12 +122,32 @@ describe("AC3 — the decision file a click writes", () => {
   test.each([
     ["not JSON at all", "{"],
     ["an unknown verb", JSON.stringify({ action: "ignore", id: "fe#417" })],
-    ["no id", JSON.stringify({ action: "attach", slug: "usage-page" })],
+    ["no id", JSON.stringify({ action: "attach", feature: "admin/usage" })],
     [
-      "an attach naming no workstream",
+      "an attach naming no feature",
       JSON.stringify({ action: "attach", id: "fe#417" }),
     ],
-    ["a new with no name", JSON.stringify({ action: "new", id: "fe#417" })],
+    [
+      "an attach naming a workstream slug",
+      JSON.stringify({ action: "attach", id: "fe#417", slug: "usage-page" }),
+    ],
+    [
+      "an attach whose feature escapes the tree",
+      JSON.stringify({ action: "attach", feature: "../x", id: "fe#417" }),
+    ],
+    [
+      "a new, even with a name",
+      JSON.stringify({ action: "new", id: "fe#417", name: "Due on receipt" }),
+    ],
+    [
+      "a stage",
+      JSON.stringify({
+        action: "stage",
+        id: "fe#417",
+        side: "fe",
+        stage: "landed",
+      }),
+    ],
   ])("%s is refused", (_what, text) => {
     expect(parseMarauderDecision(text)).toBeNull();
   });
@@ -135,14 +157,14 @@ describe("AC3 — the decision file a click writes", () => {
     await writeMarauderDecision(
       entry({
         action: "dismiss",
-        id: "split/usage-page",
-        reason: "not two things",
+        id: "1788927279211769.1",
+        reason: "chat",
       }),
       dir
     );
     const all = await readMarauderDecisions(dir);
-    expect([...all.keys()].sort()).toEqual(["fe#417", "split/usage-page"]);
-    expect(all.get("split/usage-page")?.action).toBe("dismiss");
+    expect([...all.keys()].sort()).toEqual(["1788927279211769.1", "fe#417"]);
+    expect(all.get("1788927279211769.1")?.action).toBe("dismiss");
   });
 });
 

@@ -71,8 +71,8 @@ function ArchivePage() {
         <Link className="text-primary hover:underline" to="/">
           the board
         </Link>
-        , and one piece of it is its own page under{" "}
-        <Link className="text-primary hover:underline" to="/work">
+        , and every feature with work going on has its own page under{" "}
+        <Link className="text-primary hover:underline" to="/features">
           Work
         </Link>
         .

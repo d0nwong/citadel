@@ -9,7 +9,8 @@
  *   reports/YYYY-MM-DD.md                       archive: a sweep report, one per day
  *   digests/YYYY-MM-DD.md                       archive: a Slack digest, one per day
  *
- * The map of the work itself — `workstreams/` and `marauder/` — is ./marauder.ts's; the
+ * The map of the work itself — each feature's `work.json` and `board.md`, `queue/` and
+ * `marauder/` — is ./marauder.ts's; the
  * reports and digests here are what the loop wrote before that replaced them (LIA-161),
  * and nothing writes them any more.
  *

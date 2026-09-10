@@ -76,7 +76,7 @@ import {
   LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
 } from "../lib/ask-tools";
-import { isSlug } from "../lib/marauder";
+import { isFeature } from "../lib/marauder";
 import { proposeDecisionTool, proposeTicketTool } from "./ask-tools.server";
 import { WORKSPACE_DIR } from "./workspace";
 
@@ -148,7 +148,7 @@ export const ADAPTER_CONFIG = {
   cwd: "/workspace",
   disallowedTools: DISALLOWED_TOOLS,
   emitDiff: false,
-  // One turn per model round-trip, so every tool call is one: a question about a workstream
+  // One turn per model round-trip, so every tool call is one: a question about a feature
   // that reads its page, a journal entry and a doc or two is 15–25. When the cap is hit the CLI
   // still prints its result (finish reason `length`) and then exits 1 — see `askStream`.
   maxTurns: 40,
@@ -171,21 +171,21 @@ console.log(
  */
 export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus blackboard. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog, and nobody can grant, allow or approve anything. A denied tool stays denied for this run; say what you could not do in one sentence and answer from what you have. Never tell the user to grant, allow or approve anything, and never wait for approval.
 
-To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A piece of work is \`bun run marauder show <slug>\`; everything open is \`bun run marauder board\`; a day is \`bun run marauder changelog <YYYY-MM-DD>\`; a ticket is the workstream whose tickets name it, then mcp__linear__get_issue; a feature or endpoint is \`bun run accio "<the thing>"\`. Read the product checkouts with Read, Glob, Grep and \`git -C <repo> log\` / \`git -C <repo> show origin/<branch>:<path>\`. Never run git fetch, git branch, git checkout, find, python3, or cat/grep/ls through Bash — each is a denied turn. The marauder verbs that write are denied: a correction is proposed, never run.
+To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature's work is \`bun run marauder show <feature>\`; everything open is \`bun run marauder board\`; a day is \`bun run marauder changelog <YYYY-MM-DD>\`; a ticket is the feature whose tickets name it, then mcp__linear__get_issue; a doc or endpoint is \`bun run accio "<the thing>"\`. Read the product checkouts with Read, Glob, Grep and \`git -C <repo> log\` / \`git -C <repo> show origin/<branch>:<path>\`. Never run git fetch, git branch, git checkout, find, python3, or cat/grep/ls through Bash — each is a denied turn. The marauder verbs that write are denied: a correction is proposed, never run.
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
 You cannot write files, edit tickets or comments, or run the sweep. To correct what the loop got wrong, call \`propose_decision\` once as the ask skill's Correcting section says; to hand a ticket to Foundry, call it once with action "send" and the ticket key. Either way the user confirms it on the card: say it is proposed in one sentence, never say it is done, and never say it has been sent. To file a new ticket, draft it per the linear-ticket skill and call \`propose_ticket\` once; the user files it on the card — say it is proposed, never that it is filed.`;
 
 /**
- * The extra system prompt a conversation opened from a workstream page carries (LIA-162
- * AC4). Without it "it" has no antecedent on the first turn: the page the question was
+ * The extra system prompt a conversation opened from a feature page carries (LIA-162 AC4,
+ * ARG-167 AC5). Without it "it" has no antecedent on the first turn: the page the question was
  * asked from is the browser's, not the session's, and `chat({ context })` reaches only the
- * tool's `execute`. It names the retrieval too, so the workstream's own page is the first
+ * tool's `execute`. It names the retrieval too, so the feature's own story is the first
  * thing read rather than the board.
  */
-export const workstreamPrompt = (slug: string) =>
-  `This conversation was opened on the workstream \`${slug}\`. "it" in a question, a correction or a send means that workstream unless the user names something else. Start with \`bun run marauder show ${slug}\` — that is its whole story — and read \`workstreams/${slug}.json\` when the verb is denied.`;
+export const featurePrompt = (feature: string) =>
+  `This conversation was opened on the feature \`${feature}\` (its directory under an app's features/). "it" in a question, a correction or a send means that feature unless the user names something else. Start with \`bun run marauder show ${feature}\` — that is its whole story — and read \`<app>/features/${feature}/work.json\` when the verb is denied.`;
 
 export type AuthMode = "host" | "api-key";
 
@@ -626,11 +626,11 @@ export const askPersistence = askStore.persistence;
 export const SESSION_KEY = "sessionId";
 
 /**
- * The workstream this conversation is about, when it was opened from one (LIA-162 AC4).
- * Written once, on the first run that names it, and never again: the conversation is about
- * the workstream it started on, whatever a later request claims.
+ * The feature this conversation is about, when it was opened from one (LIA-162 AC4, ARG-167
+ * AC5). Written once, on the first run that names it, and never again: the conversation is
+ * about the feature it started on, whatever a later request claims.
  */
-export const WORKSTREAM_KEY = "workstream";
+export const FEATURE_KEY = "feature";
 
 /**
  * Where a filed ticket lives: `metadata[<threadId>]["ticket:<toolCallId>"]`. One key per
@@ -695,6 +695,8 @@ export const readSessionId = async (
 // ── the run ────────────────────────────────────────────────────────────────────
 
 export interface AskInput {
+  /** The feature the conversation was opened on — stored on the first run, ignored after. */
+  feature?: string;
   /**
    * The full transcript (what `useChat` sends), or `[]` to continue the stored one as it
    * stands — TanStack's "send the full transcript, or none of it". A delta would replace
@@ -703,8 +705,6 @@ export interface AskInput {
   messages: UIMessage[];
   runId?: string;
   threadId: string;
-  /** The workstream the conversation was opened on — stored on the first run, ignored after. */
-  workstream?: string;
 }
 
 export interface AskRunOptions {
@@ -741,18 +741,18 @@ async function acquireThread(threadId: string): Promise<() => void> {
 }
 
 /**
- * The workstream a run is about. The stored one wins for the same reason `onStart` refuses
- * to overwrite it: the conversation is about the workstream it started on, whatever a later
- * request claims. Only a slug counts, on the way in and on the way out.
+ * The feature a run is about. The stored one wins for the same reason `onStart` refuses to
+ * overwrite it: the conversation is about the feature it started on, whatever a later
+ * request claims. Only a feature key counts, on the way in and on the way out.
  */
-export function workstreamOf(
+export function featureOf(
   stored: unknown,
   asked: string | undefined
 ): string | undefined {
-  if (isSlug(stored)) {
+  if (isFeature(stored)) {
     return stored;
   }
-  return isSlug(asked) ? asked : undefined;
+  return isFeature(asked) ? asked : undefined;
 }
 
 const errorChunks = (
@@ -922,9 +922,9 @@ export async function* askStream(
       }
     }
     const { metadata } = store.persistence.stores;
-    const workstream = workstreamOf(
-      await metadata.get(input.threadId, WORKSTREAM_KEY),
-      input.workstream
+    const feature = featureOf(
+      await metadata.get(input.threadId, FEATURE_KEY),
+      input.feature
     );
     const harness = harnessLog();
     let lastError: LastError | undefined;
@@ -982,15 +982,15 @@ export async function* askStream(
         }
       },
       // A new run starts clean: what the last one left is superseded by this one's end.
-      // The workstream is the exception — it is the thread's own, written once and kept.
+      // The feature is the exception — it is the thread's own, written once and kept.
       async onStart() {
         await metadata.delete(input.threadId, LAST_ERROR_KEY);
         await metadata.delete(input.threadId, FINISH_REASON_KEY);
         if (
-          isSlug(input.workstream) &&
-          (await metadata.get(input.threadId, WORKSTREAM_KEY)) === null
+          isFeature(input.feature) &&
+          (await metadata.get(input.threadId, FEATURE_KEY)) === null
         ) {
-          await metadata.set(input.threadId, WORKSTREAM_KEY, input.workstream);
+          await metadata.set(input.threadId, FEATURE_KEY, input.feature);
         }
       },
     });
@@ -1011,7 +1011,7 @@ export async function* askStream(
       // which is provisioned only because `tools` below is non-empty (LIA-111).
       context: {
         threadId: input.threadId,
-        ...(workstream ? { workstream } : {}),
+        ...(feature ? { feature } : {}),
       },
       debug: harness.debug,
       messages: convertMessagesToModelMessages(input.messages),
@@ -1020,7 +1020,7 @@ export async function* askStream(
       runId,
       systemPrompts: [
         ASK_SYSTEM_PROMPT,
-        ...(workstream ? [workstreamPrompt(workstream)] : []),
+        ...(feature ? [featurePrompt(feature)] : []),
       ],
       threadId: input.threadId,
       tools: [proposeDecisionTool, proposeTicketTool],
@@ -1045,6 +1045,8 @@ export async function* askStream(
 
 export interface Conversation {
   createdAt: string;
+  /** The feature this conversation was opened on, when it was (LIA-162, ARG-167). */
+  feature?: string;
   /** `'length'` when the last run stopped at the turn cap — the page says so under the answer. */
   finishReason?: "length";
   /** How the last run ended, when it ended in error; cleared when the next run starts. */
@@ -1053,8 +1055,6 @@ export interface Conversation {
   sessionId?: string;
   threadId: string;
   updatedAt: string;
-  /** The workstream this conversation was opened on, when it was (LIA-162). */
-  workstream?: string;
 }
 
 const lastErrorOf = (v: unknown): LastError | undefined => {
@@ -1082,11 +1082,11 @@ export async function getConversation(
   }
   const sessionId = f.metadata[SESSION_KEY];
   const lastError = lastErrorOf(f.metadata[LAST_ERROR_KEY]);
-  const workstream = f.metadata[WORKSTREAM_KEY];
+  const feature = f.metadata[FEATURE_KEY];
   return {
     messages: modelMessagesToUIMessages(f.messages),
     threadId: f.threadId,
-    ...(isSlug(workstream) ? { workstream } : {}),
+    ...(isFeature(feature) ? { feature } : {}),
     ...(typeof sessionId === "string" && sessionId ? { sessionId } : {}),
     ...(f.metadata[FINISH_REASON_KEY] === "length"
       ? { finishReason: "length" as const }

@@ -1,11 +1,11 @@
 /**
- * Node-only. The checks behind the two verbs the workstream page has, in one place: what
+ * Node-only. The checks behind the two verbs the feature page has, in one place: what
  * `sendTicket` asks before it reaches Foundry, and what `verifyEvent` asks before it writes
  * a confirmation. This is `verdict.ts`'s job from the point era, re-keyed — a Send is a
  * ticket now, and a Verify is an event (LIA-162 AC2, AC3).
  *
  * One set of checks means one set of error strings: the sentence Ask reports when a
- * proposal is refused is the sentence the workstream page would have shown for the same
+ * proposal is refused is the sentence the feature page would have shown for the same
  * click. Nothing here writes: the writers keep the write, the tool keeps nothing.
  *
  * The readers are injected (`SendSources`) rather than imported at the call site, so a test
@@ -25,15 +25,15 @@ import {
 import type { FoundryConfig } from "./foundry";
 import type { TeamIssue } from "./linear";
 import { openIssues } from "./linear";
-import type { Workstream, WorkstreamEvent } from "./marauder";
-import { listWorkstreams } from "./marauder";
+import type { Work, WorkEvent } from "./marauder";
+import { listWork } from "./marauder";
 
 /** Where the checks read from. Defaults to the workspace on disk and Linear. */
 export interface SendSources {
   decisionsDir: string;
   foundry: () => Promise<FoundryConfig>;
   issues: () => Promise<TeamIssue[]>;
-  workstreams: () => Promise<Workstream[]>;
+  work: () => Promise<Work[]>;
 }
 
 /**
@@ -44,7 +44,7 @@ export const workspaceSources = (): SendSources => ({
   decisionsDir: DECISIONS_DIR,
   foundry: async () => (await import("./foundry")).foundryConfig(),
   issues: async () => (await openIssues()).issues,
-  workstreams: () => listWorkstreams(),
+  work: () => listWork(),
 });
 
 /** Why the click cannot be made. `decision` is set when the blocker is a file already on disk. */
@@ -55,11 +55,11 @@ export interface Blocked {
 }
 
 export type SendCheck =
-  | { ok: true; repo: string; ticket: string; workstream?: Workstream }
+  | { ok: true; repo: string; ticket: string; work?: Work }
   | Blocked;
 
 export type VerifyCheck =
-  | { ok: true; event: WorkstreamEvent; id: string; workstream: Workstream }
+  | { ok: true; event: WorkEvent; id: string; work: Work }
   | { decided?: MarauderDecision; error: string; ok: false };
 
 const trimmed = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -114,26 +114,26 @@ export async function checkSend(
   if (!foundry.configured) {
     return { error: foundry.reason ?? "Foundry is not configured", ok: false };
   }
-  const workstreams = await sources.workstreams();
+  const work = await sources.work();
   return {
     ok: true,
     repo: where,
     ticket: key,
-    workstream: workstreams.find((w) => w.keys.tickets.includes(key)),
+    work: work.find((w) => w.keys.tickets.includes(key)),
   };
 }
 
-/** The event that key names, with the workstream carrying it, or why there is none. */
+/** The event that key names, with the feature record carrying it, or null. */
 export function locateEvent(
-  workstreams: Workstream[],
+  records: Work[],
   id: string
-): { event: WorkstreamEvent; workstream: Workstream } | null {
-  for (const w of workstreams) {
+): { event: WorkEvent; work: Work } | null {
+  for (const w of records) {
     const i = eventKeys(w.events).indexOf(id);
     if (i !== -1) {
       const event = w.events[i];
       if (event) {
-        return { event, workstream: w };
+        return { event, work: w };
       }
     }
   }
@@ -166,9 +166,9 @@ export async function checkVerify(
       ok: false,
     };
   }
-  const found = locateEvent(await sources.workstreams(), key);
+  const found = locateEvent(await sources.work(), key);
   if (!found) {
-    return { error: `no event ${key} on any workstream`, ok: false };
+    return { error: `no event ${key} on any feature`, ok: false };
   }
   if (!needsVerify(found.event)) {
     return {
@@ -182,6 +182,6 @@ export async function checkVerify(
     event: found.event,
     id: key,
     ok: true,
-    workstream: found.workstream,
+    work: found.work,
   };
 }

@@ -1,5 +1,5 @@
 /**
- * The two checks the workstream page's buttons and Ask's card both run (LIA-162 AC2, AC3).
+ * The two checks the feature page's buttons and Ask's card both run (LIA-162 AC2, AC3).
  *
  * Every source is injected, so nothing here touches `WORKSPACE_DIR` — which is fixed at
  * module load and would leak across `bun test`'s shared module registry — except the
@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeMarauderDecision, writeSendDecision } from "./decisions";
 import type { TeamIssue } from "./linear";
-import type { Workstream, WorkstreamEvent } from "./marauder";
+import type { Work, WorkEvent } from "./marauder";
 import type { SendSources } from "./send";
 import { checkSend, checkVerify, locateEvent } from "./send";
 
@@ -22,7 +22,7 @@ beforeEach(async () => {
 });
 afterEach(() => rm(dir, { force: true, recursive: true }));
 
-const event = (e: Partial<WorkstreamEvent> = {}): WorkstreamEvent => ({
+const event = (e: Partial<WorkEvent> = {}): WorkEvent => ({
   at: "2026-09-09T12:00:00.000Z",
   kind: "directed-at-person",
   summary: "Foundry is running LIA-133, so 2 edits to it are waiting on you.",
@@ -30,17 +30,15 @@ const event = (e: Partial<WorkstreamEvent> = {}): WorkstreamEvent => ({
   ...e,
 });
 
-const workstream = (w: Partial<Workstream> = {}): Workstream => ({
+const work = (w: Partial<Work> = {}): Work => ({
+  app: "alden/alden-portal",
   events: [],
-  features: [],
-  keys: { people: [], prs: [], threads: [], tickets: ["LIA-133"], vocab: [] },
+  feature: "admin/history",
+  keys: { prs: [], threads: [], tickets: ["LIA-133"], vocab: [] },
   milestone: null,
   name: "History asset editing",
-  parked: false,
-  slug: "history-asset-editing",
-  stage: {},
+  openQuestions: [],
   updated: "2026-09-09",
-  wants: [],
   ...w,
 });
 
@@ -57,7 +55,7 @@ const sources = (over: Partial<SendSources> = {}): SendSources => ({
   decisionsDir: dir,
   foundry: async () => ({ configured: true, url: "http://localhost:3777" }),
   issues: async () => [issue()],
-  workstreams: async () => [workstream()],
+  work: async () => [work()],
   ...over,
 });
 
@@ -69,7 +67,7 @@ describe("AC2 — what Send asks before it reaches Foundry", () => {
       repo: "alden-portal-fe",
       ticket: "LIA-133",
     });
-    expect(check.ok && check.workstream?.slug).toBe("history-asset-editing");
+    expect(check.ok && check.work?.feature).toBe("admin/history");
   });
 
   test("Todo is Linear's `unstarted`, and it may go too", async () => {
@@ -155,10 +153,10 @@ describe("AC2 — what Send asks before it reaches Foundry", () => {
 });
 
 describe("AC3 — what Verify asks before it writes a confirmation", () => {
-  const asked = workstream({ events: [event({ ticket: "LIA-133" })] });
+  const asked = work({ events: [event({ ticket: "LIA-133" })] });
 
   test("names the event by its source ref, as argus's eventKeys does", () => {
-    const w = workstream({
+    const w = work({
       events: [
         event({ source: { ref: "LIA-133", type: "ticket" } }),
         event({ source: { ref: "LIA-133", type: "ticket" } }),
@@ -173,41 +171,41 @@ describe("AC3 — what Verify asks before it writes a confirmation", () => {
   test("an unanswered event aimed at the user may be confirmed", async () => {
     const check = await checkVerify(
       "2026-09-09T12:00:00.000Z",
-      sources({ workstreams: async () => [asked] })
+      sources({ work: async () => [asked] })
     );
     expect(check).toMatchObject({ id: "2026-09-09T12:00:00.000Z", ok: true });
-    expect(check.ok && check.workstream.slug).toBe("history-asset-editing");
+    expect(check.ok && check.work.feature).toBe("admin/history");
   });
 
   test("an event nobody is waiting on is refused — a fact is not a question", async () => {
-    const w = workstream({
+    const w = work({
       events: [event({ kind: "verified-landing", to: [] })],
     });
     const check = await checkVerify(
       "2026-09-09T12:00:00.000Z",
-      sources({ workstreams: async () => [w] })
+      sources({ work: async () => [w] })
     );
     expect(!check.ok && check.error).toContain("asked you nothing");
   });
 
   test("an event aimed at someone else is refused for the same reason", async () => {
-    const w = workstream({ events: [event({ to: ["sam"] })] });
+    const w = work({ events: [event({ to: ["sam"] })] });
     const check = await checkVerify(
       "2026-09-09T12:00:00.000Z",
-      sources({ workstreams: async () => [w] })
+      sources({ work: async () => [w] })
     );
     expect(check.ok).toBe(false);
   });
 
   test("an event already stamped `confirmed:` is refused in the correction's own words", async () => {
-    const w = workstream({
+    const w = work({
       events: [
         event({ action: "confirmed: make the edit it named — Liam Leung" }),
       ],
     });
     const check = await checkVerify(
       "2026-09-09T12:00:00.000Z",
-      sources({ workstreams: async () => [w] })
+      sources({ work: async () => [w] })
     );
     expect(!check.ok && check.error).toContain("already confirmed");
   });
@@ -224,15 +222,15 @@ describe("AC3 — what Verify asks before it writes a confirmation", () => {
     );
     const check = await checkVerify(
       "2026-09-09T12:00:00.000Z",
-      sources({ workstreams: async () => [asked] })
+      sources({ work: async () => [asked] })
     );
     expect(check.ok).toBe(false);
     expect(!check.ok && check.decided?.action).toBe("verified");
   });
 
-  test("an event on no workstream is refused by name", async () => {
+  test("an event on no feature is refused by name", async () => {
     const check = await checkVerify("nothing", sources());
-    expect(!check.ok && check.error).toBe("no event nothing on any workstream");
+    expect(!check.ok && check.error).toBe("no event nothing on any feature");
   });
 
   test("an empty id is refused before anything is read", async () => {

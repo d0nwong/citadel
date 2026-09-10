@@ -21,12 +21,12 @@ import { Route as DigestsIndexRouteImport } from './routes/digests/index'
 import { Route as DigestsDayRouteImport } from './routes/digests/$day'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as DocsSplatRouteImport } from './routes/docs/$'
+import { Route as FeaturesIndexRouteImport } from './routes/features/index'
+import { Route as FeaturesSplatRouteImport } from './routes/features/$'
 import { Route as JournalIndexRouteImport } from './routes/journal/index'
 import { Route as JournalSplatRouteImport } from './routes/journal/$'
 import { Route as ReportsIndexRouteImport } from './routes/reports/index'
 import { Route as ReportsDayRouteImport } from './routes/reports/$day'
-import { Route as WorkIndexRouteImport } from './routes/work/index'
-import { Route as WorkSlugRouteImport } from './routes/work/$slug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -88,6 +88,16 @@ const DocsSplatRoute = DocsSplatRouteImport.update({
   path: '/docs/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FeaturesIndexRoute = FeaturesIndexRouteImport.update({
+  id: '/features/',
+  path: '/features/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeaturesSplatRoute = FeaturesSplatRouteImport.update({
+  id: '/features/$',
+  path: '/features/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JournalIndexRoute = JournalIndexRouteImport.update({
   id: '/journal/',
   path: '/journal/',
@@ -108,16 +118,6 @@ const ReportsDayRoute = ReportsDayRouteImport.update({
   path: '/reports/$day',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WorkIndexRoute = WorkIndexRouteImport.update({
-  id: '/work/',
-  path: '/work/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const WorkSlugRoute = WorkSlugRouteImport.update({
-  id: '/work/$slug',
-  path: '/work/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -128,16 +128,16 @@ export interface FileRoutesByFullPath {
   '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
+  '/features/$': typeof FeaturesSplatRoute
   '/journal/$': typeof JournalSplatRoute
   '/reports/$day': typeof ReportsDayRoute
-  '/work/$slug': typeof WorkSlugRoute
   '/arcs/': typeof ArcsIndexRoute
   '/ask/': typeof AskIndexRoute
   '/digests/': typeof DigestsIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/features/': typeof FeaturesIndexRoute
   '/journal/': typeof JournalIndexRoute
   '/reports/': typeof ReportsIndexRoute
-  '/work/': typeof WorkIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -148,16 +148,16 @@ export interface FileRoutesByTo {
   '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
+  '/features/$': typeof FeaturesSplatRoute
   '/journal/$': typeof JournalSplatRoute
   '/reports/$day': typeof ReportsDayRoute
-  '/work/$slug': typeof WorkSlugRoute
   '/arcs': typeof ArcsIndexRoute
   '/ask': typeof AskIndexRoute
   '/digests': typeof DigestsIndexRoute
   '/docs': typeof DocsIndexRoute
+  '/features': typeof FeaturesIndexRoute
   '/journal': typeof JournalIndexRoute
   '/reports': typeof ReportsIndexRoute
-  '/work': typeof WorkIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -169,16 +169,16 @@ export interface FileRoutesById {
   '/ask/$id': typeof AskIdRoute
   '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
+  '/features/$': typeof FeaturesSplatRoute
   '/journal/$': typeof JournalSplatRoute
   '/reports/$day': typeof ReportsDayRoute
-  '/work/$slug': typeof WorkSlugRoute
   '/arcs/': typeof ArcsIndexRoute
   '/ask/': typeof AskIndexRoute
   '/digests/': typeof DigestsIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/features/': typeof FeaturesIndexRoute
   '/journal/': typeof JournalIndexRoute
   '/reports/': typeof ReportsIndexRoute
-  '/work/': typeof WorkIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -191,16 +191,16 @@ export interface FileRouteTypes {
     | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
+    | '/features/$'
     | '/journal/$'
     | '/reports/$day'
-    | '/work/$slug'
     | '/arcs/'
     | '/ask/'
     | '/digests/'
     | '/docs/'
+    | '/features/'
     | '/journal/'
     | '/reports/'
-    | '/work/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -211,16 +211,16 @@ export interface FileRouteTypes {
     | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
+    | '/features/$'
     | '/journal/$'
     | '/reports/$day'
-    | '/work/$slug'
     | '/arcs'
     | '/ask'
     | '/digests'
     | '/docs'
+    | '/features'
     | '/journal'
     | '/reports'
-    | '/work'
   id:
     | '__root__'
     | '/'
@@ -231,16 +231,16 @@ export interface FileRouteTypes {
     | '/ask/$id'
     | '/digests/$day'
     | '/docs/$'
+    | '/features/$'
     | '/journal/$'
     | '/reports/$day'
-    | '/work/$slug'
     | '/arcs/'
     | '/ask/'
     | '/digests/'
     | '/docs/'
+    | '/features/'
     | '/journal/'
     | '/reports/'
-    | '/work/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -252,16 +252,16 @@ export interface RootRouteChildren {
   AskIdRoute: typeof AskIdRoute
   DigestsDayRoute: typeof DigestsDayRoute
   DocsSplatRoute: typeof DocsSplatRoute
+  FeaturesSplatRoute: typeof FeaturesSplatRoute
   JournalSplatRoute: typeof JournalSplatRoute
   ReportsDayRoute: typeof ReportsDayRoute
-  WorkSlugRoute: typeof WorkSlugRoute
   ArcsIndexRoute: typeof ArcsIndexRoute
   AskIndexRoute: typeof AskIndexRoute
   DigestsIndexRoute: typeof DigestsIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
+  FeaturesIndexRoute: typeof FeaturesIndexRoute
   JournalIndexRoute: typeof JournalIndexRoute
   ReportsIndexRoute: typeof ReportsIndexRoute
-  WorkIndexRoute: typeof WorkIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -350,6 +350,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/features/': {
+      id: '/features/'
+      path: '/features'
+      fullPath: '/features/'
+      preLoaderRoute: typeof FeaturesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/features/$': {
+      id: '/features/$'
+      path: '/features/$'
+      fullPath: '/features/$'
+      preLoaderRoute: typeof FeaturesSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/journal/': {
       id: '/journal/'
       path: '/journal'
@@ -378,20 +392,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportsDayRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/work/': {
-      id: '/work/'
-      path: '/work'
-      fullPath: '/work/'
-      preLoaderRoute: typeof WorkIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/work/$slug': {
-      id: '/work/$slug'
-      path: '/work/$slug'
-      fullPath: '/work/$slug'
-      preLoaderRoute: typeof WorkSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -404,16 +404,16 @@ const rootRouteChildren: RootRouteChildren = {
   AskIdRoute: AskIdRoute,
   DigestsDayRoute: DigestsDayRoute,
   DocsSplatRoute: DocsSplatRoute,
+  FeaturesSplatRoute: FeaturesSplatRoute,
   JournalSplatRoute: JournalSplatRoute,
   ReportsDayRoute: ReportsDayRoute,
-  WorkSlugRoute: WorkSlugRoute,
   ArcsIndexRoute: ArcsIndexRoute,
   AskIndexRoute: AskIndexRoute,
   DigestsIndexRoute: DigestsIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
+  FeaturesIndexRoute: FeaturesIndexRoute,
   JournalIndexRoute: JournalIndexRoute,
   ReportsIndexRoute: ReportsIndexRoute,
-  WorkIndexRoute: WorkIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

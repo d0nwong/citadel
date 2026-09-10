@@ -292,7 +292,7 @@ function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
             {/* Beside the board, because triage is what keeps the board honest: an entry
-                that attached to nothing is a workstream that has not learned it yet, and
+                that attached to nothing is a feature that has not learned it yet, and
                 the count is the only place anyone would see there is triage waiting. */}
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -313,8 +313,11 @@ function AppSidebar() {
             {/* Beside the board, not under Reading: the board is what needs a reader now,
                 and this is the same work as a flat list of everything open (LIA-162). */}
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={isActive(pathname, "/work")}>
-                <Link to="/work">
+              <SidebarMenuButton
+                asChild
+                isActive={isActive(pathname, "/features")}
+              >
+                <Link to="/features">
                   <Waypoints />
                   <span>Work</span>
                 </Link>
@@ -413,7 +416,7 @@ function AppSidebar() {
 
 // ── the top bar ────────────────────────────────────────────────────────────────
 
-/** `/work/$slug` → `/work`, `/docs/$` → `/docs`: the section a dynamic page sits under. */
+/** `/features/$` → `/features`, `/docs/$` → `/docs`: the section a dynamic page sits under. */
 const sectionPath = (fullPath: string) => fullPath.split("/$")[0] || "/";
 
 /**

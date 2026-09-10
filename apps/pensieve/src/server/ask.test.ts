@@ -33,8 +33,8 @@ const {
   ADAPTER_CONFIG,
   ASK_SYSTEM_PROMPT,
   AUTH_ERROR_RE,
-  workstreamOf,
-  workstreamPrompt,
+  featureOf,
+  featurePrompt,
   diagnosisLine,
   titleOf,
   getConversation,
@@ -373,7 +373,7 @@ describe("AC1 — a run writes the user turn on start and the full transcript be
   });
 });
 
-describe("LIA-162 AC4 — the workstream a conversation was opened on", () => {
+describe("ARG-167 AC5 — the feature a conversation was opened on", () => {
   test("written on the first run that names it, and never overwritten", async () => {
     const dir = await scratch();
     const store = conversationStore(dir);
@@ -381,33 +381,33 @@ describe("LIA-162 AC4 — the workstream a conversation was opened on", () => {
     await collect(
       askStream(
         {
+          feature: "admin/invoicing",
           messages: [user("where does this stand")],
           threadId: "tw1",
-          workstream: "invoice-email-rewrite",
         },
         { adapter, middleware: [], status: available, store }
       )
     );
-    expect((await readJson(dir, "tw1")).metadata.workstream).toBe(
-      "invoice-email-rewrite"
+    expect((await readJson(dir, "tw1")).metadata.feature).toBe(
+      "admin/invoicing"
     );
-    expect((await getConversation("tw1", store))?.workstream).toBe(
-      "invoice-email-rewrite"
+    expect((await getConversation("tw1", store))?.feature).toBe(
+      "admin/invoicing"
     );
 
-    // A later run claiming a different workstream does not re-point the conversation.
+    // A later run claiming a different feature does not re-point the conversation.
     await collect(
       askStream(
         {
+          feature: "admin/usage",
           messages: [user("and now")],
           threadId: "tw1",
-          workstream: "usage-page",
         },
         { adapter, middleware: [], status: available, store }
       )
     );
-    expect((await readJson(dir, "tw1")).metadata.workstream).toBe(
-      "invoice-email-rewrite"
+    expect((await readJson(dir, "tw1")).metadata.feature).toBe(
+      "admin/invoicing"
     );
   });
 
@@ -425,19 +425,19 @@ describe("LIA-162 AC4 — the workstream a conversation was opened on", () => {
         }
       )
     );
-    expect((await readJson(dir, "tw2")).metadata.workstream).toBeUndefined();
-    expect((await getConversation("tw2", store))?.workstream).toBeUndefined();
+    expect((await readJson(dir, "tw2")).metadata.feature).toBeUndefined();
+    expect((await getConversation("tw2", store))?.feature).toBeUndefined();
   });
 
-  test("a value that is not a slug is neither stored nor returned", async () => {
+  test("a value that is not a feature is neither stored nor returned", async () => {
     const dir = await scratch();
     const store = conversationStore(dir);
     await collect(
       askStream(
         {
+          feature: "../../etc/passwd",
           messages: [user("hi")],
           threadId: "tw3",
-          workstream: "../../etc/passwd",
         },
         {
           adapter: new FakeClaude({ sessionId: "sess-W3" }),
@@ -447,25 +447,19 @@ describe("LIA-162 AC4 — the workstream a conversation was opened on", () => {
         }
       )
     );
-    expect((await readJson(dir, "tw3")).metadata.workstream).toBeUndefined();
+    expect((await readJson(dir, "tw3")).metadata.feature).toBeUndefined();
     // Nor one that reached the file some other way — a hand edit, an older shape.
-    await store.persistence.stores.metadata.set(
-      "tw3",
-      "workstream",
-      "Not A Slug"
-    );
-    expect((await getConversation("tw3", store))?.workstream).toBeUndefined();
+    await store.persistence.stores.metadata.set("tw3", "feature", "Not A Slug");
+    expect((await getConversation("tw3", store))?.feature).toBeUndefined();
   });
 
   test("it rides with the run as a system prompt and as tool context", () => {
-    const prompt = workstreamPrompt("invoice-email-rewrite");
-    expect(prompt).toContain("marauder show invoice-email-rewrite");
-    expect(prompt).toContain("workstreams/invoice-email-rewrite.json");
-    expect(workstreamOf("invoice-email-rewrite", "usage-page")).toBe(
-      "invoice-email-rewrite"
-    );
-    expect(workstreamOf(null, "usage-page")).toBe("usage-page");
-    expect(workstreamOf(null, "Not A Slug")).toBeUndefined();
+    const prompt = featurePrompt("admin/invoicing");
+    expect(prompt).toContain("marauder show admin/invoicing");
+    expect(prompt).toContain("features/admin/invoicing/work.json");
+    expect(featureOf("admin/invoicing", "admin/usage")).toBe("admin/invoicing");
+    expect(featureOf(null, "admin/usage")).toBe("admin/usage");
+    expect(featureOf(null, "Not A Slug")).toBeUndefined();
   });
 });
 
@@ -729,7 +723,7 @@ describe("LIA-104 — the system prompt", () => {
       /no permission dialog/i,
       /never tell the user to grant, allow or approve/i,
       /skills\/ask\/SKILL\.md/,
-      /bun run marauder show <slug>/,
+      /bun run marauder show <feature>/,
       /bun run marauder board/,
       /bun run marauder changelog/,
       /mcp__linear__get_issue/,
@@ -753,25 +747,25 @@ describe("LIA-104 — the system prompt", () => {
       expect(ASK_SYSTEM_PROMPT).toMatch(re);
     }
   });
-  test("LIA-162 — a conversation opened on a workstream tells the run which, and one without says nothing", async () => {
+  test("LIA-162 — a conversation opened on a feature tells the run which, and one without says nothing", async () => {
     const store = conversationStore(await scratch());
     const withOne = new FakeClaude({ sessionId: "p1" });
     await collect(
       askStream(
         {
+          feature: "admin/invoicing",
           messages: [user("where does it stand")],
           threadId: "pt1",
-          workstream: "invoice-email-rewrite",
         },
         { adapter: withOne, middleware: [], status: available, store }
       )
     );
     expect(withOne.calls[0].systemPrompts).toEqual([
       ASK_SYSTEM_PROMPT,
-      workstreamPrompt("invoice-email-rewrite"),
+      featurePrompt("admin/invoicing"),
     ]);
-    expect(workstreamPrompt("usage-page")).toContain("usage-page");
-    expect(workstreamPrompt("usage-page")).toMatch(
+    expect(featurePrompt("admin/usage")).toContain("admin/usage");
+    expect(featurePrompt("admin/usage")).toMatch(
       /"it" in a question, a correction or a send/
     );
 

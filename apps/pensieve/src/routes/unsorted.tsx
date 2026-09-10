@@ -1,8 +1,8 @@
 /**
  * /unsorted — the corrections queue. Everything `marauder ingest` could not attach to a
- * workstream on its own, with its guess, and the one click that moves it (LIA-160 AC3).
+ * feature on its own, with its guess, and the one click that moves it (LIA-160 AC3).
  *
- * This is where the design keeps its honest: a click here is what teaches a workstream its
+ * This is where the design keeps its honest: a click here is what teaches a feature its
  * next thread root or its vocabulary, so the next message like this one attaches without
  * anybody. The click writes a decision file and nothing else — `features/unsorted/queue`
  * has the whole of it.
@@ -30,7 +30,7 @@ function UnsortedPage() {
       />
       {page.items.length === 0 ? (
         <Empty title="Nothing waiting">
-          Everything the last run took in attached to a workstream on its own.
+          Everything the last run took in attached to a feature on its own.
         </Empty>
       ) : (
         <UnsortedQueue page={page} />

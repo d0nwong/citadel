@@ -9,12 +9,12 @@
  * The next question resumes the same session — the id is stored server-side, never sent
  * from here (AC3).
  *
- * Opened from a workstream page (`?workstream=<slug>`, optionally with `?q=…`): the slug
- * travels with every run of the thread and is stored as the conversation's own
- * (`metadata.workstream`), so the session's first retrieval is that workstream's page and
- * "it" in a question means that workstream (LIA-162 AC4). A question that arrived in the
+ * Opened from a feature page (`?feature=<dir>`, optionally with `?q=…`): the feature travels
+ * with every run of the thread and is stored as the conversation's own (`metadata.feature`),
+ * so the session's first retrieval is that feature's story and "it" in a question means
+ * that feature (LIA-162 AC4, ARG-167 AC5). A question that arrived in the
  * URL is sent as soon as a credential is known to be available — or left in the composer
- * when it is not — and `q` and `workstream` leave the URL once the first answer has landed
+ * when it is not — and `q` and `feature` leave the URL once the first answer has landed
  * and the file carries them.
  */
 
@@ -29,17 +29,17 @@ import { Trash2Icon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "#/components/ui/button";
 import { AskStatusProvider, useAppChat } from "#/features/ask";
-import { WorkstreamLine } from "#/features/ask/components/workstream-line";
+import { FeatureLine } from "#/features/ask/components/feature-line";
 import { askStatus, deleteConversation, getConversation } from "#/lib/api";
-import { isSlug } from "#/lib/marauder";
+import { isFeature } from "#/lib/marauder";
 
 export const Route = createFileRoute("/ask/$id")({
   staticData: { crumb: "Argus" },
   validateSearch: (
     s: Record<string, unknown>
-  ): { q?: string; workstream?: string } => ({
+  ): { feature?: string; q?: string } => ({
     ...(typeof s.q === "string" && s.q.trim() ? { q: s.q } : {}),
-    ...(isSlug(s.workstream) ? { workstream: s.workstream } : {}),
+    ...(isFeature(s.feature) ? { feature: s.feature } : {}),
   }),
   loader: async ({ params }) => {
     // The server refuses anything that is not a thread id (path-like, too long); that is a 404 here, not a crash.
@@ -113,21 +113,18 @@ const firstQuestion = (messages: UIMessage[]): string =>
 
 function AskConversationPage() {
   const { id } = Route.useParams();
-  const { q, workstream: urlWorkstream } = Route.useSearch();
+  const { q, feature: urlFeature } = Route.useSearch();
   const { conversation, status } = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
 
-  // The workstream rides with every run of a thread opened on one; the server keeps the
+  // The feature rides with every run of a thread opened on one; the server keeps the
   // first it is told and ignores the rest, so a later send cannot re-point the conversation.
   // Hook-level rather than per-send, so the question the composer holds when no credential
   // was available (`draft`) carries it too.
-  const workstream = conversation?.workstream ?? urlWorkstream;
-  const body = useMemo(
-    () => (workstream ? { workstream } : undefined),
-    [workstream]
-  );
+  const feature = conversation?.feature ?? urlFeature;
+  const body = useMemo(() => (feature ? { feature } : undefined), [feature]);
 
   // `messages` crossed the wire as JSON (see `ConversationWire`); the bytes are UIMessages.
   const chat = useAppChat({
@@ -141,9 +138,9 @@ function AskConversationPage() {
   // id, so new loader data never resets it.
   //
   // Then the URL sheds what it was seeded with. Only after the invalidate: by then the
-  // reloaded conversation carries `metadata.workstream`, so dropping it from the search
+  // reloaded conversation carries `metadata.feature`, so dropping it from the search
   // cannot pull the line out from under the page. A run that never started — no credential
-  // — never reaches here, and the question and its workstream stay in the URL.
+  // — never reaches here, and the question and its feature stay in the URL.
   const wasLoading = useRef<boolean>(false);
   useEffect(() => {
     const wasLoadingBefore = wasLoading.current;
@@ -154,18 +151,18 @@ function AskConversationPage() {
     }
     void (async () => {
       await router.invalidate();
-      if (q || urlWorkstream) {
+      if (q || urlFeature) {
         await navigate({
           params: { id },
           replace: true,
-          search: (prev) => ({ ...prev, q: undefined, workstream: undefined }),
+          search: (prev) => ({ ...prev, feature: undefined, q: undefined }),
           to: "/ask/$id",
         });
       }
     })();
-  }, [chat.isLoading, router, navigate, id, q, urlWorkstream]);
+  }, [chat.isLoading, router, navigate, id, q, urlFeature]);
 
-  // A question that arrived with the URL (a workstream's Ask) goes out by itself, once. Not on the
+  // A question that arrived with the URL (a feature's Ask) goes out by itself, once. Not on the
   // first effect pass: after a client-side navigation React commits this tree, something below
   // suspends, and the effects are cleaned up and re-run on the same instance — `useChat`'s
   // cleanup detaches the client and aborts whatever it was sending. A short timer that the
@@ -242,7 +239,7 @@ function AskConversationPage() {
           <span className="hidden sm:inline">Delete</span>
         </Button>
       </header>
-      <WorkstreamLine slug={workstream} />
+      <FeatureLine feature={feature} />
       <AskStatusProvider
         draft={q && !status.available ? q : undefined}
         finishReason={conversation?.finishReason}

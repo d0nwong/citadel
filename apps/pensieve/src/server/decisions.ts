@@ -7,7 +7,10 @@
  * Two groups, since the wave that replaced points with workstreams (LIA-161/162):
  *
  *   decisions/marauder/<slug>.json
- *   { id, action: "attach" | "new" | "dismiss" | "stage" | "verified", slug?, name?, reason, at, by }
+ *   { id, action: "attach" | "dismiss" | "verified", feature?, reason, at, by }
+ *
+ * `feature` is the directory under an app's `features/` (ARG-167); `new` and `stage` went
+ * with the workstreams and are refused on both sides.
  *
  * A verdict on an Unsorted entry — what ingest could not attach on its own — or, for
  * `verified`, on an *event*: the user answering what a `directed-at-person` event asked
@@ -42,6 +45,7 @@ import {
 import { join, resolve, sep } from "node:path";
 import type { MarauderDecision } from "../lib/marauder";
 import {
+  isFeature,
   isMarauderId,
   MARAUDER_ACTIONS,
   MARAUDER_GROUP,
@@ -128,13 +132,12 @@ export function parseMarauderDecision(text: string): MarauderDecision | null {
   const str = (k: string) => (typeof d[k] === "string" ? (d[k] as string) : "");
   const id = str("id");
   const action = str("action") as MarauderDecision["action"];
+  // `new` and `stage` are not in the list, so a file from the workstreams reads as none.
   if (!(id && (MARAUDER_ACTIONS as readonly string[]).includes(action))) {
     return null;
   }
-  if (action === "attach" && !str("slug")) {
-    return null;
-  }
-  if (action === "new" && !str("name")) {
+  // An attach naming a `slug` is a workstream's, and argus refuses it the same way.
+  if (action === "attach" && !isFeature(str("feature"))) {
     return null;
   }
   if (action === "dismiss" && !str("reason").trim()) {
@@ -145,13 +148,8 @@ export function parseMarauderDecision(text: string): MarauderDecision | null {
     at: str("at"),
     by: str("by"),
     id,
-    ...(str("name") ? { name: str("name") } : {}),
+    ...(action === "attach" ? { feature: str("feature") } : {}),
     ...(str("reason") ? { reason: str("reason") } : {}),
-    ...(str("side") ? { side: str("side") as MarauderDecision["side"] } : {}),
-    ...(str("slug") ? { slug: str("slug") } : {}),
-    ...(str("stage")
-      ? { stage: str("stage") as MarauderDecision["stage"] }
-      : {}),
   };
 }
 
@@ -202,8 +200,7 @@ export async function readMarauderDecisions(
 }
 
 /**
- * Write one `decisions/marauder/<slug>.json`, atomically. Nothing under `workstreams/` is
- * touched: `marauder ingest` applies this file on its next run and commits what it changed.
+ * Write one `decisions/marauder/<slug>.json`, atomically. No `work.json` is touched: `marauder ingest` applies this file on its next run and commits what it changed.
  */
 export function writeMarauderDecision(
   d: MarauderDecision,
@@ -212,10 +209,7 @@ export function writeMarauderDecision(
   return writeAtomically(marauderId(d.id), dir, {
     action: d.action,
     id: d.id,
-    ...(d.slug === undefined ? {} : { slug: d.slug }),
-    ...(d.name === undefined ? {} : { name: d.name }),
-    ...(d.side === undefined ? {} : { side: d.side }),
-    ...(d.stage === undefined ? {} : { stage: d.stage }),
+    ...(d.feature === undefined ? {} : { feature: d.feature }),
     ...(d.reason === undefined ? {} : { reason: d.reason }),
     at: d.at,
     by: d.by,

@@ -1,5 +1,5 @@
 /**
- * The two things a reader can do from a workstream page (LIA-162 AC2, AC3), and the one
+ * The two things a reader can do from a feature page (LIA-162 AC2, AC3), and the one
  * rule both obey: the click writes one file under `decisions/` and nothing else. The next
  * `marauder ingest` reads it back, applies it, and commits — so a row stays where it is
  * until then, wearing the verdict it was given. That is Pensieve's one-writer rule holding.
@@ -20,10 +20,10 @@ import { useState } from "react";
 import { Tag, TicketLink } from "#/components/bits";
 import { Button } from "#/components/ui/button";
 import type {
+  FeatureAsk,
+  FeatureTicket,
   SendResult,
   VerifyResult,
-  WorkstreamAsk,
-  WorkstreamTicket,
 } from "#/lib/api";
 import { sendTicket, verifyEvent } from "#/lib/api";
 import { REPO_REQUIRED } from "#/lib/send";
@@ -47,7 +47,7 @@ function TicketRow({
 }: {
   foundry: FoundryConfig;
   repos: FoundryRepo[];
-  row: WorkstreamTicket;
+  row: FeatureTicket;
 }) {
   const [open, setOpen] = useState(false);
   const [repo, setRepo] = useState("");
@@ -151,7 +151,7 @@ function TicketRow({
 }
 
 /**
- * The workstream's tickets, with Send beside each one that can take it. A ticket with no
+ * The feature's tickets, with Send beside each one that can take it. A ticket with no
  * state is one Linear could not be asked about — the list is shown, and Send is not
  * offered on a guess.
  */
@@ -162,7 +162,7 @@ export function Tickets({
 }: {
   foundry: FoundryConfig;
   repos: FoundryRepo[];
-  tickets: WorkstreamTicket[];
+  tickets: FeatureTicket[];
 }) {
   if (tickets.length === 0) {
     return null;
@@ -188,7 +188,7 @@ export function Tickets({
 
 // ── verify ─────────────────────────────────────────────────────────────────────
 
-function AskRow({ ask }: { ask: WorkstreamAsk }) {
+function AskRow({ ask }: { ask: FeatureAsk }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const { busy, commit, error } = useCommit<VerifyResult>();
@@ -279,8 +279,8 @@ function AskRow({ ask }: { ask: WorkstreamAsk }) {
   );
 }
 
-/** The events on this workstream that asked the user something and are still unanswered. */
-export function Asks({ asks }: { asks: WorkstreamAsk[] }) {
+/** The events on this feature that asked the user something and are still unanswered. */
+export function Asks({ asks }: { asks: FeatureAsk[] }) {
   if (asks.length === 0) {
     return null;
   }

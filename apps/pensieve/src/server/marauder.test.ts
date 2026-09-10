@@ -1,10 +1,10 @@
 /**
- * The map of the work, read (LIA-160 AC1, AC2, AC3, AC6).
+ * The map of the work, read (LIA-160; over features since ARG-167 AC1, AC2, AC3, AC6).
  *
  * The pages are rendered by argus and read here, so what these cases guard is the two
  * things that happen on the way through — a file path becoming a route inside the app, and
- * a workstream's bold name becoming a link to its page — plus the readers that turn
- * `workstreams/` into what the pages beside the markdown show.
+ * a feature's name becoming a link to its page — plus the readers that turn every
+ * `work.json` and `queue/` into what the pages beside the markdown show.
  *
  * Everything takes its directory and its app roots, so nothing here needs `WORKSPACE_DIR`:
  * that is fixed at module load and `bun test` shares one module registry across files, so
@@ -14,67 +14,74 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
-  listWorkstreams,
+  listFeatures,
+  listWork,
   readBoard,
+  readFeature,
   readMilestones,
   readUnsorted,
-  readWorkstream,
   routeFor,
 } from "./marauder";
 import type { AppRoot } from "./workspace";
 
 let root: string;
-let marauder: string;
-let workstreams: string;
+let roots: AppRoot[];
 
-beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "pensieve-marauder-"));
-  marauder = join(root, "marauder");
-  workstreams = join(root, "workstreams");
-  await mkdir(marauder, { recursive: true });
-  await mkdir(workstreams, { recursive: true });
-});
-afterEach(() => rm(root, { force: true, recursive: true }));
+const APP = "alden/alden-portal";
+const features = () => join(root, APP, "features");
 
-const ROOTS: AppRoot[] = [
-  { app: "alden/alden-portal", dir: "/w/alden/alden-portal/features" },
-  { app: "pensieve", dir: "/w/pensieve/features" },
-];
+/** Write a file under the temp workspace, making its directories as it goes. */
+const put = async (rel: string, body: unknown) => {
+  const abs = join(root, rel);
+  await mkdir(dirname(abs), { recursive: true });
+  await writeFile(
+    abs,
+    typeof body === "string" ? body : `${JSON.stringify(body, null, 2)}\n`
+  );
+};
 
 const record = (over: Record<string, unknown> = {}) => ({
-  done: "An owner opens Usage and sees an entity's credits.",
-  driver: "Liam Leung",
   events: [],
-  facts: [],
-  features: ["admin/usage"],
+  feature: "admin/invoicing",
   keys: {
-    people: ["Sam"],
     prs: ["fe#407", "be#754"],
     threads: ["1788748246.235359"],
-    tickets: ["LIA-71", "LIA-78"],
-    vocab: ["billableQuantity"],
+    tickets: ["ALD-71", "ALD-78"],
+    vocab: ["due on receipt"],
   },
   milestone: "launch-2026-09-10",
-  name: "The admin Usage page",
-  open_questions: [],
-  opened: "2026-09-04",
-  overlay: null,
-  parked: false,
-  slug: "usage-page",
-  stage: { be: "landed", fe: "verified" },
+  open_questions: [
+    { asked_by: "Sam", at: "2026-09-08", owner: "you", q: "who takes the FE" },
+  ],
   updated: "2026-09-09T10:00:00.000Z",
-  wants: ["Foong Leung"],
   ...over,
 });
 
-const write = (dir: string, file: string, value: unknown) =>
-  writeFile(join(dir, file), `${JSON.stringify(value, null, 2)}\n`);
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "pensieve-marauder-"));
+  roots = [{ app: APP, dir: features() }];
+  await put(`${APP}/.doc-workspace/feature-manifest.json`, {
+    features: [
+      { id: "admin-invoicing", name: "Invoicing" },
+      { id: "tasks", name: "Tasks" },
+    ],
+  });
+  await put(`${APP}/features/admin/invoicing/work.json`, record());
+  await put(`${APP}/features/admin/invoicing/docs/product.md`, "# Invoicing\n");
+  // A feature with docs and no record: attachable, but nothing going on.
+  await put(`${APP}/features/due-dates/docs/product.md`, "# Due dates\n");
+});
+afterEach(() => rm(root, { force: true, recursive: true }));
 
 // ── links ──────────────────────────────────────────────────────────────────────
 
-describe("AC1 — a path the sweep wrote becomes a route inside the app", () => {
+describe("a path the sweep wrote becomes a route inside the app", () => {
+  const ROOTS: AppRoot[] = [
+    { app: APP, dir: "/w/alden/alden-portal/features" },
+    { app: "pensieve", dir: "/w/pensieve/features" },
+  ];
   const from = (href: string) => routeFor(href, "marauder", ROOTS);
 
   test("a journal entry opens on the journal page", () => {
@@ -94,30 +101,28 @@ describe("AC1 — a path the sweep wrote becomes a route inside the app", () => 
     ).toBe("/docs/alden/alden-portal/admin/usage?tier=arch");
   });
 
-  test("a report, a digest and another workstream each open on their own page", () => {
+  test("AC1 — a feature's page opens on /features/<dir>", () => {
+    expect(
+      from("../alden/alden-portal/features/admin/invoicing/board.md")
+    ).toBe("/features/admin/invoicing");
+    expect(from("../pensieve/features/journal/board.md")).toBe(
+      "/features/journal"
+    );
+  });
+
+  test("a report and a digest still open on their own page", () => {
     expect(from("../reports/2026-09-09.md")).toBe("/reports/2026-09-09");
     expect(from("../digests/2026-09-09.md")).toBe("/digests/2026-09-09");
-    expect(from("./due-on-receipt.md")).toBe("/work/due-on-receipt");
   });
 
   test("a link that is not a file this app serves is left exactly as written", () => {
-    // The arcs pages went with the arcs (LIA-162); a link to one is left as written.
-    expect(from("../arcs/admin-usage.md")).toBeUndefined();
-    expect(from("https://linear.app/liamai/issue/LIA-71")).toBeUndefined();
+    // The workstream pages under marauder/ went with the workstreams (ARG-167).
+    expect(from("./due-on-receipt.md")).toBeUndefined();
+    expect(from("https://linear.app/liamai/issue/ALD-71")).toBeUndefined();
     expect(from("#needs-you")).toBeUndefined();
     expect(from("/already/a/route")).toBeUndefined();
     expect(from("../CLAUDE.md")).toBeUndefined();
-    // An app the workspace does not hold is not a features path at all.
-    expect(from("../nowhere/features/x/journal/2026-09/a.md")).toBeUndefined();
-  });
-
-  test("the same record renders from another directory", () => {
-    expect(routeFor("./2026-09-09.md", "reports", ROOTS)).toBe(
-      "/reports/2026-09-09"
-    );
-    expect(routeFor("../marauder/due-on-receipt.md", "reports", ROOTS)).toBe(
-      "/work/due-on-receipt"
-    );
+    expect(from("../nowhere/features/x/board.md")).toBeUndefined();
   });
 });
 
@@ -125,163 +130,182 @@ describe("AC1 — a path the sweep wrote becomes a route inside the app", () => 
 
 const BOARD = `# Where the work stands
 
-Foong's launch is tomorrow, 10 September.
-
 ## Needs you
 
-**The admin Usage page**
+**Invoicing**
 
 Sam asked you who takes the front end.
 
-[the message](https://alden-studios.slack.com/archives/C07/p178) · [the journal entry](../alden/alden-portal/features/admin/usage/journal/2026-09/2026-09-09/2026-09-09-fe419-history.md)
+[the message](https://alden-studios.slack.com/archives/C07/p178) · [the journal entry](../alden/alden-portal/features/admin/invoicing/journal/2026-09/2026-09-09-fe419.md)
+
+## [Invoicing](../alden/alden-portal/features/admin/invoicing/board.md)
+
+The invoice email was rewritten.
+
+## Due dates
 
 **Something nobody has a record of**
-
-This one names no workstream.
 `;
 
-describe("AC1 — the board is that file, with its names linked", () => {
-  test("every workstream name links to its page and every path to its route", async () => {
-    await writeFile(join(marauder, "board.md"), BOARD);
-    await write(workstreams, "usage-page.json", record());
-    const board = await readBoard(marauder, {
+describe("AC1 — the board, with every feature heading routed to its page", () => {
+  test("argus's heading link, a bold name and a bare heading all reach /features", async () => {
+    await put("marauder/board.md", BOARD);
+    const board = await readBoard(join(root, "marauder"), {
       base: "marauder",
-      roots: ROOTS,
-      workstreams: await listWorkstreams(workstreams),
+      roots,
     });
     const json = JSON.stringify(board?.doc);
-    expect(json).toContain('"href":"/work/usage-page"');
+    // The heading argus linked, rewritten to the route.
+    expect(json).toContain('"href":"/features/admin/invoicing"');
     expect(json).toContain(
-      '"href":"/journal/alden/alden-portal/admin/usage/2026-09-09-fe419-history"'
+      '"href":"/journal/alden/alden-portal/admin/invoicing/2026-09-09-fe419"'
     );
+    // A heading argus left bare, linked by the name the folder gives it.
+    expect(json).toContain('"href":"/features/due-dates"');
     // The Slack permalink is not a file in the workspace, so it is untouched.
     expect(json).toContain(
       '"href":"https://alden-studios.slack.com/archives/C07/p178"'
     );
-    // A bold line naming no record stays a bold line rather than becoming a dead link.
+    // A bold line naming no feature stays a bold line rather than becoming a dead link.
     const orphan = board?.doc.children.find((n) =>
       JSON.stringify(n).includes("Something nobody has a record of")
     );
     expect(JSON.stringify(orphan)).not.toContain('"href"');
-    // The page names itself in the header, so its own `# ` title is not shown twice.
-    expect(board?.doc.children[0]).not.toMatchObject({
-      depth: 1,
-      type: "heading",
-    });
-    expect(board?.path).toContain("board.md");
+    expect(board?.path).toBe("marauder/board.md");
   });
 
   test("no board rendered yet reads as none rather than as an error", async () => {
     expect(
-      await readBoard(marauder, { roots: ROOTS, workstreams: [] })
+      await readBoard(join(root, "marauder"), { features: [], roots })
     ).toBeNull();
   });
 });
 
-// ── one workstream ─────────────────────────────────────────────────────────────
+// ── one feature ────────────────────────────────────────────────────────────────
 
-describe("AC2 — a workstream's page and the record behind it", () => {
-  test("carries the stage per side, the milestone key, the tickets and the PRs", async () => {
-    await writeFile(
-      join(marauder, "usage-page.md"),
-      "# The admin Usage page\n\nThe frontend is on staging.\n"
+const PAGE = `# Invoicing
+
+Foong's launch is tomorrow.
+
+[product doc](docs/product.md) · [architecture doc](docs/arch.md)
+
+## What happened
+
+**9 September** — the invoice email was rewritten.
+
+[the journal entry](../../../../../alden/alden-portal/features/admin/invoicing/journal/2026-09/2026-09-09-fe419.md) · [the ticket](https://linear.app/liamai/issue/ALD-71)
+`;
+
+describe("AC2 — a feature's page and the record behind it", () => {
+  test("renders board.md with doc, journal and ticket links resolved", async () => {
+    await put(`${APP}/features/admin/invoicing/board.md`, PAGE);
+    const found = await readFeature("admin/invoicing", { roots });
+    expect(found).toMatchObject({
+      app: APP,
+      feature: "admin/invoicing",
+      name: "Invoicing",
+    });
+    const json = JSON.stringify(found?.page?.doc);
+    expect(json).toContain('"href":"/docs/alden/alden-portal/admin/invoicing"');
+    expect(json).toContain(
+      '"href":"/docs/alden/alden-portal/admin/invoicing?tier=arch"'
     );
-    await write(workstreams, "usage-page.json", record());
-    const found = await readWorkstream("usage-page", marauder, {
-      base: "marauder",
-      roots: ROOTS,
-      workstreams: await listWorkstreams(workstreams),
-    });
-    expect(found?.workstream).toMatchObject({
-      driver: "Liam Leung",
-      keys: { prs: ["fe#407", "be#754"], tickets: ["LIA-71", "LIA-78"] },
+    expect(json).toContain(
+      '"href":"/journal/alden/alden-portal/admin/invoicing/2026-09-09-fe419"'
+    );
+    expect(json).toContain('"href":"https://linear.app/liamai/issue/ALD-71"');
+    expect(found?.page?.path).toBe(
+      "alden/alden-portal/features/admin/invoicing/board.md"
+    );
+    expect(found?.work).toMatchObject({
+      keys: { prs: ["fe#407", "be#754"], tickets: ["ALD-71", "ALD-78"] },
       milestone: "launch-2026-09-10",
-      name: "The admin Usage page",
-      stage: { be: "landed", fe: "verified" },
+      openQuestions: [{ owner: "you", q: "who takes the FE" }],
     });
-    expect(found?.page).not.toBeNull();
   });
 
-  test("a slug that is not one, and a name nothing holds, are both nothing", async () => {
-    expect(
-      await readWorkstream("../../etc/passwd", marauder, { workstreams: [] })
-    ).toBeNull();
-    expect(
-      await readWorkstream("no-such-thing", marauder, { workstreams: [] })
-    ).toBeNull();
+  test("a feature with no such directory is nothing, and a `..` is refused", async () => {
+    expect(await readFeature("no/such", { roots })).toBeNull();
+    expect(await readFeature("../../etc/passwd", { roots })).toBeNull();
+    expect(await readFeature("admin/../admin/invoicing", { roots })).toBeNull();
+    // A feature with neither a page nor a record has nothing to show.
+    expect(await readFeature("due-dates", { roots })).toBeNull();
   });
 
-  test("a record with no page still opens, and a page with no record still reads", async () => {
-    await write(workstreams, "usage-page.json", record());
-    const ws = await listWorkstreams(workstreams);
-    expect(
-      (await readWorkstream("usage-page", marauder, { workstreams: ws }))?.page
-    ).toBeNull();
-    await writeFile(join(marauder, "orphan.md"), "# Orphan\n\nA page.\n");
-    expect(
-      (
-        await readWorkstream("orphan", marauder, {
-          roots: ROOTS,
-          workstreams: ws,
-        })
-      )?.workstream
-    ).toBeNull();
+  test("a record with no page still opens", async () => {
+    const found = await readFeature("admin/invoicing", { roots });
+    expect(found?.page).toBeNull();
+    expect(found?.work?.feature).toBe("admin/invoicing");
   });
 });
 
-// ── the records ────────────────────────────────────────────────────────────────
+// ── the records and the features ───────────────────────────────────────────────
 
-describe("the readers over workstreams/", () => {
-  test("files starting with _ are never a workstream", async () => {
-    await write(workstreams, "usage-page.json", record());
-    await write(workstreams, "_milestones.json", {
+describe("the readers over features/", () => {
+  test("AC3 — every feature directory, by manifest name, nested ones included", async () => {
+    await put(`${APP}/features/admin/docs/product.md`, "# Admin\n");
+    expect(await listFeatures(roots)).toEqual([
+      { app: APP, feature: "admin", name: "Admin" },
+      { app: APP, feature: "admin/invoicing", name: "Invoicing" },
+      { app: APP, feature: "due-dates", name: "Due dates" },
+    ]);
+  });
+
+  test("AC1 — every work.json, newest first, with no workstreams/ anywhere", async () => {
+    await put(
+      `${APP}/features/tasks/work.json`,
+      record({ feature: "tasks", updated: "2026-09-09T22:00:00.000Z" })
+    );
+    const work = await listWork(roots);
+    expect(work.map((w) => [w.feature, w.name])).toEqual([
+      ["tasks", "Tasks"],
+      ["admin/invoicing", "Invoicing"],
+    ]);
+  });
+
+  test("a file that is not a record, or names another feature, is skipped", async () => {
+    await put(`${APP}/features/tasks/work.json`, "{ not json");
+    await put(
+      `${APP}/features/due-dates/work.json`,
+      record({ feature: "admin/invoicing" })
+    );
+    expect((await listWork(roots)).map((w) => w.feature)).toEqual([
+      "admin/invoicing",
+    ]);
+  });
+
+  test("AC6 — milestones and the queue come from queue/", async () => {
+    await put("queue/_milestones.json", {
       "launch-2026-09-10": {
         date: "2026-09-10",
         name: "Launch",
         owner: "Foong Leung",
       },
     });
-    await write(workstreams, "_unsorted.json", []);
-    expect((await listWorkstreams(workstreams)).map((w) => w.slug)).toEqual([
-      "usage-page",
-    ]);
-    expect(await readMilestones(workstreams)).toMatchObject({
+    expect(await readMilestones(join(root, "queue"))).toMatchObject({
       "launch-2026-09-10": { name: "Launch" },
     });
   });
 
-  test("newest update first, and a file that is not a record is skipped", async () => {
-    await write(workstreams, "usage-page.json", record());
-    await write(
-      workstreams,
-      "due-on-receipt.json",
-      record({
-        name: "Due on Receipt",
-        slug: "due-on-receipt",
-        updated: "2026-09-09T22:00:00.000Z",
-      })
-    );
-    await writeFile(join(workstreams, "broken.json"), "{ not json");
-    expect((await listWorkstreams(workstreams)).map((w) => w.slug)).toEqual([
-      "due-on-receipt",
-      "usage-page",
-    ]);
-  });
-
-  test("no workstreams directory at all reads as nothing, not as a crash", async () => {
-    expect(await listWorkstreams(join(root, "nope"))).toEqual([]);
+  test("AC6 — no queue/ directory at all reads as nothing, not as a crash", async () => {
     expect(await readUnsorted(join(root, "nope"))).toEqual([]);
     expect(await readMilestones(join(root, "nope"))).toEqual({});
+    expect(await listWork([{ app: "x", dir: join(root, "nope") }])).toEqual([]);
   });
 });
 
 describe("AC3 — the queue, newest first", () => {
-  test("carries the summary, the source, the candidates and the suggestion", async () => {
-    await write(workstreams, "_unsorted.json", [
+  test("carries the summary, the source, the feature candidates and the suggestion", async () => {
+    await put("queue/_unsorted.json", [
       {
         at: "2026-09-08T09:00:00.000Z",
         candidates: [
-          { how: "vocab", slug: "usage-page", why: "names billableQuantity" },
+          {
+            feature: "admin/invoicing",
+            how: "vocab",
+            why: "names due on receipt",
+          },
+          { how: "vocab", slug: "a-workstream", why: "an old shape" },
         ],
         id: "1788927279211769.1",
         kind: "slack",
@@ -290,58 +314,42 @@ describe("AC3 — the queue, newest first", () => {
           type: "slack",
           url: "https://slack/x",
         },
-        suggest: "usage-page",
+        suggest: "admin/invoicing",
         summary: "Sam asked who takes the front end.",
       },
       {
         at: "2026-09-09T09:00:00.000Z",
         candidates: [],
-        groups: [
-          { events: ["fe#407"], name: "History" },
-          { events: ["fe#403"], name: "Capacity" },
-        ],
-        id: "split/usage-page",
-        kind: "split",
-        slug: "usage-page",
+        id: "fe#417",
+        kind: "landing",
         suggest: null,
-        summary: "The admin Usage page reads as 2 separate things.",
+        summary: "fe#417 landed.",
       },
     ]);
-    const items = await readUnsorted(workstreams);
-    expect(items.map((i) => i.id)).toEqual([
-      "split/usage-page",
-      "1788927279211769.1",
-    ]);
+    const items = await readUnsorted(join(root, "queue"));
+    expect(items.map((i) => i.id)).toEqual(["fe#417", "1788927279211769.1"]);
+    // A candidate naming a workstream rather than a feature is dropped.
     expect(items[1]).toMatchObject({
-      candidates: [{ slug: "usage-page" }],
+      candidates: [{ feature: "admin/invoicing" }],
       kind: "slack",
-      suggest: "usage-page",
+      suggest: "admin/invoicing",
     });
-    expect(items[0].groups?.map((g) => g.name)).toEqual([
-      "History",
-      "Capacity",
-    ]);
+    expect(items[1].candidates).toHaveLength(1);
   });
 
   test("an entry with no id is not an entry, and an unknown kind reads as a message", async () => {
-    await write(workstreams, "_unsorted.json", [
-      {
-        at: "2026-09-09",
-        candidates: [],
-        kind: "slack",
-        suggest: null,
-        summary: "no id",
-      },
+    await put("queue/_unsorted.json", [
+      { at: "2026-09-09", candidates: [], suggest: null, summary: "no id" },
       {
         at: "2026-09-09",
         candidates: [],
         id: "x",
-        kind: "invented",
+        kind: "split",
         suggest: null,
         summary: "s",
       },
     ]);
-    const items = await readUnsorted(workstreams);
+    const items = await readUnsorted(join(root, "queue"));
     expect(items).toHaveLength(1);
     expect(items[0].kind).toBe("slack");
   });

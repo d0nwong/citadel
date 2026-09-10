@@ -26,10 +26,7 @@ import { toolDefinition } from "@tanstack/ai";
 import { z } from "zod";
 import { PROPOSE_DECISION, PROPOSE_TICKET } from "../lib/ask-tools";
 import type { MarauderDraft } from "../lib/marauder";
-import {
-  checkDraft as checkCorrection,
-  UNSORTED_ACTIONS,
-} from "../lib/marauder";
+import { checkDraft as checkCorrection } from "../lib/marauder";
 import { TEAM_NAME } from "./linear";
 import type { UnsortedItem } from "./marauder";
 import { readUnsorted } from "./marauder";
@@ -42,32 +39,24 @@ import { checkDraft } from "./ticket";
 const REASON_MAX = 280;
 
 /**
- * A correction names the queue entry it decides; a send names the ticket. `stage` is in the
- * action list even though the Unsorted page does not offer it — it is one of the four verbs
- * a person has (the `ask` skill's Correcting section), and it is said about a workstream
- * rather than about a row, which is exactly why a conversation is where it gets said.
+ * A correction names the queue entry it decides and, for an attach, the feature it lands
+ * on; a send names the ticket. `new` and `stage` went with the workstreams (ARG-167).
  */
 const decisionInput = z.object({
-  action: z.enum(["attach", "new", "dismiss", "stage", "send"]),
+  action: z.enum(["attach", "dismiss", "send"]),
+  feature: z.string().optional(),
   id: z.string().optional(),
-  name: z.string().optional(),
   reason: z.string().max(REASON_MAX).optional(),
   repo: z.string().optional(),
-  side: z.string().optional(),
-  slug: z.string().optional(),
-  stage: z.string().optional(),
   ticket: z.string().optional(),
 });
 
 const decisionProposal = z.object({
-  action: z.enum(["attach", "new", "dismiss", "stage", "send"]),
+  action: z.enum(["attach", "dismiss", "send"]),
+  feature: z.string().optional(),
   id: z.string().optional(),
-  name: z.string().optional(),
   reason: z.string().optional(),
   repo: z.string().optional(),
-  side: z.string().optional(),
-  slug: z.string().optional(),
-  stage: z.string().optional(),
   /** What the card shows as the thing being decided: the entry's summary, or the ticket. */
   subject: z.string(),
   ticket: z.string().optional(),
@@ -91,8 +80,8 @@ export const PROPOSAL_NOTE =
 
 /** The context `askStream` puts on `chat()`; the tool uses it for the log line. */
 export interface AskToolContext {
+  feature?: string;
   threadId?: string;
-  workstream?: string;
 }
 
 /** Where the correction half reads from; the send half has `SendSources` of its own. */
@@ -107,7 +96,7 @@ const correctionSources = (): CorrectionSources => ({
 /**
  * Check the correction and answer a proposal, or say why there is none. `checkDraft` is the
  * Unsorted page's own pre-flight, so a card refused here is refused in the words that page
- * would have used; on top of it, an `attach`, `new` or `dismiss` has to name an entry that
+ * would have used; on top of it, an `attach` or `dismiss` has to name an entry that
  * is actually in the queue — the one thing a session can get wrong that a click cannot.
  */
 async function proposeCorrection(
@@ -118,16 +107,12 @@ async function proposeCorrection(
   if (error) {
     return { error, ok: false };
   }
-  let subject = draft.name ?? draft.slug ?? draft.id;
-  if ((UNSORTED_ACTIONS as readonly string[]).includes(draft.action)) {
-    const item = (await sources.unsorted()).find((u) => u.id === draft.id);
-    if (!item) {
-      return {
-        error: `"${draft.id}" is not in the unsorted queue — read workstreams/_unsorted.json for the id`,
-        ok: false,
-      };
-    }
-    subject = item.summary;
+  const item = (await sources.unsorted()).find((u) => u.id === draft.id);
+  if (!item) {
+    return {
+      error: `"${draft.id}" is not in the unsorted queue — read queue/_unsorted.json for the id`,
+      ok: false,
+    };
   }
   return {
     note: PROPOSAL_NOTE,
@@ -135,19 +120,16 @@ async function proposeCorrection(
     proposal: {
       action: draft.action as Proposal["action"],
       id: draft.id,
-      subject,
-      ...(draft.name ? { name: draft.name } : {}),
+      subject: item.summary,
+      ...(draft.feature ? { feature: draft.feature } : {}),
       ...(draft.reason ? { reason: draft.reason } : {}),
-      ...(draft.side ? { side: draft.side } : {}),
-      ...(draft.slug ? { slug: draft.slug } : {}),
-      ...(draft.stage ? { stage: draft.stage } : {}),
     },
   };
 }
 
 /**
  * Check the send and answer a proposal. The repo may still be missing here — the card
- * collects it, the same way the workstream page's form does — so the check runs with
+ * collects it, the same way the feature page's form does — so the check runs with
  * `repoRequired: false`; everything else it refuses on (a ticket already sent, a ticket
  * someone has started, Foundry unconfigured) is a refusal the button would give too.
  */
@@ -165,10 +147,10 @@ async function proposeSend(
     ok: true,
     proposal: {
       action: "send",
-      subject: check.workstream?.name ?? check.ticket,
+      subject: check.work?.name ?? check.ticket,
       ticket: check.ticket,
       ...(check.repo ? { repo: check.repo } : {}),
-      ...(check.workstream ? { slug: check.workstream.slug } : {}),
+      ...(check.work ? { feature: check.work.feature } : {}),
     },
   };
 }
@@ -185,11 +167,8 @@ function answerFor(
     {
       action: d.action,
       id: d.id ?? "",
-      ...(d.name ? { name: d.name } : {}),
+      ...(d.feature ? { feature: d.feature } : {}),
       ...(d.reason ? { reason: d.reason } : {}),
-      ...(d.side ? { side: d.side } : {}),
-      ...(d.slug ? { slug: d.slug } : {}),
-      ...(d.stage ? { stage: d.stage } : {}),
     },
     sources.correction ?? correctionSources()
   );
@@ -228,7 +207,7 @@ export async function proposeDecision(
  */
 export const proposeDecisionTool = toolDefinition({
   description:
-    'Propose one thing for the user to confirm on a card. Either a correction to what the loop got wrong — { id, action: "attach" | "new" | "dismiss" | "stage", slug?, name?, side?, stage?, reason }, where id is an entry\'s own id from workstreams/_unsorted.json — or a send — { action: "send", ticket: "LIA-nn", repo? } — handing a ticket to Foundry. It checks the draft against workstreams/, decisions/, Linear and Foundry\'s availability and answers a proposal Pensieve shows as a card with a Confirm button, or { ok: false, error } when it cannot be made. It writes nothing: the file is written only when the user confirms, so never say the entry has been attached, dismissed or opened, or that the ticket has been sent. Call it once per decision.',
+    'Propose one thing for the user to confirm on a card. Either a correction to what the loop got wrong — { id, action: "attach" | "dismiss", feature?, reason }, where id is an entry\'s own id from queue/_unsorted.json and feature is the directory under features/ (admin/invoicing) — or a send — { action: "send", ticket: "LIA-nn", repo? } — handing a ticket to Foundry. It checks the draft against the features, decisions/, Linear and Foundry\'s availability and answers a proposal Pensieve shows as a card with a Confirm button, or { ok: false, error } when it cannot be made. It writes nothing: the file is written only when the user confirms, so never say the entry has been attached or dismissed, or that the ticket has been sent. Call it once per decision.',
   inputSchema: decisionInput,
   name: PROPOSE_DECISION,
   outputSchema: decisionOutput,

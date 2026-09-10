@@ -6,7 +6,7 @@
  *
  * Two things the file cannot carry are added on the way through, both in
  * `server/marauder.ts`: its evidence links are pointed at the routes that serve them, and
- * each workstream's name links to its own page. The day's sweep log — the queue and the
+ * each feature's name links to its own page. The day's sweep log — the queue and the
  * report that used to be here — moved to /reports (LIA-160 AC1).
  */
 
@@ -49,9 +49,9 @@ function BoardPage() {
         <DocLayout>
           <Empty title="No board drawn yet">
             The sweep writes <span className="mono">marauder/board.md</span>{" "}
-            from <span className="mono">workstreams/</span> on every run. Run{" "}
-            <span className="mono">marauder render</span> in argus and this page
-            fills in.
+            from every feature's <span className="mono">work.json</span> on
+            every run. Run <span className="mono">marauder render</span> in
+            argus and this page fills in.
           </Empty>
         </DocLayout>
       )}

@@ -1,8 +1,8 @@
 /**
- * The shared half of the corrections contract (LIA-160, LIA-162): the fold from an entry's
- * id to a decision file's name, the refusals both the row and the writer apply, and how an
- * event is named — a copy of argus's `eventKeys` rule, since the record carries no id and
- * both sides must derive the same one or a Verify confirms the wrong event.
+ * The shared half of the corrections contract (LIA-160, LIA-162, ARG-167): the fold from an
+ * entry's id to a decision file's name, the refusals both the row and the writer apply, and
+ * how an event is named — a copy of argus's `eventKeys` rule, since the record carries no
+ * id and both sides must derive the same one or a Verify confirms the wrong event.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -12,6 +12,7 @@ import {
   decisionSlug,
   eventId,
   eventKeys,
+  isFeature,
   isMarauderId,
   MARAUDER_ACTIONS,
   marauderId,
@@ -24,7 +25,6 @@ describe("the file a decision is written under", () => {
     ["fe#417", "fe-417"],
     ["1788927279211769.230119", "1788927279211769-230119"],
     ["1788927279211769#2", "1788927279211769-2"],
-    ["split/usage-page", "split-usage-page"],
     ["LIA-116", "lia-116"],
   ])("%s becomes %s", (id, slug) => {
     expect(decisionSlug(id)).toBe(slug);
@@ -34,27 +34,43 @@ describe("the file a decision is written under", () => {
   test("an id of nothing but punctuation folds to nothing, and is refused", () => {
     expect(decisionSlug("///")).toBe("");
     expect(
-      checkDraft({ action: "attach", id: "///", slug: "usage-page" })
+      checkDraft({ action: "attach", feature: "admin/usage", id: "///" })
     ).toMatch(/not an entry id/);
   });
 });
 
-describe("what may be written", () => {
-  test("attach needs a workstream", () => {
-    expect(checkDraft({ action: "attach", id: "fe#417" })).toMatch(
-      /choose the workstream/
-    );
-    expect(
-      checkDraft({ action: "attach", id: "fe#417", slug: "usage-page" })
-    ).toBeUndefined();
+describe("a feature key", () => {
+  test.each(["tasks", "admin/invoicing", "shared/date-picker", "a.b/c_d"])(
+    "%p is one",
+    (f) => {
+      expect(isFeature(f)).toBe(true);
+    }
+  );
+  test.each([
+    "",
+    "..",
+    "../x",
+    "admin/../x",
+    "/admin",
+    "admin/",
+    "admin//x",
+    ".hidden",
+    "a b",
+  ])("%p is not", (f) => {
+    expect(isFeature(f)).toBe(false);
   });
+});
 
-  test("new needs a name", () => {
-    expect(checkDraft({ action: "new", id: "fe#417", name: "  " })).toMatch(
-      /needs a name/
+describe("what may be written", () => {
+  test("attach needs a feature", () => {
+    expect(checkDraft({ action: "attach", id: "fe#417" })).toMatch(
+      /choose the feature/
     );
     expect(
-      checkDraft({ action: "new", id: "fe#417", name: "Due on receipt" })
+      checkDraft({ action: "attach", feature: "../x", id: "fe#417" })
+    ).toMatch(/choose the feature/);
+    expect(
+      checkDraft({ action: "attach", feature: "admin/usage", id: "fe#417" })
     ).toBeUndefined();
   });
 
@@ -65,31 +81,16 @@ describe("what may be written", () => {
     ).toBeUndefined();
   });
 
-  test("stage names a workstream, a side and a stage", () => {
-    expect(
-      checkDraft({ action: "stage", id: "fe#417", slug: "usage-page" })
-    ).toMatch(/side is fe or be/);
-    expect(
-      checkDraft({
-        action: "stage",
-        id: "fe#417",
-        side: "fe",
-        slug: "usage-page",
-        stage: "flying",
-      })
-    ).toMatch(/stage is one of/);
-    expect(
-      checkDraft({
-        action: "stage",
-        id: "fe#417",
-        side: "fe",
-        slug: "usage-page",
-        stage: "landed",
-      })
-    ).toBeUndefined();
-  });
+  test.each(["new", "stage", "split"])(
+    "AC4 — %p went with the workstreams",
+    (action) => {
+      expect(checkDraft({ action, id: "fe#417" })).toMatch(
+        /went with the workstreams/
+      );
+    }
+  );
 
-  test.each(["", "ignore", "split"])("%p is not an action", (action) => {
+  test.each(["", "ignore"])("%p is not an action", (action) => {
     expect(checkDraft({ action, id: "fe#417" })).toBeTruthy();
   });
 });
@@ -149,16 +150,15 @@ describe("which events Verify is offered on", () => {
   });
 });
 
-describe("verified is a decision, and the Unsorted page offers only three verbs", () => {
+describe("verified is a decision, and the Unsorted page offers only two verbs", () => {
   test("`verified` needs nothing but the id", () => {
     expect(checkDraft({ action: "verified", id: "LIA-133" })).toBeUndefined();
     expect(checkDraft({ action: "verified", id: "" })).toBe(
       "the entry has no id"
     );
   });
-  test("the triage list's verbs are attach, new and dismiss", () => {
-    expect([...UNSORTED_ACTIONS]).toEqual(["attach", "new", "dismiss"]);
-    expect(MARAUDER_ACTIONS).toContain("verified");
-    expect(MARAUDER_ACTIONS).toContain("stage");
+  test("the triage list's verbs are attach and dismiss", () => {
+    expect([...UNSORTED_ACTIONS]).toEqual(["attach", "dismiss"]);
+    expect([...MARAUDER_ACTIONS]).toEqual(["attach", "dismiss", "verified"]);
   });
 });

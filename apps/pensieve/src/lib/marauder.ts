@@ -3,8 +3,8 @@
  * about the one thing Pensieve writes onto it: a decision on an Unsorted entry
  * (LIA-160).
  *
- * `workstreams/<slug>.json` is argus's record and `marauder/*.md` are the pages rendered
- * from it; both are the sweep's, and nothing here writes either. What this app writes is
+ * `<app>/features/<dir>/work.json` is argus's record (ARG-164) and the `board.md` pages are
+ * rendered from it; both are the sweep's, and nothing here writes either. What this app writes is
  * `decisions/marauder/<id>.json`, which `marauder ingest` reads back, applies through its
  * correction functions and leaves in place as history.
  *
@@ -21,45 +21,30 @@ export const MARAUDER_GROUP = "marauder";
 export const SIDES = ["fe", "be"] as const;
 export type Side = (typeof SIDES)[number];
 
-/** How far one side has got, as `record.ts` names them, in order. */
-export const STAGES = [
-  "asked",
-  "decided",
-  "building",
-  "landed",
-  "verified",
-  "shipped",
-] as const;
-export type Stage = (typeof STAGES)[number];
-
 /**
- * What a click does. `attach` moves an Unsorted entry onto an open workstream, `new` opens
- * one from it, `dismiss` drops it with a reason, and `stage` says where a side really is —
- * the Unsorted page offers the first three (a stage correction is said on the workstream,
- * not in the triage list).
+ * What a click does. `attach` moves an Unsorted entry onto a feature and `dismiss` drops it
+ * with a reason — the two an Unsorted row offers (ARG-167). `new` and `stage` went with the
+ * workstreams: a feature is never opened by hand, it is a directory, and argus refuses both.
  *
  * `verified` is the odd one, and it is not about the queue at all: its `id` names an
- * event on a workstream, and it is the user answering what a `directed-at-person` event
- * asked them — the go-ahead for the one edit that event named, which the next ingest
+ * event on a feature's record, and it is the user answering what a `directed-at-person`
+ * event asked them — the go-ahead for the one edit that event named, which the next ingest
  * stamps onto the event and the ticket pass then makes (LIA-161, LIA-162 AC3).
  */
-export const MARAUDER_ACTIONS = [
-  "attach",
-  "new",
-  "dismiss",
-  "stage",
-  "verified",
-] as const;
+export const MARAUDER_ACTIONS = ["attach", "dismiss", "verified"] as const;
 export type MarauderAction = (typeof MARAUDER_ACTIONS)[number];
 
-/** The three an Unsorted row offers; `stage` and `verified` are said on the workstream. */
-export const UNSORTED_ACTIONS = ["attach", "new", "dismiss"] as const;
+/** The two an Unsorted row offers; `verified` is said on the feature page. */
+export const UNSORTED_ACTIONS = ["attach", "dismiss"] as const;
+
+/** The verbs that went with the workstreams — refused by name, in argus's own words. */
+export const RETIRED_ACTIONS = ["new", "stage", "split"] as const;
 
 /**
  * One decision file's contents. `id` is the Unsorted entry's own id — a Slack `ts`, a
- * `fe#417`, a `split/<slug>` — or, for `verified`, an event's key on its workstream;
- * carried verbatim, since that is what ingest matches on. The file's *name* is the slug
- * below, which the id alone cannot be.
+ * `fe#417` — or, for `verified`, an event's key on its feature's record; carried verbatim,
+ * since that is what ingest matches on. The file's *name* is the slug below, which the id
+ * alone cannot be.
  */
 export interface MarauderDecision {
   action: MarauderAction;
@@ -67,15 +52,10 @@ export interface MarauderDecision {
   at: string;
   /** Who decided; there is one Pensieve user, so this is a constant until there is not. */
   by: string;
+  /** `attach` only — the feature it lands on, as its directory under `features/`. */
+  feature?: string;
   id: string;
-  /** `new` only — the name the workstream is opened under. */
-  name?: string;
   reason?: string;
-  /** `stage` only — which side, and where it really is. */
-  side?: Side;
-  /** `attach` and `stage` — the workstream the entry lands on. */
-  slug?: string;
-  stage?: Stage;
 }
 
 /**
@@ -84,10 +64,14 @@ export interface MarauderDecision {
  */
 export const PENSIEVE_USER = "Liam Leung";
 
-/** A workstream slug, as `record.ts` validates it: lower-case words joined by hyphens. */
-export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-export const isSlug = (v: unknown): v is string =>
-  typeof v === "string" && SLUG_RE.test(v);
+/**
+ * A feature, as its directory under an app's `features/` — `admin/invoicing`, `tasks`.
+ * Every segment starts with a letter or digit, so `..`, `.` and an absolute path can never
+ * match: this is the guard on the route, on Ask's `?feature=` and on an attach.
+ */
+export const FEATURE_RE = /^[A-Za-z0-9][\w.-]*(?:\/[A-Za-z0-9][\w.-]*)*$/;
+export const isFeature = (v: unknown): v is string =>
+  typeof v === "string" && FEATURE_RE.test(v);
 
 /**
  * The file name a decision on `id` is written under. An Unsorted id is whatever named the
@@ -164,15 +148,16 @@ export const needsVerify = (e: {
 /** The draft a click makes, before it is a decision. */
 export interface MarauderDraft {
   action: string;
+  feature?: string;
   id: string;
-  name?: string;
   reason?: string;
-  side?: string;
-  slug?: string;
-  stage?: string;
 }
 
 const trimmed = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+
+/** The one sentence a reasonless dismiss is refused with, on the row, the card and the server. */
+export const DISMISS_NEEDS_REASON =
+  "say why — the reason is all a later reader has for why this is not on a feature";
 
 /**
  * Why this click cannot be written, in the sentence the row shows and the server refuses
@@ -191,30 +176,19 @@ export function checkDraft(draft: MarauderDraft): string | undefined {
     return `"${draft.id}" is not an entry id`;
   }
   const action = trimmed(draft.action) as MarauderAction;
+  if ((RETIRED_ACTIONS as readonly string[]).includes(action)) {
+    return `"${action}" went with the workstreams — attach the entry to a feature instead`;
+  }
   if (!(MARAUDER_ACTIONS as readonly string[]).includes(action)) {
     return `"${draft.action}" is not one of ${MARAUDER_ACTIONS.join(", ")}`;
   }
-  if (action === "attach" && !isSlug(trimmed(draft.slug))) {
-    return "choose the workstream it belongs to";
-  }
-  if (action === "new" && !trimmed(draft.name)) {
-    return "a new workstream needs a name";
+  if (action === "attach" && !isFeature(trimmed(draft.feature))) {
+    return "choose the feature it belongs to";
   }
   if (action === "dismiss" && !trimmed(draft.reason)) {
-    return "say why — the reason is all a later reader has for why this is not on a workstream";
+    return DISMISS_NEEDS_REASON;
   }
   // `verified` needs nothing but the id: the event's own text is what is being agreed to,
   // and a note is the user's to add or leave out.
-  if (action === "stage") {
-    if (!isSlug(trimmed(draft.slug))) {
-      return "a stage correction names the workstream it is about";
-    }
-    if (!(SIDES as readonly string[]).includes(trimmed(draft.side))) {
-      return `the side is ${SIDES.join(" or ")}`;
-    }
-    if (!(STAGES as readonly string[]).includes(trimmed(draft.stage))) {
-      return `the stage is one of ${STAGES.join(", ")}`;
-    }
-  }
   return undefined;
 }

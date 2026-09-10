@@ -1,5 +1,5 @@
 /**
- * The bits both actions on a workstream page share: the field a Send's repo is chosen in,
+ * The bits both actions on a feature page share: the field a Send's repo is chosen in,
  * the one way either click is committed, the sentence a refusal is shown in, the
  * submit/cancel pair, and the live job line a sent ticket wears.
  *
