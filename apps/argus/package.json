@@ -11,7 +11,8 @@
     "canvas": "bun --hot canvas/server.ts",
     "sync-skills": "bun scripts/sync-skills.ts",
     "argus": "bun scripts/argus.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "evals": "bun evals/replay.ts"
   },
   "bin": {
     "argus": "./scripts/argus.ts",
