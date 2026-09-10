@@ -472,19 +472,30 @@ export function applySlack({ workstreams, items, unsorted, milestones }: ApplyIn
   };
 }
 
-const unsortedItem = (item: SlackItem, candidates: Candidate[], why: string, name?: string): UnsortedItem => ({
-  id: item.id,
-  kind: name ? "new" : "slack",
-  ...(name ? { name } : {}),
-  summary: `${item.authorIsUser ? "You" : item.author}: ${clip(firstSentence(item.text) || item.text.trim(), 20)}`,
-  text: item.text.slice(0, 2000),
-  source: { type: item.id.includes("#") ? "huddle" : "slack", ref: item.id, url: item.permalink },
-  candidates,
-  why,
-  suggest: candidates.length === 1 ? candidates[0]!.slug : null,
-  needs: "read",
-  at: item.at,
-});
+/** style.md's rendered line adds a date/time prefix (~4 words) ahead of this summary; a
+ *  fixed body clip overflows the 25-word ceiling when the author name itself is long (a
+ *  bot name like "SWE Slack To Trello" vs. a person's "You" or "Foong Leung") — so the
+ *  clip budget shrinks with the author name instead of assuming it is short */
+const SUMMARY_WORD_BUDGET = 18;
+const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+
+const unsortedItem = (item: SlackItem, candidates: Candidate[], why: string, name?: string): UnsortedItem => {
+  const who = item.authorIsUser ? "You" : item.author;
+  const bodyBudget = Math.max(6, SUMMARY_WORD_BUDGET - wordCount(who));
+  return {
+    id: item.id,
+    kind: name ? "new" : "slack",
+    ...(name ? { name } : {}),
+    summary: `${who}: ${clip(firstSentence(item.text) || item.text.trim(), bodyBudget)}`,
+    text: item.text.slice(0, 2000),
+    source: { type: item.id.includes("#") ? "huddle" : "slack", ref: item.id, url: item.permalink },
+    candidates,
+    why,
+    suggest: candidates.length === 1 ? candidates[0]!.slug : null,
+    needs: "read",
+    at: item.at,
+  };
+};
 
 /** what a reader needs beside the queue to answer it: the open list, one line each */
 export const openList = (workstreams: Workstream[]): string =>

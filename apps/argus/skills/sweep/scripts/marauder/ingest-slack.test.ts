@@ -208,6 +208,24 @@ describe("applying", () => {
     expect(unsorted[0]).toMatchObject({ id: stray.id, needs: "read", suggest: null });
   });
 
+  test("a long (bot) author name still leaves the unsorted summary inside the render ceiling", () => {
+    // style.md's rendered workstream line prepends a date/time (~4 words) ahead of the
+    // summary; a fixed word-count body clip overflows the 25-word ceiling once the author
+    // name itself is long, as a bot's display name can be — regression for that gap.
+    const stray = {
+      ...byTs(BILLING),
+      ts: "1788999999.000003",
+      id: "1788999999.000003",
+      author: "SWE Slack To Trello",
+      authorIsUser: false,
+      text: "Ticket has been created by Foong Leung, you can track progress with the commands /summary or /summary:all, or visit our trello board at https://trello.com/invite/some/long/path",
+    } as SlackItem;
+    const { unsorted } = applySlack({ workstreams: [w({ keys: { ...w().keys, threads: [], vocab: [] } })], items: [stray], unsorted: [], milestones: {} });
+    const summary = unsorted[0]!.summary;
+    expect(summary).toStartWith("SWE Slack To Trello:");
+    expect(summary.split(/\s+/).length).toBeLessThanOrEqual(21); // leaves headroom for the rendered date prefix
+  });
+
   test("an ask nothing claims is proposed as a workstream, never created", () => {
     const ask = { ...byTs(BILLING), ts: "1788999999.000002", id: "1788999999.000002", kind: "new-ask" as const, text: "Someone should add a client column to the register" };
     const { workstreams, unsorted, changes } = applySlack({ workstreams: [w({ keys: { ...w().keys, threads: [], vocab: [] } })], items: [ask], unsorted: [], milestones: {} });
