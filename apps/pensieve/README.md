@@ -19,9 +19,9 @@ lists what argus took in and could not attach to a feature, and lets you *attach
 feature or *dismiss* it with a reason. A **feature page** lets you *verify* what an event
 asked you to confirm, or *send* one of its tickets to
 [Foundry](https://github.com/d0nwong/foundry). Either way it is one JSON file under
-`decisions/` that argus reads back: today the next `marauder ingest` applies it and
-commits it; `marauder apply` (ARG-168) applies it on demand, and once ARG-169 lands the
-click itself runs that, so the record and the pages change before the page re-reads them. Nothing else is written
+`decisions/` that argus reads back — and the click then runs argus's `marauder apply` on
+it, so the record and the pages have changed before the page re-reads them; when that
+run could not happen, the next `marauder ingest` applies the file. Nothing else is written
 into the blackboard from here — not `work.json`, `queue/`, `marauder/`, the journal,
 docs or tickets; those still go through argus, Linear or Slack.
 
@@ -177,15 +177,18 @@ sweep never reads half of one, and it is never edited afterwards by either side.
 lay these files over what they read, so a row decided a minute ago wears its verdict
 before argus has applied it.
 
-Today the verdict reaches the record on the sweep's next tick: `marauder ingest` applies
-each file through the same correction functions the command line goes through, then the
-tick commits the file untouched as the history of who decided what. Going forward the
-click applies it (ARG-169, filed): after the write, `decideUnsorted` and Verify run
-`bun run marauder apply` in `WORKSPACE_DIR` — argus's own verb, landed as ARG-168, which applies
-the decision files and renders the pages under the lock every writing verb of the sweep
-holds — and answer `{ ok, applied, note? }`. When the lock is busy or the run fails, the
-file is still written, the row wears its verdict with the note, and the next tick applies
-it as today. Send is unchanged, and Ask stays read-only.
+The click applies it (ARG-169): once the file is renamed into place, `decideUnsorted` and
+`verifyEvent` run `bun run marauder apply` in `WORKSPACE_DIR` (`src/server/marauder.ts`
+`applyDecisions`, a `Bun.spawn` with a 30 s timeout and stderr captured) — argus's own
+verb (ARG-168), which applies the decision files through the same correction functions
+the command line goes through and renders the pages, under the lock every writing verb of
+the sweep holds — and answer `{ ok, applied, note? }`. An applied Unsorted row is gone on
+the re-read, and a verified event reads as confirmed. When the lock is busy, the run fails
+or times out, or `bun` is not on the server's PATH, nothing throws: the file is still
+written, the row wears its verdict with the note saying why, and the next `marauder
+ingest` applies it and commits it untouched as the history of who decided what. This app
+still writes only the decision file; the record changes through argus's code. Send is
+unchanged, and Ask stays read-only.
 
 *Verify* answers what a `directed-at-person` event asked — an inference the sweep drew and
 is forbidden from acting on ("report first, edit after the user confirms"): a held edit on
