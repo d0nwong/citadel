@@ -1,32 +1,27 @@
 /**
  * The corrections queue — what `marauder ingest` could not attach on its own, with the one
- * click that fixes it (LIA-160 AC3, AC5).
+ * click that fixes it (LIA-160 AC3, AC5; over features since ARG-167).
  *
  * A click writes `decisions/marauder/<id>.json` and nothing else. The next `marauder
  * ingest` reads that file, applies it through the correction functions, drops the entry
- * from `workstreams/_unsorted.json` and commits — so the row stays in the list until then,
+ * from `queue/_unsorted.json` and commits — so the row stays in the list until then,
  * wearing the verdict it was given. That is the one-writer rule holding: this app writes
  * decision files, the sweep writes the record.
  *
  * The click has to be cheap or the list grows and the guesses stop being corrected, so the
- * select of workstreams is on the row already with the model's suggestion chosen, and
- * Attach is one press. New and Dismiss each need a word first — a name, and a reason —
- * so they open a field and commit on submit.
- *
- * A `split` proposal is not an entry that can attach anywhere: it proposes cutting one
- * workstream in two. It shows its groups and the command that would apply it, and offers
- * only Dismiss, until splitting from here is common enough to deserve buttons.
+ * select of features is on the row already with the sweep's suggestion chosen, and Attach
+ * is one press. Dismiss needs a reason first, so it opens a field and commits on submit.
+ * There is no New: a feature is a directory under `features/`, never opened from here.
  */
 
 import { Link, useRouter } from "@tanstack/react-router";
-import { ChevronDown, EyeOff, GitBranch, Plus } from "lucide-react";
+import { ChevronDown, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { Tag } from "#/components/bits";
 import { Button } from "#/components/ui/button";
 import type { UnsortedPage, UnsortedVerdict } from "#/lib/api";
 import { decideUnsorted } from "#/lib/api";
 import type { MarauderDecision } from "#/lib/marauder";
-import { decisionSlug } from "#/lib/marauder";
 import { cn } from "#/lib/utils";
 import type { UnsortedItem } from "#/server/marauder";
 
@@ -64,15 +59,17 @@ function Source({ item }: { item: UnsortedItem }) {
 }
 
 /** What a decided row shows instead of its controls — the file that is now on disk. */
-function Decided({ decision }: { decision: MarauderDecision }) {
+function Decided({
+  decision,
+  names,
+}: {
+  decision: MarauderDecision;
+  names: Map<string, string>;
+}) {
   const word =
     decision.action === "attach"
-      ? `attached to ${decision.slug}`
-      : decision.action === "new"
-        ? `opening “${decision.name}”`
-        : decision.action === "stage"
-          ? `${decision.side} set to ${decision.stage}`
-          : "dismissed";
+      ? `attached to ${names.get(decision.feature ?? "") ?? decision.feature}`
+      : decision.action;
   return (
     <div className="mt-2.5 flex flex-wrap items-baseline gap-2 text-sm">
       <Tag tone="decided">{word}</Tag>
@@ -86,37 +83,26 @@ function Decided({ decision }: { decision: MarauderDecision }) {
   );
 }
 
-/**
- * The command a reader would run to apply this split. The first group keeps the workstream
- * it came from, so there is one `split` per group after it.
- */
-function splitCommands(item: UnsortedItem): string[] {
-  const groups = item.groups ?? [];
-  return groups.slice(1).map((g) => {
-    const events = g.events.join(",");
-    return `marauder split ${item.slug} --into ${decisionSlug(g.name)} --name "${g.name}"${events ? ` --events ${events}` : ""}`;
-  });
-}
-
-type Mode = "dismiss" | "idle" | "new";
-
 function Row({
   item,
   decision,
-  open,
+  features,
+  names,
 }: {
   decision?: MarauderDecision;
+  features: UnsortedPage["features"];
   item: UnsortedItem;
-  open: UnsortedPage["open"];
+  names: Map<string, string>;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("idle");
-  const [slug, setSlug] = useState(item.suggest ?? "");
-  const [name, setName] = useState(item.name ?? item.summary);
+  const [dismissing, setDismissing] = useState(false);
+  // The sweep's suggestion is preselected only when it names a feature that exists.
+  const [feature, setFeature] = useState(
+    item.suggest && names.has(item.suggest) ? item.suggest : ""
+  );
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isSplit = item.kind === "split";
 
   const commit = async (
     draft: Parameters<typeof decideUnsorted>[0]["data"]
@@ -129,7 +115,7 @@ function Row({
     try {
       const v: UnsortedVerdict = await decideUnsorted({ data: draft });
       if (v.ok) {
-        setMode("idle");
+        setDismissing(false);
         // The loader re-reads `_unsorted.json` + `decisions/marauder/`, so the row lands
         // in its decided state whether this click wrote the file or found it already there.
         await router.invalidate();
@@ -141,24 +127,11 @@ function Row({
     }
   };
 
-  const toggle = (m: Mode) => {
-    setMode(mode === m ? "idle" : m);
-    setError(null);
-  };
-
   return (
     <li className="border-border border-b py-5 last:border-b-0">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        {isSplit && (
-          <Tag tone="hold">
-            <GitBranch className="size-3" strokeWidth={2} />
-            split
-          </Tag>
-        )}
-        <p className="font-medium text-[15px] text-foreground leading-snug">
-          {item.summary}
-        </p>
-      </div>
+      <p className="font-medium text-[15px] text-foreground leading-snug">
+        {item.summary}
+      </p>
 
       {item.why && (
         <p className="mt-1 text-muted-foreground text-sm leading-snug">
@@ -171,128 +144,69 @@ function Row({
         <span className="mono text-subtle">{item.at.slice(0, 10)}</span>
         {item.candidates.length > 0 && (
           <span className="text-subtle">
-            could be {item.candidates.map((c) => c.slug).join(", ")}
+            could be{" "}
+            {item.candidates
+              .map((c) => names.get(c.feature) ?? c.feature)
+              .join(", ")}
           </span>
         )}
       </p>
 
-      {isSplit && item.groups && (
-        <div className="mt-3 max-w-[60ch] rounded-md border border-border bg-muted/40 px-3 py-2.5">
-          <ul className="flex flex-col gap-1 text-sm">
-            {item.groups.map((g) => (
-              <li key={g.name}>
-                <span className="font-medium text-foreground">{g.name}</span>
-                {g.events.length > 0 && (
-                  <span className="mono ml-2 text-subtle text-xs">
-                    {g.events.join(" · ")}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-          {splitCommands(item).length > 0 && (
-            <pre className="mono mt-2.5 overflow-x-auto text-subtle text-xs leading-relaxed">
-              {splitCommands(item).join("\n")}
-            </pre>
-          )}
-        </div>
-      )}
-
       {decision ? (
-        <Decided decision={decision} />
+        <Decided decision={decision} names={names} />
       ) : (
         <>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {!isSplit && (
-              <>
-                <div className="relative">
-                  <select
-                    aria-label="Workstream to attach it to"
-                    className={cn(
-                      FIELD_CLASS,
-                      "w-auto cursor-pointer appearance-none pr-9",
-                      !slug && "text-subtle"
-                    )}
-                    onChange={(e) => setSlug(e.target.value)}
-                    value={slug}
-                  >
-                    <option value="">choose a workstream…</option>
-                    {open.map((w) => (
-                      <option key={w.slug} value={w.slug}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-subtle"
-                    strokeWidth={1.75}
-                  />
-                </div>
-                <Button
-                  disabled={busy}
-                  onClick={() =>
-                    slug
-                      ? commit({ action: "attach", id: item.id, slug })
-                      : setError("choose the workstream it belongs to")
-                  }
-                  size="sm"
-                >
-                  Attach
-                </Button>
-                <Button
-                  aria-pressed={mode === "new"}
-                  onClick={() => toggle("new")}
-                  size="sm"
-                  variant={mode === "new" ? "secondary" : "outline"}
-                >
-                  <Plus strokeWidth={1.75} />
-                  New workstream
-                </Button>
-              </>
-            )}
+            <div className="relative">
+              <select
+                aria-label="Feature to attach it to"
+                className={cn(
+                  FIELD_CLASS,
+                  "w-auto cursor-pointer appearance-none pr-9",
+                  !feature && "text-subtle"
+                )}
+                onChange={(e) => setFeature(e.target.value)}
+                value={feature}
+              >
+                <option value="">choose a feature…</option>
+                {features.map((f) => (
+                  <option key={f.feature} value={f.feature}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-subtle"
+                strokeWidth={1.75}
+              />
+            </div>
             <Button
-              aria-pressed={mode === "dismiss"}
-              onClick={() => toggle("dismiss")}
+              disabled={busy}
+              onClick={() =>
+                feature
+                  ? commit({ action: "attach", feature, id: item.id })
+                  : setError("choose the feature it belongs to")
+              }
               size="sm"
-              variant={mode === "dismiss" ? "secondary" : "outline"}
+            >
+              Attach
+            </Button>
+            <Button
+              aria-pressed={dismissing}
+              onClick={() => {
+                setDismissing(!dismissing);
+                setError(null);
+              }}
+              size="sm"
+              variant={dismissing ? "secondary" : "outline"}
             >
               <EyeOff strokeWidth={1.75} />
               Dismiss
             </Button>
           </div>
 
-          {mode === "new" && (
-            <form
-              className="mt-3 flex max-w-[60ch] flex-col gap-2 border-primary/30 border-l-2 pl-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void commit({ action: "new", id: item.id, name });
-              }}
-            >
-              <label className="kicker" htmlFor={`name-${item.id}`}>
-                What to call it
-              </label>
-              <input
-                className={FIELD_CLASS}
-                id={`name-${item.id}`}
-                onChange={(e) => setName(e.target.value)}
-                value={name}
-              />
-              <p className="text-sm text-subtle leading-snug">
-                It opens as{" "}
-                <span className="mono">{decisionSlug(name) || "…"}</span>, with
-                this entry as its first event.
-              </p>
-              <div>
-                <Button disabled={busy} size="sm" type="submit">
-                  Open it
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {mode === "dismiss" && (
+          {dismissing && (
             <form
               className="mt-3 flex max-w-[60ch] flex-col gap-2 border-primary/30 border-l-2 pl-3"
               onSubmit={(e) => {
@@ -314,7 +228,7 @@ function Row({
               />
               <p className="text-sm text-subtle leading-snug">
                 The reason is all a later reader has for why this is not on a
-                workstream.
+                feature.
               </p>
               <div>
                 <Button disabled={busy} size="sm" type="submit">
@@ -337,14 +251,16 @@ function Row({
 
 export function UnsortedQueue({ page }: { page: UnsortedPage }) {
   const decided = new Map(page.decided);
+  const names = new Map(page.features.map((f) => [f.feature, f.name]));
   return (
     <ul className="flex flex-col">
       {page.items.map((item) => (
         <Row
           decision={decided.get(item.id)}
+          features={page.features}
           item={item}
           key={item.id}
-          open={page.open}
+          names={names}
         />
       ))}
     </ul>
@@ -362,11 +278,11 @@ export function UnsortedSummary({ page }: { page: UnsortedPage }) {
         ? "Nothing left to sort"
         : `${left} ${left === 1 ? "entry" : "entries"} to sort`}
       {done > 0 && ` · ${done} decided, waiting for the next run`}
-      {page.open.length === 0 && (
+      {page.features.length === 0 && (
         <>
           {" · "}
           <Link className="text-primary hover:underline" to="/">
-            no workstreams to attach to yet
+            no features to attach to yet
           </Link>
         </>
       )}

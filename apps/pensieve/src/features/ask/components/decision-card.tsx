@@ -8,9 +8,9 @@
  *
  * Two shapes, because there are two things a conversation proposes:
  *
- *   - a **correction** — attach, new, dismiss or stage — which goes through
+ *   - a **correction** — attach or dismiss — which goes through
  *     `decideUnsorted`, the Unsorted page's writer;
- *   - a **send**, which goes through `sendTicket`, the workstream page's.
+ *   - a **send**, which goes through `sendTicket`, the feature page's.
  *
  * A tool part is stored with the conversation and replayed on every reload, so the card
  * never trusts its own output for whether the click has been made: it asks the server, and
@@ -34,6 +34,7 @@ import {
 import type { SendResult, UnsortedVerdict } from "#/lib/api";
 import { decideUnsorted, getDecided, sendTicket } from "#/lib/api";
 import type { MarauderDecision } from "#/lib/marauder";
+import { DISMISS_NEEDS_REASON } from "#/lib/marauder";
 import { pickRepo, REPO_REQUIRED } from "#/lib/send";
 import type { SendDecision } from "#/server/decisions";
 import type { FoundryRepo } from "#/server/foundry";
@@ -41,19 +42,16 @@ import { toolResultText } from "../lib/tool-summary";
 import type { Opts } from "../model/chat-options";
 import { Block, Refusal, str } from "./card";
 
-const ACTIONS = ["attach", "new", "dismiss", "stage", "send"] as const;
+const ACTIONS = ["attach", "dismiss", "send"] as const;
 type Action = (typeof ACTIONS)[number];
 
 /** What `propose_decision` answers, as the card reads it back off the wire. */
 interface Proposal {
   action: Action;
+  feature?: string;
   id?: string;
-  name?: string;
   reason?: string;
   repo?: string;
-  side?: string;
-  slug?: string;
-  stage?: string;
   subject: string;
   ticket?: string;
 }
@@ -106,13 +104,10 @@ export function parseAnswer(output: unknown): Answer {
     ok: true,
     proposal: {
       action,
+      feature: str(p.feature),
       id,
-      name: str(p.name),
       reason: str(p.reason),
       repo: str(p.repo),
-      side: str(p.side),
-      slug: str(p.slug),
-      stage: str(p.stage),
       subject: str(p.subject) ?? (ticket || id || ""),
       ticket,
     },
@@ -140,9 +135,7 @@ export function DecisionCard({ part, result }: ToolProps<Opts>) {
 const WORD: Record<Action, string> = {
   attach: "attach",
   dismiss: "dismiss",
-  new: "new workstream",
   send: "send",
-  stage: "stage",
 };
 
 /**
@@ -161,11 +154,8 @@ function writeCall(
     data: {
       action: proposal.action,
       id: proposal.id ?? "",
-      ...(proposal.name ? { name: proposal.name } : {}),
+      ...(proposal.feature ? { feature: proposal.feature } : {}),
       ...(reason.trim() ? { reason } : {}),
-      ...(proposal.side ? { side: proposal.side } : {}),
-      ...(proposal.slug ? { slug: proposal.slug } : {}),
-      ...(proposal.stage ? { stage: proposal.stage } : {}),
     },
   });
 }
@@ -212,18 +202,10 @@ function CorrectionFields({
 }) {
   return (
     <>
-      {proposal.action === "attach" && proposal.slug && (
+      {proposal.action === "attach" && proposal.feature && (
         <p className="text-sm text-subtle leading-snug">
-          It moves onto <span className="mono">{proposal.slug}</span>, and its
-          thread, tickets and words join that workstream's keys.
-        </p>
-      )}
-      {proposal.action === "stage" && (
-        <p className="text-sm text-subtle leading-snug">
-          <span className="mono">{proposal.slug}</span>'s{" "}
-          <span className="mono">{proposal.side}</span> is set to{" "}
-          <span className="mono">{proposal.stage}</span> until the next landing
-          says otherwise.
+          It moves onto <span className="mono">{proposal.feature}</span>, and
+          its thread, tickets and words join that feature's keys.
         </p>
       )}
       <label className="kicker" htmlFor={`card-reason-${proposal.id}`}>
@@ -304,7 +286,7 @@ function Proposed({ proposal }: { proposal: Proposal }) {
     queryKey: key,
   });
 
-  // Unlike the workstream page, the repos arrive with the same query as the decision rather
+  // Unlike the feature page, the repos arrive with the same query as the decision rather
   // than with the route's loader data, so the field cannot be seeded in a `useState`
   // initialiser — until it is touched (`chosen` is null) it shows what the proposal's repo
   // picks out of whatever list has landed.
@@ -318,11 +300,7 @@ function Proposed({ proposal }: { proposal: Proposal }) {
       return setError({ error: REPO_REQUIRED, ok: false });
     }
     if (proposal.action === "dismiss" && !reason.trim()) {
-      return setError({
-        error:
-          "say why — the reason is all a later reader has for why this is not on a workstream",
-        ok: false,
-      });
+      return setError({ error: DISMISS_NEEDS_REASON, ok: false });
     }
     return commit(
       () => writeCall(proposal, repo, reason),

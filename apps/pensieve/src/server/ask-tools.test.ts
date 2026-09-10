@@ -1,7 +1,7 @@
 /**
- * `propose_decision`, retargeted (LIA-162 AC5). It used to answer a verdict on a Needs-you
- * point; it now answers one of the two things a person actually does — a correction on an
- * Unsorted entry, in the four verbs the `ask` skill's Correcting section names, or a send.
+ * `propose_decision`, retargeted (LIA-162 AC5) and moved onto features (ARG-167). It
+ * answers one of the two things a person actually does — a correction on an Unsorted
+ * entry, attach or dismiss, or a send.
  *
  * The point of every test here is the same: the tool writes nothing. It checks a draft
  * against the same functions the pages check theirs against, and answers a proposal or a
@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { proposeDecision } from "./ask-tools.server";
 import { writeSendDecision } from "./decisions";
-import type { UnsortedItem, Workstream } from "./marauder";
+import type { UnsortedItem, Work } from "./marauder";
 import type { SendSources } from "./send";
 
 let dir: string;
@@ -28,22 +28,20 @@ const item = (i: Partial<UnsortedItem> = {}): UnsortedItem => ({
   candidates: [],
   id: "1788949866.296519",
   kind: "slack",
-  suggest: "history-asset-editing",
+  suggest: "tasks",
   summary: "Sam asks whether the subtask rows keep their own price",
   ...i,
 });
 
-const workstream = (): Workstream => ({
+const work = (): Work => ({
+  app: "alden/alden-portal",
   events: [],
-  features: [],
-  keys: { people: [], prs: [], threads: [], tickets: ["LIA-133"], vocab: [] },
+  feature: "tasks",
+  keys: { prs: [], threads: [], tickets: ["LIA-133"], vocab: [] },
   milestone: null,
-  name: "History asset editing",
-  parked: false,
-  slug: "history-asset-editing",
-  stage: {},
+  name: "Tasks",
+  openQuestions: [],
   updated: "2026-09-09",
-  wants: [],
 });
 
 const correction = { unsorted: async () => [item()] };
@@ -52,19 +50,19 @@ const send = (): SendSources => ({
   decisionsDir: dir,
   foundry: async () => ({ configured: true, url: "http://localhost:3777" }),
   issues: async () => [],
-  workstreams: async () => [workstream()],
+  work: async () => [work()],
 });
 
 const sources = () => ({ correction, send: send() });
 
-describe("AC5 — a correction, in the same three verbs the Unsorted page offers", () => {
-  test("attach: the entry's own summary is what the card names", async () => {
+describe("AC5 — a correction, in the same two verbs the Unsorted page offers", () => {
+  test("attach: names the feature, and the entry's own summary is what the card names", async () => {
     const out = await proposeDecision(
       {
         action: "attach",
+        feature: "tasks",
         id: "1788949866.296519",
         reason: "Sam is describing the subtask rows",
-        slug: "history-subtask-rows",
       },
       {},
       sources()
@@ -73,71 +71,46 @@ describe("AC5 — a correction, in the same three verbs the Unsorted page offers
       ok: true,
       proposal: {
         action: "attach",
+        feature: "tasks",
         id: "1788949866.296519",
-        slug: "history-subtask-rows",
         subject: "Sam asks whether the subtask rows keep their own price",
       },
     });
   });
 
-  test("new and dismiss carry their argument, and a dismiss without one is refused", async () => {
-    expect(
-      await proposeDecision(
-        { action: "new", id: "1788949866.296519", name: "Subtask pricing" },
-        {},
-        sources()
-      )
-    ).toMatchObject({ ok: true, proposal: { name: "Subtask pricing" } });
+  test("a dismiss without a reason is refused in the page's own sentence", async () => {
     const noReason = await proposeDecision(
       { action: "dismiss", id: "1788949866.296519" },
       {},
       sources()
     );
-    // The Unsorted page's own sentence, not a second wording of it.
-    expect(noReason).toMatchObject({ ok: false });
     expect(!noReason.ok && noReason.error).toContain("say why");
   });
 
   test("an entry that is not in the queue is refused, with where to find the id", async () => {
     const out = await proposeDecision(
-      { action: "attach", id: "made-up", slug: "history-asset-editing" },
+      { action: "attach", feature: "tasks", id: "made-up" },
       {},
       sources()
     );
-    expect(!out.ok && out.error).toContain("workstreams/_unsorted.json");
+    expect(!out.ok && out.error).toContain("queue/_unsorted.json");
   });
 
-  test("stage is about a workstream, so it needs no queue entry", async () => {
-    expect(
-      await proposeDecision(
-        {
-          action: "stage",
-          id: "history-asset-editing",
-          side: "fe",
-          slug: "history-asset-editing",
-          stage: "landed",
-        },
+  test.each(["new", "stage", "park"])(
+    "AC4 — %p is refused by the schema",
+    async (action) => {
+      const out = await proposeDecision(
+        { action, id: "1788949866.296519" },
         {},
         sources()
-      )
-    ).toMatchObject({
-      ok: true,
-      proposal: { action: "stage", stage: "landed" },
-    });
-  });
-
-  test("an action the file format does not carry is refused by the schema", async () => {
-    const out = await proposeDecision(
-      { action: "park", id: "1788949866.296519" },
-      {},
-      sources()
-    );
-    expect(!out.ok && out.error).toContain("propose_decision:");
-  });
+      );
+      expect(!out.ok && out.error).toContain("propose_decision:");
+    }
+  );
 });
 
-describe("AC5 — a send, checked the way the workstream page's button is", () => {
-  test("a ticket that may go answers a proposal naming its workstream", async () => {
+describe("AC5 — a send, checked the way the feature page's button is", () => {
+  test("a ticket that may go answers a proposal naming its feature", async () => {
     const out = await proposeDecision(
       { action: "send", ticket: "LIA-133" },
       {},
@@ -147,8 +120,8 @@ describe("AC5 — a send, checked the way the workstream page's button is", () =
       ok: true,
       proposal: {
         action: "send",
-        slug: "history-asset-editing",
-        subject: "History asset editing",
+        feature: "tasks",
+        subject: "Tasks",
         ticket: "LIA-133",
       },
     });

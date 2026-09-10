@@ -3,7 +3,7 @@
  * Each handler lazy-imports the fs reader so nothing node-only reaches the client bundle.
  *
  * Everything here reads, except three writers: `sendTicket` and `verifyEvent` on a
- * workstream page and `decideUnsorted` on the triage queue, each of which writes one file
+ * feature page and `decideUnsorted` on the triage queue, each of which writes one file
  * under `decisions/` through server/decisions.ts — the app's only writer into the
  * blackboard; `fileTicket`, which creates one Linear issue (LIA-113) and is the app's only
  * writer outside it; and Argus, which writes its conversations under `PENSIEVE_HOME`
@@ -18,9 +18,9 @@ import type { MarauderDecision } from "#/lib/marauder";
 import {
   checkDraft,
   eventKeys,
+  isFeature,
   needsVerify,
   PENSIEVE_USER,
-  SLUG_RE,
 } from "#/lib/marauder";
 import { isSendable } from "#/lib/send";
 import type {
@@ -37,7 +37,7 @@ import type {
   JobStatus,
 } from "#/server/foundry";
 import type { LinearConfig } from "#/server/linear";
-import type { Milestone, UnsortedItem, Workstream } from "#/server/marauder";
+import type { Milestone, UnsortedItem, Work } from "#/server/marauder";
 import type { DayFile, Json, Rendered } from "#/server/workspace";
 
 /** The sidebar's docs tree and the top bar's workspace path — what the shell shows on every page. */
@@ -240,7 +240,7 @@ export type VerifyResult =
  * Confirm what a `directed-at-person` event asked (LIA-162 AC3) — the user's go-ahead for
  * the one edit that event named. Writes `decisions/marauder/<event>.json` with
  * `action: "verified"`; the next ingest stamps the event `confirmed:` and the ticket pass
- * then makes the edit. Nothing under `workstreams/` is touched here.
+ * then makes the edit. No `work.json` is touched here.
  */
 export const verifyEvent = createServerFn({ method: "POST" })
   .validator((input: { event: string; note?: string }) => ({
@@ -303,6 +303,8 @@ const threadId = z
 export const askChat = createServerFn({ method: "POST" })
   .validator(
     z.object({
+      /** The feature the conversation was opened on; stored on the thread's first run. */
+      feature: z.string().refine(isFeature, "not a feature").optional(),
       messages: z.array(
         z.custom<UIMessage>(
           (v) =>
@@ -311,8 +313,6 @@ export const askChat = createServerFn({ method: "POST" })
       ),
       runId: z.string().max(128).optional(),
       threadId,
-      /** The workstream the conversation was opened on; stored on the thread's first run. */
-      workstream: z.string().regex(SLUG_RE).optional(),
     })
   )
   .handler(async ({ data }) => {
@@ -502,7 +502,7 @@ export const fileTicket = createServerFn({ method: "POST" })
     return task;
   });
 
-// ── the board, a workstream, and the triage queue (LIA-160) ────────────────────
+// ── the board, a feature, and the triage queue (LIA-160, ARG-167) ──────────────
 
 export interface BoardPage {
   /** `marauder/board.md`, or null when no run has rendered one yet. */
@@ -513,26 +513,26 @@ export interface BoardPage {
 
 /**
  * The home page: the board as the sweep rendered it, with its links pointed at the routes
- * that serve them and every workstream's name linked to its own page (AC1).
+ * that serve them and every feature's name linked to its own page (AC1).
  */
 export const getBoard = createServerFn({ method: "GET" }).handler(
   async (): Promise<BoardPage> => {
     const mr = await import("#/server/marauder");
     const dec = await import("#/server/decisions");
-    const [workstreams, unsorted, decided] = await Promise.all([
-      mr.listWorkstreams(),
+    const [features, unsorted, decided] = await Promise.all([
+      mr.listFeatures(),
       mr.readUnsorted(),
       dec.readMarauderDecisions(),
     ]);
     return {
-      board: await mr.readBoard(undefined, { workstreams }),
+      board: await mr.readBoard(undefined, { features }),
       unsorted: unsorted.filter((u) => !decided.has(u.id)).length,
     };
   }
 );
 
-/** One ticket on a workstream, with everything Send needs to know about it (AC2). */
-export interface WorkstreamTicket {
+/** One ticket on a feature, with everything Send needs to know about it (AC2). */
+export interface FeatureTicket {
   /** True when nobody has started it: Send is offered only then. */
   sendable: boolean;
   /** The send already written from here, or null — what makes a second click a replay. */
@@ -544,7 +544,7 @@ export interface WorkstreamTicket {
 }
 
 /** One event still waiting on the user, with the key a Verify is written against (AC3). */
-export interface WorkstreamAsk {
+export interface FeatureAsk {
   at: string;
   /** What the loop worked out and will not apply until this is confirmed. */
   edit?: string;
@@ -555,52 +555,47 @@ export interface WorkstreamAsk {
   verified: MarauderDecision | null;
 }
 
-export interface WorkstreamPage {
+export interface FeaturePage {
+  /** The app the feature sits in — what its docs route is keyed on. */
+  app: string;
   /** The events aimed at the user that nobody has answered yet, oldest first. */
-  asks: WorkstreamAsk[];
+  asks: FeatureAsk[];
+  feature: string;
   foundry: FoundryConfig;
   milestone: Milestone | null;
+  name: string;
   page: Rendered | null;
   /** What Send offers as the repo; empty when Foundry could not answer with a list. */
   repos: FoundryRepo[];
-  tickets: WorkstreamTicket[];
-  workstream: Workstream | null;
+  tickets: FeatureTicket[];
+  work: Work | null;
 }
 
 /**
- * One workstream: its rendered page, the record behind it — which is where the stage per
- * side, the tickets and the PRs come from — the milestone it points at (LIA-160 AC2), and
- * the two things a reader can do from here: hand a ticket to Foundry, and answer an event
- * that asked them something (LIA-162 AC2, AC3).
+ * One feature: the page argus renders beside its docs, the record behind it — which is
+ * where the tickets and the PRs come from — the milestone it points at, and the two things
+ * a reader can do from here: hand a ticket to Foundry, and answer an event that asked them
+ * something (LIA-162 AC2, AC3; ARG-167 AC2, AC5). Null when there is no such feature.
  *
  * Linear and Foundry are both asked, and neither can fail the page: `openIssues` never
  * throws and `trackedRepos` swallows its own failures, so a ticket whose state could not
  * be read is offered Send with the state unknown rather than hidden.
  */
-export const getWorkstream = createServerFn({ method: "GET" })
-  .validator((slug: string) => slug)
-  .handler(async ({ data }): Promise<WorkstreamPage> => {
+export const getFeature = createServerFn({ method: "GET" })
+  .validator((feature: string) => feature)
+  .handler(async ({ data }): Promise<FeaturePage | null> => {
     const mr = await import("#/server/marauder");
     const dec = await import("#/server/decisions");
     const fd = await import("#/server/foundry");
     const [found, foundry, repos] = await Promise.all([
-      mr.readWorkstream(data),
+      mr.readFeature(data),
       fd.foundryConfig(),
       fd.trackedRepos(),
     ]);
-    const empty = {
-      asks: [],
-      foundry,
-      milestone: null,
-      page: null,
-      repos,
-      tickets: [],
-      workstream: null,
-    };
     if (!found) {
-      return empty;
+      return null;
     }
-    const w = found.workstream;
+    const w = found.work;
     const [milestones, sent, decided, issues] = await Promise.all([
       w?.milestone ? mr.readMilestones() : ({} as Record<string, Milestone>),
       dec.readSendDecisions(),
@@ -611,6 +606,7 @@ export const getWorkstream = createServerFn({ method: "GET" })
     ]);
     const keys = w ? eventKeys(w.events) : [];
     return {
+      app: found.app,
       asks: (w?.events ?? []).flatMap((e, i) => {
         const event = keys[i] ?? "";
         return needsVerify(e) && event
@@ -626,8 +622,10 @@ export const getWorkstream = createServerFn({ method: "GET" })
             ]
           : [];
       }),
+      feature: found.feature,
       foundry,
       milestone: w?.milestone ? (milestones[w.milestone] ?? null) : null,
+      name: found.name,
       page: found.page,
       repos,
       tickets: (w?.keys.tickets ?? []).map((ticket) => {
@@ -640,63 +638,57 @@ export const getWorkstream = createServerFn({ method: "GET" })
           title: issue?.title ?? "",
         };
       }),
-      workstream: w,
+      work: w,
     };
   });
 
-/** One row of `/work`: a workstream as the index lists it. */
-export interface WorkstreamRow {
+/** One row of `/features`: a feature with something going on, as the index lists it. */
+export interface WorkRow {
   /** How many events on it are still waiting on the user — the badge the row wears. */
   asks: number;
-  driver?: string;
+  feature: string;
   milestone: Milestone | null;
   name: string;
-  parked: boolean;
-  slug: string;
-  stage: Workstream["stage"];
+  /** Questions still standing on it, whoever's move they are. */
+  open: number;
   updated: string;
 }
 
 /**
- * Every workstream, most recently moved first, with what each is waiting on the user for
- * (LIA-162: the nav's Work). Parked ones come last rather than being hidden — a parked
- * workstream is still the answer to "is that done yet?".
+ * Every feature with a `work.json`, most recently moved first, with what each is waiting
+ * on the user for — the flat list beside the board.
  */
 export const listWork = createServerFn({ method: "GET" }).handler(
-  async (): Promise<WorkstreamRow[]> => {
+  async (): Promise<WorkRow[]> => {
     const mr = await import("#/server/marauder");
     const dec = await import("#/server/decisions");
-    const [workstreams, milestones, decided] = await Promise.all([
-      mr.listWorkstreams(),
+    const [work, milestones, decided] = await Promise.all([
+      mr.listWork(),
       mr.readMilestones(),
       dec.readMarauderDecisions(),
     ]);
-    return workstreams
-      .map((w) => {
-        const keys = eventKeys(w.events);
-        return {
-          asks: w.events.filter(
-            (e, i) => needsVerify(e) && !decided.has(keys[i] ?? "")
-          ).length,
-          ...(w.driver ? { driver: w.driver } : {}),
-          milestone: w.milestone ? (milestones[w.milestone] ?? null) : null,
-          name: w.name,
-          parked: w.parked,
-          slug: w.slug,
-          stage: w.stage,
-          updated: w.updated,
-        };
-      })
-      .sort((a, b) => Number(a.parked) - Number(b.parked));
+    return work.map((w) => {
+      const keys = eventKeys(w.events);
+      return {
+        asks: w.events.filter(
+          (e, i) => needsVerify(e) && !decided.has(keys[i] ?? "")
+        ).length,
+        feature: w.feature,
+        milestone: w.milestone ? (milestones[w.milestone] ?? null) : null,
+        name: w.name,
+        open: w.openQuestions.length,
+        updated: w.updated,
+      };
+    });
   }
 );
 
 export interface UnsortedPage {
   /** The decision already written on an entry, by the entry's own id. */
   decided: [string, MarauderDecision][];
+  /** Every feature a row may attach to, by manifest name (ARG-167 AC3). */
+  features: Array<{ feature: string; name: string }>;
   items: UnsortedItem[];
-  /** The workstreams a row may attach to — every one that is not parked. */
-  open: Array<{ name: string; slug: string }>;
 }
 
 /**
@@ -708,18 +700,20 @@ export const getUnsorted = createServerFn({ method: "GET" }).handler(
   async (): Promise<UnsortedPage> => {
     const mr = await import("#/server/marauder");
     const dec = await import("#/server/decisions");
-    const [items, workstreams, decided] = await Promise.all([
+    const [items, features, decided] = await Promise.all([
       mr.readUnsorted(),
-      mr.listWorkstreams(),
+      mr.listFeatures(),
       dec.readMarauderDecisions(),
     ]);
     return {
       decided: Array.from(decided.entries()),
+      features: features
+        .map((f) => ({ feature: f.feature, name: f.name }))
+        .sort(
+          (a, b) =>
+            a.name.localeCompare(b.name) || a.feature.localeCompare(b.feature)
+        ),
       items,
-      open: workstreams
-        .filter((w) => !w.parked)
-        .map((w) => ({ name: w.name, slug: w.slug }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
     };
   }
 );
@@ -727,7 +721,7 @@ export const getUnsorted = createServerFn({ method: "GET" }).handler(
 /** What Ask's card asks on mount: has this entry, or this ticket, already been decided? */
 export interface DecidedLookup {
   decided: MarauderDecision | null;
-  /** As on the workstream page — the same list, for the same field on the card. */
+  /** As on the feature page — the same list, for the same field on the card. */
   repos: FoundryRepo[];
   sent: SendDecision | null;
 }
@@ -756,9 +750,9 @@ export type UnsortedVerdict =
 
 /**
  * Decide one Unsorted entry: one `decisions/marauder/<slug>.json`, through the same atomic
- * writer every other verdict uses. Nothing under `workstreams/` is touched here — the next
- * `marauder ingest` applies the file through its correction functions, drops the entry from
- * the queue and commits, which is what keeps this app's one-writer rule (AC3, AC4).
+ * writer every other verdict uses. No `work.json` is touched here — the next `marauder
+ * ingest` applies the file through its correction functions, drops the entry from the queue
+ * and commits, which is what keeps this app's one-writer rule (AC3, AC4).
  *
  * A second click on the same entry is a no-op that answers the file already there: a
  * decision file is never edited afterwards, and re-deciding would otherwise write a second,
@@ -768,24 +762,18 @@ export const decideUnsorted = createServerFn({ method: "POST" })
   .validator(
     (input: {
       action: string;
+      feature?: string;
       id: string;
-      name?: string;
       reason?: string;
-      side?: string;
-      slug?: string;
-      stage?: string;
     }) => input
   )
   .handler(async ({ data }): Promise<UnsortedVerdict> => {
     const dec = await import("#/server/decisions");
     const draft = {
       action: trimmed(data.action),
+      feature: trimmed(data.feature),
       id: trimmed(data.id),
-      name: trimmed(data.name),
       reason: trimmed(data.reason),
-      side: trimmed(data.side),
-      slug: trimmed(data.slug),
-      stage: trimmed(data.stage),
     };
     const error = checkDraft(draft);
     if (error) {
@@ -800,13 +788,8 @@ export const decideUnsorted = createServerFn({ method: "POST" })
       at: new Date().toISOString(),
       by: PENSIEVE_USER,
       id: draft.id,
-      ...(draft.name ? { name: draft.name } : {}),
+      ...(draft.action === "attach" ? { feature: draft.feature } : {}),
       ...(draft.reason ? { reason: draft.reason } : {}),
-      ...(draft.side ? { side: draft.side as MarauderDecision["side"] } : {}),
-      ...(draft.slug ? { slug: draft.slug } : {}),
-      ...(draft.stage
-        ? { stage: draft.stage as MarauderDecision["stage"] }
-        : {}),
     };
     await dec.writeMarauderDecision(decision);
     return { decision, ok: true };
