@@ -80,6 +80,7 @@ describe("canvasToText", () => {
   test("headings, bullets and paragraphs survive; markup does not", () => {
     const html = `<html><body><h1>Huddle notes</h1><h2>Summary</h2><p>Foong signed off the <b>rollover</b>.</p><h2>Action items</h2><ul><li>Liam to file the ticket</li><li>Sam to deploy</li></ul><script>x()</script></body></html>`;
     expect(canvasToText(html)).toBe("## Huddle notes\n## Summary\nFoong signed off the rollover.\n## Action items\n- Liam to file the ticket\n- Sam to deploy");
+    expect(canvasToText("<p>@U1 and @U09R2MYP6A0 agreed; <@U2> was absent</p>", { U1: "Sam O", U2: "Foong Leung" })).toBe("@Sam O and @you agreed; @Foong Leung was absent");
   });
 });
 

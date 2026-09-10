@@ -125,8 +125,8 @@ export function displayName(m: SlackMessage, users: Users): string {
 
 export const isNoise = (m: SlackMessage) => !!m.subtype && NOISE_SUBTYPES.has(m.subtype);
 
-/** a canvas export is HTML; keep the headings and the text, drop the rest */
-export function canvasToText(html: string): string {
+/** a canvas export is HTML; keep the headings and the text, drop the rest; mentions become names */
+export function canvasToText(html: string, users: Users = {}): string {
   return html
     .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, "")
     .replace(/<\/(h[1-6]|p|li|div|tr|section)>/gi, "\n")
@@ -135,6 +135,7 @@ export function canvasToText(html: string): string {
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/<@([UW][A-Z0-9]+)(?:\|[^>]*)?>|@([UW][A-Z0-9]{8,})\b/g, (_, a, b) => { const id = a ?? b; return `@${id === ME ? "you" : (users[id] ?? id)}`; })
     .split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
 }
 
@@ -298,14 +299,14 @@ async function loadUsers(api: SlackApi): Promise<Users> {
 }
 
 /** a huddle canvas's text, or null when it cannot be fetched (the marker stays on the message) */
-export async function fetchCanvas(api: SlackApi, m: SlackMessage): Promise<string | null> {
+export async function fetchCanvas(api: SlackApi, m: SlackMessage, users: Users = {}): Promise<string | null> {
   const file = (m.files ?? []).find((f) => /huddle notes/i.test(f.title ?? f.name ?? ""));
   if (!file?.id) return null;
   try {
     const info = await api.call<{ file?: { url_private?: string; url_private_download?: string } }>("files.info", { file: file.id });
     const url = info.file?.url_private_download ?? info.file?.url_private ?? file.url_private;
     if (!url) return null;
-    const text = canvasToText(await api.download(url));
+    const text = canvasToText(await api.download(url), users);
     return text || null;
   } catch {
     return null;
@@ -349,7 +350,7 @@ export async function pullSlack(opts: { since?: string; api?: SlackApi; now?: nu
   const canvases: Record<string, string> = {};
   for (const m of [...history, ...Object.values(replies).flat()])
     if (isHuddleNotes(m)) {
-      const text = await fetchCanvas(api, m);
+      const text = await fetchCanvas(api, m, users);
       if (text) canvases[m.ts] = text;
     }
   return assemble(cursor, since, history, replies, parents, users, nowS, canvases);
