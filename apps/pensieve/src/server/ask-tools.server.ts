@@ -1,15 +1,22 @@
 /**
  * Node-only. The tools Argus's session can call that are not a read of the checkout:
- * `propose_decision` (LIA-111), `propose_ticket` (LIA-113) and `propose_arc` (LIA-147).
+ * `propose_decision` (LIA-111, retargeted by LIA-162) and `propose_ticket` (LIA-113).
  *
- * It is bridged, which decides its shape. `chat({ tools })` makes the adapter provision an
- * MCP server named `tanstack`; the session sees `mcp__tanstack__propose_decision` and the
- * bridge calls `execute` here in Pensieve's process — with no approval gate, because the
- * Claude Code adapter supports neither client-side nor approval-gated tools
- * (`docs/adapters/claude-code.md`). A tool that always executes must therefore be
- * read-only: each one checks a draft and answers a proposal. The write is a click, on the
- * card the chat renders from the tool's part (`features/ask/components/decision-card`,
- * `features/ask/components/ticket-card`, `features/ask/components/arc-card`).
+ * They are bridged, which decides their shape. `chat({ tools })` makes the adapter
+ * provision an MCP server named `tanstack`; the session sees
+ * `mcp__tanstack__propose_decision` and the bridge calls `execute` here in Pensieve's
+ * process — with no approval gate, because the Claude Code adapter supports neither
+ * client-side nor approval-gated tools (`docs/adapters/claude-code.md`). A tool that always
+ * executes must therefore be read-only: each one checks a draft and answers a proposal. The
+ * write is the user's click, on the card the chat renders from the tool's part
+ * (`features/ask/components/decision-card`, `features/ask/components/ticket-card`).
+ *
+ * `propose_decision` used to be a verdict on a Needs-you point. Points went with the
+ * sweep's rewire (LIA-161), and what it proposes now is one of the two things a person
+ * actually does: a correction on an Unsorted entry — the four verbs the `ask` skill's
+ * Correcting section names — or a send, handing a ticket to Foundry. One tool for both,
+ * because the session picks between them inside one conversation, and the card is the same
+ * card either way.
  *
  * The bridge hands `execute` the raw MCP arguments — the engine validates nothing on this
  * path — so the schema is applied here rather than trusted.
@@ -17,36 +24,51 @@
 
 import { toolDefinition } from "@tanstack/ai";
 import { z } from "zod";
-import { allSeeds } from "../lib/arcs";
+import { PROPOSE_DECISION, PROPOSE_TICKET } from "../lib/ask-tools";
+import type { MarauderDraft } from "../lib/marauder";
 import {
-  PROPOSE_ARC,
-  PROPOSE_DECISION,
-  PROPOSE_TICKET,
-} from "../lib/ask-tools";
-import { POINT_ID_RE } from "../lib/points";
-import type { ArcSources } from "./arcs";
-import { checkArcDraft } from "./arcs";
+  checkDraft as checkCorrection,
+  UNSORTED_ACTIONS,
+} from "../lib/marauder";
 import { TEAM_NAME } from "./linear";
+import type { UnsortedItem } from "./marauder";
+import { readUnsorted } from "./marauder";
+import type { SendSources } from "./send";
+import { checkSend } from "./send";
 import type { TicketSources } from "./ticket";
 import { checkDraft } from "./ticket";
-import type { VerdictSources } from "./verdict";
-import { checkVerdict } from "./verdict";
 
 /** Long enough for the skill's "≤ 140 characters" sentence and an edit of it, not for an essay. */
 const REASON_MAX = 280;
 
+/**
+ * A correction names the queue entry it decides; a send names the ticket. `stage` is in the
+ * action list even though the Unsorted page does not offer it — it is one of the four verbs
+ * a person has (the `ask` skill's Correcting section), and it is said about a workstream
+ * rather than about a row, which is exactly why a conversation is where it gets said.
+ */
 const decisionInput = z.object({
-  action: z.enum(["ignored", "sent"]),
-  point: z.string().regex(POINT_ID_RE),
+  action: z.enum(["attach", "new", "dismiss", "stage", "send"]),
+  id: z.string().optional(),
+  name: z.string().optional(),
   reason: z.string().max(REASON_MAX).optional(),
   repo: z.string().optional(),
+  side: z.string().optional(),
+  slug: z.string().optional(),
+  stage: z.string().optional(),
+  ticket: z.string().optional(),
 });
 
 const decisionProposal = z.object({
-  action: z.enum(["ignored", "sent"]),
-  point: z.string(),
+  action: z.enum(["attach", "new", "dismiss", "stage", "send"]),
+  id: z.string().optional(),
+  name: z.string().optional(),
   reason: z.string().optional(),
   repo: z.string().optional(),
+  side: z.string().optional(),
+  slug: z.string().optional(),
+  stage: z.string().optional(),
+  /** What the card shows as the thing being decided: the entry's summary, or the ticket. */
   subject: z.string(),
   ticket: z.string().optional(),
 });
@@ -63,57 +85,141 @@ const decisionOutput = z.union([
 export type Proposal = z.infer<typeof decisionProposal>;
 export type ProposeDecisionOutput = z.infer<typeof decisionOutput>;
 
-/** Said back to the session on every accepted proposal, so it cannot report the verdict as done. */
+/** Said back on every accepted proposal, so the session cannot report the click as made. */
 export const PROPOSAL_NOTE =
-  "shown to Liam as a card; nothing is written until he confirms";
+  "shown as a card; nothing is written until it is confirmed";
 
 /** The context `askStream` puts on `chat()`; the tool uses it for the log line. */
 export interface AskToolContext {
-  point?: string;
   threadId?: string;
+  workstream?: string;
 }
 
+/** Where the correction half reads from; the send half has `SendSources` of its own. */
+export interface CorrectionSources {
+  unsorted: () => Promise<UnsortedItem[]>;
+}
+
+const correctionSources = (): CorrectionSources => ({
+  unsorted: () => readUnsorted(),
+});
+
 /**
- * Check the verdict and answer a proposal, or say why there is none. Writes nothing — not
- * `decisions/`, not Foundry. The one trace a bridged call leaves is the log line, since the
- * run itself happens inside the harness.
+ * Check the correction and answer a proposal, or say why there is none. `checkDraft` is the
+ * Unsorted page's own pre-flight, so a card refused here is refused in the words that page
+ * would have used; on top of it, an `attach`, `new` or `dismiss` has to name an entry that
+ * is actually in the queue — the one thing a session can get wrong that a click cannot.
  */
-export async function proposeDecision(
-  args: unknown,
-  context: AskToolContext = {},
-  sources?: VerdictSources
+async function proposeCorrection(
+  draft: MarauderDraft,
+  sources: CorrectionSources
 ): Promise<ProposeDecisionOutput> {
-  const parsed = decisionInput.safeParse(args);
-  if (!parsed.success) {
-    const [issue] = parsed.error.issues;
-    return {
-      error: `propose_decision: ${issue ? `${issue.path.join(".") || "input"} — ${issue.message}` : "unusable input"}`,
-      ok: false,
-    };
+  const error = checkCorrection(draft);
+  if (error) {
+    return { error, ok: false };
   }
-  const { action, point, reason, repo } = parsed.data;
-  const check = await checkVerdict(point, action, { reason, repo }, sources);
-  const where = context.threadId ? ` · thread ${context.threadId}` : "";
-  if (!check.ok) {
-    console.log(
-      `[ask] propose_decision ${action} ${point}${where} · refused: ${check.error}`
-    );
-    return { error: check.error, ok: false };
+  let subject = draft.name ?? draft.slug ?? draft.id;
+  if ((UNSORTED_ACTIONS as readonly string[]).includes(draft.action)) {
+    const item = (await sources.unsorted()).find((u) => u.id === draft.id);
+    if (!item) {
+      return {
+        error: `"${draft.id}" is not in the unsorted queue — read workstreams/_unsorted.json for the id`,
+        ok: false,
+      };
+    }
+    subject = item.summary;
   }
-  console.log(`[ask] propose_decision ${action} ${point}${where} · proposed`);
   return {
     note: PROPOSAL_NOTE,
     ok: true,
     proposal: {
-      action,
-      point: check.point.id,
-      subject: check.point.subject,
-      ...(check.point.ticket ? { ticket: check.point.ticket } : {}),
-      ...("reason" in check ? { reason: check.reason } : {}),
-      // Empty when neither the call nor the point record named one; the card collects it.
-      ...("repo" in check && check.repo ? { repo: check.repo } : {}),
+      action: draft.action as Proposal["action"],
+      id: draft.id,
+      subject,
+      ...(draft.name ? { name: draft.name } : {}),
+      ...(draft.reason ? { reason: draft.reason } : {}),
+      ...(draft.side ? { side: draft.side } : {}),
+      ...(draft.slug ? { slug: draft.slug } : {}),
+      ...(draft.stage ? { stage: draft.stage } : {}),
     },
   };
+}
+
+/**
+ * Check the send and answer a proposal. The repo may still be missing here — the card
+ * collects it, the same way the workstream page's form does — so the check runs with
+ * `repoRequired: false`; everything else it refuses on (a ticket already sent, a ticket
+ * someone has started, Foundry unconfigured) is a refusal the button would give too.
+ */
+async function proposeSend(
+  ticket: string,
+  repo: string,
+  sources?: SendSources
+): Promise<ProposeDecisionOutput> {
+  const check = await checkSend(ticket, repo, sources, { repoRequired: false });
+  if (!check.ok) {
+    return { error: check.error, ok: false };
+  }
+  return {
+    note: PROPOSAL_NOTE,
+    ok: true,
+    proposal: {
+      action: "send",
+      subject: check.workstream?.name ?? check.ticket,
+      ticket: check.ticket,
+      ...(check.repo ? { repo: check.repo } : {}),
+      ...(check.workstream ? { slug: check.workstream.slug } : {}),
+    },
+  };
+}
+
+/** The call routed to its half, with the optional fields spread only where they were given. */
+function answerFor(
+  d: z.infer<typeof decisionInput>,
+  sources: { correction?: CorrectionSources; send?: SendSources }
+): Promise<ProposeDecisionOutput> {
+  if (d.action === "send") {
+    return proposeSend(d.ticket ?? "", d.repo ?? "", sources.send);
+  }
+  return proposeCorrection(
+    {
+      action: d.action,
+      id: d.id ?? "",
+      ...(d.name ? { name: d.name } : {}),
+      ...(d.reason ? { reason: d.reason } : {}),
+      ...(d.side ? { side: d.side } : {}),
+      ...(d.slug ? { slug: d.slug } : {}),
+      ...(d.stage ? { stage: d.stage } : {}),
+    },
+    sources.correction ?? correctionSources()
+  );
+}
+
+/**
+ * Check whichever the call is and answer a proposal, or say why there is none. Writes
+ * nothing — not `decisions/`, not Foundry. The one trace a bridged call leaves is the log
+ * line, since the run itself happens inside the harness.
+ */
+export async function proposeDecision(
+  args: unknown,
+  context: AskToolContext = {},
+  sources: { correction?: CorrectionSources; send?: SendSources } = {}
+): Promise<ProposeDecisionOutput> {
+  const where = context.threadId ? ` · thread ${context.threadId}` : "";
+  const parsed = decisionInput.safeParse(args);
+  if (!parsed.success) {
+    const [issue] = parsed.error.issues;
+    const error = `propose_decision: ${issue ? `${issue.path.join(".") || "input"} — ${issue.message}` : "unusable input"}`;
+    console.log(`[ask] propose_decision${where} · refused: ${error}`);
+    return { error, ok: false };
+  }
+  const d = parsed.data;
+  const answer = await answerFor(d, sources);
+  const what = d.action === "send" ? (d.ticket ?? "") : (d.id ?? "");
+  console.log(
+    `[ask] propose_decision ${d.action} ${what}${where} · ${answer.ok ? "proposed" : `refused: ${answer.error}`}`
+  );
+  return answer;
 }
 
 /**
@@ -122,7 +228,7 @@ export async function proposeDecision(
  */
 export const proposeDecisionTool = toolDefinition({
   description:
-    "Propose a verdict on a Needs-you point for Liam to confirm. Checks the point against reports/points.json, decisions/ and Foundry's availability and answers a proposal that Pensieve shows as a card with a Confirm button — or { ok: false, error } when the verdict cannot be given. It writes nothing: the decision is recorded only when Liam presses Confirm, so never say the point has been ignored or sent. Call it once per verdict.",
+    'Propose one thing for the user to confirm on a card. Either a correction to what the loop got wrong — { id, action: "attach" | "new" | "dismiss" | "stage", slug?, name?, side?, stage?, reason }, where id is an entry\'s own id from workstreams/_unsorted.json — or a send — { action: "send", ticket: "LIA-nn", repo? } — handing a ticket to Foundry. It checks the draft against workstreams/, decisions/, Linear and Foundry\'s availability and answers a proposal Pensieve shows as a card with a Confirm button, or { ok: false, error } when it cannot be made. It writes nothing: the file is written only when the user confirms, so never say the entry has been attached, dismissed or opened, or that the ticket has been sent. Call it once per decision.',
   inputSchema: decisionInput,
   name: PROPOSE_DECISION,
   outputSchema: decisionOutput,
@@ -218,105 +324,4 @@ export const proposeTicketTool = toolDefinition({
   outputSchema: ticketOutput,
 }).server<AskToolContext>((args, { context }) =>
   proposeTicket(args, context ?? {})
-);
-
-// ── propose_arc (LIA-147) ──────────────────────────────────────────────────────
-
-/**
- * The four seed lists, each optional on the wire — the model names the kinds it has keys
- * for. "At least one seed" is `checkArcDraft`'s refusal, with a sentence, rather than a
- * schema error: an arc with no keys is a draft to fix, not unusable input.
- */
-const arcInput = z.object({
-  seeds: z
-    .object({
-      features: z.array(z.string()).optional(),
-      prs: z.array(z.string()).optional(),
-      rules: z.array(z.string()).optional(),
-      tickets: z.array(z.string()).optional(),
-    })
-    .optional(),
-  slug: z.string(),
-  title: z.string(),
-});
-
-const seedList = z.array(z.string());
-
-const arcProposal = z.object({
-  seeds: z.object({
-    features: seedList,
-    prs: seedList,
-    rules: seedList,
-    tickets: seedList,
-  }),
-  slug: z.string(),
-  title: z.string(),
-  /** False when no open-ticket list could be read — the card says the seeds are unverified. */
-  verified: z.boolean(),
-});
-
-const arcOutput = z.union([
-  z.object({
-    note: z.string(),
-    ok: z.literal(true),
-    proposal: arcProposal,
-  }),
-  z.object({ error: z.string(), ok: z.literal(false) }),
-]);
-
-export type ArcProposal = z.infer<typeof arcProposal>;
-export type ProposeArcOutput = z.infer<typeof arcOutput>;
-
-/** Said back on every accepted draft, so the session cannot report the arc as opened. */
-export const ARC_NOTE =
-  "shown to Liam as a card; nothing is written until he presses Open";
-
-/**
- * Check a drafted arc and answer a proposal, or say why there is none. Reads the arcs, the
- * decisions, the journal and the team's open issues — it writes neither `decisions/arc/`
- * nor `arcs/`. The write is Liam's press of Open on the card this tool's part renders as;
- * the arc file itself is the sweep's, on its next tick.
- */
-export async function proposeArc(
-  args: unknown,
-  context: AskToolContext = {},
-  sources?: ArcSources
-): Promise<ProposeArcOutput> {
-  const parsed = arcInput.safeParse(args);
-  const where = context.threadId ? ` · thread ${context.threadId}` : "";
-  if (!parsed.success) {
-    const [issue] = parsed.error.issues;
-    const error = `propose_arc: ${issue ? `${issue.path.join(".") || "input"} — ${issue.message}` : "unusable input"}`;
-    console.log(`[ask] propose_arc${where} · refused: ${error}`);
-    return { error, ok: false };
-  }
-  const check = await checkArcDraft(parsed.data, sources);
-  if (!check.ok) {
-    console.log(`[ask] propose_arc${where} · refused: ${check.error}`);
-    return { error: check.error, ok: false };
-  }
-  const { arc } = check;
-  console.log(
-    `[ask] propose_arc arc/${arc.slug} · ${allSeeds(arc.seeds).length} seeds${where} · proposed`
-  );
-  return {
-    note: ARC_NOTE,
-    ok: true,
-    proposal: {
-      seeds: arc.seeds,
-      slug: arc.slug,
-      title: arc.title,
-      verified: arc.verified,
-    },
-  };
-}
-
-export const proposeArcTool = toolDefinition({
-  description:
-    "Propose an arc — the running story of one initiative — for Liam to open. Takes { slug, title, seeds: { tickets, rules, prs, features } } per the ask skill's Arcs section: the slug free under arcs/ and decisions/arc/, and at least one seed, every one a key this conversation actually retrieved (a ticket as LIA-nn, a rule as BR-n / MM-n, a PR as the journal writes it, a feature dir). It checks the draft against the workspace and answers a proposal Pensieve shows as a card with an Open button, or { ok: false, error } when the arc cannot be opened. It writes nothing: the seed file is written only when Liam presses Open, and arcs/<slug>.md is written by the next sweep tick — so never say the arc exists, is open, or is tracking anything. Call it once per arc.",
-  inputSchema: arcInput,
-  name: PROPOSE_ARC,
-  outputSchema: arcOutput,
-}).server<AskToolContext>((args, { context }) =>
-  proposeArc(args, context ?? {})
 );

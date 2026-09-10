@@ -9,7 +9,6 @@ import type { ToolProps } from "@tanstack/ai-react/ui";
 import { Tool, ToolContent, ToolHeader, ToolInput } from "#/components/ai/tool";
 import {
   ASK_TOOL_PART_NAMES,
-  PROPOSE_ARC,
   PROPOSE_DECISION,
   PROPOSE_TICKET,
 } from "#/lib/ask-tools";
@@ -20,7 +19,6 @@ import {
   toolSummary,
 } from "../lib/tool-summary";
 import type { Opts } from "../model/chat-options";
-import { ArcCard } from "./arc-card";
 import { DecisionCard } from "./decision-card";
 import { TicketCard } from "./ticket-card";
 
@@ -83,13 +81,11 @@ export function ToolCall({ part, result }: ToolProps<Opts>) {
  * The adapter's allowlist (the Linear read tools included), plus every name a run can
  * still call and be denied on (the denial arrives as a result on the same part). Anything
  * else warns in dev and renders nothing. The exceptions to the collapsed block are the
- * bridged tools: `propose_decision`'s part is the verdict card (LIA-111),
- * `propose_ticket`'s is the ticket card (LIA-113) and `propose_arc`'s is the arc card
- * (LIA-147).
+ * bridged tools: `propose_decision`'s part is the decision card (LIA-111, LIA-162) and
+ * `propose_ticket`'s is the ticket card (LIA-113).
  */
 export const toolsComponents: Record<string, typeof ToolCall> = {
   ...Object.fromEntries(ASK_TOOL_PART_NAMES.map((n) => [n, ToolCall])),
-  [PROPOSE_ARC]: ArcCard,
   [PROPOSE_DECISION]: DecisionCard,
   [PROPOSE_TICKET]: TicketCard,
 };

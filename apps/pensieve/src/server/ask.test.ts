@@ -33,9 +33,8 @@ const {
   ADAPTER_CONFIG,
   ASK_SYSTEM_PROMPT,
   AUTH_ERROR_RE,
-  arcOf,
-  arcPrompt,
-  pointPrompt,
+  workstreamOf,
+  workstreamPrompt,
   diagnosisLine,
   titleOf,
   getConversation,
@@ -53,7 +52,6 @@ const {
   LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
   ASK_TOOL_PART_NAMES,
-  PROPOSE_ARC,
   PROPOSE_DECISION,
   PROPOSE_TICKET,
 } = await import("../lib/ask-tools");
@@ -375,166 +373,99 @@ describe("AC1 — a run writes the user turn on start and the full transcript be
   });
 });
 
-describe("LIA-109 AC1/AC6/AC7 — the point a conversation was opened on", () => {
+describe("LIA-162 AC4 — the workstream a conversation was opened on", () => {
   test("written on the first run that names it, and never overwritten", async () => {
     const dir = await scratch();
     const store = conversationStore(dir);
-    const adapter = new FakeClaude({ sessionId: "sess-P" });
+    const adapter = new FakeClaude({ sessionId: "sess-W1" });
     await collect(
       askStream(
         {
-          messages: [user("what is this point")],
-          point: "decide/lia-71-history-rollup",
-          threadId: "tp1",
+          messages: [user("where does this stand")],
+          threadId: "tw1",
+          workstream: "invoice-email-rewrite",
         },
         { adapter, middleware: [], status: available, store }
       )
     );
-    expect((await readJson(dir, "tp1")).metadata.point).toBe(
-      "decide/lia-71-history-rollup"
+    expect((await readJson(dir, "tw1")).metadata.workstream).toBe(
+      "invoice-email-rewrite"
     );
-    expect((await getConversation("tp1", store))?.point).toBe(
-      "decide/lia-71-history-rollup"
+    expect((await getConversation("tw1", store))?.workstream).toBe(
+      "invoice-email-rewrite"
     );
 
-    // A later run claiming a different point does not re-point the conversation.
+    // A later run claiming a different workstream does not re-point the conversation.
     await collect(
       askStream(
         {
           messages: [user("and now")],
-          point: "housekeeping/something-else",
-          threadId: "tp1",
+          threadId: "tw1",
+          workstream: "usage-page",
         },
         { adapter, middleware: [], status: available, store }
       )
     );
-    expect((await readJson(dir, "tp1")).metadata.point).toBe(
-      "decide/lia-71-history-rollup"
+    expect((await readJson(dir, "tw1")).metadata.workstream).toBe(
+      "invoice-email-rewrite"
     );
   });
 
-  test("no point given: none stored, and none on the wire (AC6)", async () => {
+  test("none given: none stored, and none on the wire", async () => {
     const dir = await scratch();
     const store = conversationStore(dir);
     await collect(
       askStream(
-        { messages: [user("plain question")], threadId: "tp2" },
+        { messages: [user("plain question")], threadId: "tw2" },
         {
-          adapter: new FakeClaude({ sessionId: "sess-Q" }),
+          adapter: new FakeClaude({ sessionId: "sess-W2" }),
           middleware: [],
           status: available,
           store,
         }
       )
     );
-    expect((await readJson(dir, "tp2")).metadata.point).toBeUndefined();
-    expect((await getConversation("tp2", store))?.point).toBeUndefined();
+    expect((await readJson(dir, "tw2")).metadata.workstream).toBeUndefined();
+    expect((await getConversation("tw2", store))?.workstream).toBeUndefined();
   });
 
-  test("a value that is not a point id is neither stored nor returned", async () => {
+  test("a value that is not a slug is neither stored nor returned", async () => {
     const dir = await scratch();
     const store = conversationStore(dir);
     await collect(
       askStream(
         {
           messages: [user("hi")],
-          point: "../../etc/passwd",
-          threadId: "tp3",
+          threadId: "tw3",
+          workstream: "../../etc/passwd",
         },
         {
-          adapter: new FakeClaude({ sessionId: "sess-R" }),
+          adapter: new FakeClaude({ sessionId: "sess-W3" }),
           middleware: [],
           status: available,
           store,
         }
       )
     );
-    expect((await readJson(dir, "tp3")).metadata.point).toBeUndefined();
+    expect((await readJson(dir, "tw3")).metadata.workstream).toBeUndefined();
     // Nor one that reached the file some other way — a hand edit, an older shape.
-    await store.persistence.stores.metadata.set("tp3", "point", "not a point");
-    expect((await getConversation("tp3", store))?.point).toBeUndefined();
-  });
-});
-
-describe("LIA-149 AC4 — the arc a conversation was opened on", () => {
-  test("written on the first run that names it, and never overwritten", async () => {
-    const dir = await scratch();
-    const store = conversationStore(dir);
-    const adapter = new FakeClaude({ sessionId: "sess-A1" });
-    await collect(
-      askStream(
-        {
-          arc: "invoice-emails",
-          messages: [user("where does this arc stand")],
-          threadId: "ta1",
-        },
-        { adapter, middleware: [], status: available, store }
-      )
+    await store.persistence.stores.metadata.set(
+      "tw3",
+      "workstream",
+      "Not A Slug"
     );
-    expect((await readJson(dir, "ta1")).metadata.arc).toBe("invoice-emails");
-    expect((await getConversation("ta1", store))?.arc).toBe("invoice-emails");
-
-    await collect(
-      askStream(
-        {
-          arc: "entity-billing",
-          messages: [user("and now")],
-          threadId: "ta1",
-        },
-        { adapter, middleware: [], status: available, store }
-      )
-    );
-    expect((await readJson(dir, "ta1")).metadata.arc).toBe("invoice-emails");
+    expect((await getConversation("tw3", store))?.workstream).toBeUndefined();
   });
 
-  test("no arc given: none stored, and none on the wire", async () => {
-    const dir = await scratch();
-    const store = conversationStore(dir);
-    await collect(
-      askStream(
-        { messages: [user("plain question")], threadId: "ta2" },
-        {
-          adapter: new FakeClaude({ sessionId: "sess-A2" }),
-          middleware: [],
-          status: available,
-          store,
-        }
-      )
+  test("it rides with the run as a system prompt and as tool context", () => {
+    const prompt = workstreamPrompt("invoice-email-rewrite");
+    expect(prompt).toContain("marauder show invoice-email-rewrite");
+    expect(prompt).toContain("workstreams/invoice-email-rewrite.json");
+    expect(workstreamOf("invoice-email-rewrite", "usage-page")).toBe(
+      "invoice-email-rewrite"
     );
-    expect((await readJson(dir, "ta2")).metadata.arc).toBeUndefined();
-    expect((await getConversation("ta2", store))?.arc).toBeUndefined();
-  });
-
-  test("a value that is not an arc slug is neither stored nor returned", async () => {
-    const dir = await scratch();
-    const store = conversationStore(dir);
-    await collect(
-      askStream(
-        {
-          arc: "../../etc/passwd",
-          messages: [user("hi")],
-          threadId: "ta3",
-        },
-        {
-          adapter: new FakeClaude({ sessionId: "sess-A3" }),
-          middleware: [],
-          status: available,
-          store,
-        }
-      )
-    );
-    expect((await readJson(dir, "ta3")).metadata.arc).toBeUndefined();
-    // Nor one that reached the file some other way — a hand edit, an older shape.
-    await store.persistence.stores.metadata.set("ta3", "arc", "Not A Slug");
-    expect((await getConversation("ta3", store))?.arc).toBeUndefined();
-  });
-
-  test("the arc rides with the run as a system prompt and as tool context", () => {
-    expect(arcPrompt("invoice-emails")).toContain("arcs/invoice-emails.md");
-    expect(arcPrompt("invoice-emails")).toContain("accio arc invoice-emails");
-    expect(arcOf("invoice-emails", "entity-billing")).toBe("invoice-emails");
-    expect(arcOf(null, "entity-billing")).toBe("entity-billing");
-    expect(arcOf(null, "Not A Slug")).toBeUndefined();
+    expect(workstreamOf(null, "usage-page")).toBe("usage-page");
+    expect(workstreamOf(null, "Not A Slug")).toBeUndefined();
   });
 });
 
@@ -733,15 +664,38 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
     );
     expect(ADAPTER_CONFIG.allowedTools).not.toContain(PROPOSE_TICKET);
   });
-  test("LIA-147 (AC6) — propose_arc is allowed under its prefix whenever the panel runs", () => {
-    expect(ADAPTER_CONFIG.allowedTools).toContain(
-      `${BRIDGED_MCP_PREFIX}${PROPOSE_ARC}`
+  test("LIA-162 (AC4) — the marauder read verbs are allowed one by one, and the write verbs are not", () => {
+    // The allowlist is a command prefix match, so a bare `bun run marauder` rule would
+    // carry `marauder attach` with it — and a correction is proposed, never run.
+    for (const v of ["board", "show", "changelog", "check"]) {
+      expect(ADAPTER_CONFIG.allowedTools).toContain(
+        `Bash(bun run marauder ${v}:*)`
+      );
+      expect(ADAPTER_CONFIG.allowedTools).toContain(
+        `Bash(bun scripts/marauder.ts ${v}:*)`
+      );
+    }
+    expect(ADAPTER_CONFIG.allowedTools).not.toContain(
+      "Bash(bun run marauder:*)"
     );
-    expect(ADAPTER_CONFIG.allowedTools).toContain("mcp__tanstack__propose_arc");
-    // Every checkout arrangement carries it: the rule comes from BRIDGED_TOOLS, not from
-    // the per-checkout git rules, so a run with no checkouts at all still has it.
-    expect(allowedToolsFor([])).toContain("mcp__tanstack__propose_arc");
-    expect(ADAPTER_CONFIG.allowedTools).not.toContain(PROPOSE_ARC);
+    for (const v of [
+      "attach",
+      "new",
+      "dismiss",
+      "stage",
+      "split",
+      "render",
+      "ingest",
+    ]) {
+      expect(
+        ADAPTER_CONFIG.allowedTools.some((t) =>
+          t.startsWith(`Bash(bun run marauder ${v}`)
+        )
+      ).toBe(false);
+    }
+    // Every checkout arrangement carries them: the rules come from BASE_TOOLS, not from
+    // the per-checkout git rules, so a run with no checkouts at all still has them.
+    expect(allowedToolsFor([])).toContain("Bash(bun run marauder show:*)");
   });
   test("the page can render every name a run may call: the allowlist collapsed to tool names, and the denied ones", () => {
     for (const t of [
@@ -755,7 +709,6 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
       // The adapter strips `mcp__tanstack__` on the way back, so the part carries the bare name.
       PROPOSE_DECISION,
       PROPOSE_TICKET,
-      PROPOSE_ARC,
       ...LINEAR_READ_TOOLS,
       ...LINEAR_WRITE_TOOLS,
     ]) {
@@ -770,64 +723,66 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
 
 describe("LIA-104 — the system prompt", () => {
   test("is short, says where the session is, how to retrieve, how to answer, and what it cannot do", () => {
-    // A third bridged tool costs a sentence (LIA-147); it is still one screen of prose.
     expect(ASK_SYSTEM_PROMPT.split(/\s+/).length).toBeLessThan(320);
     for (const re of [
       /not a terminal/i,
       /no permission dialog/i,
       /never tell the user to grant, allow or approve/i,
       /skills\/ask\/SKILL\.md/,
-      /bun run accio point/,
-      /bun run accio ticket/,
+      /bun run marauder show <slug>/,
+      /bun run marauder board/,
+      /bun run marauder changelog/,
       /mcp__linear__get_issue/,
       /git -C <repo> show origin/,
       /never run git fetch/i,
       /cite every path/i,
       /the files don't say/i,
       /cannot write files, edit tickets or comments, or run the sweep/i,
-      /call `propose_decision` once as the ask skill says/,
+      /call `propose_decision` once as the ask skill's Correcting section says/,
       /confirms it on the card/i,
       /never say it is done/i,
+      // LIA-162: a send is the same tool, and the write verbs are off the table.
+      /action "send" and the ticket key/,
+      /never say it has been sent/i,
+      /marauder verbs that write are denied/i,
       // LIA-113: the panel's name, and the one way a new ticket leaves the session.
       /^You are Argus, a panel inside Pensieve/,
       /draft it per the linear-ticket skill and call `propose_ticket` once/,
       /never that it is filed/i,
-      // LIA-147: the arc's retrieval verb, and the one way an arc is opened.
-      /bun run accio arc/,
-      /call `propose_arc` once/,
-      /never say the arc exists/i,
     ]) {
       expect(ASK_SYSTEM_PROMPT).toMatch(re);
     }
   });
-  test("LIA-111 — a conversation opened on a point tells the run which point it is, and one without says nothing", async () => {
+  test("LIA-162 — a conversation opened on a workstream tells the run which, and one without says nothing", async () => {
     const store = conversationStore(await scratch());
-    const withPoint = new FakeClaude({ sessionId: "p1" });
+    const withOne = new FakeClaude({ sessionId: "p1" });
     await collect(
       askStream(
         {
-          messages: [user("ignore it")],
-          point: "decide/lia-71-history-rollup",
+          messages: [user("where does it stand")],
           threadId: "pt1",
+          workstream: "invoice-email-rewrite",
         },
-        { adapter: withPoint, middleware: [], status: available, store }
+        { adapter: withOne, middleware: [], status: available, store }
       )
     );
-    expect(withPoint.calls[0].systemPrompts).toEqual([
+    expect(withOne.calls[0].systemPrompts).toEqual([
       ASK_SYSTEM_PROMPT,
-      pointPrompt("decide/lia-71-history-rollup"),
+      workstreamPrompt("invoice-email-rewrite"),
     ]);
-    expect(pointPrompt("decide/x")).toContain("decide/x");
-    expect(pointPrompt("decide/x")).toMatch(/"it" in a question or a verdict/);
+    expect(workstreamPrompt("usage-page")).toContain("usage-page");
+    expect(workstreamPrompt("usage-page")).toMatch(
+      /"it" in a question, a correction or a send/
+    );
 
-    const noPoint = new FakeClaude({ sessionId: "p2" });
+    const without = new FakeClaude({ sessionId: "p2" });
     await collect(
       askStream(
         { messages: [user("hi")], threadId: "pt2" },
-        { adapter: noPoint, middleware: [], status: available, store }
+        { adapter: without, middleware: [], status: available, store }
       )
     );
-    expect(noPoint.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
+    expect(without.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
   });
   test("is passed to the adapter on every run", async () => {
     const store = conversationStore(await scratch());

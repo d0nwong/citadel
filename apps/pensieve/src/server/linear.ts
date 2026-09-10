@@ -316,18 +316,26 @@ const OPEN_ISSUES_QUERY = `query OpenIssues($key: String!) {
     filter: { team: { key: { eq: $key } }, state: { type: { nin: ["completed", "canceled"] } } }
     first: 250
     orderBy: updatedAt
-  ) { nodes { id identifier title } }
+  ) { nodes { id identifier title state { name type } } }
 }`;
 
-/** One open issue on the team, by the key an arc seeds on. */
-export interface OpenIssue {
+/**
+ * One issue on the team that is neither done nor cancelled. The state comes with it
+ * because Send is offered only on a ticket nobody has started (LIA-162 AC2), and its
+ * `type` — Linear's own `backlog` / `unstarted` / `started` — is what that is read off,
+ * since a workspace may rename the column.
+ */
+export interface TeamIssue {
   id: string;
   identifier: string;
+  /** The state's display name, for the sentence a refusal is given in. */
+  state: string;
+  stateType: string;
   title: string;
 }
 
 export interface OpenIssues {
-  issues: OpenIssue[];
+  issues: TeamIssue[];
   /** `'live'` from Linear, `'none'` when the key is absent or Linear could not answer. */
   source: "live" | "none";
 }
@@ -340,11 +348,11 @@ export const forgetOpenIssues = () => {
 };
 
 /**
- * The team's issues that are neither done nor cancelled — what a `tickets` seed on a
- * proposed arc is checked against (LIA-147 AC3). Never throws, and unlike `knownProjects`
- * it is not cached to disk: a stale open list would refuse a seed on a ticket filed since,
- * which is worse than saying the list could not be read. `source: 'none'` is exactly that,
- * and the arc check then takes a well-formed key on trust and says the seeds are unverified.
+ * The team's issues that are neither done nor cancelled — what Send reads a ticket's state
+ * off (LIA-162 AC2). Never throws, and unlike `knownProjects` it is not cached to disk: a
+ * stale list would refuse a ticket filed since, which is worse than saying the list could
+ * not be read. `source: 'none'` is exactly that, and the caller then treats the state as
+ * unknown rather than as a refusal.
  */
 export async function openIssues(
   fetchImpl: Fetch = fetch
@@ -355,15 +363,22 @@ export async function openIssues(
   let issues: OpenIssues = { issues: [], source: "none" };
   if (linearKey()) {
     try {
-      const data = await graphql<{ issues: { nodes: OpenIssue[] } }>(
-        OPEN_ISSUES_QUERY,
-        { key: TEAM_KEY },
-        fetchImpl
-      );
+      const data = await graphql<{
+        issues: {
+          nodes: Array<{
+            id: string;
+            identifier: string;
+            state?: { name?: string; type?: string };
+            title: string;
+          }>;
+        };
+      }>(OPEN_ISSUES_QUERY, { key: TEAM_KEY }, fetchImpl);
       issues = {
         issues: data.issues.nodes.map((i) => ({
           id: i.id,
           identifier: i.identifier,
+          state: i.state?.name ?? "",
+          stateType: i.state?.type ?? "",
           title: i.title,
         })),
         source: "live",

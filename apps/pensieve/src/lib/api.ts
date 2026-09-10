@@ -2,31 +2,34 @@
  * Server functions — the only bridge between the client and the workspace on disk.
  * Each handler lazy-imports the fs reader so nothing node-only reaches the client bundle.
  *
- * Everything here reads, except the verdicts (`decidePoint`, `sendPoint`, `verifyPoint`,
- * and `openArc` / `closeArc` on an initiative's running story, LIA-147) that write one
- * file each under `decisions/` through server/decisions.ts — the app's only writer into
- * the blackboard — `fileTicket`, which creates one Linear issue (LIA-113) and is the
- * app's only writer outside it, and Argus, which writes its conversations under
- * `PENSIEVE_HOME` (server/ask.ts) and nowhere else. Nothing here is a public API —
- * TanStack Start RPC, same as the rest of the app.
+ * Everything here reads, except three writers: `sendTicket` and `verifyEvent` on a
+ * workstream page and `decideUnsorted` on the triage queue, each of which writes one file
+ * under `decisions/` through server/decisions.ts — the app's only writer into the
+ * blackboard; `fileTicket`, which creates one Linear issue (LIA-113) and is the app's only
+ * writer outside it; and Argus, which writes its conversations under `PENSIEVE_HOME`
+ * (server/ask.ts) and nowhere else. Nothing here is a public API — TanStack Start RPC,
+ * same as the rest of the app.
  */
 
 import type { UIMessage } from "@tanstack/ai";
-import type { MarkdownDocument } from "@tanstack/markdown";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { ARC_SLUG_RE, byLastRewrite } from "#/lib/arcs";
 import type { MarauderDecision } from "#/lib/marauder";
-import { checkDraft, PENSIEVE_USER } from "#/lib/marauder";
-import { isPointId, POINT_ID_RE } from "#/lib/points";
+import {
+  checkDraft,
+  eventKeys,
+  needsVerify,
+  PENSIEVE_USER,
+  SLUG_RE,
+} from "#/lib/marauder";
+import { isSendable } from "#/lib/send";
 import type {
   AskStatus,
   Conversation,
   ConversationSummary,
   FiledTicket,
-  OpenedArc,
 } from "#/server/ask";
-import type { Decision } from "#/server/decisions";
+import type { SendDecision } from "#/server/decisions";
 import type {
   FoundryConfig,
   FoundryJob,
@@ -35,13 +38,7 @@ import type {
 } from "#/server/foundry";
 import type { LinearConfig } from "#/server/linear";
 import type { Milestone, UnsortedItem, Workstream } from "#/server/marauder";
-import type {
-  ArcFile,
-  ArcMeta,
-  Json,
-  Point,
-  Rendered,
-} from "#/server/workspace";
+import type { DayFile, Json, Rendered } from "#/server/workspace";
 
 /** The sidebar's docs tree and the top bar's workspace path — what the shell shows on every page. */
 export interface Navigation {
@@ -96,46 +93,18 @@ export const getNavigation = createServerFn({ method: "GET" }).handler(
 );
 
 /**
- * The sweep log page (/reports): the Needs-you queue, the latest report without the section
- * the queue already is, every day on file, and the latest digest. This was the home page's
- * loader until the board took `/` (LIA-160 AC1).
+ * The archive (/archive): every report and every digest the loop wrote before the board
+ * replaced them on 2026-09-09 (LIA-161). Nothing writes these files any more, so the page
+ * is a list of days and nothing else — the state of the work is the board's.
  */
-export const getSweepLog = createServerFn({ method: "GET" }).handler(
-  async () => {
+export const getArchive = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ digests: DayFile[]; reports: DayFile[] }> => {
     const ws = await import("#/server/workspace");
-    const { loadQueue } = await import("#/server/queue");
-    const { dropSection, dropTldr } = await import("#/server/sections");
-    const ask = await import("#/server/ask");
-    const [reports, digests, queue, conversations] = await Promise.all([
+    const [reports, digests] = await Promise.all([
       ws.listReports(),
       ws.listDigests(),
-      loadQueue(),
-      ask.listConversations(),
     ]);
-    const [latestReport] = reports;
-    const [latestDigest] = digests;
-    const report = latestReport ? await ws.readReport(latestReport.day) : null;
-    return {
-      // Ask's stored conversations — the page links to /ask with this count (LIA-103, AC5).
-      conversations: conversations.length,
-      days: reports,
-      digest: latestDigest
-        ? { day: latestDigest.day, lede: latestDigest.lede }
-        : null,
-      // The queue is the report's Needs-you section with `decisions/` laid over it, so the
-      // report itself is shown without that section — and without the TL;DR callout that
-      // restates it; the summary sentence stays.
-      queue,
-      report:
-        report && latestReport
-          ? {
-              day: latestReport.day,
-              doc: dropTldr(dropSection(report.doc, "Needs you")),
-              path: report.path,
-            }
-          : null,
-      workspace: ws.WORKSPACE_DIR,
-    };
+    return { digests, reports };
   }
 );
 
@@ -186,48 +155,10 @@ export const getDoc = createServerFn({ method: "GET" })
     return ws.readDoc(data.feature, data.tier);
   });
 
-// ── points: the one write path ─────────────────────────────────────────────────
+// ── sending a ticket, and confirming an event: the one write path ──────────────
 
-export interface PointPage {
-  foundry: FoundryConfig;
-  point: Point | null;
-  /** As on the home page's queue — the same list, for the same field on the conversation's card. */
-  repos: FoundryRepo[];
-}
-
-/**
- * One point by id, with its decision file laid over it, whether Send is available and the
- * repos it may target — what a conversation opened on a point needs to show it and act on
- * it (LIA-109, LIA-120). `null` when the id names nothing in the last tick's `points.json`.
- * Foundry is asked before the id is, so a card on a stale point still gets the list.
- */
-export const getPoint = createServerFn({ method: "GET" })
-  .validator((id: string) => id)
-  .handler(async ({ data }): Promise<PointPage> => {
-    const ws = await import("#/server/workspace");
-    const dec = await import("#/server/decisions");
-    const fd = await import("#/server/foundry");
-    const [foundry, repos] = await Promise.all([
-      fd.foundryConfig(),
-      fd.trackedRepos(),
-    ]);
-    if (!isPointId(data)) {
-      return { foundry, point: null, repos };
-    }
-    const [file, decision] = await Promise.all([
-      ws.readPoints(),
-      dec.readDecision(data),
-    ]);
-    const point = file?.points.find((p) => p.id === data) ?? null;
-    return {
-      foundry,
-      point: point && decision ? { ...point, decision } : point,
-      repos,
-    };
-  });
-
-export type Verdict =
-  | { ok: true; decision: Decision; replay?: boolean }
+export type SendResult =
+  | { ok: true; decision: SendDecision; replay?: boolean }
   | {
       ok: false;
       status?: number;
@@ -237,102 +168,47 @@ export type Verdict =
 
 const trimmed = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
-/** Ignore a point with a reason. Writes `decisions/<group>/<slug>.json` with `action: "ignored"`. */
-export const decidePoint = createServerFn({ method: "POST" })
-  .validator((input: { point: string; reason: string }) => ({
-    point: trimmed(input.point),
-    reason: trimmed(input.reason),
-  }))
-  .handler(async ({ data }): Promise<Verdict> => {
-    const dec = await import("#/server/decisions");
-    const v = await import("#/server/verdict");
-    const check = await v.checkIgnore(data.point, data.reason);
-    if (!check.ok) {
-      return { error: check.error, ok: false };
-    }
-    const decision: Decision = {
-      action: "ignored",
-      at: new Date().toISOString(),
-      point: check.point.id,
-      reason: check.reason,
-      subject: check.point.subject,
-    };
-    await dec.writeDecision(decision);
-    return { decision, ok: true };
-  });
+/**
+ * One send at a time per ticket, in this process: a double click reaches Foundry once and
+ * writes once. Across processes the idempotency key — the ticket key — does the same job.
+ */
+const inFlight = new Map<string, Promise<SendResult>>();
 
 /**
- * Confirm a Verify-group point — the user agreeing with an inference the sweep made, which
- * licenses the sweep's next tick to make the edit the point names (LIA-114/115). Writes
- * `decisions/verify/<slug>.json` with `action: "verified"`.
+ * Hand a ticket to Foundry (LIA-162 AC2). Exactly one `POST /api/jobs` with
+ * `{ ticketId, repo }` and `Idempotency-Key: <ticket key>`; on 202 or 200 the decision file
+ * is written with the job. A Foundry error writes nothing and comes back with its `error`
+ * text (and on 409, the holding job).
  *
- * `decidePoint`'s shape with two differences: the note is optional, and it is spread in only
- * when one was given, so the file carries no empty `reason` key. Foundry is never consulted
- * — nothing on this path imports `server/foundry`, so a verdict lands with the token unset.
+ * A second click is a replay: the file already on disk is the earlier answer, so a retry
+ * after a timeout that did in fact land asks Foundry nothing and writes nothing.
  */
-export const verifyPoint = createServerFn({ method: "POST" })
-  .validator((input: { note: string; point: string }) => ({
-    note: trimmed(input.note),
-    point: trimmed(input.point),
-  }))
-  .handler(async ({ data }): Promise<Verdict> => {
-    const dec = await import("#/server/decisions");
-    const v = await import("#/server/verdict");
-    const check = await v.checkVerify(data.point, data.note);
-    if (!check.ok) {
-      return { error: check.error, ok: false };
-    }
-    const decision: Decision = {
-      action: "verified",
-      at: new Date().toISOString(),
-      point: check.point.id,
-      ...(check.reason ? { reason: check.reason } : {}),
-      subject: check.point.subject,
-    };
-    await dec.writeDecision(decision);
-    return { decision, ok: true };
-  });
-
-/**
- * One send at a time per point, in this process: a double click reaches Foundry once and
- * writes once. Across processes the idempotency key (the point id) does the same job.
- */
-const inFlight = new Map<string, Promise<Verdict>>();
-
-/**
- * Send a point's ticket to Foundry. Exactly one `POST /api/jobs` with `{ ticketId, repo }`
- * and `Idempotency-Key: <point id>`; on 202 or 200 the decision file is written with the
- * job. A Foundry error writes nothing and comes back with its `error` text (and on 409,
- * the holding job).
- */
-export const sendPoint = createServerFn({ method: "POST" })
-  .validator((input: { point: string; repo: string }) => ({
-    point: trimmed(input.point),
+export const sendTicket = createServerFn({ method: "POST" })
+  .validator((input: { repo: string; ticket: string }) => ({
     repo: trimmed(input.repo),
+    ticket: trimmed(input.ticket),
   }))
-  .handler(async ({ data }): Promise<Verdict> => {
-    const v = await import("#/server/verdict");
-    const check = await v.checkSend(data.point, data.repo);
+  .handler(async ({ data }): Promise<SendResult> => {
+    const s = await import("#/server/send");
+    const check = await s.checkSend(data.ticket, data.repo);
     if (!check.ok) {
-      // A file already on disk is the earlier answer — a retry after a timeout that did
-      // in fact land must not ask Foundry again, and must never write a second file.
       return check.decision
         ? { decision: check.decision, ok: true, replay: true }
         : { error: check.error, ok: false };
     }
-    const running = inFlight.get(data.point);
+    const running = inFlight.get(data.ticket);
     if (running) {
       return running;
     }
-    const { point, repo, ticket } = check;
-    const task = (async (): Promise<Verdict> => {
+    const { repo, ticket } = check;
+    const task = (async (): Promise<SendResult> => {
       const dec = await import("#/server/decisions");
       const fd = await import("#/server/foundry");
       let job: FoundryJob;
       let replay: boolean;
       try {
         ({ job, replay } = await fd.createJob({
-          idempotencyKey: point.id,
+          idempotencyKey: ticket,
           repo,
           ticketId: ticket,
         }));
@@ -342,18 +218,53 @@ export const sendPoint = createServerFn({ method: "POST" })
         }
         throw e;
       }
-      const decision: Decision = {
+      const decision: SendDecision = {
         action: "sent",
         at: new Date().toISOString(),
+        by: PENSIEVE_USER,
         job: { id: job.id, url: fd.jobUrl(job.id) },
-        point: point.id,
-        subject: point.subject,
+        ticket,
       };
-      await dec.writeDecision(decision);
+      await dec.writeSendDecision(decision);
       return { decision, ok: true, replay };
-    })().finally(() => inFlight.delete(data.point));
-    inFlight.set(data.point, task);
+    })().finally(() => inFlight.delete(data.ticket));
+    inFlight.set(data.ticket, task);
     return task;
+  });
+
+export type VerifyResult =
+  | { ok: true; decision: MarauderDecision; replay?: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Confirm what a `directed-at-person` event asked (LIA-162 AC3) — the user's go-ahead for
+ * the one edit that event named. Writes `decisions/marauder/<event>.json` with
+ * `action: "verified"`; the next ingest stamps the event `confirmed:` and the ticket pass
+ * then makes the edit. Nothing under `workstreams/` is touched here.
+ */
+export const verifyEvent = createServerFn({ method: "POST" })
+  .validator((input: { event: string; note?: string }) => ({
+    event: trimmed(input.event),
+    note: trimmed(input.note),
+  }))
+  .handler(async ({ data }): Promise<VerifyResult> => {
+    const dec = await import("#/server/decisions");
+    const s = await import("#/server/send");
+    const check = await s.checkVerify(data.event);
+    if (!check.ok) {
+      return check.decided
+        ? { decision: check.decided, ok: true, replay: true }
+        : { error: check.error, ok: false };
+    }
+    const decision: MarauderDecision = {
+      action: "verified",
+      at: new Date().toISOString(),
+      by: PENSIEVE_USER,
+      id: check.id,
+      ...(data.note ? { reason: data.note } : {}),
+    };
+    await dec.writeMarauderDecision(decision);
+    return { decision, ok: true };
   });
 
 export type JobLookup =
@@ -392,18 +303,16 @@ const threadId = z
 export const askChat = createServerFn({ method: "POST" })
   .validator(
     z.object({
-      /** The arc the conversation was opened on; stored on the thread's first run. */
-      arc: z.string().regex(ARC_SLUG_RE).optional(),
       messages: z.array(
         z.custom<UIMessage>(
           (v) =>
             typeof v === "object" && v !== null && "role" in v && "parts" in v
         )
       ),
-      /** The point the conversation was opened on; stored on the thread's first run. */
-      point: z.string().regex(POINT_ID_RE).optional(),
       runId: z.string().max(128).optional(),
       threadId,
+      /** The workstream the conversation was opened on; stored on the thread's first run. */
+      workstream: z.string().regex(SLUG_RE).optional(),
     })
   )
   .handler(async ({ data }) => {
@@ -593,231 +502,6 @@ export const fileTicket = createServerFn({ method: "POST" })
     return task;
   });
 
-// ── arcs: the pages that read them (LIA-149) ───────────────────────────────────
-
-/** One card on `/arcs`: the arc, its paragraph, and how many of its points are still open. */
-export interface ArcCard {
-  meta: ArcMeta;
-  openCount: number;
-  /** `## Where we are` — the whole paragraph, which is what the index is for. */
-  where: MarkdownDocument;
-}
-
-export interface ArcsIndex {
-  /** Closed arcs, last rewrite first — the collapsed half of the page. */
-  closed: ArcMeta[];
-  open: ArcCard[];
-}
-
-/**
- * Every arc the sweep has written, open ones first with what each is about (AC1). The open
- * count is the live one — `points.json` with `decisions/` over it — not the file's Open
- * list, which is a tick behind whatever was decided since.
- */
-export const listArcs = createServerFn({ method: "GET" }).handler(
-  async (): Promise<ArcsIndex> => {
-    const ws = await import("#/server/workspace");
-    const dec = await import("#/server/decisions");
-    const { openArcsFirst } = await import("#/server/queue");
-    const { openPointsOf } = await import("#/features/points/arcs");
-    const [arcs, file, onDisk] = await Promise.all([
-      ws.listArcs(),
-      ws.readPoints(),
-      dec.readDecisions(),
-    ]);
-    const points = dec.mergeDecisions(file?.points ?? [], onDisk);
-    const open: ArcCard[] = [];
-    for (const meta of openArcsFirst(arcs)) {
-      const arc = await ws.readArcFile(meta.slug);
-      open.push({
-        meta,
-        openCount: openPointsOf(meta.slug, arc?.open ?? [], points).length,
-        where: arc?.doc ?? EMPTY_DOC,
-      });
-    }
-    return {
-      closed: arcs.filter((a) => a.status === "closed").sort(byLastRewrite),
-      open,
-    };
-  }
-);
-
-/** An arc that has no paragraph yet — the sweep writes one on the tick that opens it. */
-const EMPTY_DOC: MarkdownDocument = {
-  children: [],
-  headings: [],
-  type: "root",
-};
-
-/** One arc's frontmatter by slug — what the card above an Ask conversation needs (AC4). */
-export const getArcMeta = createServerFn({ method: "GET" })
-  .validator((slug: string) => slug)
-  .handler(async ({ data }): Promise<ArcMeta | null> => {
-    const ws = await import("#/server/workspace");
-    const { isArcSlug } = await import("#/lib/arcs");
-    return isArcSlug(data) ? ws.readArc(data) : null;
-  });
-
-export interface ArcPage {
-  arc: ArcFile | null;
-  /** The `closed` verdict, when one is on disk — the sweep flips the file a tick later. */
-  closed: { at: string } | null;
-  foundry: FoundryConfig;
-  /** The last tick's points with `decisions/` over them — the arc's Open rows, live. */
-  points: Point[];
-  repos: FoundryRepo[];
-}
-
-/**
- * One arc's page: its file, and everything its Open rows need to carry the same controls
- * the Points page does (AC2). The join between the two — which points are this arc's — is
- * `features/points/arcs`, so the page and the queue's grouping cannot drift.
- */
-export const getArc = createServerFn({ method: "GET" })
-  .validator((slug: string) => slug)
-  .handler(async ({ data }): Promise<ArcPage> => {
-    const ws = await import("#/server/workspace");
-    const dec = await import("#/server/decisions");
-    const fd = await import("#/server/foundry");
-    const { isArcSlug } = await import("#/lib/arcs");
-    const [arc, file, onDisk, foundry, repos, decision] = await Promise.all([
-      ws.readArcFile(data),
-      ws.readPoints(),
-      dec.readDecisions(),
-      fd.foundryConfig(),
-      fd.trackedRepos(),
-      isArcSlug(data) ? dec.readArcDecision(data) : null,
-    ]);
-    return {
-      arc,
-      closed: decision?.action === "closed" ? { at: decision.at ?? "" } : null,
-      foundry,
-      points: dec.mergeDecisions(file?.points ?? [], onDisk),
-      repos,
-    };
-  });
-
-// ── arcs: opening and closing one (LIA-147) ────────────────────────────────────
-
-/** What the arc card asks on mount: was Open already pressed on this very proposal? */
-export interface ArcCardState {
-  opened: OpenedArc | null;
-}
-
-/**
- * The card never trusts its own replayed tool output for whether the arc has been opened:
- * a tool part is stored with the conversation and replayed on every reload, so the record
- * under the thread's `arc:<toolCallId>` key is the truth (AC2).
- */
-export const getOpenedArc = createServerFn({ method: "GET" })
-  .validator(z.object({ threadId, toolCallId }))
-  .handler(async ({ data }): Promise<ArcCardState> => {
-    const ask = await import("#/server/ask");
-    const opened = await ask.readOpenedArc(
-      ask.askStore,
-      data.threadId,
-      data.toolCallId
-    );
-    return { opened: opened ?? null };
-  });
-
-export type OpenArcResult =
-  | { ok: true; arc: OpenedArc; replay?: boolean }
-  | { ok: false; error: string };
-
-/**
- * One Open press at a time per card, in this process: a double click writes once. Across
- * processes the decision file does the same job, since `openArc` reads it back before
- * writing and answers the file already there.
- */
-const opening = new Map<string, Promise<OpenArcResult>>();
-
-const asOpened = (d: {
-  at: string;
-  slug: string;
-  subject: string;
-}): OpenedArc => ({ at: d.at, slug: d.slug, title: d.subject });
-
-/**
- * Open the arc the card is showing: one `decisions/arc/<slug>.json` with
- * `action: "opened"`, through the same writer every verdict uses. `arcs/<slug>.md` is the
- * sweep's, on its next tick — nothing here creates, rewrites or deletes it.
- *
- * The draft is re-checked in `openArc` rather than trusted: the card's title is editable,
- * so what is opened is not what `propose_arc` approved.
- */
-export const openArc = createServerFn({ method: "POST" })
-  .validator(
-    z.object({
-      seeds: z.record(z.string(), z.array(z.string())),
-      slug: z.string(),
-      threadId,
-      title: z.string(),
-      toolCallId,
-    })
-  )
-  .handler(async ({ data }): Promise<OpenArcResult> => {
-    const ask = await import("#/server/ask");
-    const stored = await ask.readOpenedArc(
-      ask.askStore,
-      data.threadId,
-      data.toolCallId
-    );
-    if (stored) {
-      return { arc: stored, ok: true, replay: true };
-    }
-    const key = `${data.threadId}:${data.toolCallId}`;
-    const running = opening.get(key);
-    if (running) {
-      return running;
-    }
-    const task = (async (): Promise<OpenArcResult> => {
-      const arcs = await import("#/server/arcs");
-      const v = await arcs.openArc({
-        seeds: data.seeds,
-        slug: trimmed(data.slug),
-        title: trimmed(data.title),
-      });
-      if (!v.ok) {
-        return { error: v.error, ok: false };
-      }
-      const arc = asOpened(v.decision);
-      await ask.writeOpenedArc(
-        ask.askStore,
-        data.threadId,
-        data.toolCallId,
-        arc
-      );
-      return { arc, ok: true, ...(v.replay ? { replay: true } : {}) };
-    })().finally(() => opening.delete(key));
-    opening.set(key, task);
-    return task;
-  });
-
-export type CloseArcResult =
-  | { ok: true; arc: OpenedArc }
-  | { ok: false; error: string };
-
-/**
- * Close an arc whose story is over: the same file with `action: "closed"`, which is the
- * only thing that sets `status: closed` on the sweep's next tick. Refused unless
- * `arcs/<slug>.md` is there and open — an arc with nothing left open is not necessarily
- * finished, and the sweep is not the one to say so. This is what the Close control on the
- * arc's page calls (LIA-149).
- */
-export const closeArc = createServerFn({ method: "POST" })
-  .validator((input: { reason?: string; slug: string }) => ({
-    reason: trimmed(input.reason),
-    slug: trimmed(input.slug),
-  }))
-  .handler(async ({ data }): Promise<CloseArcResult> => {
-    const arcs = await import("#/server/arcs");
-    const v = await arcs.closeArc(data.slug, data.reason);
-    return v.ok
-      ? { arc: asOpened(v.decision), ok: true }
-      : { error: v.error, ok: false };
-  });
-
 // ── the board, a workstream, and the triage queue (LIA-160) ────────────────────
 
 export interface BoardPage {
@@ -847,35 +531,165 @@ export const getBoard = createServerFn({ method: "GET" }).handler(
   }
 );
 
+/** One ticket on a workstream, with everything Send needs to know about it (AC2). */
+export interface WorkstreamTicket {
+  /** True when nobody has started it: Send is offered only then. */
+  sendable: boolean;
+  /** The send already written from here, or null — what makes a second click a replay. */
+  sent: SendDecision | null;
+  /** Linear's display name for its state, empty when Linear could not be asked. */
+  state: string;
+  ticket: string;
+  title: string;
+}
+
+/** One event still waiting on the user, with the key a Verify is written against (AC3). */
+export interface WorkstreamAsk {
+  at: string;
+  /** What the loop worked out and will not apply until this is confirmed. */
+  edit?: string;
+  event: string;
+  summary: string;
+  ticket?: string;
+  /** The confirmation already written, or null. */
+  verified: MarauderDecision | null;
+}
+
 export interface WorkstreamPage {
+  /** The events aimed at the user that nobody has answered yet, oldest first. */
+  asks: WorkstreamAsk[];
+  foundry: FoundryConfig;
   milestone: Milestone | null;
   page: Rendered | null;
+  /** What Send offers as the repo; empty when Foundry could not answer with a list. */
+  repos: FoundryRepo[];
+  tickets: WorkstreamTicket[];
   workstream: Workstream | null;
 }
 
 /**
  * One workstream: its rendered page, the record behind it — which is where the stage per
- * side, the tickets and the PRs come from — and the milestone it points at (AC2).
+ * side, the tickets and the PRs come from — the milestone it points at (LIA-160 AC2), and
+ * the two things a reader can do from here: hand a ticket to Foundry, and answer an event
+ * that asked them something (LIA-162 AC2, AC3).
+ *
+ * Linear and Foundry are both asked, and neither can fail the page: `openIssues` never
+ * throws and `trackedRepos` swallows its own failures, so a ticket whose state could not
+ * be read is offered Send with the state unknown rather than hidden.
  */
 export const getWorkstream = createServerFn({ method: "GET" })
   .validator((slug: string) => slug)
   .handler(async ({ data }): Promise<WorkstreamPage> => {
     const mr = await import("#/server/marauder");
-    const found = await mr.readWorkstream(data);
+    const dec = await import("#/server/decisions");
+    const fd = await import("#/server/foundry");
+    const [found, foundry, repos] = await Promise.all([
+      mr.readWorkstream(data),
+      fd.foundryConfig(),
+      fd.trackedRepos(),
+    ]);
+    const empty = {
+      asks: [],
+      foundry,
+      milestone: null,
+      page: null,
+      repos,
+      tickets: [],
+      workstream: null,
+    };
     if (!found) {
-      return { milestone: null, page: null, workstream: null };
+      return empty;
     }
-    const milestones = found.workstream?.milestone
-      ? await mr.readMilestones()
-      : {};
+    const w = found.workstream;
+    const [milestones, sent, decided, issues] = await Promise.all([
+      w?.milestone ? mr.readMilestones() : ({} as Record<string, Milestone>),
+      dec.readSendDecisions(),
+      dec.readMarauderDecisions(),
+      w && w.keys.tickets.length > 0
+        ? (await import("#/server/linear")).openIssues()
+        : { issues: [], source: "none" as const },
+    ]);
+    const keys = w ? eventKeys(w.events) : [];
     return {
-      milestone: found.workstream?.milestone
-        ? (milestones[found.workstream.milestone] ?? null)
-        : null,
+      asks: (w?.events ?? []).flatMap((e, i) => {
+        const event = keys[i] ?? "";
+        return needsVerify(e) && event
+          ? [
+              {
+                at: e.at,
+                ...(e.action ? { edit: e.action } : {}),
+                event,
+                summary: e.summary,
+                ...(e.ticket ? { ticket: e.ticket } : {}),
+                verified: decided.get(event) ?? null,
+              },
+            ]
+          : [];
+      }),
+      foundry,
+      milestone: w?.milestone ? (milestones[w.milestone] ?? null) : null,
       page: found.page,
-      workstream: found.workstream,
+      repos,
+      tickets: (w?.keys.tickets ?? []).map((ticket) => {
+        const issue = issues.issues.find((i) => i.identifier === ticket);
+        return {
+          sendable: isSendable(issue?.stateType),
+          sent: sent.get(ticket) ?? null,
+          state: issue?.state ?? "",
+          ticket,
+          title: issue?.title ?? "",
+        };
+      }),
+      workstream: w,
     };
   });
+
+/** One row of `/work`: a workstream as the index lists it. */
+export interface WorkstreamRow {
+  /** How many events on it are still waiting on the user — the badge the row wears. */
+  asks: number;
+  driver?: string;
+  milestone: Milestone | null;
+  name: string;
+  parked: boolean;
+  slug: string;
+  stage: Workstream["stage"];
+  updated: string;
+}
+
+/**
+ * Every workstream, most recently moved first, with what each is waiting on the user for
+ * (LIA-162: the nav's Work). Parked ones come last rather than being hidden — a parked
+ * workstream is still the answer to "is that done yet?".
+ */
+export const listWork = createServerFn({ method: "GET" }).handler(
+  async (): Promise<WorkstreamRow[]> => {
+    const mr = await import("#/server/marauder");
+    const dec = await import("#/server/decisions");
+    const [workstreams, milestones, decided] = await Promise.all([
+      mr.listWorkstreams(),
+      mr.readMilestones(),
+      dec.readMarauderDecisions(),
+    ]);
+    return workstreams
+      .map((w) => {
+        const keys = eventKeys(w.events);
+        return {
+          asks: w.events.filter(
+            (e, i) => needsVerify(e) && !decided.has(keys[i] ?? "")
+          ).length,
+          ...(w.driver ? { driver: w.driver } : {}),
+          milestone: w.milestone ? (milestones[w.milestone] ?? null) : null,
+          name: w.name,
+          parked: w.parked,
+          slug: w.slug,
+          stage: w.stage,
+          updated: w.updated,
+        };
+      })
+      .sort((a, b) => Number(a.parked) - Number(b.parked));
+  }
+);
 
 export interface UnsortedPage {
   /** The decision already written on an entry, by the entry's own id. */
@@ -909,6 +723,32 @@ export const getUnsorted = createServerFn({ method: "GET" }).handler(
     };
   }
 );
+
+/** What Ask's card asks on mount: has this entry, or this ticket, already been decided? */
+export interface DecidedLookup {
+  decided: MarauderDecision | null;
+  /** As on the workstream page — the same list, for the same field on the card. */
+  repos: FoundryRepo[];
+  sent: SendDecision | null;
+}
+
+/**
+ * Whatever is already on disk for one entry or one ticket, with Foundry's repo list. The
+ * card never trusts its own replayed tool output for whether the click has been made, so
+ * this is the read behind it — and the repos are the field it collects for a send.
+ */
+export const getDecided = createServerFn({ method: "GET" })
+  .validator((input: { id?: string; ticket?: string }) => input)
+  .handler(async ({ data }): Promise<DecidedLookup> => {
+    const dec = await import("#/server/decisions");
+    const fd = await import("#/server/foundry");
+    const [repos, sent, decided] = await Promise.all([
+      fd.trackedRepos(),
+      data.ticket ? dec.readSendDecision(data.ticket) : null,
+      data.id ? dec.readMarauderDecision(data.id) : null,
+    ]);
+    return { decided, repos, sent };
+  });
 
 export type UnsortedVerdict =
   | { ok: true; decision: MarauderDecision; replay?: boolean }
