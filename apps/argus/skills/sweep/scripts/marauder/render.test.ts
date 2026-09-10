@@ -71,6 +71,15 @@ describe("the board", () => {
     expect(renderBoard({ work: set, milestones: MILESTONES, now: NOW })).toContain("You are waiting on Foong for which invoicing page defects he means.");
   });
 
+  test("an ask the reader has verified drops off Needs you", () => {
+    const answered = w({
+      feature: "admin/invoicing",
+      events: [ev({ kind: "directed-at-person", to: ["you"], at: "2026-09-09T09:25:00Z", summary: "Sam asked again for the button you shipped.", action: "confirmed: Told Sam — Liam Leung" })],
+    });
+    expect(headings(renderBoard({ work: [answered], milestones: {}, now: NOW }))).not.toContain("Needs you");
+    expect(renderFeature(answered, {}, NOW)).not.toContain("## Needs you");
+  });
+
   test("a milestone inside seven days leads the page, and one outside it does not", () => {
     const pointed = [w({ milestone: "launch-2026-09-10" })];
     expect(renderBoard({ work: pointed, milestones: MILESTONES, now: NOW })).toContain("Foong's launch is tomorrow, 10 September.");

@@ -20,6 +20,7 @@
  * the two cannot drift.
  */
 
+import { CONFIRMED } from "./correct.ts";
 import {
   instantOf,
   latestEvent,
@@ -191,8 +192,11 @@ function evidenceLine(e: WorkEvent | undefined, ctx: Ctx): string | null {
 
 // ---------------------------------------------------------------- what goes where
 
+/** a `verified` decision answers the ask; once stamped, it is done and drops off the board */
 export const asksForYou = (w: Work): WorkEvent[] =>
-  w.events.filter((e) => e.kind === "directed-at-person" && (e.to ?? []).includes(USER.token));
+  w.events.filter(
+    (e) => e.kind === "directed-at-person" && (e.to ?? []).includes(USER.token) && !e.action?.startsWith(CONFIRMED),
+  );
 
 export const questionsForYou = (w: Work) => w.open_questions.filter((q) => q.owner === USER.token);
 const questionsForOthers = (w: Work) => w.open_questions.filter((q) => q.owner !== USER.token);
