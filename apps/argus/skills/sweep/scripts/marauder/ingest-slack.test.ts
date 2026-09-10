@@ -1,10 +1,11 @@
 /**
- * ingest-slack.ts — what the channel said becomes events (ARG-157).
+ * ingest-slack.ts — what the channel said becomes events on features (ARG-157, ARG-164 AC2–AC3).
  *
- * The cases are the ticket's AC7, against the real 2026-09-09 pull: the thread rung, the
- * reference rung, the vocabulary match on `billedBy`, the huddle canvas left for a reader,
- * the message with no anchor, and a re-run that writes nothing. Nothing here touches
- * Slack. What a reader does with the canvas is `huddle.test.ts`.
+ * Against the real 2026-09-09 pull: the thread rung, the reference rung, the vocabulary
+ * rung over learned keys and over the manifest's aliases, a common word that places
+ * nothing, the huddle canvas left for a reader, the message with no anchor, and a re-run
+ * that writes nothing. Nothing here touches Slack. What a reader does with the canvas is
+ * `huddle.test.ts`.
  *
  *   bun test skills/sweep/scripts/marauder/ingest-slack.test.ts
  */
@@ -19,32 +20,25 @@ import {
   slackCandidates,
   slackSummary,
   unreadCanvasWhy,
+  usableAlias,
   type SlackItem,
 } from "./ingest-slack.ts";
 import type { Pull } from "./slack-pull.ts";
-import { validate, type Workstream } from "./record.ts";
+import { validate, type FeatureRef, type Work } from "./record.ts";
 
 const HERE = new URL(".", import.meta.url).pathname;
 const PULL: Pull = await Bun.file(`${HERE}fixtures/pull-2026-09-09.json`).json();
 
-const w = (over: Partial<Workstream> = {}): Workstream => ({
-  slug: "entity-invoice-sender",
-  name: "Each entity's own invoice sending address",
-  features: ["admin/invoicing"],
-  wants: [],
-  done: "An entity picks the address its invoices come from.",
-  stage: { fe: "asked", be: "landed" },
-  overlay: null,
-  parked: false,
-  milestone: null,
-  keys: { tickets: [], prs: [], threads: ["1788927279.211769"], vocab: ["billedBy", "isOnboarded"], people: ["Sam O"] },
+const w = (over: Partial<Work> = {}): Work => ({
+  feature: "admin/invoicing",
+  keys: { tickets: [], prs: [], threads: ["1788927279.211769"], vocab: ["billedBy", "isOnboarded"] },
   open_questions: [],
-  facts: [],
   events: [],
-  opened: "2026-09-09",
   updated: "2026-09-09",
   ...over,
 });
+
+const ref = (feature: string, aliases: string[] = []): FeatureRef => ({ feature, app: "alden/alden-portal", aliases });
 
 const items = itemsOf(PULL);
 const byTs = (ts: string) => items.find((i) => i.ts === ts)!;
@@ -54,6 +48,8 @@ const BILLING = "1788927279.211769";
 const SUBTASKS = "1788949866.296519";
 /** Foong's reply in that thread */
 const REPLY = "1788950081.162459";
+
+const says = (text: string): SlackItem => ({ ...byTs(BILLING), ts: "1789000000.000001", id: "1789000000.000001", mentionsUser: false, to: [], text });
 
 describe("the pull becomes items", () => {
   test("every message and new reply appears once, oldest first", () => {
@@ -78,28 +74,47 @@ describe("the pull becomes items", () => {
 });
 
 describe("the ladder", () => {
-  test("a reply in a thread a workstream owns attaches for certain", () => {
-    const owner = w({ slug: "history-subtask-rows", keys: { ...w().keys, threads: [SUBTASKS] } });
+  test("a reply in a thread a feature has learned attaches for certain", () => {
+    const owner = w({ feature: "admin/usage", keys: { ...w().keys, threads: [SUBTASKS] } });
     expect(slackCandidates(byTs(REPLY), [owner])).toEqual([
-      { slug: "history-subtask-rows", how: "thread", why: "it owns the thread this was said in" },
+      { feature: "admin/usage", how: "thread", why: "it has learned the thread this was said in" },
     ]);
   });
 
-  test("a message naming a ticket a workstream owns attaches for certain", () => {
-    const item = { ...byTs(BILLING), text: "this is the FE half of ALD-2" };
-    const owner = w({ slug: "history-editing", keys: { ...w().keys, threads: [], tickets: ["ALD-2"], vocab: [] } });
-    expect(slackCandidates(item, [owner])[0]).toMatchObject({ slug: "history-editing", how: "ref" });
+  test("a message naming a ticket or a PR in a feature's keys attaches for certain", () => {
+    const owner = w({ feature: "admin/usage", keys: { ...w().keys, threads: [], tickets: ["ALD-2"], prs: ["fe#417"], vocab: [] } });
+    expect(slackCandidates(says("this is the FE half of ALD-2"), [owner])[0]).toMatchObject({ feature: "admin/usage", how: "ref" });
+    expect(slackCandidates(says("fe#417 needs a second look"), [owner])[0]).toMatchObject({ feature: "admin/usage", how: "ref" });
   });
 
-  test("a field name only one workstream claims attaches as likely", () => {
+  test("a field name only one feature has learned attaches as likely", () => {
     const owner = w({ keys: { ...w().keys, threads: [] } });
-    expect(slackCandidates(byTs(BILLING), [owner])[0]).toMatchObject({ slug: "entity-invoice-sender", how: "vocab" });
+    expect(slackCandidates(byTs(BILLING), [owner])[0]).toMatchObject({ feature: "admin/invoicing", how: "vocab" });
   });
 
-  test("a token two workstreams both claim is worth nothing, so it does not attach to either", () => {
-    const a = w({ slug: "one", keys: { ...w().keys, threads: [], vocab: ["billedBy"] } });
-    const b = w({ slug: "two", keys: { ...w().keys, threads: [], vocab: ["billedBy"] } });
+  test("an alias only one feature claims, of two words or shaped like an identifier, attaches as likely", () => {
+    const features = [ref("admin/usage", ["usage page", "creditWeight", "save"]), ref("admin/invoicing", ["billing profile", "save"])];
+    expect(slackCandidates(says("the usage page is blank for Angie"), [], features)).toEqual([
+      { feature: "admin/usage", how: "vocab", why: "it uses usage page" },
+    ]);
+    expect(slackCandidates(says("the creditWeight is wrong on that row"), [], features)[0]).toMatchObject({ feature: "admin/usage", how: "vocab" });
+    expect(slackCandidates(says("set up the billing profile first"), [], features)[0]).toMatchObject({ feature: "admin/invoicing" });
+  });
+
+  test("a single common word attaches nothing, even when a feature lists it", () => {
+    expect(usableAlias("save")).toBe(false);
+    expect(usableAlias("usage page")).toBe(true);
+    expect(usableAlias("creditWeight")).toBe(true);
+    expect(usableAlias("/admin/usage")).toBe(true);
+    expect(slackCandidates(says("did anyone save it"), [], [ref("admin/usage", ["save"])])).toEqual([]);
+  });
+
+  test("a token two features both claim is worth nothing, so it does not attach to either", () => {
+    const a = w({ feature: "one", keys: { ...w().keys, threads: [], vocab: ["billedBy"] } });
+    const b = w({ feature: "two", keys: { ...w().keys, threads: [], vocab: ["billedBy"] } });
     expect(slackCandidates(byTs(BILLING), [a, b])).toEqual([]);
+    const aliases = [ref("admin/usage", ["billing profile"]), ref("admin/invoicing", ["billing profile"])];
+    expect(slackCandidates(says("set up the billing profile first"), [], aliases)).toEqual([]);
   });
 
   test("a message with no thread, no reference and no vocabulary claims nothing", () => {
@@ -113,13 +128,11 @@ describe("what kind of thing it is", () => {
   });
 
   test("a message naming a route is a change to the contract", () => {
-    const item = { ...byTs(BILLING), mentionsUser: false, text: "PATCH /api/v1/invoices/entity/{entityId}/billed-by now takes billedBy" };
-    expect(classify(item, [w()])).toBe("contract-change");
+    expect(classify(says("PATCH /api/v1/invoices/entity/{entityId}/billed-by now takes billedBy"), [w()])).toBe("contract-change");
   });
 
   test("a message claiming a PR is on a branch is a claimed landing", () => {
-    const item = { ...byTs(BILLING), mentionsUser: false, text: "fe#417 is merged and on staging now" };
-    expect(classify(item, [w()])).toBe("claimed-landing");
+    expect(classify(says("fe#417 is merged and on staging now"), [w()])).toBe("claimed-landing");
   });
 
   test("small talk is not recorded at all", () => {
@@ -129,7 +142,7 @@ describe("what kind of thing it is", () => {
   });
 
   test("a message that is neither provable nor small talk is left for a reader", () => {
-    const item = { ...byTs(BILLING), mentionsUser: false, to: [], text: "I think we should probably revisit how the invoice register orders its rows before Angie sees it" };
+    const item = says("I think we should probably revisit how the invoice register orders its rows before Angie sees it");
     expect(classify(item, [w()])).toBeNull();
     expect(isChat(item, [w()])).toBe(false);
   });
@@ -139,70 +152,74 @@ describe("the canvas", () => {
   const from = items.find((i) => i.canvas)!;
 
   test("notes nobody has read go to the queue, asking for marauder huddle", () => {
-    const { unsorted, workstreams, changes } = applySlack({ workstreams: [w()], items: [from], unsorted: [], milestones: {} });
+    const { unsorted, work, changes } = applySlack({ work: [w()], items: [from], unsorted: [], milestones: {} });
     expect(changes[0]).toMatchObject({ kind: "unsorted", why: "a huddle canvas, unread" });
     expect(unsorted[0]).toMatchObject({ id: from.id, needs: "read", why: unreadCanvasWhy(from.threadTs ?? from.ts) });
-    expect(workstreams[0]!.events).toEqual([]);
+    expect(work[0]!.events).toEqual([]);
   });
 
-  test("notes already read are not asked about again — an event or a proposal under them is enough", () => {
+  test("notes already read are not asked about again — an event or a queue entry under them is enough", () => {
     const root = from.threadTs ?? from.ts;
     const taken = w({ events: [{ at: "2026-09-09T02:34:00Z", kind: "contract-change", summary: "Angie ruled on the retainer.", source: { type: "huddle", ref: `${root}#1` }, attached: { how: "read", confidence: "guess" } }] });
-    expect(applySlack({ workstreams: [taken], items: [from], unsorted: [], milestones: {} }).changes[0]).toMatchObject({ kind: "skipped", why: "these huddle notes are already taken in" });
-    const proposal = { id: `${root}#2`, kind: "new" as const, name: "Something", summary: "Foong wants something.", candidates: [], suggest: null, needs: "read" as const, at: from.at };
-    expect(applySlack({ workstreams: [w()], items: [from], unsorted: [proposal], milestones: {} }).changes[0]).toMatchObject({ kind: "skipped" });
+    expect(applySlack({ work: [taken], items: [from], unsorted: [], milestones: {} }).changes[0]).toMatchObject({ kind: "skipped", why: "these huddle notes are already taken in" });
+    const entry = { id: `${root}#2`, kind: "slack" as const, summary: "Foong wants something.", candidates: [], suggest: null, needs: "read" as const, at: from.at };
+    expect(applySlack({ work: [w()], items: [from], unsorted: [entry], milestones: {} }).changes[0]).toMatchObject({ kind: "skipped" });
   });
 });
 
 describe("applying", () => {
-  const open = [w()];
-
   test("an item that places and types cleanly becomes an event", () => {
-    const { workstreams, changes } = applySlack({ workstreams: open, items: [byTs(BILLING)], unsorted: [], milestones: {} });
-    expect(changes[0]).toMatchObject({ kind: "attached", slug: "entity-invoice-sender", how: "thread", confidence: "certain", eventKind: "directed-at-person" });
-    const e = workstreams[0]!.events[0]!;
+    const { work, changes } = applySlack({ work: [w()], items: [byTs(BILLING)], unsorted: [], milestones: {} });
+    expect(changes[0]).toMatchObject({ kind: "attached", feature: "admin/invoicing", how: "thread", confidence: "certain", eventKind: "directed-at-person" });
+    const e = work[0]!.events[0]!;
     expect(e.to).toEqual(["you", "Carlos Lopes"]);
     expect(e.source).toMatchObject({ type: "slack", ref: BILLING });
-    expect(validate(workstreams[0]!, workstreams[0]!.slug)).toEqual([]);
+    expect(validate(work[0]!, work[0]!.feature)).toEqual([]);
   });
 
-  test("an item nothing claims goes to unsorted, and no workstream changes", () => {
-    const stray = { ...byTs(BILLING), ts: "1788999999.000001", id: "1788999999.000001", text: "Angie wants the register sorted by client before tonight, can someone take it?" } as SlackItem;
-    const { workstreams, unsorted } = applySlack({ workstreams: [w({ keys: { ...w().keys, threads: [], vocab: [] } })], items: [stray], unsorted: [], milestones: {} });
-    expect(workstreams[0]!.events).toEqual([]);
-    expect(unsorted[0]).toMatchObject({ id: stray.id, needs: "read", suggest: null });
+  test("a feature with nothing going on gets its record when an alias places a message on it", () => {
+    const item = says("PATCH /api/v1/usage/history now saves the usage page edits");
+    const { work, changes } = applySlack({ work: [], items: [item], unsorted: [], milestones: {}, features: [ref("admin/usage", ["usage page"])] });
+    expect(changes[0]).toMatchObject({ kind: "attached", feature: "admin/usage", how: "vocab", confidence: "likely" });
+    expect(work.map((x) => x.feature)).toEqual(["admin/usage"]);
+    expect(validate(work[0]!, "admin/usage")).toEqual([]);
+  });
+
+  test("an item nothing claims goes to the queue with no candidate, and no record changes", () => {
+    const stray = says("Angie wants the register sorted by client before tonight, can someone take it?");
+    const { work, unsorted } = applySlack({ work: [w({ keys: { ...w().keys, threads: [], vocab: [] } })], items: [stray], unsorted: [], milestones: {} });
+    expect(work[0]!.events).toEqual([]);
+    expect(unsorted[0]).toMatchObject({ id: stray.id, kind: "slack", needs: "read", suggest: null, candidates: [] });
+  });
+
+  test("an item two features claim is queued with both as candidates, and nothing in the queue names a slug or proposes anything", () => {
+    const ask = { ...says("Someone should add a client column to the usage page"), kind: "new-ask" as const };
+    const features = [ref("admin/usage", ["usage page"]), ref("admin/clients", ["client column"])];
+    const { unsorted, changes } = applySlack({ work: [], items: [ask], unsorted: [], milestones: {}, features });
+    expect(changes[0]!.kind).toBe("unsorted");
+    expect(unsorted[0]!.candidates.map((c) => c.feature)).toEqual(["admin/clients", "admin/usage"]);
+    expect(unsorted[0]!.kind).toBe("slack");
+    for (const u of unsorted) {
+      expect(u).not.toHaveProperty("slug");
+      expect(u).not.toHaveProperty("name");
+    }
   });
 
   test("a long (bot) author name still leaves the unsorted summary inside the render ceiling", () => {
-    // style.md's rendered workstream line prepends a date/time (~4 words) ahead of the
-    // summary; a fixed word-count body clip overflows the 25-word ceiling once the author
-    // name itself is long, as a bot's display name can be — regression for that gap.
     const stray = {
-      ...byTs(BILLING),
-      ts: "1788999999.000003",
-      id: "1788999999.000003",
+      ...says("Ticket has been created by Foong Leung, you can track progress with the commands /summary or /summary:all, or visit our trello board at https://trello.com/invite/some/long/path"),
       author: "SWE Slack To Trello",
-      authorIsUser: false,
-      text: "Ticket has been created by Foong Leung, you can track progress with the commands /summary or /summary:all, or visit our trello board at https://trello.com/invite/some/long/path",
     } as SlackItem;
-    const { unsorted } = applySlack({ workstreams: [w({ keys: { ...w().keys, threads: [], vocab: [] } })], items: [stray], unsorted: [], milestones: {} });
+    const { unsorted } = applySlack({ work: [w({ keys: { ...w().keys, threads: [], vocab: [] } })], items: [stray], unsorted: [], milestones: {} });
     const summary = unsorted[0]!.summary;
     expect(summary).toStartWith("SWE Slack To Trello:");
-    expect(summary.split(/\s+/).length).toBeLessThanOrEqual(21); // leaves headroom for the rendered date prefix
-  });
-
-  test("an ask nothing claims is proposed as a workstream, never created", () => {
-    const ask = { ...byTs(BILLING), ts: "1788999999.000002", id: "1788999999.000002", kind: "new-ask" as const, text: "Someone should add a client column to the register" };
-    const { workstreams, unsorted, changes } = applySlack({ workstreams: [w({ keys: { ...w().keys, threads: [], vocab: [] } })], items: [ask], unsorted: [], milestones: {} });
-    expect(changes[0]!.kind).toBe("proposed");
-    expect(unsorted[0]).toMatchObject({ kind: "new", name: "Someone should add a client column to the register" });
-    expect(workstreams).toHaveLength(1);
+    expect(summary.split(/\s+/).length).toBeLessThanOrEqual(21);
   });
 
   test("the whole day, run twice, writes nothing the second time", () => {
-    const first = applySlack({ workstreams: open, items, unsorted: [], milestones: {} });
-    const second = applySlack({ workstreams: first.workstreams, items, unsorted: first.unsorted, milestones: first.milestones });
-    expect(second.workstreams).toEqual(first.workstreams);
+    const first = applySlack({ work: [w()], items, unsorted: [], milestones: {} });
+    const second = applySlack({ work: first.work, items, unsorted: first.unsorted, milestones: first.milestones });
+    expect(second.work).toEqual(first.work);
     expect(second.unsorted).toEqual(first.unsorted);
     expect(second.changes.every((c) => c.kind === "skipped")).toBe(true);
   });

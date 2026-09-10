@@ -206,6 +206,14 @@ async function featuresOf(repo: Repo, f: Facts): Promise<Feats> {
 }
 
 /**
+ * The manifest ids a landing's changed files map to — what `marauder ingest --landings`
+ * attaches an unjournalled landing by (ARG-164). One diff and the accio index; no network.
+ */
+export async function landingFeatures(repo: Repo, sha: string): Promise<string[]> {
+  return (await featuresOf(repo, await factsOf(repo, sha))).mapped.map(([id]) => id);
+}
+
+/**
  * Which landings does the journal already name? Keyed by `fe#363` / `be#735` from `pr:`,
  * and by every sha in `merge:` — `direct` is deliberately NOT a key, since every direct
  * push would otherwise match every entry that has ever recorded one.

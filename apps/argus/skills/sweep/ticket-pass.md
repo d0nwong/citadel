@@ -5,11 +5,13 @@ finished, `model: "opus"`. It is the **only** thing in the loop that writes to L
 Write policy is the sweep's Autonomy section; ticket shape and editing rules are the
 `linear-ticket` skill. Neither changed when the work's source did.
 
-The work comes from workstream events, and from nothing else since ARG-161. A ticket belongs to a workstream, so "which
-ticket does this affect" is a choice among that workstream's one or two tickets rather
-than among every open one; and the workstream's `open_questions` and `facts` are a
-statement of what the work now is, so the pass diffs the ticket against them instead of
-patching it message by message. `marauder ticket-plan` computes that diff, and it is a
+The work comes from the events on each feature's record, and from nothing else since
+ARG-161. An event names its ticket, or the feature's keys do, so "which ticket does this
+affect" is a choice among a few rather than among every open one; and the feature's
+events and `open_questions` say what the work now is, so the pass diffs the ticket against
+them instead of patching it message by message. What is settled about the feature is its
+docs' business — a fact reaches a ticket through a landing or an answered question here,
+never through a second record (ARG-164). `marauder ticket-plan` computes that diff, and it is a
 pure function of the record and the body — the worker holds the Linear key and applies it,
 because argus holds no key.
 
@@ -21,16 +23,17 @@ Fill every `{…}`:
 > directory). Execute directly; never spawn a subagent — it would recurse.
 >
 > Inputs:
-> - The workstreams that gained an event this tick, and the events they gained:
+> - The features that gained an event this tick, and the events they gained:
 >   `{bun run marauder changed --since {prev tick ISO}}`.
 > - Features refreshed this tick: `{ids}`.
 > - Team `Alden`; assignee = me. Linear tools are `mcp__linear__*` — ToolSearch them if
 >   deferred.
 >
 > Read this file and the Autonomy section of `skills/sweep/SKILL.md` before starting.
-> For each workstream with new events, for each ticket in its `keys.tickets`: read the
-> ticket body with `get_issue`, write it to a temp file, and run
-> `bun run marauder ticket-plan <slug> <ALD-nn> --body <file> --state "<its Linear state>"`.
+> For each feature with new events, for each ticket its new events name (or, for an
+> event naming none, each ticket in the feature's `keys.tickets`): read the ticket body
+> with `get_issue`, write it to a temp file, and run
+> `bun run marauder ticket-plan <feature> <ALD-nn> --body <file> --state "<its Linear state>"`.
 > Apply the plan per the action table below. Then Part B — file a ticket for every
 > `fileAsks` entry, per "Filing" — and Part C — review the tickets naming a refreshed
 > feature, per "Reviewing".
@@ -50,13 +53,13 @@ closed set, and each one does one thing:
 | `answers-question` | deletes the Pending bullet the question was paired with, and adds one sentence to Technical Notes | nobody — apply it |
 | `contract-change`, `claimed-landing` | with a landing behind it, writes the fact into Technical Notes and clears its own unverified bullet; without one, adds a Pending bullet reading "announced on Slack, unverified against the base branch" | nobody — apply it |
 | `verified-landing` | clears the unverified bullet its claim left | nobody — apply it |
-| `new-ask` | files a ticket when the workstream has none | nobody — apply it |
-| `deadline` | sets `dueDate` from the workstream's milestone, and nothing else | nobody — apply it |
+| `new-ask` | files a ticket when the feature's record holds none | nobody — apply it |
+| `deadline` | sets `dueDate` from the feature's milestone, and nothing else | nobody — apply it |
 | `directed-at-person` | nothing; it is already on the board under Needs you | the reader |
 | `chat` | nothing; it is not recorded as an event at all | — |
 
-Everything else the plan returns is a **flag**: a Scope sentence a fact may have unsaid, a
-question nobody has paired with a bullet, a ticket Foundry is running. Flags go to Needs
+Everything else the plan returns is a **flag**: a question nobody has paired with a
+bullet, a ticket Foundry is running. Flags go to Needs
 you. They are never applied.
 
 **Deleting a Pending bullet needs no approval.** The user settled that on 2026-09-09: once
@@ -69,7 +72,7 @@ still open. Delete it and fold anything worth keeping into Technical Notes.
 question meets its bullet, you make the pairing and record it:
 
 ```sh
-bun run marauder pending <slug> --question "<the first words of the question>" --bullet "<the bullet, exactly>"
+bun run marauder pending <feature> --question "<the first words of the question>" --bullet "<the bullet, exactly>"
 ```
 
 Stored on the question as `pending_ref`, the deletion afterwards is an exact string, and no
@@ -79,7 +82,7 @@ comes back as a flag next tick.
 Once the edits are applied, take the question off the record:
 
 ```sh
-bun run marauder resolved <slug> <ALD-nn> --question "<the first words>"
+bun run marauder resolved <feature> <ALD-nn> --question "<the first words>"
 ```
 
 That drops the question and stamps the event that answered it with
@@ -93,7 +96,7 @@ Notes edits are `replace` with an exact `old_string`; `due-date` is the `dueDate
 
 ## Filing
 
-A `fileAsks` entry — a `new-ask` event on a workstream that has no ticket — gets one:
+A `fileAsks` entry — a `new-ask` event on a feature whose record holds no ticket — gets one:
 
 - **Where:** the **Alden Portal** project — the project is the tag. Assignee me, the title
   prefixed `[FE]` or `[BE]` for the repo it lands in, the Slack permalink as the body's
@@ -102,11 +105,11 @@ A `fileAsks` entry — a `new-ask` event on a workstream that has no ticket — 
   siblings off the cockpit's Send button.
 - **No labels at filing.** A filed ticket is a queue entry, never a dispatch.
 - **A pure reply or an acknowledgement gets no ticket.** It is already an event on its
-  workstream, and the board is where it is read.
+  feature, and the board is where it is read.
 - **Write the key back**, so no later tick files it twice:
 
   ```sh
-  bun run marauder ticket <slug> <event-id> <ALD-nn>
+  bun run marauder ticket <feature> <event-id> <ALD-nn>
   ```
 
 - **Backstop before filing:** search the Alden Portal project for the ask's permalink
@@ -128,7 +131,7 @@ When the ticket's Linear state is In Progress and a `decisions/` file with
 Put the diff in front of the reader instead:
 
 ```sh
-bun run marauder held <slug> <ALD-nn>
+bun run marauder held <feature> <ALD-nn>
 ```
 
 That writes a `directed-at-person` event carrying the edits, so the board shows it under

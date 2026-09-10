@@ -85,7 +85,7 @@ test("render: quiet run says so", () => {
  */
 test("the cursor adopts the digest's, once, and leaves nothing to adopt twice", async () => {
   const root = await mkdtemp(join(tmpdir(), "slack-cursor-"));
-  const state = join(root, "workstreams/.state.json");
+  const state = join(root, "queue/.state.json");
   const digest = join(root, "digests/.state.json");
   await Bun.write(digest, JSON.stringify({ last_ts: "1788949866.296519", watched_threads: { "1788776724.482269": "1788921414.929109" } }));
 
@@ -103,7 +103,7 @@ test("the cursor adopts the digest's, once, and leaves nothing to adopt twice", 
 test("no cursor anywhere is a day back, not the epoch — a fresh clone reads a day, never everything", async () => {
   const root = await mkdtemp(join(tmpdir(), "slack-cursor-"));
   const now = 1788949866_000;
-  const fresh = await readCursor(join(root, "workstreams/.state.json"), join(root, "digests/.state.json"), now);
+  const fresh = await readCursor(join(root, "queue/.state.json"), join(root, "digests/.state.json"), now);
   expect(Number(fresh.last_ts)).toBe(now / 1000 - 24 * 3600);
   expect(fresh.watched_threads).toEqual({});
   await rm(root, { recursive: true, force: true });

@@ -41,10 +41,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .state/accio-index.json
 .state/symbols.json
 
-# the Slack cursor — disposable local state; workstreams/*.json are the record. `.next` is
+# the Slack cursor — disposable local state; each feature's work.json is the record. `.next` is
 # the advanced cursor slack-pull writes, promoted only once the tick's commit succeeds
-workstreams/.state.json
-workstreams/.state.next.json
+queue/.state.json
+queue/.state.next.json
 # where that cursor lived while the digest owned it. slack-pull adopts it on its first run
 # and deletes it (ARG-161); the lines stay so an un-migrated checkout cannot commit one
 digests/.state.json

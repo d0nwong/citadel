@@ -15,14 +15,14 @@ one HTTP API — nothing else.
 
 | | job | today | never |
 |---|---|---|---|
-| **argus** (this repo) | Knows. The blackboard is the single source of truth for everything not in Linear or a repo; the sweep keeps it current, reconciles landings against tickets, and surfaces what needs a decision. | Files (`workstreams/`, `marauder/`, `features/*/journal`, `features/*/docs`) plus skills run by `/loop` sessions. Renders a board; holds no queue. | Dispatch work. Close tickets. Run as a daemon. |
+| **argus** (this repo) | Knows. The blackboard is the single source of truth for everything not in Linear or a repo; the sweep keeps it current, reconciles landings against tickets, and surfaces what needs a decision. | Files (`features/*/docs`, `features/*/journal`, `features/*/work.json`, `queue/`, `marauder/`) plus skills run by `/loop` sessions. Renders a board; holds no queue. | Dispatch work. Close tickets. Run as a daemon. |
 | **Pensieve** (`~/git/pensieve`) | The decision surface. Where you read where the work stands and decide what to act on. | Renders the board, each workstream, the journal and the docs for every app under the blackboard; the Unsorted list places what attached to nothing; Ask answers over the checkout and proposes a correction that a click confirms. Writes `decisions/` and nothing else. | Hold workflow state of its own. Write any blackboard file other than `decisions/`. |
 | **Foundry** (`~/git/foundry`) | Executes. Takes a job over HTTP, runs it in an ephemeral forge, pushes a PR, reports back. | Jobs, blueprints, repos, forges, the trigger API. The `agent-ready` ticket scanner that made it a decider too is gone (ARG-93). | Read the blackboard. Judge readiness. Choose what runs. |
 
 One line: **argus knows, you decide in Pensieve, Foundry does.**
 
 The decision happens on the screen where the work is read: the sweep keeps one record per
-workstream and renders the board from it, and Pensieve is where a queue entry is placed, a
+feature that has something going on and renders the board from those, and Pensieve is where a queue entry is placed, a
 ticket is sent to Foundry, or a held edit is confirmed. The `agent-ready` label that used
 to be the handoff is retired — inert on the tickets that carry it, applied by nothing, read
 by nothing — and Foundry's scanner is gone. From Ask, the model can propose a correction
@@ -40,7 +40,7 @@ flowchart LR
     ingest["1 · Ingest<br/>the channel + the base<br/>branches become events"]
     journal["2 · Journal<br/>one entry per landing<br/>(the why)"]
     docs["3 · Docs<br/>dual-tier product + arch<br/>(the what)"]
-    tickets["4 · Linear<br/>file what a workstream asks,<br/>fold events into open tickets"]
+    tickets["4 · Linear<br/>file what an event asks,<br/>fold events into open tickets"]
     board["5 · Render<br/>marauder/board.md —<br/>where the work stands"]
     decide(["you, in Pensieve"])
     foundry["Foundry executes<br/>(POST /api/jobs)"]
@@ -48,28 +48,30 @@ flowchart LR
     ingest --> journal --> docs --> tickets --> board
     board -.-> decide
     decide -. "Send" .-> foundry
-    decide -. "attach · new · dismiss · stage" .-> ingest
+    decide -. "attach · dismiss" .-> ingest
 ```
 
 ## Architecture
 
 The design is a blackboard, not a pipeline of agents:
 
-- **Durable state lives in files.** `workstreams/`, `features/*/journal/`,
-  `features/*/docs/`. A workstream's stage per side, and the statuses in journal
-  frontmatter (`decided → implemented → documented`, with `superseded` and `hold:` as the
-  explicit escape hatches), are the workflow state — no agent's memory is load-bearing.
+- **Durable state lives in files, and the feature is the unit.** Each feature directory
+  holds `docs/` (what is true), `journal/` (why it changed) and, when something is going
+  on in it, `work.json` (what is going on). The statuses in journal frontmatter
+  (`decided → implemented → documented`, with `superseded` and `hold:` as the explicit
+  escape hatches) are the workflow state, and Linear holds a ticket's — no agent's memory
+  is load-bearing, and no record keeps a stage of its own.
 - **Reconciliation is deterministic.** `marauder ingest` turns merges and messages into
   events by thread, reference and vocabulary, and refuses to guess past that; `pr-facts
   --since` says which landings lack a journal entry; `accio audit` cross-checks docs
   against code and journal entries against each other (including decisions whose change
   landed without anyone linking back). Code does the joins an LLM would only guess at.
 - **What code cannot place, a person does — once.** Anything the ladder cannot attach goes
-  to `workstreams/_unsorted.json`, and the correction that places it writes its rule onto
-  the workstream, so the next message like it lands on its own.
+  to `queue/_unsorted.json`, and the correction that places it writes its rule onto the
+  feature's record, so the next message like it lands on its own.
 - **Agents are stateless workers.** `log-change` and `feature-docs` each make one kind of
   file current, in a subagent, and can be re-run at any time; `ticket-pass` does the same
-  for Linear (files what a workstream asks for, folds each tick's events into the tickets
+  for Linear (files what an event asks for, folds each tick's events into the tickets
   it names). A stage gets a subagent when its reading is bulky *and* its output lands on
   the blackboard — ingest, the queue read and the render stay in the sweep itself.
 - **`/sweep` is the scheduler, and it is deliberately dumb.** Each tick it ingests the
@@ -92,7 +94,7 @@ flowchart TB
     end
 
     subgraph blackboard["Durable state — the blackboard"]
-        ws["workstreams/*.json<br/>(stage = workflow state)"]
+        ws["features/*/work.json<br/>(what is going on in each)"]
         journal["features/*/journal/*.md<br/>(status = workflow state)"]
         docs["features/*/docs/<br/>product.md + arch.md"]
     end
@@ -106,7 +108,7 @@ flowchart TB
     staging --> ingest
     staging --> prfacts
     ingest --> ws
-    ingest -. "cannot place it" .-> queue["workstreams/_unsorted.json"]
+    ingest -. "cannot place it" .-> queue["queue/_unsorted.json"]
     queue -. "a person places it" .-> ws
     prfacts -- "one dispatch per landing" --> lc --> journal
     ws -- "the ticket and the story" --> lc
@@ -172,7 +174,7 @@ The derived files each cache one join so it is never recomputed:
 
 | Derived file | The join it caches |
 |---|---|
-| `workstreams/` | Everything one piece of work has ever been told, in one place: the messages, the merges, the tickets and the questions, joined by the keys the work is actually named by. It is the only record that answers "is that done yet?" — Slack holds a fragment per day, Linear holds the ask, git holds the code, and none of them holds the thing itself |
+| `features/*/work.json` | Everything a feature has been told lately, in one place: the messages, the merges, the tickets and the questions, joined by the keys the work is actually named by. Slack holds a fragment per day, Linear holds the ask, git holds the code; this holds what is going on in the feature, beside the docs that say what is true of it |
 | `marauder/` | Those records read out for a person, and nothing else — a page here can be deleted and re-rendered byte for byte, so it is never a source anything reads back |
 | `features/*/journal/` | The spine: *this* decision + *this* ticket + *this* landing. That connection exists in no single external source — Slack doesn't know the PR, git doesn't know the why, Linear doesn't know the merge sha — which is why frontmatter is never guessed: a wrong key corrupts the only record of the join. |
 | `features/*/docs/` | The repos distilled to present-tense facts, sha-stamped (`last_verified` / `last_verified_be`) so staleness is detectable rather than suspected |
@@ -189,20 +191,21 @@ They stay readable in Pensieve as history, and nothing writes to them again.
 
 | Path | What it is |
 |---|---|
-| `workstreams/<slug>.json` | one JSON file per workstream — the thing a person asks "is that done yet?" about, which is never a PR, a ticket or a feature folder. It carries what done means, who drives it and who wants it, a stage per side (`asked`, `decided`, `building`, `landed`, `verified`, `shipped`, with "waiting on" and "parked" as overlays), the `keys` an event attaches by (tickets, PRs, thread roots, code vocabulary, people), the open questions and verified facts, and an append-only list of events. Written by `marauder ingest` and by the correction verbs, never by hand after the first seed; read by `marauder render` and by `ask`. `workstreams/_milestones.json` holds the dates workstreams point at, `workstreams/_unsorted.json` what attached to nothing, and `workstreams/.state.json` is the gitignored Slack cursor (ARG-154, ARG-161) |
-| `marauder/` | the pages a person reads, rendered from `workstreams/*.json` and nothing else: `board.md` (where every open workstream stands — what needs you, what is in flight by area, what waits on someone else, what shipped this week), `<slug>.md` (one workstream's story) and `changelog/<day>.md` (what changed that day). Written by `bun run marauder render` and committed like every other rendered file; never hand-edited, and every page is held to `skills/sweep/style.md`'s three mechanical rules before it is written (ARG-155) |
-| `decisions/marauder/<id>.json` | one file per verdict on what the loop could not settle, `{ id, action, slug?, name?, side?, stage?, reason, at, by }`, `action` one of `attach` \| `new` \| `dismiss` \| `stage` \| `verified`. Written by Pensieve, only ever read and committed by the sweep: `marauder ingest` applies each through the same correction functions the command line goes through, before anything new arrives, and leaves the file where it is as the history of who decided what (ARG-160). `id` names the queue entry it decides — or, for `verified`, the event it answers: the user's go-ahead for the one edit a `directed-at-person` event named, stamped onto that event (ARG-161). `decisions/send/<ticket>.json`, `{ ticket, action: "sent", job, at, by }`, is the other group — a ticket handed to Foundry, read when a ticket plan asks whether one is running |
+| `<app>/features/<dir>/work.json` | what is going on in one feature, if anything — `{ feature, keys, milestone, open_questions, events, updated }`. `keys` are what an event attaches by (tickets, PRs, thread roots, learned code vocabulary); the open questions carry whose move each is; the events are append-only, each saying which rung of the ladder put it there. A feature with nothing going on has no file. It keeps no stage and no facts: the docs say what is true, the journal says why, and Linear says where a ticket is. Written by `marauder ingest` and by the correction verbs, never by hand; read by `marauder render` and by `ask` (ARG-164, which folded the seventeen `workstreams/*.json` of ARG-154 into five of these) |
+| `queue/` | what waits outside any feature: `_unsorted.json` (what attached to nothing, or to more than one feature, with the candidates and why), `_milestones.json` (the dates records point at) and the gitignored Slack cursor `.state.json` / `.state.next.json` (ARG-161, ARG-164) |
+| `marauder/` | the pages a person reads, rendered from the features' `work.json` and nothing else: `board.md` (what needs you, then each feature that moved this week) and `changelog/<day>.md` (what changed that day, by feature); `marauder show <feature>` prints one feature's story. Written by `bun run marauder render` and committed like every other rendered file; never hand-edited, and every page is held to `skills/sweep/style.md`'s three mechanical rules before it is written (ARG-155). The board's designed shape and a page beside each feature's docs are ARG-166 |
+| `decisions/marauder/<id>.json` | one file per verdict on what the loop could not settle, `{ id, action, feature?, reason, at, by }`, `action` one of `attach` \| `dismiss` \| `verified` — `feature` is the directory under `features/`, and a file written before ARG-164 names a `slug` in its place. `new` and `stage` went with the workstreams and are reported, not applied. Written by Pensieve, only ever read and committed by the sweep: `marauder ingest` applies each through the same correction functions the command line goes through, before anything new arrives, and leaves the file where it is as the history of who decided what (ARG-160). `id` names the queue entry it decides — or, for `verified`, the event it answers: the user's go-ahead for the one edit a `directed-at-person` event named, stamped onto that event (ARG-161). `decisions/send/<ticket>.json`, `{ ticket, action: "sent", job, at, by }`, is the other group — a ticket handed to Foundry, read when a ticket plan asks whether one is running |
 | `alden/alden-portal/features/<dir>/docs/` | dual-tier docs — `product.md` + `arch.md` |
 | `alden/alden-portal/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/` | change journal, one file per landing, grouped by month and day |
 | `alden/alden-portal/.doc-workspace/` | feature manifest + OpenAPI snapshot |
 | `foundry/`, `pensieve/` | the same `features/<dir>/docs/` + `.doc-workspace/` layout for the two single-repo apps (`~/git/foundry`, `~/git/pensieve`). No backend repo, so their docs carry no `be:` sources and no `## FE/BE Mismatches`; their manifests are hand-curated, since `accio map` needs an FE route tree plus an OpenAPI spec and neither app has one. Pensieve discovers them by their `features/` tree and addresses a feature as `<app>/<dir>`; `accio` is hardcoded to `alden/alden-portal`, and `scripts/lib/journal.ts` `appRoots` is what walks every app's journal for `accio audit` and for `marauder ingest --landings` |
 | `skills/` | the workers and the scheduler (`sweep`, `log-change`, `feature-docs`, `linear-ticket`, `api-lookup`, `office-hours`) — `skills/sweep/style.md` is the one house style every rendered page is written to (answer first, a person does something in every sentence, ids only on the evidence line), and the three rules in it that a renderer enforces — `prototyping` for fast issue-to-PR spikes, and `ask` — the read-only procedure for answering a question about the blackboard, which every session that opens this checkout (a terminal, Pensieve's Ask, the sweep) loads on a question-shaped prompt; from Pensieve it also proposes a correction or a drafted ticket, each written only by the user's click |
 | `scripts/accio.ts` | the API surface and the docs, and nothing else since ARG-161: lookup, `--endpoints`, `list`, `map`, `sync`, `audit`, `stale`. The four blackboard verbs it used to carry (`journal`, `point`, `ticket`, `arc`) answer with the one `marauder` command that replaced each |
-| `scripts/marauder.ts` | `marauder ingest \| huddle \| attach \| suggest \| new \| split \| stage \| check \| propose-split \| changed \| ticket-plan \| board \| show \| changelog \| render` — the verbs over `workstreams/`. `ingest` applies the decision files first, then `--landings` turns every merge on `origin/staging` and `origin/dev` since that side's newest landing into a `verified-landing` event and advances that side's stage; a merge two workstreams claim, or none, goes to `workstreams/_unsorted.json` and no record changes (ARG-156). `ingest --slack` reads the channel through `slack-pull --json` — the cursor is `workstreams/.state.json`, advanced into `.state.next.json` and promoted by the sweep after the tick's commit — runs the same ladder over messages and replies, and writes an event only where both the workstream and the kind are provable. Everything else goes to Unsorted with `needs: "read"`, an unclaimed decision or ask as `kind: "new"` with a name proposed in its own words; no script here calls a model and none creates a workstream (ARG-157). A huddle canvas is never split by a script: it goes to Unsorted as notes nobody has read, the sweep reads it and writes its key points — one sentence per thing settled, asked for or dated, in the house voice, with the workstream it belongs to — and `huddle <ts> --points <file>` validates and records them: events where a workstream is named, proposals where none is, a milestone for a date, nothing at all for small talk. Reading the same notes again replaces what the sweep recorded before and keeps what a person placed. The corrections are how a person fixes what ingest got wrong, once: `attach` moves an unsorted item onto a workstream **and learns from it** — the thread root, the tickets, the PRs and the identifiers it used — so the next message like it attaches on its own; `new` opens a workstream from a proposal, `split` cuts one in two and divides its keys, `stage` says where a side really is and outranks a landing until the next one, and every verb keeps its `--reason` on the event it writes. `check` prints the workstreams busy enough to have stopped being one thing and `propose-split` queues what a reader decided — the check never cuts anything (ARG-158). `changed --since` is what a tick hands the ticket pass, and `ticket-plan <slug> <ARG-nn> --body <file>` is the diff between a ticket body and its workstream's open questions and facts — the edits to apply, and the things only a person may decide. It is pure and holds no Linear key: the worker reads and writes Linear, argus never does (ARG-159). Nothing here reads the network beyond the channel pull, no `.state/` and no clock beyond `--now`, so a run that changes no record writes no byte; a page that breaks a style rule is never written and the run exits non-zero naming the line |
+| `scripts/marauder.ts` | `marauder ingest \| huddle \| attach \| suggest \| dismiss \| changed \| ticket-plan \| pending \| resolved \| ticket \| held \| board \| show \| changelog \| render` — the verbs over the features' `work.json` and `queue/`; a `<feature>` is its directory under `features/` (`admin/usage`). `ingest` applies the decision files first, then `--landings` turns every merge on `origin/staging` and `origin/dev` since that side's newest landing into a `verified-landing` event on **every** feature it touched — the features its journal entry names, else the ones `pr-facts` maps its files to, else a record already holding its PR or ticket — and a merge that names none goes to `queue/_unsorted.json` with no record changed (ARG-156, ARG-164). `ingest --slack` reads the channel through `slack-pull --json` — the cursor is `queue/.state.json`, advanced into `.state.next.json` and promoted by the sweep after the tick's commit — and runs the ladder over features: a thread a feature has learned (`thread/certain`), a ticket or PR in its keys (`ref/certain`), then words only one feature claims — its learned vocabulary, or a manifest alias of two or more words or an identifier's shape (`vocab/likely`); a single common word places nothing. An event is written only where both the feature and the kind are provable, opening the feature's record if it had none; everything else goes to Unsorted with `needs: "read"` and its candidates. No script here calls a model (ARG-157). A huddle canvas is never split by a script: it goes to Unsorted as notes nobody has read, the sweep reads it and writes its key points — one sentence per thing settled, asked for or dated, in the house voice, with the feature it belongs to — and `huddle <ts> --points <file>` validates and records them: events where a feature is named (a feature no app has refuses the file), a queue entry with the features the ladder would look at where none is, a milestone for a date, nothing at all for small talk. Reading the same notes again replaces what the sweep recorded before and keeps what a person placed. The corrections are how a person fixes what ingest got wrong, once: `attach` moves an unsorted item onto a feature **and learns from it** — the thread root, the tickets, the PRs and the identifiers it used — so the next message like it attaches on its own, and every verb keeps its `--reason` on the event it writes (ARG-158). `new`, `split`, `stage`, `check` and `propose-split` went with the workstreams and exit non-zero saying so. `changed --since` is what a tick hands the ticket pass, and `ticket-plan <feature> <ARG-nn> --body <file>` is the diff between a ticket body and the feature's events and open questions — the edits to apply, and the things only a person may decide. It is pure and holds no Linear key: the worker reads and writes Linear, argus never does (ARG-159). Nothing here reads the network beyond the channel pull, no `.state/` and no clock beyond `--now`, so a run that changes no record writes no byte; a page that breaks a style rule is never written and the run exits non-zero naming the line |
 | `scripts/sync-skills.ts` | symlink every `skills/<name>/` into the global Claude skills folder, per skill; prunes only its own dangling links |
 | `scripts/bootstrap.sh` | brand-new Mac → running sweep, in phases; `--check` reports without touching anything ("Setting it up") |
 | `.env.example` | argus's one secret, `SLACK_TOKEN` — copy it to `.env` (gitignored, and Bun loads it for every `bun …` script) and fill it in; `./scripts/bootstrap.sh env` does both. Each tool keeps its own env file: Foundry's is `~/.foundry/env`, Pensieve's is its `.env` |
-| `skills/log-change/scripts/pr-facts.ts` | resolve a landing in either repo and name the features it touches (FE via the index's reach sets, BE via `be_files` + changed route lines → endpoint owners); `--since` finds unjournaled ones, and `--since <day> --json` prints them as the structured landings `marauder ingest` reads. It exports `git`, `REPOS` and `landingsSince` so nothing else shells out to git twice |
+| `skills/log-change/scripts/pr-facts.ts` | resolve a landing in either repo and name the features it touches (FE via the index's reach sets, BE via `be_files` + changed route lines → endpoint owners); `--since` finds unjournaled ones, and `--since <day> --json` prints them as the structured landings `marauder ingest` reads. It exports `git`, `REPOS`, `landingsSince` and `landingFeatures` (the manifest ids a landing's files map to) so nothing else shells out to git twice |
 | `skills/sweep/scripts/marauder/slack-pull.ts` | the deterministic half of `ingest --slack`: cursor bookkeeping, pagination, thread following, user-id resolution, noise filtering and permalinks. It never touches `.state.json` except to adopt the digest's old cursor once, and writes the advanced one to `.state.next.json` — a crashed tick replays the channel instead of skipping it |
 | `reports/`, `reports/points.json`, `digests/`, `arcs/` | the archive: the sweep report, its Needs-you points, the daily Slack digest and the per-initiative arc, all of which the workstream replaced on 2026-09-09 (ARG-161). Still rendered in Pensieve as history; written by nothing |
 
@@ -232,14 +235,13 @@ Authenticate inside a Claude session opened in this directory.
 /loop 15m /sweep         # the whole loop, self-maintaining while a session is alive
 /sweep                   # one manual pass ("catch me up")
 /log-change              # journal one landing by hand
-bun run marauder board   # where every open workstream stands, right now
-bun run marauder show usage-page                     # one workstream's whole story
+bun run marauder board   # what needs you, then each feature that moved this week
+bun run marauder show admin/usage                    # one feature's story
 bun run marauder changelog 2026-09-09                # what changed that day
 bun run marauder ingest --landings --slack           # a tick's intake (--dry-run to look first)
-bun run marauder check                               # which workstreams may have stopped being one thing
 bun run marauder changed --since 2026-09-09T12:00:00Z   # what a tick hands the ticket pass
-bun run marauder attach <id> <slug> --reason "…"     # move an unsorted item, and learn from it
-bun run marauder render  # the board, every workstream's page, and today's changelog
+bun run marauder attach <id> <feature> --reason "…"  # move an unsorted item onto a feature, and learn from it
+bun run marauder render  # the board and today's changelog
 bun run accio audit      # reconcile without writing anything (fails when a feature's two doc tiers disagree)
 bun run accio stale      # which features' docs drifted, and why (tiers / fe-core / be-handlers / journal)
 bun skills/log-change/scripts/pr-facts.ts --since 2026-08-21   # what landed, what's unjournaled
@@ -282,13 +284,13 @@ button: send from Foundry directly, or wait for it.
 
 ```mermaid
 flowchart LR
-    sweep["/sweep"] -- "events on a workstream" --> ws["workstreams/*.json"]
-    ws --> board["marauder/board.md<br/>+ the workstream page"]
+    sweep["/sweep"] -- "events on a feature" --> ws["features/*/work.json"]
+    ws --> board["marauder/board.md"]
     board --> pensieve["Pensieve"]
     pensieve -- "Send: POST /api/jobs" --> foundry["Foundry API"]
     foundry -- "job id + url" --> pensieve
     pensieve -. "action: sent, job" .-> decisions["decisions/send/*.json"]
-    pensieve -. "attach · new · dismiss · stage" .-> mdec["decisions/marauder/*.json"]
+    pensieve -. "attach · dismiss" .-> mdec["decisions/marauder/*.json"]
     mdec -. "the next ingest applies it" .-> ws
     foundry -- "claim in Postgres,<br/>ignite" --> forge["job forge<br/>(ephemeral)"]
 ```

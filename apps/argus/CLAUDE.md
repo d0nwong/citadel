@@ -110,6 +110,6 @@ bun --hot ./index.ts
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
 
-This checkout is also **argus, the blackboard**: `workstreams/`, `marauder/`, `decisions/` and every `<app>/features/<dir>/{docs,journal}` are the record of what happened in the products (README.md "Layout"). `reports/`, `digests/` and `arcs/` are the archive of what the loop wrote before 2026-09-09.
+This checkout is also **argus, the blackboard**: every `<app>/features/<dir>/{docs,journal,work.json}`, `queue/`, `marauder/` and `decisions/` are the record of what happened in the products (README.md "Layout"). `reports/`, `digests/` and `arcs/` are the archive of what the loop wrote before 2026-09-09.
 Two commands over it: `bun run marauder board|show|changelog` says where the work stands, `bun run accio` summons the API surface and the docs.
 To answer a question about any of it — a piece of work, a ticket, a day, a rule id, a feature — load the `ask` skill (`skills/ask/SKILL.md`): it retrieves with those two and answers read-only, citing paths.

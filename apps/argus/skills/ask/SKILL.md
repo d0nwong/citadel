@@ -1,21 +1,22 @@
 ---
 name: ask
-description: Answer a question about the argus blackboard, read-only — "where are we on the History asset editing", "what's left on entity billing", "what does ALD-6 say / where is ALD-6", "what shipped on 2026-09-04 / yesterday", "why is X waiting / parked", "what rule covers Y / what is BR-57", "what do the docs say about the usage page". Use for any question-shaped prompt about a workstream, ticket, day, rule id, feature, decision or landing in this checkout, from a terminal, from Pensieve's Ask, or mid-sweep. Retrieves with `marauder show` / `marauder changelog` / `marauder board`, `accio find` and the Linear read tools, reads the FE/BE checkouts without writing or switching anything, and answers in a fixed shape with every path cited. Also covers correcting what the loop got wrong — "that belongs to invoicing", "ignore that", "do that" after a recommendation — and filing a new ticket — "file this", "make a ticket for that" — each of which is proposed for the user's confirmation, never performed.
+description: Answer a question about the argus blackboard, read-only — "where are we on the History asset editing", "what's left on entity billing", "what does ALD-6 say / where is ALD-6", "what shipped on 2026-09-04 / yesterday", "why is X waiting / parked", "what rule covers Y / what is BR-57", "what do the docs say about the usage page". Use for any question-shaped prompt about a piece of work, feature, ticket, day, rule id, decision or landing in this checkout, from a terminal, from Pensieve's Ask, or mid-sweep. Retrieves with `marauder show <feature>` / `marauder changelog` / `marauder board`, `accio find` and the Linear read tools, reads the FE/BE checkouts without writing or switching anything, and answers in a fixed shape with every path cited. Also covers correcting what the loop got wrong — "that belongs to invoicing", "ignore that", "do that" after a recommendation — and filing a new ticket — "file this", "make a ticket for that" — each of which is proposed for the user's confirmation, never performed.
 ---
 
 # ask — answer a question about the blackboard, read-only
 
 Question: $ARGUMENTS
 
-You are in the argus checkout. It is a blackboard: `workstreams/<slug>.json` is one thing a
-person would ask "is that done yet?" about — what done means, a stage per side, the keys an
-event attaches by, the open questions, and every event in order. `marauder/board.md`,
-`marauder/<slug>.md` and `marauder/changelog/<day>.md` are those records rendered for a
-reader. `workstreams/_unsorted.json` is what attached to nothing and is waiting to be
-placed, `decisions/marauder/<id>.json` is the user's verdict on one such entry, and each
-`<app>/features/<dir>/` holds `journal/` (one entry per landing or decision, frontmatter is
-the routing) and `docs/` (`product.md` + `arch.md`, rules as `| BR-n |` / `| MM-n |` table
-rows). `reports/`, `digests/` and `arcs/` are the archive of what the loop wrote before
+You are in the argus checkout. It is a blackboard, and the feature is the unit: each
+`<app>/features/<dir>/` holds `docs/` (`product.md` + `arch.md`, what is true — rules as
+`| BR-n |` / `| MM-n |` table rows), `journal/` (one entry per landing or decision, why it
+changed — frontmatter is the routing) and, when something is going on in it, `work.json`
+(the keys an event attaches by, the open questions with whose move each is, and every event
+in order). A feature with nothing going on has no `work.json`. `marauder/board.md` and
+`marauder/changelog/<day>.md` are those records rendered for a reader, and
+`marauder show <feature>` prints one feature's story. `queue/_unsorted.json` is what
+attached to nothing and is waiting to be placed, and `decisions/marauder/<id>.json` is the
+user's verdict on one such entry. No record keeps a stage: where a ticket is, Linear says. `reports/`, `digests/` and `arcs/` are the archive of what the loop wrote before
 2026-09-09 — read them for history, never as current state. The README's Layout table is
 the map; you do not need to rediscover it.
 
@@ -34,7 +35,7 @@ the map; you do not need to rediscover it.
 - **Write nothing.** Not to this checkout, not to the product checkouts, not to Linear.
   No `git add/commit/checkout/fetch/pull/stash`, no `save_issue`, no `save_comment`, no
   file edits — even when the answer makes the next edit obvious. Say what the edit would
-  be; the person asking makes it. This covers `workstreams/` and `marauder/` too: a record
+  be; the person asking makes it. This covers `work.json`, `queue/` and `marauder/` too: a record
   changes through a verb the sweep or a click runs, never through you. A proposed
   correction is not a write, and neither is a proposed ticket: the tools in sections 5 and
   6 check one and answer with it, and the user's Confirm or File is what writes it.
@@ -43,49 +44,47 @@ the map; you do not need to rediscover it.
 
 | The question names | Class | First tool call |
 |---|---|---|
-| a piece of work — "where are we on the History asset editing", "what's left on entity billing" | workstream | `bun run marauder show <slug>` (section 2 for the slug) |
-| `ALD-nn` | ticket | `bun run marauder board`, find the workstream whose tickets name it, `marauder show <slug>`, then `mcp__linear__get_issue ALD-nn` with relations |
+| a piece of work — "where are we on the History asset editing", "what's left on entity billing" | work | `bun run marauder show <feature>` (section 2 for the feature) |
+| `ALD-nn` | ticket | Grep `ALD-nn` over `*/features/**/work.json`, `marauder show <feature>` for the one that holds it, then `mcp__linear__get_issue ALD-nn` with relations |
 | a date, "today", "yesterday", "what shipped / landed" | day | `bun run marauder changelog <YYYY-MM-DD>` |
 | "what needs me", "what am I blocked on", "what is Foong sitting on" | board | `bun run marauder board` — it is already grouped that way |
 | `BR-n` / `MM-n` | rule | Grep `^\| BR-n \|` in `*/features/*/docs/{product,arch}.md`, scoped to the feature the question is about |
 | a feature, screen, field, endpoint | feature | `bun run accio "<the thing>"`, then that feature's `docs/product.md` (rules) and `docs/arch.md` (endpoints, files) |
-| "why did that land on invoicing", "what did I decide about that message" | decision | `decisions/marauder/*.json` by `id`, then `marauder show <slug>` for what it changed |
-| none of the above | free text | Grep `-ril` the words over `workstreams/`, `*/features/**/journal`, then classify again from what matched |
+| "why did that land on invoicing", "what did I decide about that message" | decision | `decisions/marauder/*.json` by `id`, then `marauder show <feature>` for what it changed |
+| none of the above | free text | Grep `-ril` the words over `*/features/**/work.json`, `*/features/**/journal`, then classify again from what matched |
 
-A workstream named the way a person says it, not by slug ("the subtask rows one"): run
-`bun run marauder board`, which names every open one in the team's own words, and take the
-slug from the page link. The slug rule is lowercased, runs of non-alphanumerics to one `-`,
-trimmed — "History asset editing" is `history-asset-editing` — but read it off the board
-rather than deriving it, since the name is the user's and the file is the record.
+A piece of work named the way a person says it ("the subtask rows one") belongs to a
+feature: `bun run accio "<the words>"` names it, and the feature is its directory under
+`features/` — `admin/usage`, `tasks`. `bun run marauder board` shows the features with
+something going on this week, by the name the team uses.
 
-A **workstream** question is a noun phrase with no id in it and a "where are we" / "what's
+A **work** question is a noun phrase with no id in it and a "where are we" / "what's
 left" / "how is X going" verb. When the question names a key as well — "where are we on
-ALD-16" — it is a ticket question: the workstream is still the retrieval, and the ticket
-body is the second call.
+ALD-16" — it is a ticket question: the feature's record is still the retrieval, and the
+ticket body is the second call.
 
 ## 2. Retrieve
 
-`marauder show <slug>` prints one workstream's whole story: what done means, where each
-side has got to and why, who it waits on, the open questions with the ticket bullet each is
-paired to, the facts someone verified, and every event in order with the evidence link that
-backs it. `marauder board` is the same for everything open at once, grouped by what needs
-the user, what is in flight, who is being waited on, and what shipped this week.
-`marauder changelog <day>` is one day across every workstream. All three are rendered from
-`workstreams/*.json` alone — no network, no `.state/`, no clock — so they work on any clone
-and say the same thing twice.
+`marauder show <feature>` prints one feature's story: the date it points at, the open
+questions with whose move each is and the ticket bullet each is paired to, and every event
+in order with the evidence link that backs it. What is true of the feature is its
+`docs/product.md`, not the story. `marauder board` is what needs the user, then each
+feature that moved this week. `marauder changelog <day>` is one day across every feature.
+All three are rendered from the features' `work.json` alone — no network, no `.state/`, no
+clock — so they work on any clone and say the same thing twice.
 
 Read after retrieving, not instead of it: the journal entries the events link (their bodies
 say *why*), the rule rows the docs define, the code they name, and the ticket body via
 `mcp__linear__get_issue` — the body lives only in Linear and argus holds no key. Stop when
-the evidence answers the ask; a workstream question is one retrieval plus three to six
+the evidence answers the ask; a work question is one retrieval plus three to six
 reads, not twenty. The page is already the summary of its own events, so read only what has
 moved since the last event you can see explained.
 
 **If `bun run marauder` is denied** (Pensieve's Ask allows Read, Grep, Glob, `git log` and
-`git show`, plus the `marauder` read verbs): Read `workstreams/<slug>.json` directly — it is
-the record every page is rendered from, and its `events` list is the story in order; Glob
-`workstreams/*.json` when the slug is a guess; Read `marauder/board.md` for the same thing
-already written out. Grep `ticket: \[?ALD-nn` over `*/features/**/journal` and
+`git show`, plus the `marauder` read verbs): Read `<app>/features/<dir>/work.json` directly
+— it is the record every page is rendered from, and its `events` list is the story in
+order; Glob `*/features/**/work.json` for which features have one; Read
+`marauder/board.md` for the same thing already written out. Grep `ticket: \[?ALD-nn` over `*/features/**/journal` and
 `features: \[.*<feature>` for the feature; Grep `^\| BR-n \|` in the feature's docs; Glob
 `**/<basename>` in the checkout for a path token. Same evidence, more calls — note the
 denial once and carry on.
@@ -127,8 +126,8 @@ the record. Never restate the report's judgement as if it were a fact.
 **My call** — two sentences: what to do, and the next concrete action (who to ask, which
 entry to supersede, which ticket to file, which queue entry belongs where). When something
 the loop got wrong is in play, that second sentence is the correction in the terms section
-5's tool takes — "attach `1788949866.296519` to `history-subtask-rows` — Sam is describing
-the subtask rows, not History editing" — so that "do that" maps to exactly one call. Or the
+5's tool takes — "attach `1788949866.296519` to `admin/usage` — Sam is describing the
+History subtask rows" — so that "do that" maps to exactly one call. Or the
 exact words "the files don't say". Never perform the action; section 5 is how a correction
 reaches the user, section 6 how a new ticket does.
 
@@ -137,19 +136,18 @@ older than the landing, a ticket body).
 
 **Sources:** — one footer line of short labels separated by ` · `, one per thing read:
 `journal 2026-09-04 decided-history-rolls-up` · `history-tab-content.tsx @ origin/staging`
-· `workstreams/usage-page.json` · `ALD-6 in Linear`. Paths and line numbers live here and only
+· `admin/usage/work.json` · `ALD-6 in Linear`. Paths and line numbers live here and only
 here; the prose above names things the way a colleague would ("the 4 Sep decision",
 "the History tab component").
 
-A **workstream question** takes the same five parts, and the record answers most of them
-already: `done` and the stage per side are **The question**, and What I found is what has
-moved since — the last few events in the order they happened, an open question with the
-ticket bullet it waits on, a fact someone verified. Say what the record says and never
-rebuild the story from the journal entries its events already link. My call names the next
-open step; Sources leads with `marauder/<slug>.md`. When the work matches no workstream,
-answer from `accio find` and the Linear read as any other question, and let My call say
-that nothing is tracking it — without proposing one; section 5 is where a proposal comes
-from, and only when asked.
+A **work question** takes the same five parts, and the feature's record and docs answer
+most of them already: what the product doc says the feature does, and what the question
+expects of it, are **The question**; What I found is what has moved since — the last few
+events in the order they happened, an open question with the ticket bullet it waits on.
+Say what the record says and never rebuild the story from the journal entries its events
+already link. My call names the next open step; Sources leads with the feature's
+`work.json`. When the feature has nothing going on, answer from its docs, `accio find` and
+the Linear read as any other question, and let My call say that nothing is moving on it.
 
 Not allowed: narrating the work ("this is enough evidence, I have what I need"), lists
 of rule ids in prose (say "the seven usage rules it touches" unless rules were the
@@ -176,7 +174,7 @@ you recommend":
 >
 > **Not checked:** the two history hooks, and the Linear ticket for a later re-scope.
 >
-> Sources: journal 2026-09-04 decided-history-rolls-up · history-tab-content.tsx @ origin/staging · marauder/usage-page.md
+> Sources: journal 2026-09-04 decided-history-rolls-up · history-tab-content.tsx @ origin/staging · admin/usage/work.json
 
 ## 5. Correcting
 
@@ -189,34 +187,31 @@ front end is actually done" — or takes the recommendation section 4 just gave:
 "yes", "go ahead". Never on your own initiative, and never for something the answer only
 mentioned in passing.
 
-**What can be corrected.** Four things, and they are the four verbs a person has:
+**What can be corrected.** Two things, and they are the two verbs a person has:
 
-- **attach** — a queue entry belongs on a workstream that exists. It also teaches: the
-  thread, the tickets, the PRs and the words it used go onto that workstream's keys, so the
-  next message like it lands on its own. This is the common one.
-- **new** — a queue entry is the start of something nobody has opened yet. Only from a
-  `kind: "new"` entry, whose own words are already the proposed name.
+- **attach** — a queue entry belongs to a feature. It also teaches: the thread, the
+  tickets, the PRs and the words it used go onto that feature's keys, so the next message
+  like it lands on its own. A feature with nothing going on gets its record from it. This
+  is the common one.
 - **dismiss** — a queue entry belongs nowhere and the reason is all that survives it, so
   the reason is required and has to say more than "noise".
-- **stage** — a side has really got somewhere the events do not show. A stage a person sets
-  outranks what a landing implies until the next landing, which is exactly why it is theirs
-  and not yours.
 
-Anything else — cutting a workstream in two, parking one, editing an event — is not a
-correction you can propose. Say what you would change and leave it there.
+Anything else — editing an event, moving one between features — is not a correction you
+can propose. Say what you would change and leave it there. There is nothing to open, cut or
+advance: the feature already exists, and a stage is Linear's.
 
 **With the tool.** In Pensieve's Argus panel a tool named `propose_decision` is available.
-Call it once, with `{ id, action: "attach" | "new" | "dismiss" | "stage", slug?, name?,
-side?, stage?, reason }` — `id` is the queue entry's own id from
-`workstreams/_unsorted.json` (a Slack `ts`, `fe#417`), `slug` is required for `attach` and
-`stage`, `name` for `new`, and `reason` is the My-call sentence in ≤ 140 characters,
-required for `dismiss` and worth writing for every one: it is what the event keeps. One
+Call it once, with `{ id, action: "attach" | "dismiss", slug?, reason }` — `id` is the
+queue entry's own id from `queue/_unsorted.json` (a Slack `ts`, `fe#417`); for `attach`,
+`slug` carries the feature's directory (`admin/usage`) until Pensieve renames the field;
+and `reason` is the My-call sentence in ≤ 140 characters, required for `dismiss` and worth
+writing for every one: it is what the event keeps. One
 call per correction: if the ask carries two, propose the first and name the second.
 
 Then one sentence, and stop: "Proposed — confirm it on the card above." That sentence is
 the whole answer; the five parts in section 4 are for a question, not for a correction. The
 file lands when the user presses Confirm and the record changes on the next ingest, so
-never say the item is attached, dismissed, opened or moved, and never call the tool a
+never say the item is attached or dismissed, and never call the tool a
 second time to check whether it was.
 
 If it answers `ok: false`, report its `error` in one sentence and stop. No retry, no second
@@ -225,12 +220,12 @@ still settle it on the Unsorted page.
 
 **Without the tool.** In a terminal or mid-sweep no such tool exists, and the correction
 verbs are not yours even where the shell would run them. Say in one sentence what you would
-run — `marauder attach 1788949866.296519 history-subtask-rows`, and why — and stop. Do not
+run — `marauder attach 1788949866.296519 admin/usage`, and why — and stop. Do not
 run it, do not write `decisions/marauder/<id>.json`, and do not ask to be allowed to. Rule
 3 covers this; the verdict is not yours to record.
 
 **Sending a ticket to Foundry** is the same shape and the same rules: the button is on the
-workstream page beside the ticket, the file it writes is `decisions/send/<ticket>.json`,
+page beside the ticket in Pensieve, the file it writes is `decisions/send/<ticket>.json`,
 and asked to send one you say which ticket and stop. The sweep never sends, and neither do
 you.
 

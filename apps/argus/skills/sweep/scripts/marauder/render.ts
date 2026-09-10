@@ -1,15 +1,16 @@
 #!/usr/bin/env bun
 /**
- * marauder render — every page a person reads, from `workstreams/*.json` alone (ARG-155).
+ * marauder render — the pages a person reads, from the features' `work.json` alone
+ * (ARG-155, over features since ARG-164).
  *
- * Three pages. `board.md` says where every open workstream stands right now: what needs
- * the reader, what is in flight by area, what waits on someone else, what shipped this
- * week. `<slug>.md` is one workstream's story. `changelog/<day>.md` is what changed in the
- * project that day.
+ * `board.md` says what needs the reader, then what is going on in each feature that moved
+ * this week. `changelog/<day>.md` is what changed in the project that day, by feature.
+ * `marauder show <feature>` prints one feature's story; the page beside each feature's
+ * docs is ARG-166's, and so is the board's designed shape — this keeps the run green.
  *
  * Two rules hold the whole file together. **Nothing but the record is read** — no Slack,
  * no Linear, no git, no `.state/`; if a page needs one of them the record is incomplete
- * and that is the bug. And **the same record renders the same bytes**, so a tick that
+ * and that is the bug. And **the same record renders the same bytes**, so a run that
  * changed nothing writes nothing: `now` is passed in and floored to its day, and no page
  * carries a stamp.
  *
@@ -21,14 +22,12 @@
 import {
   instantOf,
   latestEvent,
-  sidesOf,
   type Milestone,
   type Milestones,
-  type Side,
-  type Stage,
+  type OpenQuestion,
   USER,
-  type Workstream,
-  type WorkstreamEvent,
+  type Work,
+  type WorkEvent,
 } from "./record.ts";
 
 export { USER };
@@ -79,31 +78,8 @@ export const formatStyleProblems = (file: string, problems: StyleProblem[]) =>
 
 // ---------------------------------------------------------------- words
 
-/**
- * How a side reads, per stage. The wording lives in one table so it can be edited without
- * touching a line of logic.
- */
-const STAGE_WORDS: Record<Side, Record<Stage, string>> = {
-  fe: {
-    asked: "the frontend has not been started",
-    decided: "the frontend is scoped and waiting to be built",
-    building: "the frontend is still in a PR",
-    landed: "the frontend is on staging",
-    verified: "the frontend is on staging and checked against the docs",
-    shipped: "the frontend has shipped",
-  },
-  be: {
-    asked: "the backend has not been started",
-    decided: "the backend is agreed and waiting to be built",
-    building: "the backend is still in a PR",
-    landed: "the backend is on dev",
-    verified: "the backend is on dev and checked against the docs",
-    shipped: "the backend has shipped",
-  },
-};
-
-/** how a feature dir is said out loud; anything unmapped falls back to its last segment */
-const AREA_WORDS: Record<string, string> = {
+/** how a feature is said out loud; anything unmapped is its last folder, in words */
+const FEATURE_WORDS: Record<string, string> = {
   "admin/usage": "Usage",
   "admin/invoicing": "Invoicing",
   "admin/clients": "Clients",
@@ -111,20 +87,22 @@ const AREA_WORDS: Record<string, string> = {
   entities: "Entities",
 };
 
-const titleCase = (s: string) => s.slice(0, 1).toUpperCase() + s.slice(1);
 const upperFirst = (s: string) => s.slice(0, 1).toUpperCase() + s.slice(1);
-export const areaOf = (w: Workstream): string => {
-  const first = w.features[0];
-  if (!first) return "Elsewhere";
-  return AREA_WORDS[first] ?? titleCase(first.split("/").at(-1)!);
-};
+export const featureTitle = (feature: string): string =>
+  FEATURE_WORDS[feature] ?? upperFirst(feature.split("/").at(-1)!.replace(/-/g, " "));
 
 const firstName = (person: string) => (person === USER.token ? "you" : person.split(/\s+/)[0]!);
+const owns = (person: string) => (person === USER.token ? USER.name : person);
 
-/** "The frontend is on staging; the backend is still in a PR." */
-export function stageSentence(w: Workstream): string {
-  const parts = sidesOf(w).map((s) => STAGE_WORDS[s][w.stage[s]!]);
-  return `${upperFirst(parts.join("; "))}.`;
+/**
+ * An open question as a sentence. What the reader was waiting on someone for is a phrase
+ * ("which roles a Usage row should show"), so it reads as who they are waiting on and for
+ * what; a question written as a sentence keeps its own words and says whose move it is.
+ */
+export function questionSentence(q: OpenQuestion): string {
+  const text = q.q.trim().replace(/[.]+$/, "");
+  if (q.owner && q.owner !== USER.token && /^[a-z]/.test(text)) return `You are waiting on ${firstName(q.owner)} for ${text}.`;
+  return `${upperFirst(text)}${/[?!]$/.test(text) ? "" : "."}${q.owner ? ` ${owns(q.owner)} to answer.` : ""}`;
 }
 
 // ---------------------------------------------------------------- days
@@ -154,6 +132,13 @@ const whenWord = (today: string, day: string) => {
   return `on ${longDate(day)}`;
 };
 
+/** the date the page puts in front of an event line — four words the sentence ceiling has to leave room for */
+export const whenLabel = (at: string) => {
+  const day = dayOf(at);
+  if (at.length === 10) return longDate(day);
+  return `${longDate(day)}, ${at.slice(11, 16)}`;
+};
+
 // ---------------------------------------------------------------- evidence
 
 /** a repo path is linked relative to the page it is on, so the same record renders anywhere */
@@ -170,7 +155,7 @@ const evidenceLabel = (ref: string) =>
 
 const evidenceLink = (ref: string, base: string) => link(evidenceLabel(ref), ref.startsWith("http") ? ref : base + ref);
 
-const sourceLabel = (e: WorkstreamEvent): string => {
+const sourceLabel = (e: WorkEvent): string => {
   const t = e.source?.type;
   if (t === "pr") return e.source!.ref.startsWith("be") ? "the backend PR" : "the frontend PR";
   if (t === "huddle") return "the huddle notes";
@@ -183,7 +168,7 @@ const sourceLabel = (e: WorkstreamEvent): string => {
  * One muted line under the sentence: links only, the ticket last so no line ever starts
  * with an id. A blank line above it keeps the renderer from joining it onto the sentence.
  */
-function evidenceLine(e: WorkstreamEvent | undefined, ctx: Ctx): string | null {
+function evidenceLine(e: WorkEvent | undefined, ctx: Ctx): string | null {
   if (!e) return null;
   const parts: string[] = [];
   if (e.source?.url && e.source.type !== "ticket") parts.push(link(sourceLabel(e), e.source.url));
@@ -196,24 +181,16 @@ function evidenceLine(e: WorkstreamEvent | undefined, ctx: Ctx): string | null {
 
 // ---------------------------------------------------------------- what goes where
 
-const isParked = (w: Workstream) => w.parked;
-const rank = { asked: 0, decided: 1, building: 2, landed: 3, verified: 4, shipped: 5 } as const;
-const allSidesLanded = (w: Workstream) => sidesOf(w).every((s) => rank[w.stage[s]!] >= rank.landed);
-
-export const asksForYou = (w: Workstream): WorkstreamEvent[] =>
+export const asksForYou = (w: Work): WorkEvent[] =>
   w.events.filter((e) => e.kind === "directed-at-person" && (e.to ?? []).includes(USER.token));
 
-export const questionsForYou = (w: Workstream) => w.open_questions.filter((q) => q.owner === USER.token);
+export const questionsForYou = (w: Work) => w.open_questions.filter((q) => q.owner === USER.token);
+const questionsForOthers = (w: Work) => w.open_questions.filter((q) => q.owner !== USER.token);
 
-const needsYou = (w: Workstream) => asksForYou(w).length > 0 || questionsForYou(w).length > 0;
-const waitsOnSomeone = (w: Workstream) => !!w.overlay && w.overlay.waiting_on !== USER.token;
-
-/** landed on every side it records, and the landing was inside the window */
-const shippedWithin = (w: Workstream, since: string) =>
-  allSidesLanded(w) && dayOf(instantOf(latestEvent(w)?.at ?? "")) >= since;
-
-const byNewest = (a: Workstream, b: Workstream) =>
-  instantOf(latestEvent(b)?.at ?? "").localeCompare(instantOf(latestEvent(a)?.at ?? ""));
+const needsYou = (w: Work) => asksForYou(w).length > 0 || questionsForYou(w).length > 0;
+const newestFirst = (a: WorkEvent, b: WorkEvent) => instantOf(b.at).localeCompare(instantOf(a.at));
+const byNewest = (a: Work, b: Work) =>
+  instantOf(latestEvent(b)?.at ?? b.updated).localeCompare(instantOf(latestEvent(a)?.at ?? a.updated)) || a.feature.localeCompare(b.feature);
 
 // ---------------------------------------------------------------- the board
 
@@ -221,131 +198,82 @@ type Block = { name: string; sentences: string[]; evidence: string | null };
 
 const blockLines = (b: Block): string[] => [`**${b.name}**`, "", ...b.sentences, ...(b.evidence ? ["", b.evidence] : [])];
 
-const overlaySentence = (w: Workstream): string | null =>
-  w.overlay ? `You are waiting on ${firstName(w.overlay.waiting_on)} for ${w.overlay.for}.` : null;
-
-/** name, at most two sentences from what last happened and what it waits on, then evidence */
-function boardBlock(w: Workstream, ctx: Ctx): Block {
-  const last = latestEvent(w);
-  const sentences = [last?.summary, overlaySentence(w)].filter((s): s is string => !!s).slice(0, 2);
-  return { name: w.name, sentences, evidence: evidenceLine(last, ctx) };
-}
-
-/** the asks and questions still standing, newest first, one block per workstream */
-function needsYouBlock(w: Workstream, ctx: Ctx): Block {
+/** the asks and questions still standing, newest first, one block per feature */
+function needsYouBlock(w: Work, ctx: Ctx): Block {
   const items = [
     ...asksForYou(w).map((e) => ({ at: instantOf(e.at), text: e.summary, e })),
-    ...questionsForYou(w).map((q) => ({ at: instantOf(q.at), text: q.q, e: latestEvent(w) })),
+    ...questionsForYou(w).map((q) => ({ at: instantOf(q.at), text: questionSentence(q), e: latestEvent(w) })),
   ].sort((a, b) => b.at.localeCompare(a.at));
-  return { name: w.name, sentences: items.slice(0, 2).map((i) => i.text), evidence: evidenceLine(items[0]?.e, ctx) };
+  return { name: featureTitle(w.feature), sentences: items.slice(0, 2).map((i) => i.text), evidence: evidenceLine(items[0]?.e, ctx) };
 }
 
-function milestoneSentence(ws: Workstream[], milestones: Milestones, ctx: Ctx): string | null {
-  const pointedAt = new Set(ws.map((w) => w.milestone).filter(Boolean));
+function milestoneSentence(work: Work[], milestones: Milestones, ctx: Ctx): string | null {
+  const pointedAt = new Set(work.map((w) => w.milestone).filter(Boolean));
   const soon = Object.entries(milestones)
-    .filter(([slug, m]) => pointedAt.has(slug) && daysBetween(ctx.today, m.date) >= 0 && daysBetween(ctx.today, m.date) <= 7)
+    .filter(([key, m]) => pointedAt.has(key) && daysBetween(ctx.today, m.date) >= 0 && daysBetween(ctx.today, m.date) <= 7)
     .sort((a, b) => a[1].date.localeCompare(b[1].date))[0];
   if (!soon) return null;
   const m = soon[1] as Milestone;
   return `${firstName(m.owner)}'s ${m.name.toLowerCase()} is ${whenWord(ctx.today, m.date)}, ${longDate(m.date)}.`;
 }
 
-export type BoardInput = { workstreams: Workstream[]; milestones: Milestones; now: string };
+export type BoardInput = { work: Work[]; milestones: Milestones; now: string };
 
-/** the one page that says where everything stands, in the order a reader needs it */
-export function renderBoard({ workstreams, milestones, now }: BoardInput): string {
+/** how many of a feature's events this week the board says, newest first */
+const BOARD_EVENTS = 3;
+
+/**
+ * The one page that says where everything stands: what needs the reader, then each
+ * feature that moved in the last seven days or is waiting on someone, newest first.
+ */
+export function renderBoard({ work, milestones, now }: BoardInput): string {
   const ctx: Ctx = { now, today: dayOf(now), base: "../" };
   const since = addDays(ctx.today, -7);
-  const live = workstreams.filter((w) => !isParked(w));
-
-  const needs = live.filter(needsYou).sort(byNewest);
-  const taken = new Set(needs.map((w) => w.slug));
-  const shipped = live.filter((w) => !taken.has(w.slug) && shippedWithin(w, since)).sort(byNewest);
-  for (const w of shipped) taken.add(w.slug);
-  const waiting = live.filter((w) => !taken.has(w.slug) && waitsOnSomeone(w)).sort(byNewest);
-  for (const w of waiting) taken.add(w.slug);
-  const inFlight = live.filter((w) => !taken.has(w.slug)).sort(byNewest);
+  const thisWeek = (w: Work) => w.events.filter((e) => dayOf(instantOf(e.at)) >= since).sort(newestFirst);
 
   const out: string[] = ["# Where the work stands", ""];
-  const deadline = milestoneSentence(live, milestones, ctx);
+  const deadline = milestoneSentence(work, milestones, ctx);
   if (deadline) out.push(deadline, "");
 
-  const section = (heading: string, blocks: Block[]) => {
-    if (!blocks.length) return;
-    out.push(`## ${heading}`, "");
-    for (const b of blocks) out.push(...blockLines(b), "");
-  };
-
-  section("Needs you", needs.map((w) => needsYouBlock(w, ctx)));
-
-  if (inFlight.length) {
-    out.push("## In flight", "");
-    const areas = new Map<string, Workstream[]>();
-    for (const w of inFlight) areas.set(areaOf(w), [...(areas.get(areaOf(w)) ?? []), w]);
-    for (const [area, ws] of [...areas].sort((a, b) => byNewest(a[1][0]!, b[1][0]!))) {
-      out.push(`### ${area}`, "");
-      for (const w of ws) out.push(...blockLines(boardBlock(w, ctx)), "");
-    }
+  const needs = work.filter(needsYou).sort(byNewest);
+  if (needs.length) {
+    out.push("## Needs you", "");
+    for (const w of needs) out.push(...blockLines(needsYouBlock(w, ctx)), "");
   }
 
-  if (waiting.length) {
-    out.push("## Waiting on others", "");
-    const people = new Map<string, Workstream[]>();
-    for (const w of waiting) {
-      const who = w.overlay!.waiting_on;
-      people.set(who, [...(people.get(who) ?? []), w]);
-    }
-    for (const [who, ws] of [...people].sort((a, b) => byNewest(a[1][0]!, b[1][0]!))) {
-      out.push(`### ${who}`, "");
-      for (const w of ws) out.push(...blockLines(boardBlock(w, ctx)), "");
-    }
-  }
-
-  section("Shipped this week", shipped.map((w) => {
-    const last = latestEvent(w);
-    return { name: w.name, sentences: [last!.summary], evidence: evidenceLine(last, ctx) };
-  }));
-
-  return `${out.join("\n").replace(/\n+$/, "")}\n`;
-}
-
-// ---------------------------------------------------------------- one workstream
-
-/** the story of one workstream: what it is, where it stands, what is open, what happened */
-export function renderWorkstream(w: Workstream, milestones: Milestones, now: string): string {
-  const ctx: Ctx = { now, today: dayOf(now), base: "../" };
-  const out: string[] = [`# ${w.name}`, ""];
-
-  const who: string[] = [];
-  if (w.driver) who.push(`${w.driver === USER.name ? "You drive" : `${w.driver} drives`} this`);
-  if (w.wants.length) who.push(`${w.wants.join(" and ")} ${w.wants.length > 1 ? "want" : "wants"} it`);
-  if (who.length) out.push(`${who.join(", and ")}.`, "");
-  out.push(`Done means: ${w.done}`, "");
-  out.push(stageSentence(w), "");
-
-  const m = w.milestone ? milestones[w.milestone] : undefined;
-  if (m) out.push(`${firstName(m.owner)}'s ${m.name.toLowerCase()} is ${whenWord(ctx.today, m.date)}, ${longDate(m.date)}.`, "");
-  if (w.overlay) out.push(`You are waiting on ${firstName(w.overlay.waiting_on)} for ${w.overlay.for}.`, "");
-  if (w.parked) out.push("This is parked.", "");
-
-  if (w.open_questions.length) {
-    out.push("## Still open", "");
-    for (const q of w.open_questions) out.push(`- ${q.q}${q.owner ? ` ${owns(q.owner)} to answer.` : ""}`);
+  const moving = work.filter((w) => thisWeek(w).length || questionsForOthers(w).length).sort(byNewest);
+  for (const w of moving) {
+    const events = thisWeek(w);
+    out.push(`## ${featureTitle(w.feature)}`, "");
+    for (const e of events.slice(0, BOARD_EVENTS)) out.push(e.summary);
+    for (const q of questionsForOthers(w)) out.push(questionSentence(q));
+    const ev = evidenceLine(events[0], ctx);
+    if (ev) out.push("", ev);
     out.push("");
   }
 
-  if (w.facts.length) {
-    out.push("## What is settled", "");
-    for (const f of w.facts) {
-      const cite = f.evidence ? ` ${evidenceLink(f.evidence, ctx.base)}` : "";
-      out.push(`- ${f.fact}${cite}`);
-    }
+  if (!needs.length && !moving.length) out.push("Nothing moved this week.", "");
+  return `${out.join("\n").replace(/\n+$/, "")}\n`;
+}
+
+// ---------------------------------------------------------------- one feature
+
+/** the story of one feature's work: the date it points at, what is open, what happened */
+export function renderFeature(w: Work, milestones: Milestones, now: string): string {
+  const ctx: Ctx = { now, today: dayOf(now), base: "../" };
+  const out: string[] = [`# ${featureTitle(w.feature)}`, ""];
+
+  const m = w.milestone ? milestones[w.milestone] : undefined;
+  if (m) out.push(`${firstName(m.owner)}'s ${m.name.toLowerCase()} is ${whenWord(ctx.today, m.date)}, ${longDate(m.date)}.`, "");
+
+  if (w.open_questions.length) {
+    out.push("## Still open", "");
+    for (const q of w.open_questions) out.push(`- ${questionSentence(q)}`);
     out.push("");
   }
 
   out.push("## What happened", "");
-  const events = [...w.events].sort((a, b) => instantOf(b.at).localeCompare(instantOf(a.at)));
-  for (const e of events) {
+  for (const e of [...w.events].sort(newestFirst)) {
     out.push(`**${whenLabel(e.at)}** — ${e.summary}`);
     const ev = evidenceLine(e, ctx);
     if (ev) out.push("", ev);
@@ -354,33 +282,25 @@ export function renderWorkstream(w: Workstream, milestones: Milestones, now: str
   return `${out.join("\n").replace(/\n+$/, "")}\n`;
 }
 
-const owns = (person: string) => (person === USER.token ? USER.name : person);
-/** the date the page puts in front of an event line — four words the sentence ceiling has to leave room for */
-export const whenLabel = (at: string) => {
-  const day = dayOf(at);
-  if (at.length === 10) return longDate(day);
-  return `${longDate(day)}, ${at.slice(11, 16)}`;
-};
-
 // ---------------------------------------------------------------- the day
 
 /** a raw Slack-quote summary has no terminal punctuation; joining two of them with a
  *  bare space reads as one run-on sentence and can trip the 25-word ceiling */
 const asSentence = (s: string) => (/[.!?]$/.test(s) ? s : `${s}.`);
 
-/** what changed in the project that day, and nothing about workstreams that did not move */
-export function renderChangelog(workstreams: Workstream[], day: string): string {
+/** what changed in the project that day, by feature, and nothing about features that did not move */
+export function renderChangelog(work: Work[], day: string): string {
   const ctx: Ctx = { now: `${day}T00:00:00Z`, today: day, base: "../../" };
-  const moved = workstreams
+  const moved = work
     .map((w) => ({ w, events: w.events.filter((e) => dayOf(e.at) === day) }))
     .filter((x) => x.events.length)
-    .sort((a, b) => instantOf(b.events.at(-1)!.at).localeCompare(instantOf(a.events.at(-1)!.at)));
+    .sort((a, b) => instantOf(b.events.at(-1)!.at).localeCompare(instantOf(a.events.at(-1)!.at)) || a.w.feature.localeCompare(b.w.feature));
 
   const out: string[] = [`# ${longDate(day)}`, ""];
   if (!moved.length) return `${out.join("\n")}Nothing moved.\n`;
   for (const { w, events } of moved) {
     const sorted = [...events].sort((a, b) => instantOf(a.at).localeCompare(instantOf(b.at)));
-    out.push(`**${w.name}**`, "", sorted.map((e) => asSentence(e.summary)).join(" "));
+    out.push(`**${featureTitle(w.feature)}**`, "", sorted.map((e) => asSentence(e.summary)).join(" "));
     const ev = evidenceLine(sorted.at(-1), ctx);
     if (ev) out.push("", ev);
     out.push("");
