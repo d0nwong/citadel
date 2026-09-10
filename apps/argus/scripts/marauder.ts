@@ -19,6 +19,9 @@
  *   marauder show <feature>           one feature's story — the page beside its docs, printed
  *   marauder changelog [day]          what changed in the project that day
  *   marauder render                   the board, today's changelog and every feature's page, which is what a run writes
+ *   marauder apply                    the decision files applied now, then render — what Pensieve runs at the click
+ *
+ * Every verb that writes holds `queue/.lock` for its whole run, so two never interleave.
  *
  * `new`, `split`, `stage`, `check` and `propose-split` went with the workstreams: there is
  * nothing to open, cut or advance when the feature is the unit.
@@ -36,6 +39,7 @@ import { appRoots } from "./lib/journal.ts";
 import { readStamp } from "./lib/stamps.ts";
 import { attach, defaultWho, dismiss, pairPending, recordHeld, recordTicket, resolveQuestion, suggest } from "../skills/sweep/scripts/marauder/correct.ts";
 import { apply, formatApplied, readDecisions } from "../skills/sweep/scripts/marauder/decisions.ts";
+import { acquire } from "../skills/sweep/scripts/marauder/lock.ts";
 import { applyHuddle, readNotes } from "../skills/sweep/scripts/marauder/huddle.ts";
 import { formatPlan, heldEvent, planTicket, type TicketPlan } from "../skills/sweep/scripts/marauder/ticket-diff.ts";
 import { checkStyle, FEATURE_PAGE, featurePagePath, featureTitle, formatStyleProblems, renderBoard, renderChangelog, renderFeature, OUT_DIR, type FeatureMetas } from "../skills/sweep/scripts/marauder/render.ts";
@@ -60,6 +64,7 @@ const HELP = `marauder — where the work stands
   marauder show <feature>           <app>/features/<feature>/board.md — one feature's story, printed
   marauder changelog [YYYY-MM-DD]   marauder/changelog/<day>.md — what changed that day, by feature
   marauder render                   the board, today's changelog, and a page beside each feature's docs
+  marauder apply                    the decisions Pensieve wrote, applied now, then render
 
   <feature> is the feature's directory under its app's features/ — admin/usage, tasks.
 
@@ -130,6 +135,27 @@ if (RETIRED[verb]) {
 const since = flag("--since");
 
 /**
+ * The verbs that write take the lock for the whole run, `--dry-run` included — a dry run
+ * reads a record another run may be half-way through writing. The read verbs never wait.
+ * Every exit path below is a `process.exit`, so the lock goes back from the exit hook.
+ */
+const WRITERS = ["ingest", "apply", "render", "huddle", "attach", "suggest", "dismiss", "pending", "resolved", "ticket", "held"];
+if (WRITERS.includes(verb)) {
+  try {
+    const release = await acquire(root);
+    process.on("exit", release);
+    for (const sig of ["SIGINT", "SIGTERM"] as const)
+      process.on(sig, () => {
+        release();
+        process.exit(sig === "SIGINT" ? 130 : 143);
+      });
+  } catch (err) {
+    console.error(`marauder: ${(err as Error).message}`);
+    process.exit(1);
+  }
+}
+
+/**
  * `decisions/marauder/*.json` — what a person decided in Pensieve — applied to the records
  * through the same correction functions the command line goes through (ARG-160 AC4). The
  * files are left where they are: they are the history of who decided what, and the entry
@@ -186,6 +212,28 @@ if (verb === "ingest") {
   } catch (err) {
     console.error(`marauder: ${(err as Error).message}`);
     process.exit(1);
+  }
+}
+
+/**
+ * apply — the decision files, applied and rendered now rather than at the next tick's
+ * ingest (ARG-168). Pensieve runs it at the click. Nothing to apply writes no byte.
+ */
+let decided: { applied: number; written: string[] } | undefined;
+if (verb === "apply") {
+  try {
+    decided = await applyDecisions(root, dryRun);
+  } catch (err) {
+    console.error(`marauder: ${(err as Error).message}`);
+    process.exit(1);
+  }
+  if (!decided.applied) {
+    console.error(`marauder: nothing to apply${dryRun ? " · (dry run)" : ""}`);
+    process.exit(0);
+  }
+  if (dryRun) {
+    console.error(`marauder: ${decided.applied} decided · the board and pages would be rendered · (dry run)`);
+    process.exit(0);
   }
 }
 
@@ -336,7 +384,7 @@ try {
     process.stdout.write(text);
     process.exit(problems.length ? 1 : 0);
   } else if (verb === "changelog") written.push(await changelog(args[1] ?? now.slice(0, 10)));
-  else if (verb === "render") {
+  else if (verb === "render" || verb === "apply") {
     written.push(await board());
     written.push(await changelog(now.slice(0, 10)));
     for (const w of work) written.push(await featurePage(w));
@@ -348,6 +396,11 @@ try {
 
   if (verb === "board" || verb === "changelog") process.stdout.write(written[0]!.text);
   const changed = written.filter((w) => w.changed);
+  if (decided) {
+    const files = decided.written.length + changed.length + removed.length;
+    console.error(`marauder: ${decided.applied} decided · ${files} file${files === 1 ? "" : "s"} written`);
+    process.exit(problems.length ? 1 : 0);
+  }
   console.error(
     `marauder: ${written.length} page${written.length === 1 ? "" : "s"} · ${changed.length} changed` +
       `${changed.length && verb === "render" ? ` (${changed.map((c) => c.path).join(", ")})` : ""}` +
