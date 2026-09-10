@@ -35,21 +35,22 @@ export type Score = {
   wrongOnes: { id: string; by: string; text: string; expected: string | null; got: string | null }[];
 };
 
-export function score(got: Map<string, string | null>, want: Map<string, string | null>, items: { id: string; by: string; text: string }[]): Score {
+/** `got` maps an id to every feature it was placed on; a landing may be on several */
+export function score(got: Map<string, string[]>, want: Map<string, string | null>, items: { id: string; by: string; text: string }[]): Score {
   const s: Score = { expected: 0, hit: 0, wrong: 0, unplaced: 0, none: 0, noneUnplaced: 0, nonePlaced: 0, unanswered: 0, wrongOnes: [] };
   for (const i of items) {
     if (!want.has(i.id)) { s.unanswered++; continue; }
     const w = want.get(i.id)!;
-    const g = got.get(i.id) ?? null;
+    const g = got.get(i.id) ?? [];
     if (w === null) {
       s.none++;
-      if (g === null) s.noneUnplaced++;
-      else { s.nonePlaced++; s.wrongOnes.push({ ...i, expected: null, got: g }); }
+      if (!g.length) s.noneUnplaced++;
+      else { s.nonePlaced++; s.wrongOnes.push({ ...i, expected: null, got: g.join("+") }); }
     } else {
       s.expected++;
-      if (g === w) s.hit++;
-      else if (g === null) { s.unplaced++; s.wrongOnes.push({ ...i, expected: w, got: null }); }
-      else { s.wrong++; s.wrongOnes.push({ ...i, expected: w, got: g }); }
+      if (g.includes(w)) s.hit++;
+      else if (!g.length) { s.unplaced++; s.wrongOnes.push({ ...i, expected: w, got: null }); }
+      else { s.wrong++; s.wrongOnes.push({ ...i, expected: w, got: g.join("+") }); }
     }
   }
   return s;
@@ -72,12 +73,13 @@ async function deterministic() {
   const features = await listFeatures();
   const ledgers = new Map<string, Ledger>();
   let threads: ThreadMap = {};
-  const got = new Map<string, string | null>();
+  const got = new Map<string, string[]>();
+  const add = (id: string, f: string) => got.set(id, [...(got.get(id) ?? []), f]);
   for (const b of batches) {
     const p = placeBatch(b, ledgers, threads, features, new Date(b.pulled_at));
     for (const s of p.slices.values()) {
-      for (const m of s.messages) got.set(m.ts, s.feature);
-      for (const l of s.landings) if (!got.has(l.ref)) got.set(l.ref, s.feature);
+      for (const m of s.messages) add(m.ts, s.feature);
+      for (const l of s.landings) add(l.ref, s.feature);
     }
     threads = { ...threads, ...p.threads };
   }
