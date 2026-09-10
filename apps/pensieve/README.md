@@ -1,31 +1,34 @@
 # pensieve
 
-The reading room for [argus](https://github.com/d0nwong/argus) — a UI over
-the blackboard the sweep maintains: the **board** (where every piece of work stands) and a
-page per **workstream**, the **Unsorted** queue behind them, **sweep reports** (the
-Needs-you queue), **Slack digests**, the per-landing **change journal**, and the dual-tier
-**feature docs**.
+The reading room for [argus](https://github.com/d0nwong/argus) — a UI over the
+blackboard the sweep maintains, where the feature is the unit: the **board** (what needs
+you, then each feature with something going on this week), a page per **feature** beside
+its docs, the **Unsorted** queue behind them, the per-landing **change journal**, the
+dual-tier **feature docs**, and the **archive** of what the loop wrote before 2026-09-09.
 
-The front page is `marauder/board.md` as argus rendered it, with each workstream's name
-linked to `/work/<slug>` and every path in it pointed at the page that serves it. The sweep
-log — the Needs-you queue and the day's report — is at `/reports`.
+The front page is `marauder/board.md` as argus rendered it, with each feature's name linked
+to `/features/<dir>` and every path in it pointed at the page that serves it. A feature's
+page is `<app>/features/<dir>/board.md`, rendered beside the feature's `docs/` from the
+`work.json` in the same directory, with the record's milestone, open questions, tickets
+and PRs in the rail beside it.
 
-Pensieve is read-only by design, with one exception. The sweep in argus owns every
-file it shows; this app only parses and renders them, so there is never a second writer to
-the workflow state. The exception is `decisions/`, which it writes in two shapes. The queue
-at `/reports` lists the sweep's Needs-you points and lets you *dismiss* one with a reason
-(`ignored`), *approve* one in the Verify group (`verified`), or *send* one to
-[Foundry](https://github.com/d0nwong/foundry). **Unsorted** lists what argus took in and
-could not attach to a workstream, and lets you *attach* one, open a *new* workstream from
-it, or *dismiss* it with a reason; the next `marauder ingest` applies that file through its
-correction functions, drops the entry and commits. Either way it is one JSON file under
-`decisions/` that argus reads back. Nothing else is written into the blackboard from
-here — not `workstreams/`, `marauder/`, the journal, docs, reports or tickets; those still
-go through argus, Linear or Slack.
+Pensieve is read-only by design, with one exception. The sweep in argus owns every file it
+shows; this app only parses and renders them, so there is never a second writer to the
+workflow state. The exception is `decisions/`, which it writes in two shapes. **Unsorted**
+lists what argus took in and could not attach to a feature, and lets you *attach* one to a
+feature or *dismiss* it with a reason. A **feature page** lets you *verify* what an event
+asked you to confirm, or *send* one of its tickets to
+[Foundry](https://github.com/d0nwong/foundry). Either way it is one JSON file under
+`decisions/` that argus reads back: today the next `marauder ingest` applies it and
+commits it, and once ARG-168 and ARG-169 land the click itself runs `marauder apply`, so
+the record and the pages change before the page re-reads them. Nothing else is written
+into the blackboard from here — not `work.json`, `queue/`, `marauder/`, the journal,
+docs or tickets; those still go through argus, Linear or Slack.
 
 **Ask** runs Claude Code over the checkout with a read-only tool set and keeps each
 conversation as one file under `PENSIEVE_HOME` (default `~/.pensieve`) — outside the
-blackboard, so the rule above holds. The server half landed in LIA-102, the pages in LIA-103.
+blackboard, so the rule above holds. It can propose a correction, a send or a new ticket;
+a click on the card is what writes.
 
 ## Stack
 
@@ -79,15 +82,13 @@ in the environment, which wins when set. With neither, Ask reports itself off wi
 reason. `PENSIEVE_HOME` is where its conversations go; nothing about Ask touches the
 checkout — `git status` there is the same before and after a run.
 
-Sending a point needs Foundry's trigger-API token: `foundry auth --api` in the Foundry repo
+Sending a ticket needs Foundry's trigger-API token: `foundry auth --api` in the Foundry repo
 prints one, and `FOUNDRY_API_TOKEN` in this repo's `.env` is where Pensieve reads it from —
 the environment and nowhere else, fresh on every request. `FOUNDRY_URL` defaults to
-`http://localhost:3777`. With no token, the queue still lets you dismiss or approve a point —
-Send is shown off, with the reason.
+`http://localhost:3777`. With no token, Unsorted and Verify still work — Send is shown off, with the reason.
 
 Filing a ticket from a proposal card needs `LINEAR_API_KEY` in the same `.env` — a personal
-API key from linear.app (Settings → Security & access), which files into the Liamai team as
-the key's owner. Without it a proposal is still checked against the last project list
+API key from linear.app (Settings → Security & access), which files into Linear as the key's owner. Without it a proposal is still checked against the last project list
 Pensieve cached, and File is shown off with the reason.
 
 Production, without a container:
@@ -132,14 +133,14 @@ state is `/data` on the named volume `pensieve-home`, so conversations survive
 
 | Route | Source in argus |
 |---|---|
-| `/` Today | the queue: `reports/points.json` with `decisions/` laid over it, in three sections by who moves a point — Your call (Decide + Verify), Waiting on others (Confirm + On hold), Housekeeping — with Approve (Verify group), Send and Dismiss; grouped by arc once points carry one, unarced last; then `reports/<latest>.md` without its Needs-you section, and a link to `digests/<latest>.md` |
-| `/arcs` | every `arcs/<slug>.md` — open arcs first with their whole "Where we are" paragraph, open count and last rewrite; closed ones collapsed below |
-| `/arcs/:slug` | one arc: the paragraph, Open as live rows from `points.json` with the queue's controls, Landed with each Evidence path linked, plus Close and Ask |
-| `/reports`, `/reports/:day` | `reports/YYYY-MM-DD.md` — one per day, overwritten each tick |
-| `/digests`, `/digests/:day` | `digests/YYYY-MM-DD.md` |
+| `/` Board | `marauder/board.md` as the sweep rendered it: the milestone, **Needs you**, one section per feature with an event this week (its name linking to `/features/<dir>`), then **Waiting on others** by owner; the header carries the Unsorted count |
+| `/features` | every `<app>/features/**/work.json` — each feature with something going on, by its manifest name, and when it last moved |
+| `/features/<dir>` | one feature: `<app>/features/<dir>/board.md` as rendered beside its docs, the `work.json` beside it in the rail (milestone, open questions, tickets, PRs), the asks with **Verify** and the tickets with **Send** above, and Ask opening with `?feature=` |
+| `/unsorted` | `queue/_unsorted.json` with `decisions/marauder/` laid over it — every entry newest first with its words, its source and the features it could have been, the select already on argus's suggestion; a decided row wears its verdict until argus applies it |
 | `/journal` | every `<app>/features/**/journal/**/*.md` — frontmatter only, filterable by app / day / feature / status / text |
 | `/journal/:feature/:slug` | one entry, frontmatter as marginalia |
 | `/docs`, `/docs/:feature?tier=` | `<app>/features/**/docs/{product,arch}.md`, grouped by app, with `last_verified` ages |
+| `/archive` (`/reports`, `/digests`, `/arcs`) | what the loop wrote before 2026-09-09 — a sweep report and a Slack digest per day, and the arcs — readable as history, written by nothing |
 
 `<app>` is discovered, not configured: any directory one or two levels under
 `WORKSPACE_DIR` holding a `features/` tree is an app — `foundry` and `pensieve` are one
@@ -153,45 +154,62 @@ journal entries (`[[YYYY-MM-DD]]` to a day view), and HTML comments — the
 
 ## What it writes
 
-Into the blackboard, only `decisions/<group>/<slug>.json`, one per point acted on from
-the home page or from the card an Ask proposes (below):
+Into the blackboard, only `decisions/`, in two groups, one file per click — from
+Unsorted, from a feature page, or from the card an Ask proposes (below):
 
 ```json
-{ "point": "decide/lia-86", "action": "sent", "at": "2026-09-05T10:12:00.000Z",
-  "subject": "LIA-86", "job": { "id": "…", "url": "http://localhost:3777/" } }
+{ "id": "1788949866.296519", "action": "attach", "feature": "admin/usage",
+  "reason": "Sam's subtask rows are the usage history", "at": "2026-09-10T10:12:00.000Z", "by": "liam" }
 ```
 
-`action` is `"ignored"` (with a `reason`), `"sent"` (with the Foundry `job`), or
-`"verified"` (`reason` optional). The file is written to a temp name in the same directory
-and renamed into place, so the sweep never reads half of one, and it is never edited
-afterwards by either side. The page merges these files with `points.json` itself rather than
-trusting the sweep's `decision` field alone, so a point decided a minute ago shows as decided
-before the next tick re-emits the file.
+`decisions/marauder/<id>.json` is a verdict on what the loop could not settle: `attach`
+(with the `feature`, a directory under an app's `features/`), `dismiss` (with a
+`reason`), or `verified` — the odd one, whose `id` names an *event* rather than a queue
+entry: the user's go-ahead for the one edit a `directed-at-person` event asked about.
+`id` is the entry's or the event's own name, folded into a file name since a Slack `ts`
+is not a path segment; the id inside the file is the one that counts.
+`decisions/send/<ticket>.json`, `{ ticket, action: "sent", job, at, by }`, is a ticket
+handed to Foundry; nothing applies it, and the sweep's ticket pass reads it to keep off a
+ticket Foundry is running.
 
-*Verify* is the Verify group's own verdict — that group is an inference the sweep drew and is
-forbidden from acting on ("report first, edit after the user confirms"), so its hint reads
-*the sweep thinks, you confirm*. Verifying says the reading is right, which licenses the next
-tick to make the edit the point names and record it against the point id (LIA-114). The note
-is optional: the point's own text is the instruction, so a confirmation needs no argument the
-way a dismissal does. The writer mints the verb for the Verify group only — a confirmation
-means nothing on a point whose ask was never an inference — while the reader accepts it
-anywhere, so a hand-written file stays readable. Verify never touches Foundry, so it works
-with `FOUNDRY_API_TOKEN` unset, as Ignore does.
+Every file is written to a temp name in the same directory and renamed into place, so the
+sweep never reads half of one, and it is never edited afterwards by either side. The pages
+lay these files over what they read, so a row decided a minute ago wears its verdict
+before argus has applied it.
+
+Today the verdict reaches the record on the sweep's next tick: `marauder ingest` applies
+each file through the same correction functions the command line goes through, then the
+tick commits the file untouched as the history of who decided what. Going forward the
+click applies it (ARG-169, filed): after the write, `decideUnsorted` and Verify run
+`bun run marauder apply` in `WORKSPACE_DIR` — argus's own verb (ARG-168), which applies
+the decision files and renders the pages under the lock every writing verb of the sweep
+holds — and answer `{ ok, applied, note? }`. When the lock is busy or the run fails, the
+file is still written, the row wears its verdict with the note, and the next tick applies
+it as today. Send is unchanged, and Ask stays read-only.
+
+*Verify* answers what a `directed-at-person` event asked — an inference the sweep drew and
+is forbidden from acting on ("report first, edit after the user confirms"): a held edit on
+a ticket Foundry is running, a fact that may have unsaid a Scope bullet. Verifying says the
+reading is right; the next ingest stamps the event `confirmed`, and the ticket pass makes
+exactly the edit the event named, once. The note is optional: the event's own text is the
+instruction, so a confirmation needs no argument the way a dismissal does. Verify never
+touches Foundry, so it works with `FOUNDRY_API_TOKEN` unset, as Dismiss does.
 
 *Send* is one `POST /api/jobs` to Foundry with `{ ticketId, repo }` — no instructions;
 Foundry composes the brief from the ticket and claims it in Linear — and an
-`Idempotency-Key` equal to the point id, so a double click or a retry after a timeout
+`Idempotency-Key` equal to the ticket key, so a double click or a retry after a timeout
 answers the job the first call made and writes the file once. A Foundry error (`400`,
 `401`, `409`, `503`, or unreachable) is shown with its message and writes nothing; a `409`
-names the job already holding the ticket. Send is offered only on a point with a `ticket`;
-filing one is the sweep's job, not this page's. After a send the page polls
+names the job already holding the ticket. Send is offered on a feature page beside a ticket nobody has started — Linear's Backlog
+or Todo — with no `decisions/send/<ticket>.json` yet; filing one is the sweep's job, or
+Ask's proposal card. After a send the page polls
 `GET /api/jobs/:id` every few seconds while the job is queued or running, then shows its
 final status and PR.
 
 The repo is picked, not typed. The loader reads `GET /api/repos` server-side — the token
-never leaves the server, so the list travels with the points — and the form is a select
-over what Foundry answered for that page load, opened on the point's own `repo` when that
-names one of them (by name or by path) and on nothing when it does not, since a repo
+never leaves the server, so the list travels with the page — and the form is a select
+over what Foundry answered for that page load, opened on the repo the page suggests for that
+ticket when that names one of them (by name or by path) and on nothing when it does not, since a repo
 Foundry does not track is a `400` waiting to happen. Nothing re-validates the choice: it
 came from Foundry, and `POST /api/jobs` stays the authority. A Foundry that cannot answer
 with a list at all — unreachable, or old enough to have no such route — costs the page
@@ -207,16 +225,15 @@ read-only allowlist (`src/lib/ask-tools.ts`): `Read`, `Grep`, `Glob`, `Skill`, `
 `BE_REPO`, both as `~/…` and as the absolute path, since a `Bash(...)` rule is a literal
 command prefix), `bun run accio …` (its `sync` and `map` verbs denied), and the hosted
 Linear server's read tools (`mcp__linear__get_issue`, `list_issues`, `list_comments`, …);
-every Linear write tool is denied by name. One tool is bridged into the run from Pensieve
-itself, `propose_decision`, allowed as `mcp__tanstack__propose_decision` (below). It sees
-argus's skills (`ask`, `sweep`,
-`slack-digest`, …) because argus links them into its own `.claude/skills`, and its
+every Linear write tool is denied by name. Two tools are bridged into the run from Pensieve itself, `propose_decision` and
+`propose_ticket`, allowed as `mcp__tanstack__…` (below). It sees
+argus's skills (`ask`, `sweep`, `linear-ticket`, …) because argus links them into its own `.claude/skills`, and its
 `.mcp.json` because `settingSources` is `['project']`. A system prompt is appended to
 Claude Code's own (`ASK_SYSTEM_PROMPT`): the session is told it is a web panel with no
-terminal and no permission dialog, to load the `ask` skill and retrieve with `accio point`
-/ `accio ticket` / `accio journal`, to cite every path, and that it cannot write, edit a
+terminal and no permission dialog, to load the `ask` skill and retrieve with `marauder show <feature>` /
+`marauder board` / `marauder changelog`, to cite every path, and that it cannot write, edit a
 ticket or run the sweep — so a denied tool is reported in one sentence, never relayed as a
-request for approval — and that a verdict on a point is proposed, never performed. The
+request for approval — and that a correction, a send or a ticket is proposed, never performed. The
 answer streams back as SSE over a Start server function, so
 `useChat({ fetcher })` reads it directly.
 
@@ -225,7 +242,7 @@ that keeps one conversation per file:
 
 ```
 $PENSIEVE_HOME/conversations/<threadId>.json
-{ "threadId", "messages": [ …model messages… ], "metadata": { "sessionId", "point"? }, "createdAt", "updatedAt" }
+{ "threadId", "messages": [ …model messages… ], "metadata": { "sessionId", "feature"? }, "createdAt", "updatedAt" }
 ```
 
 The user turn is written when the run starts, the partial answer while it streams, and the
@@ -263,42 +280,31 @@ path or pattern, and a second question sent while the first is answered waits in
 Stop — and a reload mid-answer, which drops the request the same way — ends the run and
 keeps the partial answer; the next question resumes the same Claude session. With no
 credential the composer is disabled and says what to do. Delete asks once and removes the
-file. Every point in the queue has an Ask action that opens a conversation already asking
-about that point, with a breadcrumb back home; the question starts with `/ask`,
-which loads argus's `ask` skill explicitly (a `/skill` prefix expands under `claude -p`),
-so the first tool call is `accio point`.
+file. Every feature page has an Ask action that opens a conversation on that feature, with a
+breadcrumb back to it; the question starts with `/ask`, which loads argus's `ask` skill
+explicitly (a `/skill` prefix expands under `claude -p`), so the first tool call is
+`marauder show <feature>`.
 
-A conversation opened from a point carries it: the URL adds `point=<id>` beside `q`, the
-first run stores it as `metadata.point`, and the page shows the point above the transcript
-— subject, ticket, ask — with the same Approve / Send / Dismiss controls as the home page
-(`src/features/points/verdict.tsx`, one component for both pages, so Approve shows here for
-a Verify-group point exactly as it does in the queue). A point that already has a decision
-shows it and no controls; a conversation with no point shows nothing there.
-
-An arc is the same conversation one altitude up: `arcs/<slug>.md` is the sweep's running
-story of an initiative (its frontmatter, a "Where we are" paragraph it writes by hand, a
-derived Landed table and Open list), and `/arcs` is where those are read. The arc's page
-replaces the file's Open rows with the live points behind them, so the verdict controls are
-the queue's and a decision given there writes the same file; each Landed row's Evidence
-links to the journal entry it names, or to the decided point on Today. Close writes
-`decisions/arc/<slug>.json` with `action: "closed"` — the one thing that sets an arc's
-`status: closed`, on the sweep's next tick — and the arc file itself is never touched by
-this app. Ask opens a conversation on the arc (`?arc=<slug>`, stored as `metadata.arc`),
-which is `?point=` without the controls: an arc is opened from a card and closed on its own
-page.
+A conversation opened from a feature carries it: the URL adds `feature=<dir>` beside
+`q`, the first run stores it as `metadata.feature`, the session gets a second system
+prompt naming it — so "it" means that feature and its story is read first — and the page
+shows the feature as a line above the transcript, linking back to its page. A
+conversation with no feature shows nothing there.
 
 The model can propose a verdict too. `propose_decision` (`src/server/ask-tools.server.ts`)
 is a TanStack bridged tool, and a bridged tool always executes when the model calls it —
-the harness has no approval gate — so it only checks and never writes: the point is in
-`points.json`, has no decision yet, and for a send has a ticket and a configured Foundry
-(`src/server/verdict.ts`, the same checks and the same error strings `decidePoint` and
-`sendPoint` run before they write). It answers a proposal or `{ ok: false, error }`. The
-chat renders the proposal as a card (`decision-card.tsx`): the verdict, the reason as an
-editable field, the repo for a send — the same picker over Foundry's tracked repos, from
-the same list — and Confirm, which calls `decidePoint` / `sendPoint`, so the file is what
-the queue would have written for the same input. The model is
-told to say a verdict is proposed and never that it is done; once a decision file exists
-the card shows the decided line and offers no second Confirm, on reload as well.
+the harness has no approval gate — so it only checks and never writes: an attach names a
+feature that exists and an entry still in the queue, a dismiss carries a reason, a send
+names a ticket and a configured Foundry (the same checks and the same error strings
+`decideUnsorted` and `sendTicket` run before they write). It answers a proposal or
+`{ ok: false, error }`. The chat renders the proposal as a card (`decision-card.tsx`): the
+verdict, the feature, the reason as an editable field, the repo for a send — the same
+picker over Foundry's tracked repos — and Confirm, which calls `decideUnsorted` /
+`sendTicket`, so the file is what the page would have written for the same input.
+`propose_ticket` is the same shape for a drafted Linear issue: the card shows the draft
+and File creates it (`fileTicket`, once per proposal). The model is told to say a verdict
+is proposed and never that it is done; once a decision file exists the card shows the
+decided line and offers no second Confirm, on reload as well.
 Every other page refreshes when dragged down from
 the top (touch or mouse): the route loaders re-run, nothing else moves.
 
@@ -312,7 +318,9 @@ src/server/ask.ts         Ask — the Claude Code adapter config, the per-file c
 src/test/                 bun test preload: vitest shim for the persistence conformance suite
 src/lib/api.ts            server functions — the client/server bridge
 src/lib/ask-tools.ts      Ask's tool names — the allow / deny lists and what the page renders as a Tool block
-src/features/points/      the queue — the three sections (sections.ts), the arc grouping (arcs.ts), the verdict controls
+src/server/marauder.ts    the board, the features' work.json, the queue and the milestones, with links pointed at routes
+src/features/work/        a feature page's actions — Send and Verify — and the controls the proposal card reuses
+src/features/unsorted/    the Unsorted queue — attach and dismiss, one click each
 src/features/ask/         Ask's chat as a feature slice — model/ (state, the bound createChatHook), components/ (widgets), lib/ (helpers); routes import its index only
 src/routes/               file routes (routeTree.gen.ts is generated by `tsr`)
 src/components/           shell, markdown renderer, small shared bits
