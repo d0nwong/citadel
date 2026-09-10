@@ -284,20 +284,21 @@ Stop — and a reload mid-answer, which drops the request the same way — ends 
 keeps the partial answer; the next question resumes the same Claude session. With no
 credential the composer is disabled and says what to do. Delete asks once and removes the
 file. Every feature page has an Ask action that opens a conversation on that feature, with a
-breadcrumb back to it; the question starts with `/ask`, which loads argus's `ask` skill
-explicitly (a `/skill` prefix expands under `claude -p`), so the first tool call is
-`marauder show <feature>`.
+breadcrumb back to it. Nothing seeds a question: the system prompt tells the session to
+load argus's `ask` skill and to start from `marauder show <feature>`.
 
-A conversation opened from a feature carries it: the URL adds `feature=<dir>` beside
-`q`, the first run stores it as `metadata.feature`, the session gets a second system
-prompt naming it — so "it" means that feature and its story is read first — and the page
-shows the feature as a line above the transcript, linking back to its page. A
-conversation with no feature shows nothing there.
+A conversation opened from a feature carries it in the URL (`?feature=<dir>`), and the
+page shows the feature as a line above the transcript, linking back to its page. The server
+is ready to keep it — `askChat` accepts `feature`, would store it as `metadata.feature`
+and add a second system prompt naming it, so "it" means that feature — but the fetcher in
+`src/features/ask/model/chat-options.ts` still forwards the retired `point` and `arc`
+keys and not `feature`, so today the feature never reaches the run and the line lasts
+only while the parameter is in the URL. A conversation with no feature shows nothing there.
 
 The model can propose a verdict too. `propose_decision` (`src/server/ask-tools.server.ts`)
 is a TanStack bridged tool, and a bridged tool always executes when the model calls it —
 the harness has no approval gate — so it only checks and never writes: an attach names a
-feature that exists and an entry still in the queue, a dismiss carries a reason, a send
+feature-shaped directory (the shape, not its existence) and an entry still in the queue, a dismiss carries a reason, a send
 names a ticket and a configured Foundry (the same checks and the same error strings
 `decideUnsorted` and `sendTicket` run before they write). It answers a proposal or
 `{ ok: false, error }`. The chat renders the proposal as a card (`decision-card.tsx`): the
