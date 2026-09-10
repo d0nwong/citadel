@@ -1,60 +1,94 @@
 /**
- * / — the board. `marauder/board.md` as the sweep rendered it: what needs the reader, what
- * is in flight by area, what waits on someone else, what shipped this week (LIA-155). The
- * whole page is that one file — nothing here re-derives, re-orders or annotates it, so what
- * a reader sees in Pensieve and what they see in a terminal are the same words.
- *
- * Two things the file cannot carry are added on the way through, both in
- * `server/marauder.ts`: its evidence links are pointed at the routes that serve them, and
- * each feature's name links to its own page. The day's sweep log — the queue and the
- * report that used to be here — moved to /reports (LIA-160 AC1).
+ * / — home. Three lists over every feature's ledger: the asks aimed at you that are not
+ * done, the tickets of yours with nothing left to wait for, and what the last runs could
+ * not place on a feature. Under them, one line per feature. Nothing here is a rendered
+ * page; every row is read from `ledger.json` and every click runs one argus verb.
  */
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Inbox } from "lucide-react";
-import { Empty, PageHeader } from "#/components/bits";
-import { Md } from "#/components/md";
-import { DocLayout, Toc } from "#/components/toc";
-import { getBoard } from "#/lib/api";
+import { PageHeader } from "#/components/bits";
+import { DocLayout } from "#/components/toc";
+import { NeedsMe, Ready, UnplacedList } from "#/features/ledger/home";
+import { getHome } from "#/lib/api";
 
 export const Route = createFileRoute("/")({
-  staticData: { crumb: "Board" },
-  loader: () => getBoard(),
-  component: BoardPage,
+  staticData: { crumb: "Home" },
+  loader: () => getHome(),
+  component: HomePage,
 });
 
-function BoardPage() {
-  const { board, unsorted } = Route.useLoaderData();
+function HomePage() {
+  const h = Route.useLoaderData();
+  const features = h.features.map((f) => f.dir);
   return (
-    <>
+    <DocLayout>
       <PageHeader
-        actions={
-          unsorted > 0 && (
-            <Link
-              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-medium text-foreground text-xs transition-colors hover:bg-accent"
-              to="/unsorted"
-            >
-              <Inbox className="size-3.5 text-subtle" strokeWidth={1.75} />
-              {unsorted} to sort
-            </Link>
-          )
+        description={
+          h.onYou.length === 0
+            ? "Nothing is waiting on you."
+            : `${h.onYou.length} ${h.onYou.length === 1 ? "thing is" : "things are"} waiting on you.`
         }
         title="Where the work stands"
       />
-      {board ? (
-        <DocLayout rail={<Toc headings={board.doc.headings ?? []} />}>
-          <Md className="prose-loose" doc={board.doc} />
-        </DocLayout>
-      ) : (
-        <DocLayout>
-          <Empty title="No board drawn yet">
-            The sweep writes <span className="mono">marauder/board.md</span>{" "}
-            from every feature's <span className="mono">work.json</span> on
-            every run. Run <span className="mono">marauder render</span> in
-            argus and this page fills in.
-          </Empty>
-        </DocLayout>
-      )}
-    </>
+      <div className="flex flex-col gap-10">
+        <section>
+          <h2 className="mb-1 border-border border-b pb-1 font-semibold text-[15px]">
+            On you
+          </h2>
+          <NeedsMe asks={h.onYou} />
+        </section>
+        <section>
+          <h2 className="mb-1 border-border border-b pb-1 font-semibold text-[15px]">
+            Ready to work on
+          </h2>
+          <Ready tickets={h.ready} />
+        </section>
+        <section>
+          <h2 className="mb-1 border-border border-b pb-1 font-semibold text-[15px]">
+            Unplaced{" "}
+            <span className="font-normal text-muted-foreground">
+              {h.unplaced.length}
+            </span>
+          </h2>
+          <UnplacedList features={features} items={h.unplaced} />
+        </section>
+        <section>
+          <h2 className="mb-1 border-border border-b pb-1 font-semibold text-[15px]">
+            Features
+          </h2>
+          <ul className="divide-y divide-border">
+            {h.features.map((f) => (
+              <li key={f.feature}>
+                <Link
+                  className="flex flex-col gap-0.5 rounded-md px-2 py-2.5 transition-colors hover:bg-accent"
+                  params={{ _splat: f.feature }}
+                  to="/features/$"
+                >
+                  <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="font-medium text-[15px] text-foreground">
+                      {f.dir}
+                    </span>
+                    <span className="text-muted-foreground text-xs">
+                      {f.open} open{f.onYou ? `, ${f.onYou} on you` : ""}
+                      {f.proposals ? `, ${f.proposals} proposed` : ""}
+                    </span>
+                  </span>
+                  {f.health && (
+                    <span className="text-muted-foreground text-sm leading-snug">
+                      {f.health}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {h.problems.length > 0 && (
+            <p className="mt-3 text-st-hold text-xs">
+              {h.problems.map((p) => `${p.dir}: ${p.problem}`).join(" · ")}
+            </p>
+          )}
+        </section>
+      </div>
+    </DocLayout>
   );
 }

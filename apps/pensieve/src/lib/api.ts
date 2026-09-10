@@ -54,12 +54,10 @@ export interface Navigation {
 export const getNavigation = createServerFn({ method: "GET" }).handler(
   async (): Promise<Navigation> => {
     const ws = await import("#/server/workspace");
-    const mr = await import("#/server/marauder");
-    const dec = await import("#/server/decisions");
-    const [docs, unsorted, decided] = await Promise.all([
+    const lg = await import("#/server/ledger");
+    const [docs, unplaced] = await Promise.all([
       ws.listDocs(),
-      mr.readUnsorted(),
-      dec.readMarauderDecisions(),
+      lg.readUnplaced(),
     ]);
     const byApp = new Map<string, Map<string, string>>();
     for (const d of docs) {
@@ -84,9 +82,7 @@ export const getNavigation = createServerFn({ method: "GET" }).handler(
           label,
         })),
       })),
-      // Decided rows are still in the file until the next ingest run drops them; the count
-      // is what is left to do, not what is left in the file.
-      unsorted: unsorted.filter((u) => !decided.has(u.id)).length,
+      unsorted: unplaced.length,
       workspace: ws.WORKSPACE_DIR,
     };
   }
@@ -814,4 +810,144 @@ export const decideUnsorted = createServerFn({ method: "POST" })
     // Only after the rename: apply reads the file that is now whole on disk (ARG-169).
     const m = await import("#/server/marauder");
     return { decision, ok: true, ...(await m.applyDecisions()) };
+  });
+
+// ── the ledger (rebuild, tasks 23–24) ──────────────────────────────────────────
+
+import type { Home, LedgerRef } from "#/server/ledger";
+
+/** The home page: on you, ready, unplaced, and one line per feature. */
+export const getHome = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Home> => {
+    const l = await import("#/server/ledger");
+    return l.home();
+  }
+);
+
+/** One feature's ledger by its route param, with the app it lives in. */
+export const getLedger = createServerFn({ method: "GET" })
+  .validator((feature: string) => trimmed(feature))
+  .handler(async ({ data }): Promise<LedgerRef | null> => {
+    const l = await import("#/server/ledger");
+    return l.readLedger(data);
+  });
+
+export type LedgerWrite =
+  | { ok: true; wrote: boolean; diff: string[] }
+  | { error: string; ok: false };
+
+type WriteAnswer = import("#/server/argus").ArgusResult<{
+  wrote?: boolean;
+  diff?: string[];
+}>;
+
+const toWrite = (
+  r: WriteAnswer,
+  note: (r: WriteAnswer) => string | null
+): LedgerWrite =>
+  r.ok
+    ? {
+        diff: Array.isArray(r.diff) ? (r.diff as string[]) : [],
+        ok: true,
+        wrote: r.wrote === true,
+      }
+    : { error: note(r) ?? "argus refused", ok: false };
+
+/** Done: close an ask by the reader's say-so. `argus close <dir> <A-n> --reason`. */
+export const closeAsk = createServerFn({ method: "POST" })
+  .validator((input: { dir: string; ask: string; reason: string }) => ({
+    ask: trimmed(input.ask),
+    dir: trimmed(input.dir),
+    reason: trimmed(input.reason),
+  }))
+  .handler(async ({ data }): Promise<LedgerWrite> => {
+    if (!data.reason) {
+      return { error: "Say in a few words why it is done.", ok: false };
+    }
+    const a = await import("#/server/argus");
+    return toWrite(
+      await a.argus<{ wrote?: boolean; diff?: string[] }>("close", [
+        data.dir,
+        data.ask,
+        "--reason",
+        data.reason,
+      ]),
+      a.argusNote
+    );
+  });
+
+/** Confirm or contradict a requirement. `argus confirm <dir> <R-n> --reason [--contradict]`. */
+export const confirmRequirement = createServerFn({ method: "POST" })
+  .validator(
+    (input: {
+      dir: string;
+      requirement: string;
+      reason: string;
+      contradict?: boolean;
+    }) => ({
+      contradict: input.contradict === true,
+      dir: trimmed(input.dir),
+      reason: trimmed(input.reason),
+      requirement: trimmed(input.requirement),
+    })
+  )
+  .handler(async ({ data }): Promise<LedgerWrite> => {
+    if (!data.reason) {
+      return { error: "Say who settled it, or how you know.", ok: false };
+    }
+    const a = await import("#/server/argus");
+    const args = [data.dir, data.requirement, "--reason", data.reason];
+    if (data.contradict) {
+      args.push("--contradict");
+    }
+    return toWrite(
+      await a.argus<{ wrote?: boolean; diff?: string[] }>("confirm", args),
+      a.argusNote
+    );
+  });
+
+/** Confirm every assumed requirement of a feature at once. */
+export const confirmAll = createServerFn({ method: "POST" })
+  .validator((input: { dir: string; reason: string }) => ({
+    dir: trimmed(input.dir),
+    reason: trimmed(input.reason),
+  }))
+  .handler(async ({ data }): Promise<LedgerWrite> => {
+    if (!data.reason) {
+      return { error: "Say why they all hold.", ok: false };
+    }
+    const a = await import("#/server/argus");
+    return toWrite(
+      await a.argus<{ wrote?: boolean; diff?: string[] }>("confirm", [
+        data.dir,
+        "--all",
+        "--reason",
+        data.reason,
+      ]),
+      a.argusNote
+    );
+  });
+
+export type PlaceWrite =
+  | { ok: true; feature: string; thread: string | null }
+  | { error: string; ok: false };
+
+/** Place an unplaced message on a feature. `argus place <id> <dir>`; the thread learns it. */
+export const placeUnplaced = createServerFn({ method: "POST" })
+  .validator((input: { id: string; dir: string }) => ({
+    dir: trimmed(input.dir),
+    id: trimmed(input.id),
+  }))
+  .handler(async ({ data }): Promise<PlaceWrite> => {
+    if (!data.dir) {
+      return { error: "Pick a feature.", ok: false };
+    }
+    const a = await import("#/server/argus");
+    const r = await a.argus<{ feature: string; thread: string | null }>(
+      "place",
+      [data.id, data.dir]
+    );
+    return r.ok
+      ? { feature: r.feature, ok: true, thread: r.thread }
+      : { error: a.argusNote(r) ?? "argus refused", ok: false };
   });

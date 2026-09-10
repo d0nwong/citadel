@@ -23,7 +23,6 @@ import {
   BookOpenText,
   ChevronRight,
   FolderIcon,
-  Inbox,
   Map as MapIcon,
   MessageCircleQuestion,
   ScrollText,
@@ -287,21 +286,7 @@ function AppSidebar() {
               <SidebarMenuButton asChild isActive={pathname === "/"}>
                 <Link to="/">
                   <MapIcon />
-                  <span>Board</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {/* Beside the board, because triage is what keeps the board honest: an entry
-                that attached to nothing is a feature that has not learned it yet, and
-                the count is the only place anyone would see there is triage waiting. */}
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={isActive(pathname, "/unsorted")}
-              >
-                <Link to="/unsorted">
-                  <Inbox />
-                  <span>Unsorted</span>
+                  <span>Home</span>
                   {unsorted > 0 && (
                     <span className="ml-auto rounded-md bg-muted px-1.5 py-0.5 font-medium text-muted-foreground text-xs tabular-nums">
                       {unsorted}
@@ -319,7 +304,7 @@ function AppSidebar() {
               >
                 <Link to="/features">
                   <Waypoints />
-                  <span>Work</span>
+                  <span>Features</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

@@ -27,7 +27,7 @@ afterEach(() => rm(cwd, { force: true, recursive: true }));
 
 describe("argus", () => {
   test("a verb's json answer, with --json appended and the args passed through", async () => {
-    const r = await argus<{ diff: string[]; args: string[] }>(
+    const r = await argus<{ diff: string[]; args: string[]; wrote: boolean }>(
       "close",
       ["admin/invoicing", "A-2", "--reason", "done"],
       { cwd }
