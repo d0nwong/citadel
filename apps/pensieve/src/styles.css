@@ -345,3 +345,11 @@ body {
 .prose-tight :where(p:first-child) {
   margin-top: 0;
 }
+
+/* The sidebar still scrolls (wheel, trackpad, touch) but draws no scrollbar. */
+[data-slot="sidebar-content"] {
+  scrollbar-width: none;
+}
+[data-slot="sidebar-content"]::-webkit-scrollbar {
+  display: none;
+}
