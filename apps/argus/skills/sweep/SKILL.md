@@ -221,6 +221,14 @@ Any decision file Pensieve wrote since the last tick rides in that commit, untou
 cursor is promoted only once the commit has succeeded, which is what makes a crashed tick
 replay rather than skip.
 
+**A click between two steps.** Pensieve runs `marauder apply` when a person gives a verdict,
+so a decision can be applied, and the record and pages it changed rewritten, between two
+steps of this tick. That needs nothing from the tick: every writing verb holds
+`queue/.lock` for its whole run, the next verb reads what the click wrote, and the files it
+changed ride in this commit just as the decision file does. A `marauder` run that exits
+naming the lock's holder is retried once; if it fails again, say so in this tick's output
+and go on without that step.
+
 **Previewing a tick.** Every verb that writes takes `--dry-run`:
 
 ```sh
