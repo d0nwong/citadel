@@ -128,7 +128,8 @@ describe("validateDoc", () => {
     const long = join(dir, "long.md");
     const short = join(dir, "short.md");
     writeFileSync(long, Array.from({ length: 251 }, (_, i) => `line ${i}`).join("\n") + "\n");
-    writeFileSync(short, Array.from({ length: 250 }, (_, i) => `line ${i}`).join("\n") + "\n");
+    // front matter, blank lines and generated regions do not count
+    writeFileSync(short, "---\nid: x\n---\n" + Array.from({ length: 250 }, (_, i) => `line ${i}\n`).join("\n") + "<!-- accio:begin interfaces -->\n" + "generated\n".repeat(400) + "<!-- accio:end interfaces -->\n");
     expect(await validateDoc(long)).toHaveLength(1);
     expect(await validateDoc(short)).toEqual([]);
   });

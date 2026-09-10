@@ -54,7 +54,7 @@ Three systems, unchanged in their split:
 - `argus validate` refuses any ledger where a story sentence, a requirement, or an ask
   status change carries no evidence.
 - The sweep skill is under 120 lines. Each other skill is under 100. `arch.md` is under
-  250 lines per feature. The validator enforces the doc cap; a line count test enforces
+  250 curated lines per feature (the regions `accio sync` generates do not count). The validator enforces the doc cap; a line count test enforces
   the skill caps.
 - A run with no new Slack messages and no new landings makes no model call and writes no
   byte.
@@ -369,7 +369,7 @@ steps; git and `docs/` hold the history.
   carries evidence. `assumption` is an evidence kind, and it is visible.
 - Call the model only for a feature with new input; write no byte on a quiet run.
 - Pin every code pointer to a sha; fetch `origin/*`, never switch a checkout.
-- Keep the caps: sweep ≤120 lines, other skills ≤100, arch.md ≤250.
+- Keep the caps: sweep ≤120 lines, other skills ≤100, arch.md ≤250 curated lines.
 - Run `bun test` and `bun run typecheck` before a commit; run the evals before changing
   `reader.md` or `place.ts`.
 - Commit locally after each run, one commit, message = the first Needs-me line or "quiet

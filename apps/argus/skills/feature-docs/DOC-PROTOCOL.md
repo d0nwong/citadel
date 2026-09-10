@@ -1,390 +1,92 @@
-# TASK: Generate Dual-Tier Documentation (Feature-by-Feature Protocol)
+# The arch doc
 
-You are an automated technical writer and repository analyst. You will document this application one complete FEATURE at a time using a strict, token-safe phased loop.
+One `docs/arch.md` per feature is the technical spec: how the feature is built, which
+endpoints it owns, where the two codebases disagree, and what is known to be missing. It
+is read by a person filing a ticket, by the reader that keeps the ledger (its gap and
+mismatch sections), and by `accio find`. The product side of a feature is not a document
+any more: it is the requirement rows in the feature's `ledger.json`.
 
-Do not analyze the entire repo at once. Work strictly feature by feature to prevent context loss.
+## Two kinds of content
 
-All output paths below are relative to the documented app's root. Docs are grouped BY FEATURE: each feature owns one folder holding both tiers side by side — `/features/<dir>/docs/product.md` and `/features/<dir>/docs/arch.md` — so everything about a feature (specs, notes, docs) lives in one place. Shared modules live under `/features/shared/<id>/docs/arch.md`. `<dir>` defaults to the feature id (with `admin-x` nesting to `admin/x`); a manifest entry may override it with a `dir` field to match an existing folder layout.
+`accio sync` writes the regions between `<!-- accio:begin … -->` and `<!-- accio:end … -->`
+markers, from the frontend's own code and the backend's OpenAPI spec: the component map
+and the interfaces. Never edit inside a region. Everything else is curated by the
+feature-docs run, and the cap applies to it: **250 curated lines**, counted by
+`argus validate` with the front matter, blank lines and generated regions left out.
 
+## Front matter
+
+```yaml
 ---
-
-## Phase 1: Feature Mapping (Discovery)
-
-Scan entry points, page routes, controller modules, and user workflows in the repo.
-Group the codebase into distinct end-to-end FEATURES (e.g., "User Authentication", "Checkout & Payments", "Order Management").
-
-Also identify SHARED MODULES — cross-cutting code used by two or more features (auth, api-client, shared UI kit, db helpers). Shared modules get their own manifest entries with `"type": "shared"` and are documented FIRST, so feature docs can link to them instead of re-explaining them.
-
-Create `.doc-workspace/feature-manifest.json` listing each entry, its entry files, associated APIs, UI components, and state:
-
-```json
-{
-  "features": [
-    {
-      "id": "auth",
-      "name": "Auth (shared)",
-      "type": "shared",
-      "status": "pending",
-      "core_files": ["src/lib/auth.ts", "src/middleware/session.ts"]
-    },
-    {
-      "id": "checkout-and-payments",
-      "name": "Checkout & Payments",
-      "type": "feature",
-      "status": "pending",
-      "entry_routes": ["/checkout", "/api/payments"],
-      "core_files": [
-        "src/pages/Checkout.tsx",
-        "src/hooks/usePayment.ts",
-        "src/controllers/paymentController.ts"
-      ]
-    }
-  ]
-}
-```
-
-`status` is one of `pending | in_progress | done | stale | superseded`. Set `in_progress` before reading files so a crashed run can be resumed unambiguously.
-`superseded` is hand-set and terminal — the code is still there but nobody should take this path any more; the entry carries a one-line `superseded_by` saying what replaced it, the docs carry `status: superseded` plus the same pointer under their H1, and Phases 2–4 skip the feature (never refresh, never mark stale).
-
----
-
-## Phase 2: Per-Entry Generation Loop
-
-Process manifest entries in order: all `type: "shared"` entries first, then `type: "feature"`.
-
-**Context isolation rule:** run each entry in a FRESH context — launch a new subagent (or new session) that receives only this protocol file and that entry's manifest object. Never carry file contents from one entry to the next; "clearing context" is achieved by process isolation, not by intent.
-
-For each entry with `status: "pending"` (or `"stale"`, see Phase 4):
-
-1. Set `status` to `"in_progress"` in the manifest.
-2. Read ONLY the files listed under that entry's `core_files` (follow imports one level deep if a business rule lives in a helper).
-3. **Backend verification (bounded).** When the run supplies a backend repo and pinned
-   sha: for each endpoint in the arch doc's `## Interfaces & Contracts` region, locate
-   its server handler — route declaration (`src/routers/v1/*.ts`) → controller method →
-   the use-case/service functions the controller imports for that handler, ONE hop, stop
-   there. Read only those files. Skip ORM/schema internals unless a business rule visibly
-   lives in a schema constraint. The goal is verification, not mapping: confirm or refute
-   FE-derived rules, resolve `UNVERIFIED:` claims, and capture server-only rules the FE
-   cannot show (server-side validation, role enforcement, computed values). A fact whose
-   evidence is backend code carries a `be:`-prefixed Source (e.g. `be:src/services/x.ts`).
-   Where the tiers genuinely disagree, add a row to the arch doc's `## FE/BE Mismatches`
-   section (template 3B) — do not silently pick a side.
-4. Generate output using the EXACT templates in Phase 3. Do not deviate from the section names, order, or table columns — downstream agents locate information by these exact headings.
-   - `type: "feature"` → BOTH tiers: `/features/<dir>/docs/product.md` and `/features/<dir>/docs/arch.md`.
-   - `type: "shared"` → architecture tier only: `/features/shared/<id>/docs/arch.md` (template 3B; omit `product_doc` from frontmatter).
-5. Set the entry's manifest `status` to `"done"` and record `docs_sha` (the current git HEAD sha).
-6. Return to the orchestrator; the next entry starts in a fresh context.
-
-Hard rules for BOTH tiers:
-
-- **Facts only from code you read this iteration.** If a behavior cannot be confirmed in the files, write `UNVERIFIED:` before the claim or omit it. Never infer business rules.
-- **Tables over prose. Bullets over paragraphs.** A retrieval agent should be able to answer a question from a single table row.
-- **Stable heading names.** Headings are an API. Use the template headings verbatim, every file, every feature.
-- **One fact, one place.** Product tier owns the "why/what"; architecture tier owns the "how/where". Cross-reference instead of duplicating. (Exception: `aliases` and `feature_name` are deliberately duplicated in both tiers' frontmatter — they are routing keys, not facts.)
-- **Two-repo sourcing.** Frontend paths are bare; backend paths carry the `be:` prefix in
-  every Source cell. Never mix a claim's evidence across repos in one row.
-- **BE-verified freshness.** A product doc verified against backend code records
-  `last_verified_be: <branch>@<shortsha>` and `last_verified_be_date` in frontmatter
-  (product tier only — the arch tier's frontmatter is machine-owned).
-- **Escape literal `|` inside table cells as `\|`.** A broken table is a protocol violation — it defeats row-level retrieval.
-
----
-
-## Phase 3: Output Templates (STRICT)
-
-### 3A. Product Feature Doc — `/features/<dir>/docs/product.md`
-
-````markdown
----
-id: checkout-and-payments
-tier: product
-feature_name: "Checkout & Payments"
-status: active # active | deprecated | beta | superseded (see the manifest's `status`; arch.md carries it too when set)
-owner: "" # team or person, if known
-aliases: [checkout, payments, "pay flow", stripe] # every name a human might use when asking about this
-related_features: [order-management, user-authentication]
-arch_doc: ./arch.md
-last_verified: <git sha>
-last_verified_date: 2026-08-22
-last_verified_be: dev@c9c52464b # backend sha the rules were checked against; omit if BE not read
-last_verified_be_date: 2026-08-26
----
-
-# Checkout & Payments
-
-> **TL;DR:** One sentence: what this feature lets the user do and the one rule most people ask about.
-
-## User Workflows
-
-<!-- One H3 per workflow. Numbered steps. Each step = user action → system response. -->
-
-### Complete a purchase
-
-1. User clicks **Checkout** from the cart → system validates stock.
-2. User enters payment details → system tokenizes via Stripe, never stores card data.
-3. On success → order is created with status `paid`; confirmation email queued.
-
-## Business Rules
-
-<!-- THE most-retrieved section. One row per rule. Rule column is quotable standalone. -->
-
-| #    | Rule                                      | Condition / Trigger                                 | Outcome                           | Source                 |
-| ---- | ----------------------------------------- | --------------------------------------------------- | --------------------------------- | ---------------------- |
-| BR-1 | Orders over $500 require 3DS verification | `amount > 50000` (cents) at payment intent creation | 3DS challenge shown               | `paymentController.ts` |
-| BR-2 | Cart is locked during payment             | Payment intent status `processing`                  | Edits rejected with `CART_LOCKED` | `usePayment.ts`        |
-
-## Edge Cases & Error States
-
-| Scenario            | What the user sees                  | What actually happens              |
-| ------------------- | ----------------------------------- | ---------------------------------- |
-| Payment declined    | "Payment failed" toast, cart intact | Intent voided, no order created    |
-| Double-click on Pay | Single charge                       | Idempotency key on intent creation |
-
-## Out of Scope / Known Gaps
-
-<!-- An `UNVERIFIED:` line that backend verification resolves is DELETED here and reborn
-     as a verified Business Rules / Edge Cases row with a `be:` Source. If the answer is
-     a divergence, it goes to the arch doc's `## FE/BE Mismatches` instead. -->
-
-- Refunds are handled in [order-management](../../order-management/docs/product.md).
-- UNVERIFIED: behavior when Stripe webhook is delayed > 24h.
-
-## Decided, not yet landed
-
-<!-- accio:begin decided -->
-<!-- GENERATED by `accio sync` from journal entries with `status: decided` — do not edit inside this region. Agreed but NOT in code: the rules above describe the code, these describe what is coming. -->
-
-- **2026-08-27** — Orders over $200 also require 3DS _(ALD-130 · [source](https://…slack…) · rewrites `BR-1`)_ — journal `checkout/journal/2026-08/…/2026-08-27-decided-3ds-threshold.md`
-<!-- accio:end decided -->
-
-## Glossary (feature-specific terms)
-
-| Term   | Meaning                                                  |
-| ------ | -------------------------------------------------------- |
-| Intent | Stripe PaymentIntent object tracking one payment attempt |
-````
-
-### 3B. Technical Architecture Doc — `/features/<dir>/docs/arch.md`
-
-````markdown
----
-id: checkout-and-payments
+id: admin-usage                      # the manifest id
 tier: architecture
-feature_name: "Checkout & Payments"
-aliases: [checkout, payments, "pay flow", stripe]
-product_doc: ./product.md
-entry_routes: ["/checkout", "/api/payments"]
-core_files:
-  - src/pages/Checkout.tsx
-  - src/hooks/usePayment.ts
-  - src/controllers/paymentController.ts
-depends_on_shared: [auth, api-client] # links to /features/shared/
-external_services: [stripe, sendgrid]
-data_stores: ["orders (postgres)", "payment_events (postgres)"]
-env_vars: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET]
-last_verified: <git sha>
-last_verified_date: 2026-08-22
+feature_name: "Admin Usage"
+aliases: [usage, "usage page", /admin/usage]
+entry_routes: [/admin/usage]
+core_files: [...]                    # from the manifest, relative to the FE repo
+be_files: [...]                      # the handler chain the run read, relative to the BE repo
+last_verified: staging@a1e4d8839     # FE: branch@shortsha of origin/staging at the run
+last_verified_date: 2026-09-10
+last_verified_be: dev@06d27c81       # BE: branch@shortsha of origin/dev at the run
+last_verified_be_date: 2026-09-10
 ---
-
-# Checkout & Payments — Architecture
-
-> **TL;DR:** One sentence: the shape of the implementation (e.g., "React page → payment hook → Express controller → Stripe, with webhook-driven order finalization").
-
-## Component Map
-
-<!-- THE most-retrieved section. One row per moving part, in execution order. -->
-
-| Component                        | Type            | Trigger                           | Calls / API                    | Data Store                    | File                                   |
-| -------------------------------- | --------------- | --------------------------------- | ------------------------------ | ----------------------------- | -------------------------------------- |
-| `Checkout.tsx`                   | UI page         | Route `/checkout`                 | `usePayment()`                 | —                             | `src/pages/Checkout.tsx`               |
-| `usePayment`                     | Hook            | User submits form                 | `POST /api/payments/intent`    | —                             | `src/hooks/usePayment.ts`              |
-| `paymentController.createIntent` | API handler     | `POST /api/payments/intent`       | Stripe `paymentIntents.create` | `payment_events` INSERT       | `src/controllers/paymentController.ts` |
-| `stripeWebhook`                  | Webhook handler | Stripe `payment_intent.succeeded` | —                              | `orders` UPDATE status→`paid` | `src/controllers/paymentController.ts` |
-
-## Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant C as Checkout.tsx
-    participant H as usePayment
-    participant A as paymentController
-    participant S as Stripe
-    U->>C: Submit payment form
-    C->>H: pay(details)
-    H->>A: POST /api/payments/intent
-    A->>S: paymentIntents.create
-    S-->>A: client_secret
-    A-->>H: { client_secret }
-    S->>A: webhook payment_intent.succeeded
-    A->>A: orders.status = paid
 ```
 
-## Interfaces & Contracts
-
-<!-- Only interfaces OTHER features or agents would call. Full signatures. -->
-
-### `POST /api/payments/intent`
-
-- **Auth:** session cookie (see shared/auth)
-- **Body:** `{ cartId: string }`
-- **Returns:** `200 { clientSecret: string }` | `409 CART_LOCKED` | `422 EMPTY_CART`
-- **Idempotent:** yes, keyed on `cartId + cart.version`
-
-## State & Data
-
-| Store / State          | Shape (key fields)                      | Written by                      | Read by          |
-| ---------------------- | --------------------------------------- | ------------------------------- | ---------------- |
-| `orders` table         | `id, status(pending\|paid\|failed), amount_cents` | `stripeWebhook`       | order-management |
-| `payment_events` table | `intent_id, event_type, raw_payload`    | `createIntent`, `stripeWebhook` | audit only       |
-
-## Failure Modes
-
-| Failure                   | Detection               | Current handling                                     |
-| ------------------------- | ----------------------- | ---------------------------------------------------- |
-| Stripe timeout            | fetch abort 10s         | User-facing retry; intent may be orphaned (see Gaps) |
-| Webhook signature invalid | `constructEvent` throws | 400, event dropped, logged                           |
-
-## Gaps / Tech Debt
-
-- Orphaned intents are never reconciled (no cleanup job found in code).
-
-## FE/BE Mismatches
-
-<!-- Optional — present only when backend verification found real divergences.
-     Verified against backend <branch>@<shortsha>. One row per mismatch; Surface uses the
-     exact endpoint key from Interfaces & Contracts (BE-only routes: write the path
-     WITHOUT a method prefix so `accio audit` does not treat it as an FE claim). -->
-
-| #    | Surface                    | FE behavior (file)                   | BE behavior (file)                           | Impact                            | Status              |
-| ---- | -------------------------- | ------------------------------------ | -------------------------------------------- | --------------------------------- | ------------------- |
-| MM-1 | `POST /api/payments/intent` | Blocks status X for role Y (`src/…`) | Accepts any status for any role (`be:src/…`) | Guard is FE-only; API unprotected | needs-clarification |
-
-Statuses: `needs-clarification` (file a ticket, record its key in the row) \| `intended`
-(a human confirmed the divergence — name who/where) \| `resolved` (code changed; promote
-the fact to Business Rules and delete the row).
-````
-
----
-
-## Phase 4: Refresh Loop (keeping docs honest)
-
-Run this on any subsequent invocation against a repo that already has a manifest.
-
-**The invariant: the two tiers describe one codebase, so they are regenerated together
-and stamped identically.** `last_verified` on product.md and arch.md must agree; `accio
-audit` fails when they do not. The machinery keeps them equal without spurious rewrites:
-`accio sync` regenerates the arch tier's machine regions on every run but moves its stamp
-only when the feature actually changed since the product tier was read — otherwise the
-arch stamp *follows* the product stamp. A disagreement is therefore never bookkeeping; it
-means "the product tier is stale".
-
-1. Behaviour reaches a feature four ways; `accio stale` asks all four for every entry with
-   `status: "done"` and names which fired:
-   - **fe-core** — `git diff --name-only <product last_verified>..origin/<branch> -- <core_files...>` non-empty
-   - **be-handlers** — the manifest's `be_files` (router → controller → service behind the
-     feature's Interfaces & Contracts, written by the Phase 2 agent) differ between
-     `last_verified_be` and `origin/dev` — a backend-only landing changes behaviour with no
-     FE file touched
-   - **tiers** — the arch stamp is ahead of the product stamp (sync advanced it because an
-     owned endpoint changed in the spec, or core files moved)
-   - **journal** — Phase 5 entries with `status: implemented` naming the feature that no
-     refresh has consumed
-2. Any reason fired → set that entry's `status` to `"stale"` and re-run Phase 2 (fresh
-   context, same rules) for **both tiers in one run**, stamped at one `(fe, be)` pair; then
-   mark `"done"` with the new `docs_sha`.
-3. Nothing fired → leave the entry untouched — do not rewrite docs or bump any stamp
-   without actually re-reading code.
-4. Detect NEW surface area: routes/entry files present in the repo but absent from every manifest entry → run Phase 1 incrementally and APPEND new entries. Never rewrite existing entries' ids — ids are stable keys that other docs link to.
-
-Decisions that have NOT landed never enter the rules: they live in the journal as
-`status: decided` and surface in the product doc's machine-owned `## Decided, not yet
-landed` region (3A), which `accio sync` fills and empties as entries open and close.
-
----
-
-## Phase 5: Change Journal (the "why" layer)
-
-Docs are present-tense facts-from-code; the journal owns history and rationale — the
-things code can never say: who asked, which ticket, what the decision was. **Docs never
-become changelogs**, and journal entries never restate current behavior (the docs own
-that). They link; they don't merge.
-
-**The unit is one landing on staging** — a merged PR, or a commit pushed straight to the
-integration branch — not one commit and not one day. It is the only object Linear,
-Bitbucket and staging all agree on, so a ticket, a review and a deploy can all be traced
-through it; a day-scoped entry spans several PRs and several tickets and cannot carry
-`ticket:` honestly. One file per landing, in the folder of the feature it is mostly about:
-`/features/<dir>/journal/YYYY-MM/YYYY-MM-DD/YYYY-MM-DD-<key>-<slug>.md` (`<key>` = `fe363` / `be735`, or the
-short sha for a direct push) — beside that feature's `docs/`, so a feature's history is in
-the folder you already opened. A landing touching several features is still ONE file:
-`features:` stays the routing key and must name the folder's own feature as well as the
-rest.
+## Sections, in this order
 
 ```markdown
----
-date: 2026-08-23 # the day it landed on staging
-source: "Slack #alden-product — Sarah's request" # or meeting / customer / null
-pr: fe#363 # fe#N | be#N | direct | null (decided, not yet in code)
-url: https://bitbucket.org/aldenstudios/alden-portal-fe/pull-requests/363
-merge: 597bfbdf3 # the staging commit; diff = 597bfbdf3^1..597bfbdf3
-ticket: [ALD-123] # Trello/Linear keys, FLOW style; null when untracked
-features: [admin-invoicings, tasks] # manifest ids, FLOW style — greppable routing
-scope: product # product | architecture | both
-status: decided # decided | implemented | documented | superseded (a landing entry took over)
-hold: "waiting on the BE half" # optional — parks the entry open, with a reason
-affects: [BR-22, MM-16] # optional — the documented rule / mismatch ids this change rewrites
-summary: Drafts become editable with an Approve-and-Send gate
----
+# <Feature> — Architecture
 
-## What landed — bullets naming the files, never a narration of how the code works
+> **TL;DR:** one sentence: the shape of the implementation, route → hook → handler → store.
 
-## Why — the decision, who asked, and the judgement calls no one ratified
+## Component Map
+<!-- accio:begin component-map --> … <!-- accio:end component-map -->
+At most ten curated rows below the region for parts the generator cannot see.
 
-## Watch out — what outlives the PR: a half that didn't ship, a drive-by commit, an open ticket
+## Interfaces & Contracts
+<!-- accio:begin interfaces --> … <!-- accio:end interfaces -->
+Below the region: one short paragraph per endpoint whose contract is not obvious from
+its shape (an idempotency key, a status the server derives, a guard broader than the UI's).
+No walkthroughs of the page, no history of what landed when.
 
-_Detail: `git -C <repo> diff <merge>^1..<merge>` · `bb pr-details show <pr>`_
+## State & Data
+| Store / State | Shape (key fields) | Written by | Read by |
+
+## Failure Modes
+| Failure | Detection | Current handling |     at most ten rows
+
+## Gaps / Tech Debt
+- one bullet per gap, present tense, what is missing and where; at most fifteen
+
+## FE/BE Mismatches
+| # | Surface | FE behavior (file) | BE behavior (file) | Impact | Status |
+Surface is the exact endpoint key from Interfaces & Contracts. Status is
+`needs-clarification`, `intended` (who said so), or `resolved` (delete the row).
 ```
 
-An entry records **what git cannot answer**, and points at git for the rest: a future
-session greps `pr:` / `ticket:` / `features:`, reads twenty lines, and either has its
-answer or holds the exact command that produces it. Re-narrating the diff is dead weight —
-`merge:` re-derives it perfectly, forever. `bun skills/log-change/scripts/pr-facts.ts`
-resolves a PR number or sha into every field above, and `--since <date>` lists landings
-with no entry yet.
+## Rules
 
-Lifecycle — `status` is the only field that ever changes after creation:
+### Read by sha, never from a working tree
+Both checkouts are shared and go stale. Resolve `origin/staging` and `origin/dev`, then
+read every file with `git show <sha>:<path>` and list with `git ls-tree -r --name-only`.
+Fetch, do not pull, the FE repo; the BE repo may be pulled.
 
-1. **decided** — the change is agreed but not in code. Written **at decision time**, not
-   when code appears: the moment a Slack thread or meeting settles something that changes
-   a documented rule, an entry exists naming the feature and, in `affects:`, the rule ids
-   it will rewrite. Docs' rules are NOT touched (facts-only rule); the entry is the record
-   of intent, and `accio sync` mirrors it into the product doc's `## Decided, not yet
-   landed` region so a reader of the rules can see what is about to change them.
-2. **implemented** — the code landed but docs haven't been re-verified yet.
-An `implemented` entry that cannot close yet — the FE half shipped and the BE half did
-not — carries `hold: "<what it waits for>"`, which parks it and silences the refresh nag
-until the hold is removed. An entry that will never close but nags every audit teaches
-everyone to ignore the audit.
+### Verify the backend, bounded
+For every endpoint the feature owns: router → controller → the one service or use-case
+it calls, and stop. A guard, a derived status or a validation the server applies is a
+mismatch row when the frontend assumes otherwise, never a silent pick of one side.
 
-3. **documented** — a Phase 2 re-run consumed this entry: the doc agent received it as
-   context for the diff (the entry explains WHY the code changed), updated the docs from
-   code, and closed the entry.
+### Say what is, not what happened
+No dates, ticket keys, PR numbers or "since fe#421" in prose. A landing changes the
+sentence; the ledger holds the history.
 
-The Phase 4 refresh loop MUST collect a feature's non-`documented` entries and hand them
-to the doc subagent alongside the manifest entry — the diff says what changed, the
-journal says why. Close only entries whose change the agent actually confirmed in code.
+### The cap is the design
+Two hundred and fifty curated lines forces the doc to carry contracts and disagreements,
+not a tour of the code. When something does not fit, it was a walkthrough.
 
----
+## Refresh
 
-## Retrieval Contract (why the format is strict)
-
-A downstream agent answering questions MUST be able to:
-
-1. **Route by frontmatter alone** — grep `aliases` + `feature_name` across `/features/**/docs/*.md` frontmatter to pick the right file without opening bodies; grep `features:` / `ticket:` / `pr:` across `/features/**/journal/*.md` to find a change's history the same way, and read `merge:` for the one command that produces the diff behind it.
-2. **Answer "what" questions from one table row** — Business Rules table (product tier).
-3. **Answer "where/how" questions from one table row** — Component Map (architecture tier).
-4. **Answer "does the server enforce this?" from one table row** — a Business Rules row with a `be:` Source, or an FE/BE Mismatches row (architecture tier).
-5. **Trust freshness** — `last_verified` (frontend) and `last_verified_be` (backend) shas tell the agent whether to double-check against code.
-
-Any output that a grep for the standard headings (`## Business Rules`, `## Component Map`, `## Interfaces & Contracts`, `## FE/BE Mismatches`) would not find is a protocol violation.
+`accio stale` names a feature when its core files differ between `last_verified` and
+`origin/staging`, or its `be_files` between `last_verified_be` and `origin/dev`. A listed
+feature gets a full re-verification and both stamps move to the shas read. An unlisted
+feature is left alone: no rewrite, no stamp bump, without re-reading code.

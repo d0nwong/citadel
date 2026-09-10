@@ -241,8 +241,20 @@ export const isOpen = (a: Ask) => !ASK_DONE.includes(a.status);
 
 export const ARCH_MAX_LINES = 250;
 
+/** the doc's curated lines: everything outside the regions `accio sync` generates and the front matter */
+export function curatedLines(text: string): number {
+  let n = 0, generated = false, front = 0;
+  for (const l of text.split("\n")) {
+    if (l === "---" && front < 2) { front++; continue; }
+    if (front === 1) continue;
+    if (/<!--\s*accio:begin/.test(l)) { generated = true; continue; }
+    if (/<!--\s*accio:end/.test(l)) { generated = false; continue; }
+    if (!generated && l.trim()) n++;
+  }
+  return n;
+}
+
 export async function validateDoc(path: string, max = ARCH_MAX_LINES): Promise<Problem[]> {
-  const text = await Bun.file(path).text();
-  const lines = text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
-  return lines > max ? [{ path, rule: `${lines} lines, over the ${max}-line cap` }] : [];
+  const lines = curatedLines(await Bun.file(path).text());
+  return lines > max ? [{ path, rule: `${lines} curated lines, over the ${max}-line cap` }] : [];
 }
