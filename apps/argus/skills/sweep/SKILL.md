@@ -49,9 +49,36 @@ The cursor is `workstreams/.state.json`, and `slack-pull` advances it into
 `.state.next.json`. **Promote it at step 7, after the commit** — a crashed tick has to
 replay the channel, never skip it.
 
-A huddle happened when an item carries a canvas: read the file with `slack_read_file`
-first, then re-run the Slack half with `--canvas <file>` so the notes are split into
-items, each already typed as a change, an ask or a deadline.
+A huddle happened when the queue holds an entry saying its notes are unread (the `why`
+names the ts). Read the canvas with `slack_read_file`, write its key points to a file, and
+record them:
+
+```sh
+bun run marauder huddle <ts> --points <file> --reason "read the 09:34 huddle"
+```
+
+A key point is one thing the meeting settled, asked for or dated — not one bullet. The
+canvas says everything twice, once under Summary and once under Action items; write each
+thing once. A meeting is usually three to eight points. Each point is
+`{ kind, slug, summary, to, why, text, name, date, owner }`:
+
+- `summary` is the sentence a reader sees, in `style.md`'s voice: a person does something,
+  about twenty words (the page prints the date in front, inside the ceiling), a full stop
+  at the end. "Foong asked you to review Sam's pages
+  before the launch", never "Slackbot: review pages pushed by".
+- `kind` is the event kind: `contract-change` for a thing settled, `new-ask` for work asked
+  for, `directed-at-person` for an ask aimed at a person (`to`, with `you` for the reader),
+  `deadline` for a date (`name`, `date`, `owner`), `chat` for anything not about the work.
+- `slug` is the workstream it belongs to when you would bet on it, `null` when you would
+  not. A slug-less decision or ask becomes a proposal in the queue, named by `name`; a
+  slug-less ask aimed at you stays in the queue with `to`; a slug-less date is a milestone.
+- `chat` is small talk, and logistics that name nobody on the record — "Carlos monitors
+  New York hours after launch". It is never recorded. Logistics aimed at you is an ask.
+- `text` is the bullet it came from, verbatim, so the workstream learns its vocabulary.
+
+The verb validates the file and refuses it whole, naming the point, when a sentence breaks
+a style rule, a slug does not exist, or a deadline lacks its date. Reading the same notes
+again replaces every point the sweep recorded before and keeps any a person placed.
 
 **2. Place what attached to nothing.** `workstreams/_unsorted.json`, every entry with
 `needs: "read"`. Ingest deliberately stops at what it can prove; this is the step that
@@ -219,9 +246,10 @@ rather than restating it.
   commits — and those commits include whatever Pensieve has written under `decisions/`
   (step 7), as-is;
 - **the events ingest writes onto `workstreams/*.json`** — a merge on a base branch, a
-  message the ladder places, the stage a landing implies — and the two corrections that
-  read what ingest could not: `attach --auto` and `suggest` (step 2). Both are marked as
-  the sweep's own reading, which is what makes a wrong one findable;
+  message the ladder places, the stage a landing implies — and the three readings the
+  sweep makes of what ingest could not: `huddle` (step 1), `attach --auto` and `suggest`
+  (step 2). Each is marked as the sweep's own reading, which is what makes a wrong one
+  findable;
 - **queueing a split** with `propose-split` when a workstream has stopped being one thing
   (step 5). The proposal is a queue entry; the cut happens when a person accepts it;
 - **the ticket pass's own corrections** — `marauder ticket` writing back the key it filed,

@@ -163,7 +163,7 @@ export type UnsortedItem = {
   /** why it is here at all, when no candidate says it */
   why?: string;
   suggest: string | null;
-  /** what the script wants done: read it against the open list, or ask a person */
+  /** what the script wants done: read it against the open list (or, for a huddle's notes, read them and run `marauder huddle`), or ask a person */
   needs?: "read" | "ask";
   at: string;
 };

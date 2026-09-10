@@ -355,7 +355,8 @@ export function renderWorkstream(w: Workstream, milestones: Milestones, now: str
 }
 
 const owns = (person: string) => (person === USER.token ? USER.name : person);
-const whenLabel = (at: string) => {
+/** the date the page puts in front of an event line — four words the sentence ceiling has to leave room for */
+export const whenLabel = (at: string) => {
   const day = dayOf(at);
   if (at.length === 10) return longDate(day);
   return `${longDate(day)}, ${at.slice(11, 16)}`;

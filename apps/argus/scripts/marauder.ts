@@ -8,6 +8,7 @@
  *
  *   marauder ingest --landings     merges on the base branches become events
  *   marauder ingest --slack        what the channel said becomes events
+ *   marauder huddle <ts> --points  a huddle's key points, as the sweep read them, onto the record
  *   marauder attach <id> <slug>    move an unsorted item onto a workstream, and learn from it
  *   marauder dismiss <id>          drop an unsorted item that goes nowhere
  *   marauder suggest <id> <slug>   leave it unsorted, but say where it probably goes
@@ -43,6 +44,7 @@ import {
   resolveQuestion, setStage, split, suggest, type State,
 } from "../skills/sweep/scripts/marauder/correct.ts";
 import { apply, formatApplied, readDecisions } from "../skills/sweep/scripts/marauder/decisions.ts";
+import { applyHuddle, readNotes } from "../skills/sweep/scripts/marauder/huddle.ts";
 import { formatPlan, heldEvent, planTicket, type TicketPlan } from "../skills/sweep/scripts/marauder/ticket-diff.ts";
 import { checkStyle, formatStyleProblems, renderBoard, renderChangelog, renderWorkstream, OUT_DIR } from "../skills/sweep/scripts/marauder/render.ts";
 import { run as ingestLandings, formatChanges } from "../skills/sweep/scripts/marauder/ingest-landings.ts";
@@ -52,6 +54,7 @@ const HELP = `marauder — where the work stands
 
   marauder ingest --landings        merges on origin/staging and origin/dev become events
   marauder ingest --slack           what the channel said becomes events, or goes to Unsorted
+  marauder huddle <ts> --points <file>  record a huddle's key points (read the canvas, write the points, then this)
   marauder attach <id> <slug>       move an unsorted item onto a workstream, and learn from it
   marauder suggest <id> <slug>      leave it unsorted, but say where it probably goes
   marauder new <id> --name "…"      open a workstream from a proposal
@@ -72,7 +75,7 @@ const HELP = `marauder — where the work stands
   marauder render                   all three
 
   --since <day>   ingest from this day instead of the newest landing each side holds
-  --canvas <file> split these huddle notes (read them with slack_read_file first)
+  --points <file> the key points of a huddle, as JSON: { url, points: [{ kind, slug, summary, to, why, text }] }
   --reason "…"    why a correction was made; it is kept on the event the correction writes
   --auto          attach as the sweep's own reading (a guess), not as a person's decision
   --now <ISO>     render as of this instant instead of the clock (tests, back-fills)
@@ -152,7 +155,6 @@ if (!verb || verb === "help" || verb === "--help" || verb === "-h") {
 }
 
 const since = flag("--since");
-const canvas = flag("--canvas");
 
 /**
  * `decisions/marauder/*.json` — what a person decided in Pensieve — applied to the records
@@ -195,7 +197,7 @@ if (verb === "ingest") {
       written.push(...r.written);
     }
     if (wantsSlack) {
-      const r = await ingestSlack({ root, since, canvas, dryRun });
+      const r = await ingestSlack({ root, since, dryRun });
       if (r.changes.length) console.error(formatSlackChanges(r.changes));
       attached += r.changes.filter((c) => c.kind === "attached").length;
       queued += r.changes.filter((c) => c.kind === "unsorted" || c.kind === "proposed").length;
@@ -214,7 +216,7 @@ if (verb === "ingest") {
   }
 }
 
-const CORRECTIONS = ["attach", "suggest", "new", "dismiss", "split", "stage", "propose-split", "pending", "resolved", "ticket", "held"];
+const CORRECTIONS = ["huddle", "attach", "suggest", "new", "dismiss", "split", "stage", "propose-split", "pending", "resolved", "ticket", "held"];
 
 /**
  * A `sent` decision naming this ticket means Foundry is executing it (PLAN "Shared
@@ -276,7 +278,8 @@ if (verb === "check" || verb === "changed" || verb === "ticket-plan" || CORRECTI
       process.exit(0);
     }
     const result =
-      verb === "attach" ? attach(before, need(a, "an unsorted id"), need(b, "a workstream slug"), { ...who, auto: args.includes("--auto"), kind: flag("--kind") as never })
+      verb === "huddle" ? applyHuddle(before, need(a, "the huddle's Slack ts"), await readNotes(need(flag("--points"), "--points <file>")), who)
+      : verb === "attach" ? attach(before, need(a, "an unsorted id"), need(b, "a workstream slug"), { ...who, auto: args.includes("--auto"), kind: flag("--kind") as never })
       : verb === "suggest" ? suggest(before, need(a, "an unsorted id"), need(b, "a workstream slug"))
       : verb === "new" ? newFrom(before, need(a, "an unsorted id"), { ...who, name: need(flag("--name"), "--name"), features: list(flag("--features")), driver: flag("--driver") })
       : verb === "dismiss" ? dismiss(before, need(a, "an unsorted id"), { ...who, reason: need(who.reason, "--reason") })

@@ -14,6 +14,9 @@
  * A decision or an ask that matches nothing is proposed as a new workstream — `kind: "new"`
  * with a name in the item's own words. Nothing here ever creates a workstream file.
  *
+ * A huddle canvas is not split here. The message carrying it goes to the queue as notes
+ * nobody has read; the sweep reads them and records its key points with `marauder huddle`.
+ *
  * The cursor is this script's since the rewire (LIA-161). It reads through
  * `slack-pull --json`, which advances `workstreams/.state.next.json`; the sweep promotes
  * that to `workstreams/.state.json` only after the tick's commit succeeds, so a crashed
@@ -22,7 +25,7 @@
  */
 
 import { join } from "node:path";
-import { ME, type Msg, type Pull } from "./slack-pull.ts";
+import type { Msg, Pull } from "./slack-pull.ts";
 import {
   MILESTONES_FILE,
   UNSORTED_FILE,
@@ -47,7 +50,7 @@ const SLACK_PULL = new URL("./slack-pull.ts", import.meta.url).pathname;
 // ---------------------------------------------------------------- items
 
 export type SlackItem = {
-  /** the Slack `ts`, or `<ts>#<n>` for one item split out of a huddle canvas */
+  /** the Slack `ts`, or `<ts>#<n>` for one key point `marauder huddle` read out of a canvas */
   id: string;
   ts: string;
   at: string;
@@ -59,21 +62,17 @@ export type SlackItem = {
   text: string;
   threadTs?: string;
   permalink: string;
-  /** set by the canvas splitter, which knows what each part of the notes is */
+  /** a kind already known, so `classify` does not guess one */
   kind?: EventKind;
   /** the canvas file id, when the item is notes nobody has read yet */
   canvas?: string;
-  /** which half of a huddle canvas this came out of */
-  section?: "summary" | "actions";
   day: string;
 };
 
 const CANVAS_FILE = /HUDDLE NOTES canvas (\w+)/;
-const RAW_MENTION = /<@(U[A-Z0-9]+)>/g;
-
-/** a canvas carries raw user ids where a message carries names; make them the same thing */
-export const resolveMentions = (text: string, users: Record<string, string>, me: string) =>
-  text.replace(RAW_MENTION, (_, id: string) => `@${id === me ? USER.name : (users[id] ?? id)}`);
+/** the marker ingest leaves on notes nobody has read; `marauder huddle` clears it */
+export const UNREAD_CANVAS = "huddle notes nobody has read";
+export const unreadCanvasWhy = (ts: string) => `${UNREAD_CANVAS} — read them and run marauder huddle ${ts}`;
 const MENTION = /@([A-Z][\w'’-]*(?: [A-Z][\w'’-]*)?)/g;
 
 const isoOf = (ts: string) => new Date(Number(ts) * 1000).toISOString().replace(/\.\d+Z$/, "Z");
@@ -117,76 +116,6 @@ export function itemsOf(pull: Pull): SlackItem[] {
     for (const r of t.replies) take(r, t.parent.ts);
   }
   return out.sort((a, b) => Number(a.ts) - Number(b.ts));
-}
-
-// ---------------------------------------------------------------- the canvas
-
-const DATE = /\b(\d{4}-\d{2}-\d{2})\b/;
-const DEADLINE_WORD = /\b(launch|launches|release|demo|deadline|go[- ]live)\b/i;
-const ACTION_HEAD = /^(action items?|next steps?|to ?dos?|follow[- ]ups?)\b/i;
-const DECISION_HEAD = /^(decisions?|summary|agreed|conclusions?)\b/i;
-
-/**
- * A huddle canvas is a meeting, not a message: each settled point is a change to what the
- * work is, each action item naming a person is an ask, and anything naming a date and an
- * owner is a deadline. The rule is the digest's, inherited when it was retired, with the
- * kind set here so the items leave the splitter already typed.
- */
-export function splitCanvas(markdown: string, from: SlackItem, users: Record<string, string> = {}, me = ""): SlackItem[] {
-  const lines = resolveMentions(markdown, users, me).split("\n");
-  const out: SlackItem[] = [];
-  let section: "summary" | "actions" | "other" = "other";
-  let n = 0;
-  for (const [i, raw] of lines.entries()) {
-    const line = raw.trim();
-    if (!line || line.startsWith("![") || line.startsWith("*This tool uses AI")) continue;
-    // "## :star: Summary" — the shortcode is decoration, and the word after it is the section
-    const heading = line.replace(/^#+\s*/, "").replace(/:[a-z0-9_+-]+:/gi, "").replace(/[*_]/g, "").trim();
-    if (/^#+\s/.test(line)) {
-      section = ACTION_HEAD.test(heading) ? "actions" : DECISION_HEAD.test(heading) ? "summary" : "other";
-      continue;
-    }
-    if (section === "other") continue;
-    if (!/^[-*•]|^\d+\./.test(line)) continue;
-    // a bullet whose next bullet is indented deeper is a group label, not a thing that happened
-    const indent = raw.match(/^\s*/)![0].length;
-    const next = lines.slice(i + 1).find((l) => l.trim());
-    if (next && (next.match(/^\s*/)![0].length ?? 0) > indent) continue;
-    const text = line
-      .replace(/^[-*•]\s*/, "").replace(/^\d+\.\s*/, "").replace(/^\[[ x]\]\s*/i, "")
-      .replace(/\s*\[\d+:\d+\]\s*$/, "")
-      .trim();
-    if (text.length < 12) continue;
-    const to = addressees(text);
-    const kind: EventKind | undefined = DEADLINE_WORD.test(text) && (DATE.test(text) || /\b(today|tomorrow)\b/i.test(text))
-      ? "deadline"
-      : section === "actions"
-        ? "new-ask"
-        : undefined;
-    out.push({
-      ...from, id: `${from.ts}#${++n}`, text, to, section, canvas: undefined,
-      mentionsUser: to.includes(USER.token), ...(kind ? { kind } : {}),
-    });
-  }
-  return out;
-}
-
-const addDays = (day: string, n: number) => {
-  const d = new Date(`${day}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
-
-/** the milestone a deadline item states, when it states one plainly enough to record */
-export function milestoneOf(item: SlackItem): { slug: string; name: string; date: string; owner: string } | null {
-  if (item.kind !== "deadline") return null;
-  const date = item.text.match(DATE)?.[1]
-    ?? (/\btomorrow\b/i.test(item.text) ? addDays(item.day, 1) : /\btoday\b/i.test(item.text) ? item.day : null);
-  const word = item.text.match(DEADLINE_WORD)?.[1]?.toLowerCase();
-  if (!date || !word) return null;
-  const name = word.replace(/es$/, "").replace(/^go[- ]live$/, "go live");
-  const owner = item.to.find((t) => t !== USER.token) ?? (item.authorIsUser ? USER.name : item.author);
-  return { slug: `${name.replace(/\s+/g, "-")}-${date}`, name: name[0]!.toUpperCase() + name.slice(1), date, owner };
 }
 
 // ---------------------------------------------------------------- the ladder
@@ -259,6 +188,7 @@ export function slackCandidates(item: SlackItem, workstreams: Workstream[]): Can
 // ---------------------------------------------------------------- what kind of thing it is
 
 const LANDING_WORD = /\b(merged|landed|is up|on staging|on dev|deployed|pushed)\b/i;
+const DEADLINE_WORD = /\b(launch|launches|release|demo|deadline|go[- ]live)\b/i;
 const ROUTE = /\/api\/v\d+\/\S+|\b(GET|POST|PUT|PATCH|DELETE)\b\s*\S*\//;
 const QUESTION = /\?\s*$|\?\s/;
 
@@ -289,8 +219,6 @@ export function isChat(item: SlackItem, workstreams: Workstream[]): boolean {
     new RegExp(PR_REF.source, "i").test(text) ||
     DEADLINE_WORD.test(text) ||
     workstreams.some((w) => w.keys.vocab.some((v) => tokenIn(text, v)));
-  // a line of a meeting summary with nothing of the product in it is the meeting's small talk
-  if (item.section === "summary") return !signal;
   if (item.mentionsUser || QUESTION.test(text) || signal) return false;
   return text.trim().split(/\s+/).length < 12;
 }
@@ -346,7 +274,6 @@ export type SlackChange =
   | { kind: "attached"; item: SlackItem; slug: string; how: AttachHow; confidence: Confidence; eventKind: EventKind }
   | { kind: "unsorted"; item: SlackItem; why: string; candidates: Candidate[] }
   | { kind: "proposed"; item: SlackItem; name: string }
-  | { kind: "milestone"; item: SlackItem; slug: string; date: string }
   | { kind: "skipped"; item: SlackItem; why: string };
 
 export type ApplyInput = {
@@ -357,7 +284,7 @@ export type ApplyInput = {
 };
 export type ApplyResult = { workstreams: Workstream[]; unsorted: UnsortedItem[]; milestones: Milestones; changes: SlackChange[] };
 
-const CONFIDENCE: Record<AttachHow, Confidence> = {
+export const CONFIDENCE: Record<AttachHow, Confidence> = {
   thread: "certain", ref: "certain", vocab: "likely", author: "guess", read: "guess", human: "certain",
 };
 
@@ -365,36 +292,22 @@ const alreadyHas = (workstreams: Workstream[], id: string) =>
   workstreams.find((w) => w.events.some((e) => e.source?.ref === id));
 
 /**
- * A canvas is taken in whole or not at all. One event sourced anywhere in it means the
- * meeting has been read, so its other items are not re-derived — which is also what keeps
- * a re-split of the same notes from writing everything twice.
+ * A canvas is taken in whole or not at all. One event or one proposal sourced anywhere in
+ * it means the meeting has been read, so the message carrying it is not asked about again
+ * — which is what keeps a replayed pull from re-queueing notes `marauder huddle` recorded.
  */
-const canvasTakenIn = (workstreams: Workstream[], ts: string) =>
-  workstreams.some((w) => w.events.some((e) => e.source?.ref?.split("#")[0] === ts));
+const canvasTakenIn = (workstreams: Workstream[], unsorted: UnsortedItem[], ts: string) =>
+  workstreams.some((w) => w.events.some((e) => e.source?.ref?.split("#")[0] === ts)) ||
+  unsorted.some((u) => u.id.startsWith(`${ts}#`));
 
 /** the whole ingest as one pure function of what was read; the runner only does the IO */
 export function applySlack({ workstreams, items, unsorted, milestones }: ApplyInput): ApplyResult {
   const byslug = new Map(workstreams.map((w) => [w.slug, structuredClone(w)]));
   const queue = new Map(unsorted.map((u) => [u.id, u]));
-  const stones: Milestones = { ...milestones };
   const changes: SlackChange[] = [];
   const open = () => [...byslug.values()];
 
-  // computed once, against what came in: an item this run writes must not make the notes
-  // it came from look already read to the item after it
-  const takenIn = new Set(
-    [...new Set(items.map((i) => i.id.split("#")[0]!))].filter((ts) => canvasTakenIn(workstreams, ts)),
-  );
-  const done = new Set<string>();
   for (const item of items) {
-    const parent = item.id.split("#")[0]!;
-    if (item.id !== parent && takenIn.has(parent)) {
-      if (!done.has(parent)) {
-        done.add(parent);
-        changes.push({ kind: "skipped", item, why: "these huddle notes are already taken in" });
-      }
-      continue;
-    }
     const holder = alreadyHas(open(), item.id);
     if (holder) {
       changes.push({ kind: "skipped", item, why: `already an event on ${holder.slug}` });
@@ -406,11 +319,12 @@ export function applySlack({ workstreams, items, unsorted, milestones }: ApplyIn
     }
     if (item.canvas) {
       // the file arrives as a reply to the notes it belongs to, so ask about the notes
-      if (canvasTakenIn(workstreams, item.threadTs ?? item.ts)) {
+      const root = item.threadTs ?? item.ts;
+      if (canvasTakenIn(workstreams, unsorted, root)) {
         changes.push({ kind: "skipped", item, why: "these huddle notes are already taken in" });
         continue;
       }
-      queue.set(item.id, unsortedItem(item, [], "huddle notes nobody has read — split them with --canvas"));
+      queue.set(item.id, unsortedItem(item, [], unreadCanvasWhy(root)));
       changes.push({ kind: "unsorted", item, why: "a huddle canvas, unread", candidates: [] });
       continue;
     }
@@ -421,14 +335,6 @@ export function applySlack({ workstreams, items, unsorted, milestones }: ApplyIn
 
     const candidates = slackCandidates(item, open());
     const kind = classify(item, open());
-
-    // a date the team set belongs to everyone, so it is recorded whether or not the item
-    // it came in on can be placed on one workstream
-    const stone = milestoneOf(item);
-    if (stone && !stones[stone.slug]) {
-      stones[stone.slug] = { name: stone.name, date: stone.date, owner: stone.owner };
-      changes.push({ kind: "milestone", item, slug: stone.slug, date: stone.date });
-    }
 
     if (!kind || candidates.length !== 1) {
       const why = !kind
@@ -456,7 +362,6 @@ export function applySlack({ workstreams, items, unsorted, milestones }: ApplyIn
       source: { type: item.id.includes("#") ? "huddle" : "slack", ref: item.id, url: item.permalink },
       attached: { how: only.how, confidence: CONFIDENCE[only.how] },
       ...(kind === "answers-question" && question?.ticket ? { ticket: question.ticket } : {}),
-      ...(stone ? { action: `milestone ${stone.slug}` } : {}),
     };
     w.events = [...w.events, event].sort((a, b) => instantOf(a.at).localeCompare(instantOf(b.at)));
     if (item.threadTs && !w.keys.threads.includes(item.threadTs)) w.keys.threads = [...w.keys.threads, item.threadTs];
@@ -467,7 +372,7 @@ export function applySlack({ workstreams, items, unsorted, milestones }: ApplyIn
   return {
     workstreams: open(),
     unsorted: [...queue.values()].sort((a, b) => a.at.localeCompare(b.at)),
-    milestones: stones,
+    milestones,
     changes,
   };
 }
@@ -506,7 +411,7 @@ export const openList = (workstreams: Workstream[]): string =>
 
 // ---------------------------------------------------------------- running
 
-export type RunOpts = { root: string; since?: string; canvas?: string; dryRun?: boolean; pull?: Pull; users?: Record<string, string> };
+export type RunOpts = { root: string; since?: string; dryRun?: boolean; pull?: Pull };
 export type RunResult = ApplyResult & { written: string[] };
 
 async function pullChannel(since?: string, dryRun?: boolean): Promise<Pull> {
@@ -525,14 +430,7 @@ export async function run(opts: RunOpts): Promise<RunResult> {
   const unsorted: UnsortedItem[] = (await Bun.file(unsortedPath).exists()) ? await Bun.file(unsortedPath).json() : [];
 
   const pull = opts.pull ?? (await pullChannel(opts.since, opts.dryRun));
-  let items = itemsOf(pull);
-  if (opts.canvas) {
-    const markdown = await Bun.file(opts.canvas).text();
-    const notes = items.find((i) => i.canvas);
-    const users = opts.users ?? (await loadSlackUsers(opts.root));
-    if (notes) items = items.flatMap((i) => (i.id === notes.id ? splitCanvas(markdown, i, users, ME) : [i]));
-  }
-
+  const items = itemsOf(pull);
   const result = applySlack({ workstreams, items, unsorted, milestones });
   const written: string[] = [];
   if (!opts.dryRun) {
@@ -549,13 +447,6 @@ export async function run(opts: RunOpts): Promise<RunResult> {
   return { ...result, written };
 }
 
-/** the name cache slack-pull already keeps, so a canvas's raw ids become people */
-async function loadSlackUsers(root: string): Promise<Record<string, string>> {
-  const f = Bun.file(join(root, ".state/slack-users.json"));
-  if (!(await f.exists())) return {};
-  return ((await f.json()) as { users: Record<string, string> }).users ?? {};
-}
-
 async function writeJson(path: string, value: unknown, label: string): Promise<string[]> {
   const text = `${JSON.stringify(value, null, 2)}\n`;
   const had = (await Bun.file(path).exists()) ? await Bun.file(path).text() : "";
@@ -569,9 +460,7 @@ export function formatChanges(changes: SlackChange[]): string {
     .map((c) =>
       c.kind === "attached"
         ? `  ${c.item.id.padEnd(22)} → ${c.slug} · ${c.eventKind} · ${c.how}/${c.confidence}`
-        : c.kind === "milestone"
-          ? `  ${c.item.id.padEnd(22)} → milestone ${c.slug} (${c.date})`
-          : c.kind === "proposed"
+        : c.kind === "proposed"
             ? `  ${c.item.id.padEnd(22)} → proposed workstream "${c.name}"`
             : c.kind === "unsorted"
               ? `  ${c.item.id.padEnd(22)} → unsorted · ${c.why}`

@@ -76,7 +76,7 @@ export function learn(item: UnsortedItem): Learned {
  * claims is left out and said out loud: adding it would make the vocabulary rung ambiguous
  * for both of them, which is worse than not learning it at all.
  */
-function teach(w: Workstream, learned: Learned, others: Workstream[]): string[] {
+export function teach(w: Workstream, learned: Learned, others: Workstream[]): string[] {
   const notes: string[] = [];
   const add = (into: string[], values: string[], what: string, taken?: (v: string) => Workstream | undefined) => {
     for (const v of values) {

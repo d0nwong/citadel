@@ -1,10 +1,10 @@
 /**
  * ingest-slack.ts — what the channel said becomes events (LIA-157).
  *
- * The cases are the ticket's AC7, against the real 2026-09-09 pull and the real huddle
- * canvas of the same morning: the thread rung, the reference rung, the vocabulary match on
- * `billedBy`, the canvas split, the message with no anchor, and a re-run that writes
- * nothing. Nothing here touches Slack.
+ * The cases are the ticket's AC7, against the real 2026-09-09 pull: the thread rung, the
+ * reference rung, the vocabulary match on `billedBy`, the huddle canvas left for a reader,
+ * the message with no anchor, and a re-run that writes nothing. Nothing here touches
+ * Slack. What a reader does with the canvas is `huddle.test.ts`.
  *
  *   bun test skills/sweep/scripts/marauder/ingest-slack.test.ts
  */
@@ -16,11 +16,9 @@ import {
   classify,
   isChat,
   itemsOf,
-  milestoneOf,
-  resolveMentions,
   slackCandidates,
   slackSummary,
-  splitCanvas,
+  unreadCanvasWhy,
   type SlackItem,
 } from "./ingest-slack.ts";
 import type { Pull } from "./slack-pull.ts";
@@ -28,9 +26,6 @@ import { validate, type Workstream } from "./record.ts";
 
 const HERE = new URL(".", import.meta.url).pathname;
 const PULL: Pull = await Bun.file(`${HERE}fixtures/pull-2026-09-09.json`).json();
-const CANVAS = await Bun.file(`${HERE}fixtures/huddle-2026-09-09.md`).text();
-const USERS = { U07NTTMRNBF: "Foong Leung", U07JF8MVB27: "Sam O", U09R2MYP6A0: "Liam Leung" };
-const ME = "U09R2MYP6A0";
 
 const w = (over: Partial<Workstream> = {}): Workstream => ({
   slug: "entity-invoice-sender",
@@ -142,50 +137,20 @@ describe("what kind of thing it is", () => {
 
 describe("the canvas", () => {
   const from = items.find((i) => i.canvas)!;
-  const split = splitCanvas(CANVAS, from, USERS, ME);
 
-  test("raw user ids become the names the channel uses, the reader among them", () => {
-    expect(resolveMentions("<@U07JF8MVB27> and <@U09R2MYP6A0>", USERS, ME)).toBe("@Sam O and @Liam Leung");
+  test("notes nobody has read go to the queue, asking for marauder huddle", () => {
+    const { unsorted, workstreams, changes } = applySlack({ workstreams: [w()], items: [from], unsorted: [], milestones: {} });
+    expect(changes[0]).toMatchObject({ kind: "unsorted", why: "a huddle canvas, unread" });
+    expect(unsorted[0]).toMatchObject({ id: from.id, needs: "read", why: unreadCanvasWhy(from.threadTs ?? from.ts) });
+    expect(workstreams[0]!.events).toEqual([]);
   });
 
-  test("the notes split into items, each with its own id under the canvas", () => {
-    expect(split.length).toBeGreaterThan(10);
-    expect(split.every((i) => i.id.startsWith(`${from.ts}#`))).toBe(true);
-    expect(split.every((i) => !i.canvas)).toBe(true);
-  });
-
-  test("a group label with items under it is not itself an item", () => {
-    expect(split.map((i) => i.text)).not.toContain("Personal Updates and Team Energy");
-  });
-
-  test("the action items are asks, and the meeting's small talk is dropped", () => {
-    expect(split.filter((i) => i.section === "actions").every((i) => i.kind === "new-ask" || i.kind === "deadline")).toBe(true);
-    const chatter = split.find((i) => /tennis racket/.test(i.text))!;
-    expect(isChat(chatter, [w()])).toBe(true);
-  });
-
-  test("an item naming a date and an owner becomes a milestone", () => {
-    const launch = split.find((i) => i.kind === "deadline")!;
-    expect(milestoneOf(launch)).toEqual({ slug: "launch-2026-09-10", name: "Launch", date: "2026-09-10", owner: "Foong Leung" });
-  });
-
-  test("one canvas puts events on several workstreams and records the date", () => {
-    const open = [
-      w({ slug: "rollover-credits", keys: { ...w().keys, threads: ["1"], vocab: ["retainer"] } }),
-      w({ slug: "rendering-credit-inputs", keys: { ...w().keys, threads: ["2"], vocab: ["rendering"] } }),
-      w({ slug: "invoicing-page-defects", keys: { ...w().keys, threads: ["3"], vocab: ["invoicing page"] } }),
-    ];
-    const { workstreams, milestones, changes } = applySlack({ workstreams: open, items: split, unsorted: [], milestones: {} });
-    expect(new Set(changes.filter((c) => c.kind === "attached").map((c) => (c as { slug: string }).slug)).size).toBeGreaterThan(1);
-    expect(milestones["launch-2026-09-10"]!.date).toBe("2026-09-10");
-    for (const x of workstreams) expect(validate(x, x.slug)).toEqual([]);
-  });
-
-  test("notes already taken in are not split into the record a second time", () => {
-    const taken = w({ events: [{ at: "2026-09-09T02:34:00Z", kind: "contract-change", summary: "Angie ruled on the retainer.", source: { type: "huddle", ref: from.ts }, attached: { how: "thread", confidence: "certain" } }] });
-    const { changes } = applySlack({ workstreams: [taken], items: split, unsorted: [], milestones: {} });
-    expect(changes).toHaveLength(1);
-    expect(changes[0]).toMatchObject({ kind: "skipped", why: "these huddle notes are already taken in" });
+  test("notes already read are not asked about again — an event or a proposal under them is enough", () => {
+    const root = from.threadTs ?? from.ts;
+    const taken = w({ events: [{ at: "2026-09-09T02:34:00Z", kind: "contract-change", summary: "Angie ruled on the retainer.", source: { type: "huddle", ref: `${root}#1` }, attached: { how: "read", confidence: "guess" } }] });
+    expect(applySlack({ workstreams: [taken], items: [from], unsorted: [], milestones: {} }).changes[0]).toMatchObject({ kind: "skipped", why: "these huddle notes are already taken in" });
+    const proposal = { id: `${root}#2`, kind: "new" as const, name: "Something", summary: "Foong wants something.", candidates: [], suggest: null, needs: "read" as const, at: from.at };
+    expect(applySlack({ workstreams: [w()], items: [from], unsorted: [proposal], milestones: {} }).changes[0]).toMatchObject({ kind: "skipped" });
   });
 });
 
