@@ -122,6 +122,8 @@ export type FeatureRef = {
   app: string;
   /** the manifest id, when the app's manifest names this directory */
   id?: string;
+  /** the manifest's name for it — what a page calls the feature */
+  name?: string;
   /** the manifest's words for it — the vocabulary the ladder reads beside the learned keys */
   aliases: string[];
 };
@@ -347,7 +349,7 @@ export async function loadFeatures(root = "."): Promise<FeatureRef[]> {
       if (isFeature && !taken.has(rel)) {
         taken.add(rel);
         const m = aliases.get(rel);
-        out.push({ feature: rel, app, ...(m?.id ? { id: m.id } : {}), aliases: m?.aliases ?? [] });
+        out.push({ feature: rel, app, ...(m?.id ? { id: m.id } : {}), ...(m?.name ? { name: m.name } : {}), aliases: m?.aliases ?? [] });
       }
       if (depth >= 3) return;
       for (const e of entries) {
@@ -361,13 +363,13 @@ export async function loadFeatures(root = "."): Promise<FeatureRef[]> {
   return out.sort((a, b) => a.feature.localeCompare(b.feature));
 }
 
-/** the app's manifest, by feature directory: its id and the words people use for it */
-async function manifestAliases(appDir: string): Promise<Map<string, { id: string; aliases: string[] }>> {
+/** the app's manifest, by feature directory: its id, its name and the words people use for it */
+async function manifestAliases(appDir: string): Promise<Map<string, { id: string; name?: string; aliases: string[] }>> {
   const file = Bun.file(join(appDir, ".doc-workspace/feature-manifest.json"));
-  const out = new Map<string, { id: string; aliases: string[] }>();
+  const out = new Map<string, { id: string; name?: string; aliases: string[] }>();
   if (!(await file.exists())) return out;
   const m = (await file.json()) as { features?: Feature[] };
-  for (const f of m.features ?? []) out.set(featureDir(f), { id: f.id, aliases: f.aliases ?? [] });
+  for (const f of m.features ?? []) out.set(featureDir(f), { id: f.id, name: f.name, aliases: f.aliases ?? [] });
   return out;
 }
 

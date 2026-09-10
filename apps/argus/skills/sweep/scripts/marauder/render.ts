@@ -5,12 +5,13 @@
  *
  * `board.md` says what needs the reader, then what is going on in each feature that moved
  * this week. `changelog/<day>.md` is what changed in the project that day, by feature.
- * `marauder show <feature>` prints one feature's story; the page beside each feature's
- * docs is ARG-166's, and so is the board's designed shape — this keeps the run green.
+ * `<app>/features/<dir>/board.md` is one feature's story, beside its docs, and
+ * `marauder show <feature>` prints it (ARG-166).
  *
- * Two rules hold the whole file together. **Nothing but the record is read** — no Slack,
- * no Linear, no git, no `.state/`; if a page needs one of them the record is incomplete
- * and that is the bug. And **the same record renders the same bytes**, so a run that
+ * Two rules hold the whole file together. **Nothing but the record is read** — the one
+ * thing beside it is `FeatureMeta`, the manifest's name and the docs' stamps, which the
+ * command line hands in. No Slack, no Linear, no git, no `.state/`; if a page needs one
+ * of them the record is incomplete and that is the bug. And **the same record renders the same bytes**, so a run that
  * changed nothing writes nothing: `now` is passed in and floored to its day, and no page
  * carries a stamp.
  *
@@ -78,18 +79,27 @@ export const formatStyleProblems = (file: string, problems: StyleProblem[]) =>
 
 // ---------------------------------------------------------------- words
 
-/** how a feature is said out loud; anything unmapped is its last folder, in words */
-const FEATURE_WORDS: Record<string, string> = {
-  "admin/usage": "Usage",
-  "admin/invoicing": "Invoicing",
-  "admin/clients": "Clients",
-  tasks: "Tasks",
-  entities: "Entities",
+/** a doc's `last_verified` stamp, as `scripts/lib/stamps.ts` reads it */
+export type DocStamp = { rev: string; date?: string };
+
+/**
+ * What a page knows of a feature beyond its record: the manifest's name for it, the app it
+ * sits in, and the stamps on its docs. The command line reads these; rendering stays pure.
+ */
+export type FeatureMeta = {
+  app: string;
+  name?: string;
+  docs?: { product: boolean; arch: boolean; fe?: DocStamp; be?: DocStamp };
+  /** the app has a backend repo, so a missing backend stamp is worth saying */
+  hasBackend?: boolean;
 };
+export type FeatureMetas = Record<string, FeatureMeta>;
 
 const upperFirst = (s: string) => s.slice(0, 1).toUpperCase() + s.slice(1);
-export const featureTitle = (feature: string): string =>
-  FEATURE_WORDS[feature] ?? upperFirst(feature.split("/").at(-1)!.replace(/-/g, " "));
+
+/** how a feature is said out loud: the manifest's name, else its last folder in words */
+export const featureTitle = (feature: string, meta: FeatureMetas = {}): string =>
+  meta[feature]?.name ?? upperFirst(feature.split("/").at(-1)!.replace(/-/g, " "));
 
 const firstName = (person: string) => (person === USER.token ? "you" : person.split(/\s+/)[0]!);
 const owns = (person: string) => (person === USER.token ? USER.name : person);
@@ -187,25 +197,20 @@ export const asksForYou = (w: Work): WorkEvent[] =>
 export const questionsForYou = (w: Work) => w.open_questions.filter((q) => q.owner === USER.token);
 const questionsForOthers = (w: Work) => w.open_questions.filter((q) => q.owner !== USER.token);
 
-const needsYou = (w: Work) => asksForYou(w).length > 0 || questionsForYou(w).length > 0;
 const newestFirst = (a: WorkEvent, b: WorkEvent) => instantOf(b.at).localeCompare(instantOf(a.at));
-const byNewest = (a: Work, b: Work) =>
-  instantOf(latestEvent(b)?.at ?? b.updated).localeCompare(instantOf(latestEvent(a)?.at ?? a.updated)) || a.feature.localeCompare(b.feature);
 
-// ---------------------------------------------------------------- the board
-
-type Block = { name: string; sentences: string[]; evidence: string | null };
-
-const blockLines = (b: Block): string[] => [`**${b.name}**`, "", ...b.sentences, ...(b.evidence ? ["", b.evidence] : [])];
-
-/** the asks and questions still standing, newest first, one block per feature */
-function needsYouBlock(w: Work, ctx: Ctx): Block {
-  const items = [
+/** what the reader owes, newest first: every ask aimed at them and every question they own */
+function owedByYou(w: Work): { at: string; text: string; e: WorkEvent | undefined }[] {
+  return [
     ...asksForYou(w).map((e) => ({ at: instantOf(e.at), text: e.summary, e })),
     ...questionsForYou(w).map((q) => ({ at: instantOf(q.at), text: questionSentence(q), e: latestEvent(w) })),
   ].sort((a, b) => b.at.localeCompare(a.at));
-  return { name: featureTitle(w.feature), sentences: items.slice(0, 2).map((i) => i.text), evidence: evidenceLine(items[0]?.e, ctx) };
 }
+
+/** a board section says what landed, then what was decided or asked, then the rest */
+const LANDED = new Set(["verified-landing"]);
+const DECIDED = new Set(["contract-change", "new-ask", "answers-question"]);
+const sectionOrder = (e: WorkEvent) => (LANDED.has(e.kind) ? 0 : DECIDED.has(e.kind) ? 1 : 2);
 
 function milestoneSentence(work: Work[], milestones: Milestones, ctx: Ctx): string | null {
   const pointedAt = new Set(work.map((w) => w.milestone).filter(Boolean));
@@ -217,39 +222,73 @@ function milestoneSentence(work: Work[], milestones: Milestones, ctx: Ctx): stri
   return `${firstName(m.owner)}'s ${m.name.toLowerCase()} is ${whenWord(ctx.today, m.date)}, ${longDate(m.date)}.`;
 }
 
-export type BoardInput = { work: Work[]; milestones: Milestones; now: string };
+// ---------------------------------------------------------------- the board
 
-/** how many of a feature's events this week the board says, newest first */
+export type BoardInput = { work: Work[]; milestones: Milestones; now: string; meta?: FeatureMetas };
+
+/** how many of a feature's events this week the board says, newest first within each kind */
 const BOARD_EVENTS = 3;
 
 /**
- * The one page that says where everything stands: what needs the reader, then each
- * feature that moved in the last seven days or is waiting on someone, newest first.
+ * The one page that says where everything stands: the date it all points at, what needs
+ * the reader, one section per feature with an event in the last seven days, and last what
+ * the reader is waiting on others for, by whom. A feature that did not move is left off.
  */
-export function renderBoard({ work, milestones, now }: BoardInput): string {
+export function renderBoard({ work, milestones, now, meta = {} }: BoardInput): string {
   const ctx: Ctx = { now, today: dayOf(now), base: "../" };
   const since = addDays(ctx.today, -7);
   const thisWeek = (w: Work) => w.events.filter((e) => dayOf(instantOf(e.at)) >= since).sort(newestFirst);
+  const title = (w: Work) => featureTitle(w.feature, meta);
 
   const out: string[] = ["# Where the work stands", ""];
   const deadline = milestoneSentence(work, milestones, ctx);
   if (deadline) out.push(deadline, "");
 
-  const needs = work.filter(needsYou).sort(byNewest);
+  const needs = work
+    .flatMap((w) => owedByYou(w).map((i) => ({ ...i, w })))
+    .sort((a, b) => b.at.localeCompare(a.at) || a.w.feature.localeCompare(b.w.feature));
   if (needs.length) {
     out.push("## Needs you", "");
-    for (const w of needs) out.push(...blockLines(needsYouBlock(w, ctx)), "");
+    for (const i of needs) {
+      out.push(`**${title(i.w)}**`, "", i.text);
+      const ev = evidenceLine(i.e, ctx);
+      if (ev) out.push("", ev);
+      out.push("");
+    }
   }
 
-  const moving = work.filter((w) => thisWeek(w).length || questionsForOthers(w).length).sort(byNewest);
-  for (const w of moving) {
-    const events = thisWeek(w);
-    out.push(`## ${featureTitle(w.feature)}`, "");
-    for (const e of events.slice(0, BOARD_EVENTS)) out.push(e.summary);
-    for (const q of questionsForOthers(w)) out.push(questionSentence(q));
+  const moving = work
+    .map((w) => ({ w, events: thisWeek(w) }))
+    .filter((x) => x.events.length)
+    .sort((a, b) => instantOf(b.events[0]!.at).localeCompare(instantOf(a.events[0]!.at)) || a.w.feature.localeCompare(b.w.feature));
+  for (const { w, events } of moving) {
+    const page = meta[w.feature] ? featurePagePath(meta[w.feature]!.app, w.feature) : null;
+    out.push(`## ${page ? link(title(w), ctx.base + page) : title(w)}`, "");
+    const said = [...events].sort((a, b) => sectionOrder(a) - sectionOrder(b) || newestFirst(a, b)).slice(0, BOARD_EVENTS);
+    for (const e of said) out.push(e.summary);
+    for (const q of w.open_questions) out.push(questionSentence(q));
     const ev = evidenceLine(events[0], ctx);
     if (ev) out.push("", ev);
     out.push("");
+  }
+
+  const byOwner = new Map<string, { w: Work; q: OpenQuestion }[]>();
+  for (const w of work) for (const q of questionsForOthers(w)) {
+    const owner = q.owner ?? "someone";
+    byOwner.set(owner, [...(byOwner.get(owner) ?? []), { w, q }]);
+  }
+  if (byOwner.size) {
+    out.push("## Waiting on others", "");
+    for (const [owner, items] of [...byOwner].sort((a, b) => a[0].localeCompare(b[0]))) {
+      out.push(`**${owner === "someone" ? "No one named yet" : owner}**`, "");
+      const byFeature = new Map<Work, OpenQuestion[]>();
+      for (const { w, q } of items) byFeature.set(w, [...(byFeature.get(w) ?? []), q]);
+      for (const [w, qs] of [...byFeature].sort((a, b) => a[0].feature.localeCompare(b[0].feature))) {
+        out.push(`*${title(w)}*`, "");
+        for (const q of qs.sort((a, b) => b.at.localeCompare(a.at))) out.push(`- ${questionSentence(q)}`);
+        out.push("");
+      }
+    }
   }
 
   if (!needs.length && !moving.length) out.push("Nothing moved this week.", "");
@@ -258,17 +297,54 @@ export function renderBoard({ work, milestones, now }: BoardInput): string {
 
 // ---------------------------------------------------------------- one feature
 
-/** the story of one feature's work: the date it points at, what is open, what happened */
-export function renderFeature(w: Work, milestones: Milestones, now: string): string {
-  const ctx: Ctx = { now, today: dayOf(now), base: "../" };
-  const out: string[] = [`# ${featureTitle(w.feature)}`, ""];
+/** where a feature's page sits, relative to the workspace root */
+export const featurePagePath = (app: string, feature: string) => `${app}/features/${feature}/${FEATURE_PAGE}`;
+export const FEATURE_PAGE = "board.md";
 
-  const m = w.milestone ? milestones[w.milestone] : undefined;
-  if (m) out.push(`${firstName(m.owner)}'s ${m.name.toLowerCase()} is ${whenWord(ctx.today, m.date)}, ${longDate(m.date)}.`, "");
+/** the up-directories from a feature's page back to the workspace root */
+const baseFor = (app: string, feature: string) => "../".repeat(featurePagePath(app, feature).split("/").length - 1);
 
-  if (w.open_questions.length) {
+/** "front end at `fe@1a2b3c4` on 9 September" — a doc stamp said out loud */
+const stampWords = (side: string, s: DocStamp | undefined) =>
+  s ? `${side} checked at \`${s.rev}\`${s.date ? ` on ${longDate(s.date)}` : ""}` : `${side} not yet checked`;
+
+/** the one line linking the feature's docs, or saying it has none yet */
+function docsLine(m: FeatureMeta | undefined): string {
+  const d = m?.docs;
+  if (!d || (!d.product && !d.arch)) return "This feature has no docs yet.";
+  const links = [d.product ? link("product doc", "docs/product.md") : null, d.arch ? link("architecture doc", "docs/arch.md") : null].filter(Boolean);
+  const stamps = [stampWords("Front end", d.fe), ...(d.be || m?.hasBackend ? [stampWords("backend", d.be)] : [])];
+  return `The ${links.join(" and ")} say what it does. ${stamps.join(", ")}.`;
+}
+
+/**
+ * The page beside a feature's docs: what the docs say is linked, not pasted, then what needs
+ * the reader, what is still open, and every event newest first. Links are written relative
+ * to the page's own folder, so they hold wherever the feature sits.
+ */
+export function renderFeature(w: Work, milestones: Milestones, now: string, meta: FeatureMetas = {}): string {
+  const m = meta[w.feature];
+  const ctx: Ctx = { now, today: dayOf(now), base: m ? baseFor(m.app, w.feature) : "../" };
+  const out: string[] = [`# ${featureTitle(w.feature, meta)}`, "", docsLine(m), ""];
+
+  const ms = w.milestone ? milestones[w.milestone] : undefined;
+  if (ms) out.push(`${firstName(ms.owner)}'s ${ms.name.toLowerCase()} is ${whenWord(ctx.today, ms.date)}, ${longDate(ms.date)}.`, "");
+
+  const owed = owedByYou(w);
+  if (owed.length) {
+    out.push("## Needs you", "");
+    for (const i of owed) {
+      out.push(i.text);
+      const ev = evidenceLine(i.e, ctx);
+      if (ev) out.push("", ev);
+      out.push("");
+    }
+  }
+
+  const others = questionsForOthers(w);
+  if (others.length) {
     out.push("## Still open", "");
-    for (const q of w.open_questions) out.push(`- ${questionSentence(q)}`);
+    for (const q of others) out.push(`- ${questionSentence(q)}`);
     out.push("");
   }
 
@@ -289,7 +365,7 @@ export function renderFeature(w: Work, milestones: Milestones, now: string): str
 const asSentence = (s: string) => (/[.!?]$/.test(s) ? s : `${s}.`);
 
 /** what changed in the project that day, by feature, and nothing about features that did not move */
-export function renderChangelog(work: Work[], day: string): string {
+export function renderChangelog(work: Work[], day: string, meta: FeatureMetas = {}): string {
   const ctx: Ctx = { now: `${day}T00:00:00Z`, today: day, base: "../../" };
   const moved = work
     .map((w) => ({ w, events: w.events.filter((e) => dayOf(e.at) === day) }))
@@ -300,7 +376,9 @@ export function renderChangelog(work: Work[], day: string): string {
   if (!moved.length) return `${out.join("\n")}Nothing moved.\n`;
   for (const { w, events } of moved) {
     const sorted = [...events].sort((a, b) => instantOf(a.at).localeCompare(instantOf(b.at)));
-    out.push(`**${featureTitle(w.feature)}**`, "", sorted.map((e) => asSentence(e.summary)).join(" "));
+    const m = meta[w.feature];
+    const name = featureTitle(w.feature, meta);
+    out.push(`**${m ? link(name, ctx.base + featurePagePath(m.app, w.feature)) : name}**`, "", sorted.map((e) => asSentence(e.summary)).join(" "));
     const ev = evidenceLine(sorted.at(-1), ctx);
     if (ev) out.push("", ev);
     out.push("");

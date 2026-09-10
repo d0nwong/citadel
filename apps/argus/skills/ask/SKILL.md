@@ -14,7 +14,8 @@ changed — frontmatter is the routing) and, when something is going on in it, `
 (the keys an event attaches by, the open questions with whose move each is, and every event
 in order). A feature with nothing going on has no `work.json`. `marauder/board.md` and
 `marauder/changelog/<day>.md` are those records rendered for a reader, and
-`marauder show <feature>` prints one feature's story. `queue/_unsorted.json` is what
+`<app>/features/<dir>/board.md` is one feature's page, beside its docs, and
+`marauder show <feature>` prints it — read that first for a feature. `queue/_unsorted.json` is what
 attached to nothing and is waiting to be placed, and `decisions/marauder/<id>.json` is the
 user's verdict on one such entry. No record keeps a stage: where a ticket is, Linear says. `reports/`, `digests/` and `arcs/` are the archive of what the loop wrote before
 2026-09-09 — read them for history, never as current state. The README's Layout table is
