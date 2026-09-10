@@ -20,8 +20,8 @@ feature or *dismiss* it with a reason. A **feature page** lets you *verify* what
 asked you to confirm, or *send* one of its tickets to
 [Foundry](https://github.com/d0nwong/foundry). Either way it is one JSON file under
 `decisions/` that argus reads back: today the next `marauder ingest` applies it and
-commits it, and once ARG-168 and ARG-169 land the click itself runs `marauder apply`, so
-the record and the pages change before the page re-reads them. Nothing else is written
+commits it; `marauder apply` (ARG-168) applies it on demand, and once ARG-169 lands the
+click itself runs that, so the record and the pages change before the page re-reads them. Nothing else is written
 into the blackboard from here — not `work.json`, `queue/`, `marauder/`, the journal,
 docs or tickets; those still go through argus, Linear or Slack.
 
@@ -181,7 +181,7 @@ Today the verdict reaches the record on the sweep's next tick: `marauder ingest`
 each file through the same correction functions the command line goes through, then the
 tick commits the file untouched as the history of who decided what. Going forward the
 click applies it (ARG-169, filed): after the write, `decideUnsorted` and Verify run
-`bun run marauder apply` in `WORKSPACE_DIR` — argus's own verb (ARG-168), which applies
+`bun run marauder apply` in `WORKSPACE_DIR` — argus's own verb, landed as ARG-168, which applies
 the decision files and renders the pages under the lock every writing verb of the sweep
 holds — and answer `{ ok, applied, note? }`. When the lock is busy or the run fails, the
 file is still written, the row wears its verdict with the note, and the next tick applies

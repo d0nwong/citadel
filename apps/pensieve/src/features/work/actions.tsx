@@ -1,8 +1,9 @@
 /**
  * The two things a reader can do from a feature page (LIA-162 AC2, AC3), and the one
- * rule both obey: the click writes one file under `decisions/` and nothing else. The next
- * `marauder ingest` reads it back, applies it, and commits — so a row stays where it is
- * until then, wearing the verdict it was given. That is Pensieve's one-writer rule holding.
+ * rule both obey: the click writes one file under `decisions/` and nothing else. A Verify
+ * then runs argus's `marauder apply`, so the event reads as confirmed on the re-read
+ * (ARG-169); when apply could not run, the row wears its verdict with a note and the next
+ * `marauder ingest` applies it. That is Pensieve's one-writer rule holding.
  *
  * **Send** hands a ticket to Foundry. It is offered on a ticket nobody has started —
  * Linear's Backlog or Todo — that has no `decisions/send/<ticket>.json` yet; the
@@ -191,6 +192,7 @@ export function Tickets({
 function AskRow({ ask }: { ask: FeatureAsk }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
   const { busy, commit, error } = useCommit<VerifyResult>();
 
   // No pre-flight guard: an empty note is a valid confirmation — the event's own text is
@@ -198,7 +200,10 @@ function AskRow({ ask }: { ask: FeatureAsk }) {
   const verify = () =>
     commit(
       () => verifyEvent({ data: { event: ask.event, note } }),
-      () => setOpen(false)
+      (v) => {
+        setOpen(false);
+        setPending(v.applied ? null : (v.note ?? null));
+      }
     );
 
   return (
@@ -225,7 +230,7 @@ function AskRow({ ask }: { ask: FeatureAsk }) {
             <span className="text-muted-foreground">{ask.verified.reason}</span>
           )}
           <span className="text-subtle text-xs">
-            waiting for the next run to apply it
+            {pending ?? "waiting for the next run to apply it"}
           </span>
         </p>
       ) : (

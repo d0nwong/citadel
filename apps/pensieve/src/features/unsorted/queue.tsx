@@ -2,11 +2,12 @@
  * The corrections queue — what `marauder ingest` could not attach on its own, with the one
  * click that fixes it (LIA-160 AC3, AC5; over features since ARG-167).
  *
- * A click writes `decisions/marauder/<id>.json` and nothing else. The next `marauder
- * ingest` reads that file, applies it through the correction functions, drops the entry
- * from `queue/_unsorted.json` and commits — so the row stays in the list until then,
- * wearing the verdict it was given. That is the one-writer rule holding: this app writes
- * decision files, the sweep writes the record.
+ * A click writes `decisions/marauder/<id>.json` and then runs argus's `marauder apply`,
+ * which applies it under the sweep's lock and drops the entry from `queue/_unsorted.json`
+ * — so on the re-read the row is gone (ARG-169). When apply could not run (the lock was
+ * busy, the run failed), the row stays wearing its verdict with a note saying why, and the
+ * next `marauder ingest` applies the file instead. That is the one-writer rule holding:
+ * this app writes decision files, argus writes the record.
  *
  * The click has to be cheap or the list grows and the guesses stop being corrected, so the
  * select of features is on the row already with the sweep's suggestion chosen, and Attach
@@ -62,9 +63,12 @@ function Source({ item }: { item: UnsortedItem }) {
 function Decided({
   decision,
   names,
+  note,
 }: {
   decision: MarauderDecision;
   names: Map<string, string>;
+  /** Why this click's `marauder apply` did not take it in, when it did not. */
+  note?: string | null;
 }) {
   const word =
     decision.action === "attach"
@@ -77,7 +81,7 @@ function Decided({
         <span className="text-muted-foreground">{decision.reason}</span>
       )}
       <span className="text-subtle text-xs">
-        waiting for the next run to apply it
+        {note ?? "waiting for the next run to apply it"}
       </span>
     </div>
   );
@@ -103,6 +107,7 @@ function Row({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   const commit = async (
     draft: Parameters<typeof decideUnsorted>[0]["data"]
@@ -116,8 +121,9 @@ function Row({
       const v: UnsortedVerdict = await decideUnsorted({ data: draft });
       if (v.ok) {
         setDismissing(false);
-        // The loader re-reads `_unsorted.json` + `decisions/marauder/`, so the row lands
-        // in its decided state whether this click wrote the file or found it already there.
+        setNote(v.applied ? null : (v.note ?? null));
+        // The loader re-reads `_unsorted.json` + `decisions/marauder/`: an applied row is
+        // gone, and one apply could not take in lands in its decided state with the note.
         await router.invalidate();
       } else {
         setError(v.error);
@@ -153,7 +159,7 @@ function Row({
       </p>
 
       {decision ? (
-        <Decided decision={decision} names={names} />
+        <Decided decision={decision} names={names} note={note} />
       ) : (
         <>
           <div className="mt-3 flex flex-wrap items-center gap-2">

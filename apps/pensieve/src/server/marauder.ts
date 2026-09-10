@@ -724,3 +724,73 @@ export async function readFeature(
   ]);
   return page || work ? { ...ref, page, work } : null;
 }
+
+// ── apply: the click takes effect at the click (ARG-169) ───────────────────────
+
+/** What one `marauder apply` run answered — `note` is argus's last stderr line when it did not apply. */
+export interface ApplyResult {
+  applied: boolean;
+  note?: string;
+}
+
+export const APPLY_COMMAND = ["bun", "run", "marauder", "apply"] as const;
+export const APPLY_TIMEOUT_MS = 30_000;
+
+const LATER = "the next sweep will apply it";
+
+/** The last non-empty line of a stream's text — argus prints its one-line result there. */
+const lastLine = (text: string) =>
+  text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .at(-1);
+
+/**
+ * Run `marauder apply` in the workspace so a verdict just written takes effect now. The
+ * verb is argus's code in argus's checkout, under the lock the sweep also holds (ARG-168),
+ * so this app still writes nothing but the decision file. It never throws: a busy lock, a
+ * failing run, a timeout or a missing `bun` all answer `applied: false` with a note, and
+ * the file stays on disk for the next sweep — today's behaviour as the fallback.
+ */
+export async function applyDecisions(
+  cmd: readonly string[] = APPLY_COMMAND,
+  { cwd = WORKSPACE_DIR, timeout = APPLY_TIMEOUT_MS } = {}
+): Promise<ApplyResult> {
+  let proc: ReturnType<typeof Bun.spawn>;
+  try {
+    proc = Bun.spawn([...cmd], {
+      cwd,
+      env: process.env,
+      stderr: "pipe",
+      stdin: "ignore",
+      stdout: "ignore",
+      timeout,
+    });
+  } catch (e) {
+    const missing = (e as { code?: string }).code === "ENOENT";
+    return {
+      applied: false,
+      note: missing
+        ? `${cmd[0]} was not found on the server's PATH — ${LATER}`
+        : `${(e as Error).message} — ${LATER}`,
+    };
+  }
+  const [code, err] = await Promise.all([
+    proc.exited,
+    new Response(proc.stderr as ReadableStream).text(),
+  ]);
+  if (code === 0) {
+    return { applied: true };
+  }
+  if (proc.signalCode) {
+    return {
+      applied: false,
+      note: `marauder apply took longer than ${Math.round(timeout / 1000)} s — ${LATER}`,
+    };
+  }
+  return {
+    applied: false,
+    note: `${lastLine(err) ?? `marauder apply exited ${code}`} — ${LATER}`,
+  };
+}
