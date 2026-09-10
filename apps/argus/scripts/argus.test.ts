@@ -109,3 +109,22 @@ describe("argus", () => {
     expect(JSON.parse(show.out).requirements[0].evidence).toHaveLength(1);
   });
 });
+
+describe("click verbs through the CLI", () => {
+  test("close, confirm and ticket answer json; a missing reason is a usage error", async () => {
+    const c = await argus("close", "admin/invoicing", "A-2", "--reason", "done in standup", "--json");
+    expect(JSON.parse(c.out)).toMatchObject({ ok: true, wrote: true, diff: ["A-2 asked → closed"] });
+    const noReason = await argus("close", "admin/invoicing", "A-2");
+    expect(noReason.code).toBe(1);
+    expect(noReason.err).toContain("usage: argus close");
+    const all = await argus("confirm", "admin/invoicing", "--all", "--reason", "bulk", "--json");
+    expect(JSON.parse(all.out).diff).toEqual(["R-3 assumed → confirmed"]);
+    const t = await argus("ticket", "admin/invoicing", "P-1", "ALD-60");
+    expect(t.out).toContain("+ ALD-60 ready");
+  });
+  test("place needs an unplaced list", async () => {
+    const r = await argus("place", "123", "tasks");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("not in the unplaced list");
+  });
+});

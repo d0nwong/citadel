@@ -16,6 +16,7 @@
 import { listFeatures, ledgerPath, root } from "./argus/paths.ts";
 import { validateDoc, validateLedger, ValidationError } from "./argus/validate.ts";
 import { archDocPath, isFeature } from "./argus/paths.ts";
+import { closeAsk, confirmRequirement, placeMessage, recordTicket } from "./argus/verbs.ts";
 import { readLedger, writeLedger } from "./argus/write.ts";
 
 export type Flags = { dryRun: boolean; json: boolean; actor: "model" | "user"; rest: string[]; opts: Record<string, string> };
@@ -41,6 +42,11 @@ const USAGE = `argus — the ledger CLI
   argus validate [<feature>...]      check every ledger and arch doc, or the ones named
   argus write <feature> <file>|-     validate and write the next ledger (--dry-run to preview)
   argus show <feature>               print the ledger
+
+  argus close <feature> <A-n> --reason "<why>"
+  argus confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]
+  argus place <message-id> <feature>
+  argus ticket <feature> <P-n> <ALD-key>
 
 flags: --dry-run  --json  --user (the write is a person's, not the model's)
 root: ${root()}`;
@@ -81,11 +87,41 @@ const verbs: Record<string, Verb> = {
     if (!feature || !src) throw new Usage("write <feature> <file>|-");
     const text = src === "-" ? await Bun.stdin.text() : await Bun.file(src).text();
     const input = JSON.parse(text);
-    const r = await writeLedger(feature, input, { actor: f.actor, dryRun: f.dryRun });
-    if (f.json) console.log(JSON.stringify({ ok: true, wrote: r.wrote, path: r.path, diff: r.diff }));
-    else if (!r.diff.length) console.log(`${feature}: unchanged`);
-    else console.log(`${feature}: ${f.dryRun ? "would write" : r.wrote ? "wrote" : "unchanged"}\n  ${r.diff.join("\n  ")}`);
+    return report(f, feature, await writeLedger(feature, input, { actor: f.actor, dryRun: f.dryRun }));
+  },
+
+  async close(f) {
+    const [feature, askId] = f.rest;
+    if (!feature || !askId || !f.opts.reason) throw new Usage('close <feature> <A-n> --reason "<why>"');
+    return report(f, feature, await closeAsk(feature, askId, f.opts.reason, { dryRun: f.dryRun }));
+  },
+
+  async confirm(f) {
+    const [feature, reqId] = f.rest;
+    const all = f.opts.all === "true";
+    if (!feature || (!reqId && !all) || !f.opts.reason) throw new Usage('confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]');
+    const r = await confirmRequirement(feature, reqId ?? null, f.opts.reason, {
+      dryRun: f.dryRun,
+      all,
+      contradict: f.opts.contradict === "true",
+      by: f.opts.by,
+    });
+    return report(f, feature, r);
+  },
+
+  async place(f) {
+    const [id, feature] = f.rest;
+    if (!id || !feature) throw new Usage("place <message-id> <feature>");
+    const r = await placeMessage(id, feature, { dryRun: f.dryRun });
+    if (f.json) console.log(JSON.stringify({ ok: true, ...r, ledger: r.ledger ? { wrote: r.ledger.wrote, diff: r.ledger.diff } : null }));
+    else console.log(`${id} → ${feature}${r.thread ? ` (thread ${r.thread} remembered)` : ""}${r.ledger ? ", ledger opened" : ""}${f.dryRun ? " (dry run)" : ""}`);
     return 0;
+  },
+
+  async ticket(f) {
+    const [feature, proposalId, key] = f.rest;
+    if (!feature || !proposalId || !key) throw new Usage("ticket <feature> <P-n> <ALD-key>");
+    return report(f, feature, await recordTicket(feature, proposalId, key, { dryRun: f.dryRun }));
   },
 
   async show(f) {
@@ -102,6 +138,13 @@ const verbs: Record<string, Verb> = {
 };
 
 class Usage extends Error {}
+
+function report(f: Flags, feature: string, r: { wrote: boolean; path: string; diff: string[] }): number {
+  if (f.json) console.log(JSON.stringify({ ok: true, wrote: r.wrote, path: r.path, diff: r.diff }));
+  else if (!r.diff.length) console.log(`${feature}: unchanged`);
+  else console.log(`${feature}: ${f.dryRun ? "would write" : "wrote"}\n  ${r.diff.join("\n  ")}`);
+  return 0;
+}
 
 export async function main(argv: string[]): Promise<number> {
   const [verb, ...rest] = argv;

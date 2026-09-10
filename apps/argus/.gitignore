@@ -59,3 +59,8 @@ digests/.state.next.json
 tanstack-claude-*
 .tanstack-mcp-bridge-*
 tanstack-output-schema-*
+
+# argus run state: the cursor and the batches are local; threads.json and unplaced.json are committed
+state/cursor.json
+state/cursor.next.json
+state/batches/
