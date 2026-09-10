@@ -38,7 +38,7 @@ const fetcher: ChatFetcher = ({ messages, threadId, data }, { signal }) => {
 };
 
 export const options = {
-  devtools: { name: "Ask argus" },
+  devtools: { name: "🐶 Ask argus" },
   fetcher,
   onChunk: (chunk: StreamChunk) => {
     if (chunk.type === "RUN_STARTED" && chunk.threadId) {

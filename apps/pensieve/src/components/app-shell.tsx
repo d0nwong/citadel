@@ -27,7 +27,6 @@ import {
   Map as MapIcon,
   MessageCircleQuestion,
   ScrollText,
-  SparklesIcon,
   Waypoints,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -500,8 +499,7 @@ function TopBar() {
         </span>
         <ThemeToggle />
         <Button onClick={ask} size="sm">
-          <SparklesIcon />
-          Ask Argus
+          🐶 Ask Argus
         </Button>
       </div>
     </header>

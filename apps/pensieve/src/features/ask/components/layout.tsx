@@ -34,7 +34,7 @@ export function AskLayout({
           {empty ? (
             <ConversationEmptyState
               description="Claude Code with the argus checkout open, read-only. Ask what the sweep found, what a journal entry decided, where a feature lives."
-              title="Ask argus"
+              title="🐶 Ask argus"
             />
           ) : (
             <Messages />
