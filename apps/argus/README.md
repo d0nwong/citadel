@@ -196,7 +196,7 @@ ground truth, place what it cannot attach, and surface only the judgement calls.
 
 `reports/`, `reports/points.json`, `digests/` and `arcs/` are the archive: the daily digest,
 the sweep report and the per-initiative arc, which the workstream replaced on 2026-09-09.
-They stay readable in Pensieve as history, and nothing writes to them again.
+The reports and digests stay readable in Pensieve as history, the arcs only as files, and nothing writes to them again.
 
 ## Layout
 
