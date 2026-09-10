@@ -19,14 +19,13 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import {
+  Archive,
   BookOpenText,
   ChevronRight,
-  FileText,
   FolderIcon,
   Inbox,
   Map as MapIcon,
   MessageCircleQuestion,
-  MessagesSquare,
   ScrollText,
   SparklesIcon,
   Waypoints,
@@ -221,10 +220,14 @@ function PullToRefresh({
 
 // ── the sidebar ────────────────────────────────────────────────────────────────
 
+/**
+ * The reading layer under the board. The journal is the evidence — one entry per landing or
+ * decision, still written every tick; the archive is what the loop wrote before the board
+ * replaced it (LIA-161), kept readable and written by nothing (LIA-162).
+ */
 const READING = [
-  { icon: FileText, label: "Sweep log", to: "/reports" },
-  { icon: MessagesSquare, label: "Digests", to: "/digests" },
   { icon: ScrollText, label: "Journal", to: "/journal" },
+  { icon: Archive, label: "Archive", to: "/archive" },
 ] as const;
 
 function Basin({ className }: { className?: string }) {
@@ -308,13 +311,13 @@ function AppSidebar() {
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            {/* Beside the board, not under Reading: the points on one and the initiatives
-                on the other are the same work, asked about at two altitudes (LIA-149). */}
+            {/* Beside the board, not under Reading: the board is what needs a reader now,
+                and this is the same work as a flat list of everything open (LIA-162). */}
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={isActive(pathname, "/arcs")}>
-                <Link to="/arcs">
+              <SidebarMenuButton asChild isActive={isActive(pathname, "/work")}>
+                <Link to="/work">
                   <Waypoints />
-                  <span>Arcs</span>
+                  <span>Work</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -411,7 +414,7 @@ function AppSidebar() {
 
 // ── the top bar ────────────────────────────────────────────────────────────────
 
-/** `/reports/$day` → `/reports`, `/docs/$` → `/docs`: the section a dynamic page sits under. */
+/** `/work/$slug` → `/work`, `/docs/$` → `/docs`: the section a dynamic page sits under. */
 const sectionPath = (fullPath: string) => fullPath.split("/$")[0] || "/";
 
 /**

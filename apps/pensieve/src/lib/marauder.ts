@@ -33,18 +33,33 @@ export const STAGES = [
 export type Stage = (typeof STAGES)[number];
 
 /**
- * What a click does to an Unsorted entry. `attach` moves it onto an open workstream,
- * `new` opens one from it, `dismiss` drops it with a reason, and `stage` says where a
- * side really is — the file format carries all four, and this page offers the first
- * three (a stage correction is said on the workstream, not in the triage list).
+ * What a click does. `attach` moves an Unsorted entry onto an open workstream, `new` opens
+ * one from it, `dismiss` drops it with a reason, and `stage` says where a side really is —
+ * the Unsorted page offers the first three (a stage correction is said on the workstream,
+ * not in the triage list).
+ *
+ * `verified` is the odd one, and it is not about the queue at all: its `id` names an
+ * event on a workstream, and it is the user answering what a `directed-at-person` event
+ * asked them — the go-ahead for the one edit that event named, which the next ingest
+ * stamps onto the event and the ticket pass then makes (LIA-161, LIA-162 AC3).
  */
-export const MARAUDER_ACTIONS = ["attach", "new", "dismiss", "stage"] as const;
+export const MARAUDER_ACTIONS = [
+  "attach",
+  "new",
+  "dismiss",
+  "stage",
+  "verified",
+] as const;
 export type MarauderAction = (typeof MARAUDER_ACTIONS)[number];
+
+/** The three an Unsorted row offers; `stage` and `verified` are said on the workstream. */
+export const UNSORTED_ACTIONS = ["attach", "new", "dismiss"] as const;
 
 /**
  * One decision file's contents. `id` is the Unsorted entry's own id — a Slack `ts`, a
- * `fe#417`, a `split/<slug>` — carried verbatim, since that is what ingest matches the
- * queue on; the file's *name* is the slug below, which the id alone cannot be.
+ * `fe#417`, a `split/<slug>` — or, for `verified`, an event's key on its workstream;
+ * carried verbatim, since that is what ingest matches on. The file's *name* is the slug
+ * below, which the id alone cannot be.
  */
 export interface MarauderDecision {
   action: MarauderAction;
@@ -97,6 +112,55 @@ export const MARAUDER_ID_RE = new RegExp(
 export const isMarauderId = (id: unknown): id is string =>
   typeof id === "string" && MARAUDER_ID_RE.test(id);
 
+/**
+ * How an event is named — argus `skills/sweep/scripts/marauder/record.ts` `eventId` /
+ * `eventKeys`, rule for rule. An event has no id of its own: it is named by the source it
+ * came from, or by the instant it happened when it came from nowhere, and two rulings out
+ * of one huddle share a source, so the second gets a `~2` and the third a `~3`.
+ *
+ * Both sides have to derive the same name from the same events, in the same order, or a
+ * Verify would confirm the wrong event — which is why this is a copy of the rule rather
+ * than a key read off the record: the record does not carry one.
+ */
+export const eventId = (e: { at: string; source?: { ref: string } }) =>
+  e.source?.ref ?? e.at;
+
+export function eventKeys(
+  events: ReadonlyArray<{ at: string; source?: { ref: string } }>
+): string[] {
+  const counts = new Map<string, number>();
+  return events.map((e) => {
+    const base = eventId(e);
+    const n = (counts.get(base) ?? 0) + 1;
+    counts.set(base, n);
+    return n === 1 ? base : `${base}~${n}`;
+  });
+}
+
+/**
+ * The prefix a confirmation writes onto the event's `action` (argus `correct.ts`
+ * `CONFIRMED`). An event already wearing it has been answered, so it is never offered a
+ * second Verify — the same refusal the correction gives.
+ */
+export const CONFIRMED = "confirmed:";
+
+/** The user's own token in an event's `to` list, as `record.ts` writes it. */
+export const USER_TOKEN = "you";
+
+/**
+ * Whether this event is one the user can answer: a `directed-at-person` event aimed at
+ * them that nobody has confirmed yet. That is the whole of what Verify is offered on
+ * (AC3) — every other event is a fact, and a fact is not a question.
+ */
+export const needsVerify = (e: {
+  action?: string;
+  kind: string;
+  to?: string[];
+}): boolean =>
+  e.kind === "directed-at-person" &&
+  (e.to ?? []).includes(USER_TOKEN) &&
+  !e.action?.startsWith(CONFIRMED);
+
 /** The draft a click makes, before it is a decision. */
 export interface MarauderDraft {
   action: string;
@@ -139,6 +203,8 @@ export function checkDraft(draft: MarauderDraft): string | undefined {
   if (action === "dismiss" && !trimmed(draft.reason)) {
     return "say why — the reason is all a later reader has for why this is not on a workstream";
   }
+  // `verified` needs nothing but the id: the event's own text is what is being agreed to,
+  // and a note is the user's to add or leave out.
   if (action === "stage") {
     if (!isSlug(trimmed(draft.slug))) {
       return "a stage correction names the workstream it is about";

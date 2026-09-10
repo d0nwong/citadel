@@ -9,7 +9,24 @@
  * so the per-checkout rules are built at startup from the resolved paths (`gitReadRules`).
  */
 
-/** The harness's own read-only set, plus the accio read verbs and the `ask` skill. */
+/**
+ * `marauder`'s read verbs, each named in full. The allowlist is a command *prefix* match,
+ * so `Bash(bun run marauder:*)` would allow `marauder attach` and `marauder dismiss` with
+ * it — and a correction is the user's, proposed on a card and never run by the session
+ * (LIA-162 AC4). Listing the four read verbs one by one is what keeps the write verbs out.
+ *
+ * Both spellings, because a rule is literal: `bun run marauder …` is what the `ask` skill
+ * writes, `bun scripts/marauder.ts …` is what a path-qualified call would be.
+ */
+const MARAUDER_READ_VERBS = ["board", "show", "changelog", "check"] as const;
+
+export const marauderReadRules = (): string[] =>
+  MARAUDER_READ_VERBS.flatMap((v) => [
+    `Bash(bun run marauder ${v}:*)`,
+    `Bash(bun scripts/marauder.ts ${v}:*)`,
+  ]);
+
+/** The harness's own read-only set, plus the accio and marauder read verbs and the `ask` skill. */
 export const BASE_TOOLS = [
   "Read",
   "Grep",
@@ -19,6 +36,7 @@ export const BASE_TOOLS = [
   "Bash(git show:*)",
   "Bash(bun run accio:*)",
   "Bash(bun scripts/accio.ts:*)",
+  ...marauderReadRules(),
 ] as const;
 
 /** `accio sync` and `accio map` write `.state/` and the manifest — denied under the allow above. */
@@ -108,8 +126,8 @@ export const LINEAR_WRITE_TOOLS = linear([
 // ── the bridged tools ───────────────────────────────────────────────────────────
 
 /**
- * Tools Pensieve bridges into the run through `chat({ tools })` (LIA-111, LIA-113,
- * LIA-147). The adapter provisions them as an MCP server named `tanstack`, so the session sees them prefixed —
+ * Tools Pensieve bridges into the run through `chat({ tools })` (LIA-111, LIA-113).
+ * The adapter provisions them as an MCP server named `tanstack`, so the session sees them prefixed —
  * that is the spelling the allowlist needs, since an MCP tool absent from `--allowedTools`
  * is denied under `permissionMode: 'default'`. The adapter strips the prefix on the way
  * back, so the tool-call part the page renders carries the bare name.
@@ -117,13 +135,7 @@ export const LINEAR_WRITE_TOOLS = linear([
 export const PROPOSE_DECISION = "propose_decision";
 /** LIA-113: the same shape for a new Linear issue — it checks a draft, File writes it. */
 export const PROPOSE_TICKET = "propose_ticket";
-/** LIA-147: the same shape again for an arc — it checks a draft, Open writes the seed file. */
-export const PROPOSE_ARC = "propose_arc";
-export const BRIDGED_TOOLS = [
-  PROPOSE_DECISION,
-  PROPOSE_TICKET,
-  PROPOSE_ARC,
-] as const;
+export const BRIDGED_TOOLS = [PROPOSE_DECISION, PROPOSE_TICKET] as const;
 export const BRIDGED_MCP_PREFIX = "mcp__tanstack__";
 
 /** The bridged names as the session sees them — what goes on `--allowedTools`. */

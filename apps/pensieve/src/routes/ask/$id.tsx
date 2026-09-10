@@ -9,15 +9,13 @@
  * The next question resumes the same session — the id is stored server-side, never sent
  * from here (AC3).
  *
- * Opened from an arc (`?q=…&from=arcs&arc=<slug>`) it is the same shape without controls:
- * the arc's title and file above the thread, `metadata.arc` on the conversation.
- *
- * Opened from a point (`?q=…&from=home&point=<id>`): the question is sent as soon as a
- * credential is known to be available — or left in the composer when it is not — and the
- * top bar's breadcrumb leads back. The point itself travels with the run and is
- * stored as the conversation's own (`metadata.point`), so the card above the transcript
- * survives a reload; `q` and `point` leave the URL once the first answer has landed and
- * the file carries them (LIA-109).
+ * Opened from a workstream page (`?workstream=<slug>`, optionally with `?q=…`): the slug
+ * travels with every run of the thread and is stored as the conversation's own
+ * (`metadata.workstream`), so the session's first retrieval is that workstream's page and
+ * "it" in a question means that workstream (LIA-162 AC4). A question that arrived in the
+ * URL is sent as soon as a credential is known to be available — or left in the composer
+ * when it is not — and `q` and `workstream` leave the URL once the first answer has landed
+ * and the file carries them.
  */
 
 import type { UIMessage } from "@tanstack/ai";
@@ -31,35 +29,19 @@ import { Trash2Icon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "#/components/ui/button";
 import { AskStatusProvider, useAppChat } from "#/features/ask";
-import { ArcLine } from "#/features/ask/components/arc-line";
-import { PointCard } from "#/features/ask/components/point-card";
-import {
-  askStatus,
-  deleteConversation,
-  getArcMeta,
-  getConversation,
-  getPoint,
-} from "#/lib/api";
-import { isArcSlug } from "#/lib/arcs";
-import { isPointId } from "#/lib/points";
-
-const FROM = ["home", "arcs"] as const;
-type From = (typeof FROM)[number];
-
-const asFrom = (v: unknown): From | undefined => FROM.find((f) => f === v);
+import { WorkstreamLine } from "#/features/ask/components/workstream-line";
+import { askStatus, deleteConversation, getConversation } from "#/lib/api";
+import { isSlug } from "#/lib/marauder";
 
 export const Route = createFileRoute("/ask/$id")({
   staticData: { crumb: "Argus" },
   validateSearch: (
     s: Record<string, unknown>
-  ): { q?: string; from?: From; point?: string; arc?: string } => ({
+  ): { q?: string; workstream?: string } => ({
     ...(typeof s.q === "string" && s.q.trim() ? { q: s.q } : {}),
-    ...(asFrom(s.from) ? { from: asFrom(s.from) } : {}),
-    ...(isPointId(s.point) ? { point: s.point } : {}),
-    ...(isArcSlug(s.arc) ? { arc: s.arc } : {}),
+    ...(isSlug(s.workstream) ? { workstream: s.workstream } : {}),
   }),
-  loaderDeps: ({ search }) => ({ arc: search.arc, point: search.point }),
-  loader: async ({ params, deps }) => {
+  loader: async ({ params }) => {
     // The server refuses anything that is not a thread id (path-like, too long); that is a 404 here, not a crash.
     const [conversation, status] = await Promise.all([
       getConversation({ data: params.id }).catch(() => undefined),
@@ -68,22 +50,13 @@ export const Route = createFileRoute("/ask/$id")({
     if (conversation === undefined) {
       throw notFound();
     }
-    // The stored subject wins: it is what this thread was opened on, whatever the URL says.
-    const pointId = conversation?.point ?? deps.point;
-    const arcSlug = conversation?.arc ?? deps.arc;
-    const [point, arc] = await Promise.all([
-      pointId ? getPoint({ data: pointId }) : null,
-      arcSlug ? getArcMeta({ data: arcSlug }) : null,
-    ]);
     return {
-      arc,
       conversation,
       // `messages` crossed the wire as JSON (see `ConversationWire`); the bytes are UIMessages.
       crumb:
         firstQuestion(
           (conversation?.messages ?? []) as unknown as UIMessage[]
         ) || "New conversation",
-      point,
       status,
     };
   },
@@ -140,27 +113,20 @@ const firstQuestion = (messages: UIMessage[]): string =>
 
 function AskConversationPage() {
   const { id } = Route.useParams();
-  const { q, arc: urlArc, point: urlPoint } = Route.useSearch();
-  const { arc, conversation, point, status } = Route.useLoaderData();
+  const { q, workstream: urlWorkstream } = Route.useSearch();
+  const { conversation, status } = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
 
-  // The point rides with every run of a thread opened on one; the server keeps the first
-  // it is told and ignores the rest, so a later send cannot re-point the conversation.
+  // The workstream rides with every run of a thread opened on one; the server keeps the
+  // first it is told and ignores the rest, so a later send cannot re-point the conversation.
   // Hook-level rather than per-send, so the question the composer holds when no credential
   // was available (`draft`) carries it too.
-  const pointId = conversation?.point ?? urlPoint;
-  const arcSlug = conversation?.arc ?? urlArc;
+  const workstream = conversation?.workstream ?? urlWorkstream;
   const body = useMemo(
-    () =>
-      pointId || arcSlug
-        ? {
-            ...(pointId ? { point: pointId } : {}),
-            ...(arcSlug ? { arc: arcSlug } : {}),
-          }
-        : undefined,
-    [arcSlug, pointId]
+    () => (workstream ? { workstream } : undefined),
+    [workstream]
   );
 
   // `messages` crossed the wire as JSON (see `ConversationWire`); the bytes are UIMessages.
@@ -175,9 +141,9 @@ function AskConversationPage() {
   // id, so new loader data never resets it.
   //
   // Then the URL sheds what it was seeded with. Only after the invalidate: by then the
-  // reloaded conversation carries `metadata.point`, so dropping `point` from the search
-  // cannot pull the card out from under the page. A run that never started — no credential
-  // — never reaches here, and the question and its point stay in the URL.
+  // reloaded conversation carries `metadata.workstream`, so dropping it from the search
+  // cannot pull the line out from under the page. A run that never started — no credential
+  // — never reaches here, and the question and its workstream stay in the URL.
   const wasLoading = useRef<boolean>(false);
   useEffect(() => {
     const wasLoadingBefore = wasLoading.current;
@@ -188,23 +154,18 @@ function AskConversationPage() {
     }
     void (async () => {
       await router.invalidate();
-      if (q || urlPoint || urlArc) {
+      if (q || urlWorkstream) {
         await navigate({
           params: { id },
           replace: true,
-          search: (prev) => ({
-            ...prev,
-            arc: undefined,
-            point: undefined,
-            q: undefined,
-          }),
+          search: (prev) => ({ ...prev, q: undefined, workstream: undefined }),
           to: "/ask/$id",
         });
       }
     })();
-  }, [chat.isLoading, router, navigate, id, q, urlArc, urlPoint]);
+  }, [chat.isLoading, router, navigate, id, q, urlWorkstream]);
 
-  // A question that arrived with the URL (a point's Ask) goes out by itself, once. Not on the
+  // A question that arrived with the URL (a workstream's Ask) goes out by itself, once. Not on the
   // first effect pass: after a client-side navigation React commits this tree, something below
   // suspends, and the effects are cleaned up and re-run on the same instance — `useChat`'s
   // cleanup detaches the client and aborts whatever it was sending. A short timer that the
@@ -281,8 +242,7 @@ function AskConversationPage() {
           <span className="hidden sm:inline">Delete</span>
         </Button>
       </header>
-      <ArcLine arc={arc} />
-      <PointCard page={point} />
+      <WorkstreamLine slug={workstream} />
       <AskStatusProvider
         draft={q && !status.available ? q : undefined}
         finishReason={conversation?.finishReason}

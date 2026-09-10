@@ -94,14 +94,15 @@ describe("AC1 — a path the sweep wrote becomes a route inside the app", () => 
     ).toBe("/docs/alden/alden-portal/admin/usage?tier=arch");
   });
 
-  test("an arc, a report, a digest and another workstream each open on their own page", () => {
-    expect(from("../arcs/admin-usage.md")).toBe("/arcs/admin-usage");
+  test("a report, a digest and another workstream each open on their own page", () => {
     expect(from("../reports/2026-09-09.md")).toBe("/reports/2026-09-09");
     expect(from("../digests/2026-09-09.md")).toBe("/digests/2026-09-09");
     expect(from("./due-on-receipt.md")).toBe("/work/due-on-receipt");
   });
 
   test("a link that is not a file this app serves is left exactly as written", () => {
+    // The arcs pages went with the arcs (LIA-162); a link to one is left as written.
+    expect(from("../arcs/admin-usage.md")).toBeUndefined();
     expect(from("https://linear.app/liamai/issue/LIA-71")).toBeUndefined();
     expect(from("#needs-you")).toBeUndefined();
     expect(from("/already/a/route")).toBeUndefined();
@@ -111,8 +112,11 @@ describe("AC1 — a path the sweep wrote becomes a route inside the app", () => 
   });
 
   test("the same record renders from another directory", () => {
-    expect(routeFor("../arcs/admin-usage.md", "reports", ROOTS)).toBe(
-      "/arcs/admin-usage"
+    expect(routeFor("./2026-09-09.md", "reports", ROOTS)).toBe(
+      "/reports/2026-09-09"
+    );
+    expect(routeFor("../marauder/due-on-receipt.md", "reports", ROOTS)).toBe(
+      "/work/due-on-receipt"
     );
   });
 });

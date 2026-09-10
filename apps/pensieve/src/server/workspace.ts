@@ -4,12 +4,14 @@
  * typed, serialisable shapes.
  *
  * Layout it expects (see argus/README.md "Layout"):
- *   reports/YYYY-MM-DD.md                       sweep report, one per day
- *   digests/YYYY-MM-DD.md                       Slack digest, one per day
  *   <app>/features/<dir>/journal/**\/*.md       one entry per landing
  *   <app>/features/<dir>/docs/{product,arch}.md
- *   reports/points.json                         Needs-you as data, one record per point
- *   arcs/<slug>.md                              one initiative's running story
+ *   reports/YYYY-MM-DD.md                       archive: a sweep report, one per day
+ *   digests/YYYY-MM-DD.md                       archive: a Slack digest, one per day
+ *
+ * The map of the work itself — `workstreams/` and `marauder/` — is ./marauder.ts's; the
+ * reports and digests here are what the loop wrote before that replaced them (LIA-161),
+ * and nothing writes them any more.
  *
  * `<app>` is discovered, not hardcoded: any directory one or two levels under
  * WORKSPACE_DIR holding a `features/` tree is an app — `foundry` and `pensieve` are one
@@ -25,8 +27,6 @@ import { basename, join, relative, resolve } from "node:path";
 import type { MarkdownDocument } from "@tanstack/markdown";
 import { parseMarkdown } from "@tanstack/markdown/parser";
 import { parse as parseYaml } from "yaml";
-import type { ArcSeeds } from "../lib/arcs";
-import { isArcSlug, toSeeds } from "../lib/arcs";
 import { dropTitle, outline } from "./sections";
 
 export const WORKSPACE_DIR = resolve(
@@ -34,8 +34,6 @@ export const WORKSPACE_DIR = resolve(
 );
 const REPORTS_DIR = join(WORKSPACE_DIR, "reports");
 const DIGESTS_DIR = join(WORKSPACE_DIR, "digests");
-/** The sweep's arcs — one running story per initiative (LIA-145). Read here, written there. */
-export const ARCS_DIR = join(WORKSPACE_DIR, "arcs");
 
 /** Workspace directories that are never an app, so the scan does not descend into them. */
 const NOT_APPS = new Set([
@@ -572,297 +570,4 @@ export async function readDoc(
   const r = await render(p, featureOf(p, roots));
   const meta = docMeta(p, r.frontmatter, roots);
   return meta ? { ...r, meta } : null;
-}
-
-// ── arcs ───────────────────────────────────────────────────────────────────────
-
-/** An arc's frontmatter, as `skills/sweep/scripts/arcs.ts` renders it (LIA-145). */
-export interface ArcMeta {
-  /** The `at` of the `opened` decision file. */
-  opened: string;
-  path: string;
-  /** The keys an item is filed against this arc by — never a resemblance. */
-  seeds: ArcSeeds;
-  slug: string;
-  status: "open" | "closed";
-  title: string;
-  /** The day of the last rewrite; what the index orders by (LIA-149 AC1). */
-  updated: string;
-}
-
-/** One row of an arc's `## Landed` table: when it landed, what it was, the file that says so. */
-export interface ArcLanded {
-  /** The path the Evidence cell names, backticks stripped — a journal entry or a decision. */
-  evidence: string;
-  what: string;
-  when: string;
-}
-
-/** One row of an arc's `## Open` list, and the point it names when it names one. */
-export interface ArcOpen {
-  point?: string;
-  /** The row as the sweep wrote it, markdown and all, minus its `- ` bullet. */
-  text: string;
-}
-
-/** An arc's file: its frontmatter, its paragraph parsed, and its two derived sections. */
-export interface ArcFile {
-  /** `## Where we are` — the sweep's paragraph, the only part of the file it writes by hand. */
-  doc: MarkdownDocument;
-  landed: ArcLanded[];
-  meta: ArcMeta;
-  open: ArcOpen[];
-}
-
-function arcMeta(abs: string, fm: Frontmatter, slug: string): ArcMeta {
-  return {
-    opened: str(fm.opened) ?? "",
-    path: relative(WORKSPACE_DIR, abs),
-    seeds: toSeeds(fm.seeds),
-    slug: str(fm.slug) ?? slug,
-    // A file whose frontmatter did not parse is an arc that exists and is not closed:
-    // the slug is taken either way, and a Close on it is refused rather than guessed.
-    status: str(fm.status) === "closed" ? "closed" : "open",
-    title: str(fm.title) ?? slug,
-    updated: str(fm.updated) ?? str(fm.opened)?.slice(0, 10) ?? "",
-  };
-}
-
-/**
- * The arcs the sweep has written, by slug. Only the frontmatter — a verdict asks two
- * questions of it (is this slug taken, is that arc still open: LIA-147 AC3, AC4) and the
- * index asks three more (title, status, last rewrite: LIA-149 AC1). The body is
- * `readArcFile`'s.
- */
-export async function listArcs(dir = ARCS_DIR): Promise<ArcMeta[]> {
-  let names: string[];
-  try {
-    names = await readdir(dir);
-  } catch {
-    return [];
-  }
-  const out: ArcMeta[] = [];
-  for (const name of names.filter((n) => n.endsWith(".md")).sort()) {
-    const abs = join(dir, name);
-    out.push(arcMeta(abs, await readFrontmatter(abs), basename(name, ".md")));
-  }
-  return out;
-}
-
-/** One arc's frontmatter by slug, or null when the sweep has not written that file. */
-export async function readArc(
-  slug: string,
-  dir = ARCS_DIR
-): Promise<ArcMeta | null> {
-  return (await listArcs(dir)).find((a) => a.slug === slug) ?? null;
-}
-
-/** The lines of one `## <heading>` section, blank lines at either end trimmed. */
-function mdSection(body: string, heading: string): string[] {
-  const lines = body.split("\n");
-  const start = lines.findIndex((l) => l.trim() === `## ${heading}`);
-  if (start === -1) {
-    return [];
-  }
-  let end = start + 1;
-  while (end < lines.length && !lines[end].startsWith("## ")) {
-    end += 1;
-  }
-  const out = lines.slice(start + 1, end);
-  while (out.length > 0 && out[0].trim() === "") {
-    out.shift();
-  }
-  while (out.length > 0 && out.at(-1)?.trim() === "") {
-    out.pop();
-  }
-  return out;
-}
-
-/** `| when | what | evidence |` → the row, skipping the header and its rule. */
-function landedRow(line: string): ArcLanded[] {
-  const cells = line.split("|").map((c) => c.trim());
-  if (cells.length !== 5 || cells[1] === "When" || /^-+$/.test(cells[1])) {
-    return [];
-  }
-  return [
-    {
-      evidence: cells[3].replace(/^`|`$/g, ""),
-      what: cells[2],
-      when: cells[1],
-    },
-  ];
-}
-
-/** The point id an Open row names — the sweep writes it last, in backticks. */
-const OPEN_POINT_RE = /`([a-z]+\/[a-z0-9]+(?:-[a-z0-9]+)*)`/;
-
-function openRow(line: string): ArcOpen {
-  const text = line.replace(/^-\s+/, "");
-  const point = text.match(OPEN_POINT_RE)?.[1];
-  return { text, ...(point ? { point } : {}) };
-}
-
-/**
- * One arc as its page reads it (LIA-149 AC2). The three sections are parsed rather than
- * rendered whole: Landed's Evidence becomes a link into Pensieve and Open's rows are
- * replaced by live points from `points.json`, so only the paragraph reaches the renderer as
- * markdown. A file the sweep has not written yet — or a slug that is not one — is `null`.
- */
-export async function readArcFile(
-  slug: string,
-  dir = ARCS_DIR
-): Promise<ArcFile | null> {
-  if (!isArcSlug(slug)) {
-    return null;
-  }
-  const abs = join(dir, `${slug}.md`);
-  let raw: string;
-  try {
-    raw = await readFile(abs, "utf8");
-  } catch {
-    return null;
-  }
-  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
-  let fm: Frontmatter = {};
-  if (fmMatch) {
-    try {
-      fm = toJson(parseYaml(fmMatch[1]));
-    } catch {
-      fm = {};
-    }
-  }
-  const body = fmMatch ? raw.slice(fmMatch[0].length) : raw;
-  const where = mdSection(body, "Where we are").join("\n");
-  const doc = parseMarkdown(resolveWikilinks(where), { headingIds: true });
-  doc.headings = outline(doc);
-  return {
-    doc,
-    landed: mdSection(body, "Landed").flatMap(landedRow),
-    meta: arcMeta(abs, fm, slug),
-    open: mdSection(body, "Open")
-      .filter((l) => l.trimStart().startsWith("- "))
-      .map(openRow),
-  };
-}
-
-// ── points ─────────────────────────────────────────────────────────────────────
-
-export type PointGroup =
-  | "decide"
-  | "verify"
-  | "confirm"
-  | "hold"
-  | "housekeeping";
-
-/** The sweep's own copy of a verdict, attached when it re-emits a decided point (LIA-88). */
-export interface PointDecision {
-  action: "sent" | "ignored" | "verified";
-  at: string;
-  job?: { id: string; url: string };
-  point: string;
-  reason?: string;
-  subject: string;
-}
-
-/** One Needs-you item as `skills/sweep/scripts/points.ts` emits it (LIA-87). */
-export interface Point {
-  /** The arc this point belongs to, by slug, when the sweep filed it against one (LIA-148). */
-  arc?: string;
-  ask: string;
-  decision?: PointDecision;
-  detail?: string;
-  features?: string[];
-  firstSeen: string;
-  group: PointGroup;
-  /** `<group>/<slug>` — stable tick to tick, and the decision file's path. */
-  id: string;
-  repo?: string;
-  subject: string;
-  ticket?: string;
-}
-
-export interface PointsFile {
-  date: string;
-  points: Point[];
-  tick: string;
-}
-
-/**
- * `reports/points.json`, or null when the sweep has not written it. Its name fails
- * `DAY_RE`, so the reports listing never shows it — this is its only reader. Records are
- * copied field by field so a shape the sweep adds later cannot leak onto the wire unnamed.
- */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one field-by-field validator; splitting it hides the shape
-export async function readPoints(): Promise<PointsFile | null> {
-  let raw: string;
-  try {
-    raw = await readFile(join(REPORTS_DIR, "points.json"), "utf8");
-  } catch {
-    return null;
-  }
-  let v: unknown;
-  try {
-    v = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (!v || typeof v !== "object") {
-    return null;
-  }
-  const f = v as { tick?: unknown; date?: unknown; points?: unknown };
-  const points: Point[] = [];
-  for (const r of Array.isArray(f.points) ? f.points : []) {
-    if (
-      !r ||
-      typeof r !== "object" ||
-      typeof r.id !== "string" ||
-      typeof r.group !== "string"
-    ) {
-      continue;
-    }
-    const d =
-      r.decision && typeof r.decision === "object"
-        ? (r.decision as {
-            action?: unknown;
-            at?: unknown;
-            job?: { id?: unknown; url?: unknown } | null;
-            point?: unknown;
-            reason?: unknown;
-            subject?: unknown;
-          })
-        : undefined;
-    points.push({
-      arc: str(r.arc),
-      ask: String(r.ask ?? ""),
-      decision:
-        d &&
-        typeof d.point === "string" &&
-        (d.action === "sent" ||
-          d.action === "ignored" ||
-          d.action === "verified")
-          ? {
-              action: d.action,
-              at: String(d.at ?? ""),
-              job:
-                d.job &&
-                typeof d.job === "object" &&
-                typeof d.job.id === "string"
-                  ? { id: d.job.id, url: String(d.job.url ?? "") }
-                  : undefined,
-              point: d.point,
-              reason: str(d.reason),
-              subject: String(d.subject ?? ""),
-            }
-          : undefined,
-      detail: str(r.detail),
-      features: Array.isArray(r.features) ? r.features.map(String) : undefined,
-      firstSeen: String(r.firstSeen ?? ""),
-      group: r.group as PointGroup,
-      id: r.id,
-      repo: str(r.repo),
-      subject: String(r.subject ?? ""),
-      ticket: str(r.ticket),
-    });
-  }
-  return { date: String(f.date ?? ""), points, tick: String(f.tick ?? "") };
 }

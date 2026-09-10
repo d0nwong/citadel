@@ -9,11 +9,11 @@
  * the adapter's per-run runner files land in the checkout for the run's duration and are
  * removed in its `finally` — `git status` is unchanged afterwards.
  *
- * Three tools are bridged into the run: `propose_decision` (LIA-111), `propose_ticket`
- * (LIA-113) and `propose_arc` (LIA-147). A bridged tool always executes when the model
- * calls it, so each only reads and answers a proposal; the write is Liam's click on the
- * card the chat renders from its tool part — `decisions/` for a verdict or an arc's seed
- * file, Linear's `issueCreate` for a ticket.
+ * Two tools are bridged into the run: `propose_decision` (LIA-111, retargeted by LIA-162)
+ * and `propose_ticket` (LIA-113). A bridged tool always executes when the model calls it,
+ * so each only reads and answers a proposal; the write is the user's click on the card the
+ * chat renders from its tool part — `decisions/` for a correction or a send, Linear's
+ * `issueCreate` for a ticket.
  *
  * Auth is decided per request: `ANTHROPIC_API_KEY` in the environment means `'api-key'`
  * (the container); otherwise `'host'` — the machine's `claude login`. With neither,
@@ -67,7 +67,6 @@ import {
   withSandbox,
 } from "@tanstack/ai-sandbox";
 import { localProcessSandbox } from "@tanstack/ai-sandbox-local-process";
-import { isArcSlug } from "../lib/arcs";
 import {
   ACCIO_WRITE_VERBS,
   BASE_TOOLS,
@@ -77,12 +76,8 @@ import {
   LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
 } from "../lib/ask-tools";
-import { isPointId } from "../lib/points";
-import {
-  proposeArcTool,
-  proposeDecisionTool,
-  proposeTicketTool,
-} from "./ask-tools.server";
+import { isSlug } from "../lib/marauder";
+import { proposeDecisionTool, proposeTicketTool } from "./ask-tools.server";
 import { WORKSPACE_DIR } from "./workspace";
 
 // ── configuration ──────────────────────────────────────────────────────────────
@@ -112,7 +107,7 @@ const expandHome = (p: string) =>
 /**
  * The allowlist for a set of checkouts. A `Bash(...)` rule is a literal command prefix, so
  * each checkout gets its rules in both spellings the session will type: `~/git/…` as the
- * skill writes it, and the absolute path as `accio point` prints it. The bridged tool joins
+ * skill writes it, and the absolute path as `marauder show` prints it. The bridged tool joins
  * them under its `mcp__tanstack__` name — without that rule the session's call is denied.
  */
 export function allowedToolsFor(checkouts: readonly string[]): string[] {
@@ -131,7 +126,7 @@ export function allowedToolsFor(checkouts: readonly string[]): string[] {
   return [...rules];
 }
 
-/** Files, search, git history, the accio read verbs, the `ask` skill, Linear reads and the bridged tool. Nothing that writes. */
+/** Files, search, git history, the accio and marauder read verbs, the `ask` skill, Linear reads and the bridged tools. Nothing that writes. */
 export const ALLOWED_TOOLS = allowedToolsFor(CHECKOUTS);
 
 /** Belt and braces under `default`: these never even reach the permission check. */
@@ -153,8 +148,8 @@ export const ADAPTER_CONFIG = {
   cwd: "/workspace",
   disallowedTools: DISALLOWED_TOOLS,
   emitDiff: false,
-  // One turn per model round-trip, so every tool call is one: a question about a point that
-  // reads the report, a journal entry and a doc or two is 15–25. When the cap is hit the CLI
+  // One turn per model round-trip, so every tool call is one: a question about a workstream
+  // that reads its page, a journal entry and a doc or two is 15–25. When the cap is hit the CLI
   // still prints its result (finish reason `length`) and then exits 1 — see `askStream`.
   maxTurns: 40,
   permissionMode: "default",
@@ -174,31 +169,23 @@ console.log(
  * The file map and the retrieval recipes live in argus (`CLAUDE.md`, the `ask` skill),
  * which the run loads with `--setting-sources project`; they are not repeated here.
  */
-export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus blackboard. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog, and nobody can grant, allow or approve anything. A tool that is denied stays denied for this run; say what you could not do in one sentence and answer from what you have. Never tell the user to grant, allow or approve anything, and never wait for approval.
+export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus blackboard. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog, and nobody can grant, allow or approve anything. A denied tool stays denied for this run; say what you could not do in one sentence and answer from what you have. Never tell the user to grant, allow or approve anything, and never wait for approval.
 
-To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A point is \`bun run accio point <group>/<slug>\`; a ticket is \`bun run accio ticket LIA-nn\` then mcp__linear__get_issue; a day is \`bun run accio journal <YYYY-MM-DD>\`; an initiative is \`bun run accio arc <slug>\`. Read the product checkouts with Read, Glob, Grep and \`git -C <repo> log\` / \`git -C <repo> show origin/<branch>:<path>\`. Never run git fetch, git branch, git checkout, find, python3, or cat/grep/ls through Bash — each is a denied turn.
+To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A piece of work is \`bun run marauder show <slug>\`; everything open is \`bun run marauder board\`; a day is \`bun run marauder changelog <YYYY-MM-DD>\`; a ticket is the workstream whose tickets name it, then mcp__linear__get_issue; a feature or endpoint is \`bun run accio "<the thing>"\`. Read the product checkouts with Read, Glob, Grep and \`git -C <repo> log\` / \`git -C <repo> show origin/<branch>:<path>\`. Never run git fetch, git branch, git checkout, find, python3, or cat/grep/ls through Bash — each is a denied turn. The marauder verbs that write are denied: a correction is proposed, never run.
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
-You cannot write files, edit tickets or comments, or run the sweep. To ignore or send a point, call \`propose_decision\` once as the ask skill says; Liam confirms it on the card — say it is proposed in one sentence and never say it is done. To file a new ticket, draft it per the linear-ticket skill and call \`propose_ticket\` once; Liam files it on the card — say it is proposed, never that it is filed. To open an arc for an initiative, call \`propose_arc\` once as the ask skill's Arcs section says; Liam opens it on the card and the sweep writes the arc file on its next tick — never say the arc exists.`;
+You cannot write files, edit tickets or comments, or run the sweep. To correct what the loop got wrong, call \`propose_decision\` once as the ask skill's Correcting section says; to hand a ticket to Foundry, call it once with action "send" and the ticket key. Either way the user confirms it on the card: say it is proposed in one sentence, never say it is done, and never say it has been sent. To file a new ticket, draft it per the linear-ticket skill and call \`propose_ticket\` once; the user files it on the card — say it is proposed, never that it is filed.`;
 
 /**
- * The extra system prompt a conversation opened on a point carries (LIA-109 stores it,
- * LIA-111 acts on it). Without it "ignore it" has no antecedent on the first turn: the
- * point card above the transcript is the page's, not the session's, and `chat({ context })`
- * reaches only the tool's `execute`. One line, so the skill's "the conversation's own
- * point" means something.
+ * The extra system prompt a conversation opened from a workstream page carries (LIA-162
+ * AC4). Without it "it" has no antecedent on the first turn: the page the question was
+ * asked from is the browser's, not the session's, and `chat({ context })` reaches only the
+ * tool's `execute`. It names the retrieval too, so the workstream's own page is the first
+ * thing read rather than the board.
  */
-export const pointPrompt = (point: string) =>
-  `This conversation was opened on the Needs-you point \`${point}\`. "it" in a question or a verdict means that point unless the user names another; \`bun run accio point ${point}\` is its record.`;
-
-/**
- * The same for a conversation opened on an arc (LIA-149 AC4): the initiative is the
- * subject, and `accio arc` is where its record is. No verdict rides on it — an arc is
- * closed on its own page, not from a card — so the line only fixes what "it" means.
- */
-export const arcPrompt = (arc: string) =>
-  `This conversation was opened on the arc \`arcs/${arc}.md\` — the running story of that initiative. "it" in a question means that arc unless the user names something else; \`bun run accio arc ${arc}\` is its record.`;
+export const workstreamPrompt = (slug: string) =>
+  `This conversation was opened on the workstream \`${slug}\`. "it" in a question, a correction or a send means that workstream unless the user names something else. Start with \`bun run marauder show ${slug}\` — that is its whole story — and read \`workstreams/${slug}.json\` when the verb is denied.`;
 
 export type AuthMode = "host" | "api-key";
 
@@ -639,18 +626,11 @@ export const askPersistence = askStore.persistence;
 export const SESSION_KEY = "sessionId";
 
 /**
- * The Needs-you point this conversation is about, when it was opened from one (LIA-109).
+ * The workstream this conversation is about, when it was opened from one (LIA-162 AC4).
  * Written once, on the first run that names it, and never again: the conversation is about
- * the point it started on, whatever a later request claims.
+ * the workstream it started on, whatever a later request claims.
  */
-export const POINT_KEY = "point";
-
-/**
- * The arc this conversation is about, when it was opened from one (LIA-149). Written once,
- * on the first run that names it, and never again — an arc is a conversation's subject the
- * same way a point is.
- */
-export const ARC_KEY = "arc";
+export const WORKSTREAM_KEY = "workstream";
 
 /**
  * Where a filed ticket lives: `metadata[<threadId>]["ticket:<toolCallId>"]`. One key per
@@ -692,53 +672,6 @@ export const readFiledTicket = async (
     await store.persistence.stores.metadata.get(threadId, ticketKey(toolCallId))
   );
 
-/**
- * Where an opened arc lives: `metadata[<threadId>]["arc:<toolCallId>"]`. One key per
- * proposal, as `ticket:` is — a second press of Open, or a press after a reload replayed
- * the card, answers the arc the first press opened rather than writing a second file
- * (LIA-147 AC2). The decision file on disk says the same thing; this is what the card
- * reads, since it is keyed by the card rather than by the slug.
- */
-export const arcKey = (toolCallId: string) => `arc:${toolCallId}`;
-
-/** What a press of Open recorded: the arc's slug and title, and when the file was written. */
-export interface OpenedArc {
-  at: string;
-  slug: string;
-  title: string;
-}
-
-const asOpenedArc = (v: unknown): OpenedArc | undefined => {
-  if (!v || typeof v !== "object") {
-    return;
-  }
-  const a = v as Record<string, unknown>;
-  return typeof a.slug === "string" && a.slug
-    ? {
-        at: typeof a.at === "string" ? a.at : "",
-        slug: a.slug,
-        title: typeof a.title === "string" ? a.title : a.slug,
-      }
-    : undefined;
-};
-
-export const readOpenedArc = async (
-  store: ConversationStore,
-  threadId: string,
-  toolCallId: string
-): Promise<OpenedArc | undefined> =>
-  asOpenedArc(
-    await store.persistence.stores.metadata.get(threadId, arcKey(toolCallId))
-  );
-
-export const writeOpenedArc = (
-  store: ConversationStore,
-  threadId: string,
-  toolCallId: string,
-  arc: OpenedArc
-): Promise<void> =>
-  store.persistence.stores.metadata.set(threadId, arcKey(toolCallId), arc);
-
 export const writeFiledTicket = (
   store: ConversationStore,
   threadId: string,
@@ -762,18 +695,16 @@ export const readSessionId = async (
 // ── the run ────────────────────────────────────────────────────────────────────
 
 export interface AskInput {
-  /** The arc the conversation was opened on — stored on the first run, ignored after. */
-  arc?: string;
   /**
    * The full transcript (what `useChat` sends), or `[]` to continue the stored one as it
    * stands — TanStack's "send the full transcript, or none of it". A delta would replace
    * the stored thread, so never send one.
    */
   messages: UIMessage[];
-  /** The point the conversation was opened on — stored on the first run, ignored after. */
-  point?: string;
   runId?: string;
   threadId: string;
+  /** The workstream the conversation was opened on — stored on the first run, ignored after. */
+  workstream?: string;
 }
 
 export interface AskRunOptions {
@@ -810,29 +741,18 @@ async function acquireThread(threadId: string): Promise<() => void> {
 }
 
 /**
- * The point a run is about. The stored one wins for the same reason `onStart` refuses to
- * overwrite it: the conversation is about the point it started on, whatever a later request
- * claims.
+ * The workstream a run is about. The stored one wins for the same reason `onStart` refuses
+ * to overwrite it: the conversation is about the workstream it started on, whatever a later
+ * request claims. Only a slug counts, on the way in and on the way out.
  */
-export function pointOf(
+export function workstreamOf(
   stored: unknown,
   asked: string | undefined
 ): string | undefined {
-  if (isPointId(stored)) {
+  if (isSlug(stored)) {
     return stored;
   }
-  return isPointId(asked) ? asked : undefined;
-}
-
-/** The arc a run is about, on the same rule: the stored one wins, and only a slug counts. */
-export function arcOf(
-  stored: unknown,
-  asked: string | undefined
-): string | undefined {
-  if (isArcSlug(stored)) {
-    return stored;
-  }
-  return isArcSlug(asked) ? asked : undefined;
+  return isSlug(asked) ? asked : undefined;
 }
 
 const errorChunks = (
@@ -1002,11 +922,10 @@ export async function* askStream(
       }
     }
     const { metadata } = store.persistence.stores;
-    const point = pointOf(
-      await metadata.get(input.threadId, POINT_KEY),
-      input.point
+    const workstream = workstreamOf(
+      await metadata.get(input.threadId, WORKSTREAM_KEY),
+      input.workstream
     );
-    const arc = arcOf(await metadata.get(input.threadId, ARC_KEY), input.arc);
     const harness = harnessLog();
     let lastError: LastError | undefined;
     const recordError = async (message: string, code: string | undefined) => {
@@ -1063,21 +982,15 @@ export async function* askStream(
         }
       },
       // A new run starts clean: what the last one left is superseded by this one's end.
-      // The point is the exception — it is the thread's own, written once and kept.
+      // The workstream is the exception — it is the thread's own, written once and kept.
       async onStart() {
         await metadata.delete(input.threadId, LAST_ERROR_KEY);
         await metadata.delete(input.threadId, FINISH_REASON_KEY);
         if (
-          isPointId(input.point) &&
-          (await metadata.get(input.threadId, POINT_KEY)) === null
+          isSlug(input.workstream) &&
+          (await metadata.get(input.threadId, WORKSTREAM_KEY)) === null
         ) {
-          await metadata.set(input.threadId, POINT_KEY, input.point);
-        }
-        if (
-          isArcSlug(input.arc) &&
-          (await metadata.get(input.threadId, ARC_KEY)) === null
-        ) {
-          await metadata.set(input.threadId, ARC_KEY, input.arc);
+          await metadata.set(input.threadId, WORKSTREAM_KEY, input.workstream);
         }
       },
     });
@@ -1098,8 +1011,7 @@ export async function* askStream(
       // which is provisioned only because `tools` below is non-empty (LIA-111).
       context: {
         threadId: input.threadId,
-        ...(point ? { point } : {}),
-        ...(arc ? { arc } : {}),
+        ...(workstream ? { workstream } : {}),
       },
       debug: harness.debug,
       messages: convertMessagesToModelMessages(input.messages),
@@ -1108,11 +1020,10 @@ export async function* askStream(
       runId,
       systemPrompts: [
         ASK_SYSTEM_PROMPT,
-        ...(point ? [pointPrompt(point)] : []),
-        ...(arc ? [arcPrompt(arc)] : []),
+        ...(workstream ? [workstreamPrompt(workstream)] : []),
       ],
       threadId: input.threadId,
-      tools: [proposeDecisionTool, proposeTicketTool, proposeArcTool],
+      tools: [proposeDecisionTool, proposeTicketTool],
     });
     let finished: StreamChunk | undefined;
     for await (const chunk of stream) {
@@ -1133,19 +1044,17 @@ export async function* askStream(
 // ── reads for the pages ────────────────────────────────────────────────────────
 
 export interface Conversation {
-  /** The arc this conversation was opened on, when it was (LIA-149). */
-  arc?: string;
   createdAt: string;
   /** `'length'` when the last run stopped at the turn cap — the page says so under the answer. */
   finishReason?: "length";
   /** How the last run ended, when it ended in error; cleared when the next run starts. */
   lastError?: LastError;
   messages: UIMessage[];
-  /** The Needs-you point this conversation was opened on, when it was (LIA-109). */
-  point?: string;
   sessionId?: string;
   threadId: string;
   updatedAt: string;
+  /** The workstream this conversation was opened on, when it was (LIA-162). */
+  workstream?: string;
 }
 
 const lastErrorOf = (v: unknown): LastError | undefined => {
@@ -1173,13 +1082,11 @@ export async function getConversation(
   }
   const sessionId = f.metadata[SESSION_KEY];
   const lastError = lastErrorOf(f.metadata[LAST_ERROR_KEY]);
-  const point = f.metadata[POINT_KEY];
-  const arc = f.metadata[ARC_KEY];
+  const workstream = f.metadata[WORKSTREAM_KEY];
   return {
     messages: modelMessagesToUIMessages(f.messages),
     threadId: f.threadId,
-    ...(isArcSlug(arc) ? { arc } : {}),
-    ...(isPointId(point) ? { point } : {}),
+    ...(isSlug(workstream) ? { workstream } : {}),
     ...(typeof sessionId === "string" && sessionId ? { sessionId } : {}),
     ...(f.metadata[FINISH_REASON_KEY] === "length"
       ? { finishReason: "length" as const }

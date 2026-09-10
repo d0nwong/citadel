@@ -20,7 +20,7 @@
  *
  * Every reader takes its directory, so a test can point one at a temp blackboard without
  * setting `WORKSPACE_DIR` — which is fixed at module load, and would leak across `bun test`'s
- * shared module registry (the hazard `workspace.test.ts` sets out).
+ * shared module registry, in an order that depends on which file ran first.
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -45,12 +45,16 @@ export const WORKSTREAMS_DIR = join(WORKSPACE_DIR, "workstreams");
 
 /** One event on a workstream, as `record.ts` writes it. */
 export interface WorkstreamEvent {
+  /** What this event did to the record, in the record's own words; a confirmation stamps it. */
+  action?: string;
   at: string;
   kind: string;
   side?: Side;
   source?: { ref: string; type: string; url?: string };
   summary: string;
   ticket?: string;
+  /** Who an ask is aimed at; `you` is the user, and Verify reads this (LIA-162 AC3). */
+  to?: string[];
 }
 
 /** The keys an event attaches by — the ticket and PR lists are what the page links out to. */
@@ -133,12 +137,14 @@ function events(v: unknown): WorkstreamEvent[] {
     }
     const r = e as Record<string, unknown>;
     out.push({
+      action: str(r.action),
       at: str(r.at) ?? "",
       kind: str(r.kind) ?? "chat",
       side: str(r.side) as Side | undefined,
       source: source(r.source),
       summary: str(r.summary) ?? "",
       ticket: str(r.ticket),
+      to: strs(r.to),
     });
   }
   return out;
@@ -379,9 +385,6 @@ export function routeFor(
   const day = path.match(DAY_RE);
   if (day) {
     return `/${day[1]}/${day[2]}`;
-  }
-  if (path.startsWith("arcs/") && path.endsWith(".md")) {
-    return `/arcs/${encodeURIComponent(path.slice(5, -3))}`;
   }
   if (path.startsWith("marauder/") && path.endsWith(".md")) {
     return `/work/${encodeURIComponent(path.slice(9, -3))}`;
