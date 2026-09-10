@@ -1,33 +1,32 @@
 #!/usr/bin/env bun
 /**
- * ticket-diff — what a tick's events make a Linear ticket say (ARG-159).
+ * ticket-diff — what a tick's events make a Linear ticket say (ARG-159, over features since ARG-164).
  *
  * The old worker read the digest and patched a ticket message by message: it could not
- * reliably tell which ticket a thread concerned, and it had no statement of what the work
- * now is to diff against. A workstream gives both. A ticket belongs to one, so the
- * question is which of that workstream's one or two tickets a thing affects; and the
- * workstream's `open_questions` and `facts` are the current truth, so the pass compares
- * them with the ticket's Pending and Technical Notes and makes the body match.
+ * reliably tell which ticket a thread concerned. A feature's record gives it the events
+ * that concern the ticket and the questions still open on it, so the pass compares those
+ * with the ticket's Pending and Technical Notes and makes the body match. What is settled
+ * about the feature is its docs' business, not this file's: a fact reaches the docs through
+ * a journal entry, never through a second record here.
  *
- * This file is pure and calls nothing: it takes a workstream, the events this tick brought
- * it, and a ticket body, and returns the edits to apply, the things only a person may
- * decide, and the questions nobody has paired to a bullet yet. The worker holds the Linear
- * key and applies them; argus holds no key and never will.
+ * This file is pure and calls nothing: it takes a feature's record, the events this tick
+ * brought it, and a ticket body, and returns the edits to apply, the things only a person
+ * may decide, and the questions nobody has paired to a bullet yet. The worker holds the
+ * Linear key and applies them; argus holds no key and never will.
  *
- * The write policy is the sweep's Autonomy section, unchanged by this ticket: verified
- * facts edit the body in place, inference is reported, and nothing here closes a ticket,
- * ticks an acceptance criterion, or writes a dated paragraph.
+ * The write policy is the sweep's Autonomy section: verified facts edit the body in place,
+ * inference is reported, and nothing here closes a ticket, ticks an acceptance criterion,
+ * or writes a dated paragraph.
  */
 
-import { identifiers } from "./ingest-slack.ts";
 import {
   USER,
   eventId,
   instantOf,
   type Milestones,
   type OpenQuestion,
-  type Workstream,
-  type WorkstreamEvent,
+  type Work,
+  type WorkEvent,
 } from "./record.ts";
 
 /** the marker a claim carries in Pending until a landing on the base branch clears it */
@@ -60,7 +59,7 @@ export type TicketPlan = {
   unpaired: OpenQuestion[];
   /** questions this plan answers, to drop off the record once the edits land */
   resolves: string[];
-  /** asks with no ticket anywhere on the workstream, for the worker to file */
+  /** asks with no ticket anywhere on the feature's record, for the worker to file */
   fileAsks: { id: string; title: string; permalink?: string }[];
 };
 
@@ -79,14 +78,6 @@ export function section(body: string, name: string): string[] {
 }
 
 export const bullets = (lines: string[]) => lines.filter((l) => /^\s*[-*]\s+\S/.test(l)).map((l) => l.trim());
-
-/** every sentence of a section, so a fact can be held against the ones it may have unsaid */
-export const sentences = (lines: string[]) =>
-  lines
-    .join(" ")
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 20);
 
 /** backticks and emphasis are formatting, so the same sentence reads the same either way */
 const flat = (text: string) => text.toLowerCase().replace(/[`*_]/g, "").replace(/\s+/g, " ").trim();
@@ -107,29 +98,27 @@ export function withoutPending(body: string): string {
 
 // ---------------------------------------------------------------- the action table
 
-const backedBy = (w: Workstream, e: WorkstreamEvent) =>
+const backedBy = (w: Work, e: WorkEvent) =>
   w.events.some((x) => x.kind === "verified-landing" && (!e.side || x.side === e.side) && instantOf(x.at) >= instantOf(e.at));
 
 /** the Pending bullet a claim leaves behind, carrying the reference that later clears it */
-export const claimBullet = (e: WorkstreamEvent) =>
+export const claimBullet = (e: WorkEvent) =>
   `- ${e.summary.replace(/\.$/, "")} (${eventId(e)}) — ${UNVERIFIED}`;
 
-const overlap = (a: string[], b: string[]) => a.filter((x) => b.some((y) => y.toLowerCase() === x.toLowerCase()));
-
 export type TicketInput = {
-  workstream: Workstream;
+  work: Work;
   ticket: TicketState;
-  /** the events this tick brought to the workstream */
-  events: WorkstreamEvent[];
+  /** the events this tick brought to the feature */
+  events: WorkEvent[];
   milestones: Milestones;
 };
 
 /**
  * The whole pass for one ticket. Each event kind decides its own action, and the ones that
- * need a person — a close, an acceptance criterion, the ask itself, a sentence a fact may
- * have made false — come back as flags rather than edits.
+ * need a person — a close, an acceptance criterion, the ask itself — come back as flags
+ * rather than edits.
  */
-export function planTicket({ workstream: w, ticket, events, milestones }: TicketInput): TicketPlan {
+export function planTicket({ work: w, ticket, events, milestones }: TicketInput): TicketPlan {
   const edits: Edit[] = [];
   const flags: Flag[] = [];
   const resolves: string[] = [];
@@ -172,21 +161,10 @@ export function planTicket({ workstream: w, ticket, events, milestones }: Ticket
     if (stone) edits.push({ kind: "due-date", value: stone.date, why: `${e.summary}` });
   }
 
-  // an ask with no ticket anywhere on the workstream is a ticket to file
+  // an ask with no ticket anywhere on the record is a ticket to file, titled in its own words
   if (!w.keys.tickets.length)
     for (const e of mine.filter((x) => x.kind === "new-ask" && !x.ticket))
-      fileAsks.push({ id: eventId(e), title: w.name, ...(e.source?.url ? { permalink: e.source.url } : {}) });
-
-  // what is settled belongs in the body; what may have unsaid a Scope sentence is a person's call
-  const scope = sentences(section(ticket.body, "Scope"));
-  for (const f of w.facts) {
-    if (says(settled, f.fact)) continue;
-    const tokens = identifiers(f.fact);
-    const contradicted = tokens.length ? scope.find((s) => overlap(tokens, identifiers(s)).length >= 1) : undefined;
-    if (contradicted)
-      flags.push({ why: `a fact names what this Scope sentence names — is the sentence still true?`, detail: `${contradicted}\n    fact: ${f.fact}` });
-    else edits.push({ kind: "add-note", text: f.fact, why: "settled, and the body does not say it" });
-  }
+      fileAsks.push({ id: eventId(e), title: e.summary.replace(/\.$/, ""), ...(e.source?.url ? { permalink: e.source.url } : {}) });
 
   for (const q of w.open_questions.filter((x) => x.ticket === ticket.key && !x.pending_ref))
     flags.push({ why: "no Pending bullet is paired with this question yet", detail: q.q });
@@ -217,7 +195,7 @@ const dedupe = (edits: Edit[]) => {
 // ---------------------------------------------------------------- what the record records back
 
 /** the event a held ticket leaves for the reader, with the diff nobody applied */
-export const heldEvent = (plan: TicketPlan, at: string): WorkstreamEvent => ({
+export const heldEvent = (plan: TicketPlan, at: string): WorkEvent => ({
   at,
   kind: "directed-at-person",
   summary: `Foundry is running ${plan.ticket}, so ${plan.edits.length} edit${plan.edits.length === 1 ? "" : "s"} to it are waiting on you.`,

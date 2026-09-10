@@ -1,29 +1,27 @@
 #!/usr/bin/env bun
 /**
- * marauder — the map of the work (ARG-155).
+ * marauder — the map of the work (ARG-155, over features since ARG-164).
  *
- * `accio` summons the API surface. `marauder` says where the work stands: one JSON record
- * per workstream under `workstreams/`, and the pages a person reads rendered from those
- * records and nothing else.
+ * `accio` summons the API surface. `marauder` says where the work stands: one `work.json`
+ * per feature that has something going on, beside that feature's docs and journal, and
+ * the pages a person reads rendered from those records and nothing else.
  *
- *   marauder ingest --landings     merges on the base branches become events
- *   marauder ingest --slack        what the channel said becomes events
- *   marauder huddle <ts> --points  a huddle's key points, as the sweep read them, onto the record
- *   marauder attach <id> <slug>    move an unsorted item onto a workstream, and learn from it
- *   marauder dismiss <id>          drop an unsorted item that goes nowhere
- *   marauder suggest <id> <slug>   leave it unsorted, but say where it probably goes
- *   marauder new <id> --name "…"   open a workstream from a proposal
- *   marauder split <slug> --into   cut one workstream in two
- *   marauder stage <slug> fe|be    say where a side really is, and why
- *   marauder changed --since <ISO>  which workstreams gained an event, and which
- *   marauder ticket-plan <slug> <ARG-nn> --body <file>
- *                                  what this tick's events make that ticket say
- *   marauder check                 which workstreams may have stopped being one thing
- *   marauder propose-split <slug>  queue a split for a person to accept
- *   marauder board                 where every open workstream stands, right now
- *   marauder show <slug>           one workstream's story
- *   marauder changelog [day]       what changed in the project that day
- *   marauder render                all three, which is what a tick runs
+ *   marauder ingest --landings        merges on the base branches become events
+ *   marauder ingest --slack           what the channel said becomes events
+ *   marauder huddle <ts> --points     a huddle's key points, as the sweep read them, onto the record
+ *   marauder attach <id> <feature>    move an unsorted item onto a feature, and learn from it
+ *   marauder dismiss <id>             drop an unsorted item that goes nowhere
+ *   marauder suggest <id> <feature>   leave it unsorted, but say where it probably goes
+ *   marauder changed --since <ISO>    which features gained an event, and which
+ *   marauder ticket-plan <feature> <ARG-nn> --body <file>
+ *                                     what this run's events make that ticket say
+ *   marauder board                    what needs you, then each feature that moved this week
+ *   marauder show <feature>           one feature's story
+ *   marauder changelog [day]          what changed in the project that day
+ *   marauder render                   the board and today's changelog, which is what a run writes
+ *
+ * `new`, `split`, `stage`, `check` and `propose-split` went with the workstreams: there is
+ * nothing to open, cut or advance when the feature is the unit.
  *
  * Every page is checked against `skills/sweep/style.md`'s three mechanical rules before it
  * is written, and a page that breaks one is never written — the run exits non-zero naming
@@ -33,20 +31,12 @@
 
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
-import {
-  MILESTONES_FILE, UNSORTED_FILE, WORKSTREAMS_DIR,
-  loadMilestones, loadWorkstreams, serializeWorkstream,
-  type Side, type Stage, type UnsortedItem, type Workstream,
-} from "../skills/sweep/scripts/marauder/record.ts";
-import { busy, formatCheck } from "../skills/sweep/scripts/marauder/coherence.ts";
-import {
-  attach, defaultWho, dismiss, newFrom, pairPending, proposeSplit, recordHeld, recordTicket,
-  resolveQuestion, setStage, split, suggest, type State,
-} from "../skills/sweep/scripts/marauder/correct.ts";
+import { loadState, saveState } from "../skills/sweep/scripts/marauder/record.ts";
+import { attach, defaultWho, dismiss, pairPending, recordHeld, recordTicket, resolveQuestion, suggest } from "../skills/sweep/scripts/marauder/correct.ts";
 import { apply, formatApplied, readDecisions } from "../skills/sweep/scripts/marauder/decisions.ts";
 import { applyHuddle, readNotes } from "../skills/sweep/scripts/marauder/huddle.ts";
 import { formatPlan, heldEvent, planTicket, type TicketPlan } from "../skills/sweep/scripts/marauder/ticket-diff.ts";
-import { checkStyle, formatStyleProblems, renderBoard, renderChangelog, renderWorkstream, OUT_DIR } from "../skills/sweep/scripts/marauder/render.ts";
+import { checkStyle, featureTitle, formatStyleProblems, renderBoard, renderChangelog, renderFeature, OUT_DIR } from "../skills/sweep/scripts/marauder/render.ts";
 import { run as ingestLandings, formatChanges } from "../skills/sweep/scripts/marauder/ingest-landings.ts";
 import { run as ingestSlack, formatChanges as formatSlackChanges, openList } from "../skills/sweep/scripts/marauder/ingest-slack.ts";
 
@@ -55,39 +45,45 @@ const HELP = `marauder — where the work stands
   marauder ingest --landings        merges on origin/staging and origin/dev become events
   marauder ingest --slack           what the channel said becomes events, or goes to Unsorted
   marauder huddle <ts> --points <file>  record a huddle's key points (read the canvas, write the points, then this)
-  marauder attach <id> <slug>       move an unsorted item onto a workstream, and learn from it
-  marauder suggest <id> <slug>      leave it unsorted, but say where it probably goes
-  marauder new <id> --name "…"      open a workstream from a proposal
+  marauder attach <id> <feature>    move an unsorted item onto a feature, and learn from it
+  marauder suggest <id> <feature>   leave it unsorted, but say where it probably goes
   marauder dismiss <id> --reason "…"  drop an unsorted item that goes nowhere
-  marauder split <slug> --into <slug> --name "…" --events <id,…>
-  marauder stage <slug> <fe|be> <stage>
-  marauder changed --since <ISO>    which workstreams gained an event, and which
-  marauder ticket-plan <slug> <ARG-nn> --body <file> [--state "In Progress"]
-  marauder pending <slug> --question "…" --bullet "…"
-  marauder resolved <slug> <ARG-nn> --question "…"
-  marauder ticket <slug> <event-id> <ARG-nn>
-  marauder held <slug> <ARG-nn>
-  marauder check                    which workstreams may have stopped being one thing
-  marauder propose-split <slug> --groups '<json>'
+  marauder changed --since <ISO>    which features gained an event, and which
+  marauder ticket-plan <feature> <ARG-nn> --body <file> [--state "In Progress"]
+  marauder pending <feature> --question "…" --bullet "…"
+  marauder resolved <feature> <ARG-nn> --question "…"
+  marauder ticket <feature> <event-id> <ARG-nn>
+  marauder held <feature> <ARG-nn>
   marauder board                    marauder/board.md — the one page to read
-  marauder show <slug>              marauder/<slug>.md — one workstream's story
+  marauder show <feature>           one feature's story, printed
   marauder changelog [YYYY-MM-DD]   marauder/changelog/<day>.md — what changed that day
-  marauder render                   all three
+  marauder render                   the board and today's changelog
+
+  <feature> is the feature's directory under its app's features/ — admin/usage, tasks.
 
   --since <day>   ingest from this day instead of the newest landing each side holds
-  --points <file> the key points of a huddle, as JSON: { url, points: [{ kind, slug, summary, to, why, text }] }
+  --points <file> the key points of a huddle, as JSON: { url, points: [{ kind, feature, summary, to, why, text }] }
   --reason "…"    why a correction was made; it is kept on the event the correction writes
   --auto          attach as the sweep's own reading (a guess), not as a person's decision
   --now <ISO>     render as of this instant instead of the clock (tests, back-fills)
   --root <dir>    the workspace root (default: the repo this script is in)
   --dry-run       print what would be written, write nothing
 
-The record is \`workstreams/<slug>.json\`; every page here is rendered from it alone. If a
-page needs Slack, Linear or git to draw itself, the record is incomplete and that is the
-bug to fix.
+The record is \`<app>/features/<dir>/work.json\`; every page here is rendered from those
+alone. If a page needs Slack, Linear or git to draw itself, the record is incomplete and
+that is the bug to fix.
 `;
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+
+/** the verbs the feature record retired, and what to do instead */
+const RETIRED: Record<string, string> = {
+  new: "there is nothing to open — attach the entry to the feature it is about",
+  split: "a feature is not cut in two — each event already says which feature it is on",
+  stage: "a feature keeps no stage — the docs say what is true, and Linear where a ticket is",
+  check: "a feature cannot stop being one thing, so there is nothing to check",
+  "propose-split": "a feature is not cut in two",
+};
 
 type Written = { path: string; text: string; changed: boolean };
 
@@ -95,36 +91,6 @@ const need = <T,>(v: T | undefined, what: string): T => {
   if (v === undefined || v === "") throw new Error(`this needs ${what}`);
   return v;
 };
-const list = (v: string | undefined) => (v ? v.split(",").map((x) => x.trim()).filter(Boolean) : []);
-
-async function loadState(root: string): Promise<State> {
-  const { workstreams, milestones } = await loadWorkstreams(root);
-  const path = join(root, WORKSTREAMS_DIR, UNSORTED_FILE);
-  const unsorted: UnsortedItem[] = (await Bun.file(path).exists()) ? await Bun.file(path).json() : [];
-  return { workstreams, unsorted, milestones };
-}
-
-/** read-modify-write of the whole of `workstreams/`, so two verbs in one run agree */
-async function saveState(root: string, before: State, after: State): Promise<string[]> {
-  const written: string[] = [];
-  const had = new Map(before.workstreams.map((w) => [w.slug, serializeWorkstream(w)]));
-  for (const w of after.workstreams) {
-    const text = serializeWorkstream(w);
-    if (had.get(w.slug) === text) continue;
-    await Bun.write(join(root, WORKSTREAMS_DIR, `${w.slug}.json`), text);
-    written.push(`${WORKSTREAMS_DIR}/${w.slug}.json`);
-  }
-  for (const [file, value, was] of [
-    [UNSORTED_FILE, after.unsorted, before.unsorted],
-    [MILESTONES_FILE, after.milestones, before.milestones],
-  ] as const) {
-    const text = `${JSON.stringify(value, null, 2)}\n`;
-    if (text === `${JSON.stringify(was, null, 2)}\n`) continue;
-    await Bun.write(join(root, WORKSTREAMS_DIR, file), text);
-    written.push(`${WORKSTREAMS_DIR}/${file}`);
-  }
-  return written;
-}
 
 async function write(root: string, rel: string, text: string, dryRun: boolean): Promise<Written> {
   const problems = checkStyle(text);
@@ -152,6 +118,11 @@ const verb = args[0];
 if (!verb || verb === "help" || verb === "--help" || verb === "-h") {
   console.log(HELP);
   process.exit(verb ? 0 : 1);
+}
+
+if (RETIRED[verb]) {
+  console.error(`marauder: ${verb} went with the workstreams — ${RETIRED[verb]}`);
+  process.exit(1);
 }
 
 const since = flag("--since");
@@ -200,10 +171,10 @@ if (verb === "ingest") {
       const r = await ingestSlack({ root, since, dryRun });
       if (r.changes.length) console.error(formatSlackChanges(r.changes));
       attached += r.changes.filter((c) => c.kind === "attached").length;
-      queued += r.changes.filter((c) => c.kind === "unsorted" || c.kind === "proposed").length;
+      queued += r.changes.filter((c) => c.kind === "unsorted").length;
       written.push(...r.written);
       // what a reader needs beside the queue to answer it, in the run that shows the queue
-      if (dryRun && queued) console.error(`\nthe open list, for reading the queue against:\n${openList(r.workstreams)}`);
+      if (dryRun && queued) console.error(`\nthe features with something going on, for reading the queue against:\n${openList(r.work)}`);
     }
     console.error(
       `marauder: ${decided.applied ? `${decided.applied} decided · ` : ""}${attached} attached · ${queued} left to read · ` +
@@ -216,13 +187,12 @@ if (verb === "ingest") {
   }
 }
 
-const CORRECTIONS = ["huddle", "attach", "suggest", "new", "dismiss", "split", "stage", "propose-split", "pending", "resolved", "ticket", "held"];
+const CORRECTIONS = ["huddle", "attach", "suggest", "dismiss", "pending", "resolved", "ticket", "held"];
 
 /**
- * A `sent` decision naming this ticket means Foundry is executing it (PLAN "Shared
- * contracts"). Every group under `decisions/` is scanned, so this reads both the old
- * point-keyed files and `decisions/send/<ticket>.json` — `{ ticket, action: "sent", job }`,
- * what Pensieve writes once Send moves onto the workstream page (ARG-162).
+ * A `sent` decision naming this ticket means Foundry is executing it. Every group under
+ * `decisions/` is scanned, so this reads both the old point-keyed files and
+ * `decisions/send/<ticket>.json` — `{ ticket, action: "sent", job }`.
  */
 async function sentTickets(root: string): Promise<Set<string>> {
   const out = new Set<string>();
@@ -236,26 +206,22 @@ async function sentTickets(root: string): Promise<Set<string>> {
   return out;
 }
 
-/** the events a tick brought a workstream: everything newer than the last render */
-const sinceEvents = (w: { events: { at: string }[] }, from?: string) =>
+/** the events a run brought a feature: everything newer than the last render */
+const sinceEvents = <E extends { at: string }>(w: { events: E[] }, from?: string) =>
   from ? w.events.filter((e) => e.at >= from) : w.events;
 
-if (verb === "check" || verb === "changed" || verb === "ticket-plan" || CORRECTIONS.includes(verb)) {
+if (verb === "changed" || verb === "ticket-plan" || CORRECTIONS.includes(verb)) {
   try {
     const before = await loadState(root);
     const who = defaultWho(flag("--reason"), now);
-    if (verb === "check") {
-      console.log(formatCheck(busy(before.workstreams, before.unsorted, now)));
-      process.exit(0);
-    }
     const [, a, b] = args;
     if (verb === "changed") {
       const from = need(since, "--since <ISO>");
-      const moved = before.workstreams
+      const moved = before.work
         .map((x) => ({ w: x, events: x.events.filter((e) => e.at >= from) }))
         .filter((x) => x.events.length);
       for (const { w: x, events } of moved) {
-        console.log(`## ${x.slug} — ${x.name}`);
+        console.log(`## ${x.feature}`);
         console.log(`   tickets: ${x.keys.tickets.join(", ") || "none"}`);
         for (const e of events) console.log(`   ${e.kind.padEnd(20)} ${e.at}  ${e.summary}`);
         for (const q of x.open_questions) console.log(`   open question${q.ticket ? ` (${q.ticket})` : ""}: ${q.q}${q.pending_ref ? " [paired]" : ""}`);
@@ -265,11 +231,11 @@ if (verb === "check" || verb === "changed" || verb === "ticket-plan" || CORRECTI
       process.exit(0);
     }
     if (verb === "ticket-plan") {
-      const w = before.workstreams.find((x) => x.slug === need(a, "a workstream slug"));
-      if (!w) throw new Error(`there is no workstream ${a}`);
+      const w = before.work.find((x) => x.feature === need(a, "a feature"));
+      if (!w) throw new Error(`${a} has nothing going on — no work.json`);
       const key = need(b, "a ticket key");
       const plan = planTicket({
-        workstream: w,
+        work: w,
         ticket: { key, body: await Bun.file(need(flag("--body"), "--body <file>")).text(), state: flag("--state") ?? "", hasJob: (await sentTickets(root)).has(key) },
         events: sinceEvents(w, flag("--since-event")),
         milestones: before.milestones,
@@ -279,17 +245,13 @@ if (verb === "check" || verb === "changed" || verb === "ticket-plan" || CORRECTI
     }
     const result =
       verb === "huddle" ? applyHuddle(before, need(a, "the huddle's Slack ts"), await readNotes(need(flag("--points"), "--points <file>")), who)
-      : verb === "attach" ? attach(before, need(a, "an unsorted id"), need(b, "a workstream slug"), { ...who, auto: args.includes("--auto"), kind: flag("--kind") as never })
-      : verb === "suggest" ? suggest(before, need(a, "an unsorted id"), need(b, "a workstream slug"))
-      : verb === "new" ? newFrom(before, need(a, "an unsorted id"), { ...who, name: need(flag("--name"), "--name"), features: list(flag("--features")), driver: flag("--driver") })
+      : verb === "attach" ? attach(before, need(a, "an unsorted id"), need(b, "a feature"), { ...who, auto: args.includes("--auto"), kind: flag("--kind") as never })
+      : verb === "suggest" ? suggest(before, need(a, "an unsorted id"), need(b, "a feature"))
       : verb === "dismiss" ? dismiss(before, need(a, "an unsorted id"), { ...who, reason: need(who.reason, "--reason") })
-      : verb === "split" ? split(before, need(a, "a workstream slug"), { ...who, into: need(flag("--into"), "--into"), name: need(flag("--name"), "--name"), events: list(flag("--events")) })
-      : verb === "stage" ? setStage(before, need(a, "a workstream slug"), need(b, "fe or be") as Side, need(args[3], "a stage") as Stage, who)
-      : verb === "pending" ? pairPending(before, need(a, "a workstream slug"), need(flag("--question"), "--question"), need(flag("--bullet"), "--bullet"))
-      : verb === "resolved" ? resolveQuestion(before, need(a, "a workstream slug"), need(flag("--question"), "--question"), need(b, "a ticket key"), who)
-      : verb === "ticket" ? recordTicket(before, need(a, "a workstream slug"), need(b, "an event id"), need(args[3], "a ticket key"))
-      : verb === "held" ? recordHeld(before, need(a, "a workstream slug"), heldEvent({ ticket: need(b, "a ticket key"), edits: [], flags: [], inFlight: true, unpaired: [], resolves: [], fileAsks: [] } as TicketPlan, now))
-      : proposeSplit(before, need(a, "a workstream slug"), JSON.parse(need(flag("--groups"), "--groups")), who);
+      : verb === "pending" ? pairPending(before, need(a, "a feature"), need(flag("--question"), "--question"), need(flag("--bullet"), "--bullet"))
+      : verb === "resolved" ? resolveQuestion(before, need(a, "a feature"), need(flag("--question"), "--question"), need(b, "a ticket key"), who)
+      : verb === "ticket" ? recordTicket(before, need(a, "a feature"), need(b, "an event id"), need(args[3], "a ticket key"))
+      : recordHeld(before, need(a, "a feature"), heldEvent({ ticket: need(b, "a ticket key"), edits: [], flags: [], inFlight: true, unpaired: [], resolves: [], fileAsks: [] } as TicketPlan, now));
 
     for (const n of result.notes) console.error(`  ${n}`);
     const written = result.changed && !dryRun ? await saveState(root, before, result.state) : [];
@@ -301,29 +263,31 @@ if (verb === "check" || verb === "changed" || verb === "ticket-plan" || CORRECTI
   }
 }
 
-const { workstreams, milestones, problems } = await loadWorkstreams(root);
-for (const p of problems) console.error(`marauder: workstreams/${p.file} — ${p.problems.join("; ")}`);
+const { work, milestones, problems } = await loadState(root);
+for (const p of problems) console.error(`marauder: ${p.file} — ${p.problems.join("; ")}`);
 
-const board = () => write(root, join(OUT_DIR, "board.md"), renderBoard({ workstreams, milestones, now }), dryRun);
-const show = (w: Workstream) => write(root, join(OUT_DIR, `${w.slug}.md`), renderWorkstream(w, milestones, now), dryRun);
-const changelog = (day: string) => write(root, join(OUT_DIR, "changelog", `${day}.md`), renderChangelog(workstreams, day), dryRun);
+const board = () => write(root, join(OUT_DIR, "board.md"), renderBoard({ work, milestones, now }), dryRun);
+const changelog = (day: string) => write(root, join(OUT_DIR, "changelog", `${day}.md`), renderChangelog(work, day), dryRun);
 
 try {
   const written: Written[] = [];
   if (verb === "board") written.push(await board());
   else if (verb === "show") {
-    const slug = args[1];
-    const w = workstreams.find((x) => x.slug === slug);
-    if (!w) throw new Error(`no workstream ${slug ?? "(none named)"} — ${workstreams.map((x) => x.slug).join(", ")}`);
-    written.push(await show(w));
+    const feature = args[1];
+    const w = work.find((x) => x.feature === feature);
+    if (!w) throw new Error(`${feature ?? "(none named)"} has nothing going on — features that do: ${work.map((x) => x.feature).join(", ")}`);
+    const text = renderFeature(w, milestones, now);
+    const bad = checkStyle(text);
+    if (bad.length) throw new Error(`${featureTitle(w.feature)} breaks the style rules\n${formatStyleProblems(w.feature, bad)}`);
+    process.stdout.write(text);
+    process.exit(problems.length ? 1 : 0);
   } else if (verb === "changelog") written.push(await changelog(args[1] ?? now.slice(0, 10)));
   else if (verb === "render") {
     written.push(await board());
-    for (const w of workstreams) written.push(await show(w));
     written.push(await changelog(now.slice(0, 10)));
   } else throw new Error(`no verb ${verb}\n${HELP}`);
 
-  if (verb === "board" || verb === "show" || verb === "changelog") process.stdout.write(written[0]!.text);
+  if (verb === "board" || verb === "changelog") process.stdout.write(written[0]!.text);
   const changed = written.filter((w) => w.changed);
   console.error(
     `marauder: ${written.length} page${written.length === 1 ? "" : "s"} · ${changed.length} changed` +

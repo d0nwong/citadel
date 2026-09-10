@@ -13,8 +13,8 @@
  *   accio sync                     refetch the spec, reanalyze, regenerate docs + index
  *   accio audit                    hold the docs to what code and spec actually back
  *
- * The API surface and the docs are all of it. Where the work stands — a workstream, a
- * ticket, a day, what needs you — is `marauder`, which reads `workstreams/` (ARG-161).
+ * The API surface and the docs are all of it. Where the work stands — a feature, a
+ * ticket, a day, what needs you — is `marauder`, which reads each feature's `work.json` (ARG-161, ARG-164).
  *
  * Subcommands dispatch by rewriting argv and importing the command module, so each
  * command file also still runs standalone (`bun scripts/commands/sync.ts`).
@@ -66,8 +66,8 @@ if (!first || first === "help" || first === "--help" || first === "-h") {
 const MOVED: Record<string, [command: string, why: string]> = {
   journal: ["marauder changelog [YYYY-MM-DD]", "what changed that day"],
   point: ["marauder board", "what needs you, and what everything else is doing"],
-  ticket: ["marauder show <slug>", "a ticket belongs to a workstream now"],
-  arc: ["marauder show <slug>", "an arc is a workstream now"],
+  ticket: ["marauder show <feature>", "a ticket is on the record of the feature it is about now"],
+  arc: ["marauder show <feature>", "an arc is a feature's record now"],
 };
 if (first in MOVED) {
   const [command, why] = MOVED[first]!;

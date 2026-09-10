@@ -1,10 +1,10 @@
 /**
- * ingest-landings.ts — a merge on a base branch becomes an event (ARG-156).
+ * ingest-landings.ts — a merge on a base branch becomes an event on every feature it
+ * touched (ARG-156, ARG-164 AC1).
  *
- * The cases are the ticket's AC5, over fixtures rather than a repo: a PR match, a
- * ticket-in-branch match, a two-candidate ambiguity, a no-match, a re-run, and a landing on
- * a side already verified. Nothing here touches git, so the ladder is testable without
- * either product checkout.
+ * Over fixtures rather than a repo: a landing whose journal entry names two features, one
+ * only pr-facts can place, one already on a record, one nothing names, and a re-run.
+ * Nothing here touches git, so the ladder is testable without either product checkout.
  *
  *   bun test skills/sweep/scripts/marauder/ingest-landings.test.ts
  */
@@ -12,7 +12,7 @@
 import { test, expect, describe } from "bun:test";
 import {
   applyLandings,
-  candidatesFor,
+  featuresFor,
   landingSummary,
   plainSentence,
   sinceFor,
@@ -22,7 +22,7 @@ import {
 } from "./ingest-landings.ts";
 import type { Landing } from "../../../log-change/scripts/pr-facts.ts";
 import type { AppJournalEntry } from "../../../../scripts/lib/journal.ts";
-import { validate, type Workstream } from "./record.ts";
+import { validate, type FeatureRef, type Work } from "./record.ts";
 
 const landing = (over: Partial<Landing> = {}): Landing => ({
   repo: "fe",
@@ -40,21 +40,17 @@ const landing = (over: Partial<Landing> = {}): Landing => ({
   ...over,
 });
 
-const w = (over: Partial<Workstream> = {}): Workstream => ({
-  slug: "history-editing",
-  name: "History editing",
-  features: ["admin/usage"],
-  wants: [],
-  done: "A bookkeeper can change a past cycle's quantities and the invoice re-prices.",
-  stage: { fe: "building", be: "building" },
-  overlay: null,
-  parked: false,
-  milestone: null,
-  keys: { tickets: ["ALD-2"], prs: ["fe#417"], threads: [], vocab: [], people: [] },
+const FEATURES: FeatureRef[] = [
+  { feature: "admin/usage", app: "alden/alden-portal", id: "admin-usage", aliases: [] },
+  { feature: "admin/invoicing", app: "alden/alden-portal", id: "admin-invoicings", aliases: [] },
+  { feature: "tasks", app: "alden/alden-portal", id: "tasks", aliases: [] },
+];
+
+const work = (over: Partial<Work> = {}): Work => ({
+  feature: "admin/usage",
+  keys: { tickets: [], prs: [], threads: [], vocab: [] },
   open_questions: [],
-  facts: [],
   events: [],
-  opened: "2026-09-07",
   updated: "2026-09-07",
   ...over,
 });
@@ -66,6 +62,7 @@ const journal = (over: Partial<AppJournalEntry> = {}): AppJournalEntry => ({
   app: "alden/alden-portal",
   featureDir: "admin/usage",
   date: "2026-09-09",
+  merge: "ac1caffd6",
   features: ["admin-usage"],
   tickets: [],
   affects: [],
@@ -73,115 +70,93 @@ const journal = (over: Partial<AppJournalEntry> = {}): AppJournalEntry => ({
 });
 
 const apply = (over: Partial<ApplyInput>) =>
-  applyLandings({ workstreams: [w()], landings: [landing()], journals: [], unsorted: [], ...over });
+  applyLandings({ work: [], landings: [landing()], journals: [], unsorted: [], features: FEATURES, ...over });
 
 describe("the ladder", () => {
-  test("a PR already in keys.prs attaches for certain and moves the stage", () => {
-    const { workstreams, changes } = apply({});
-    expect(changes[0]).toMatchObject({ kind: "attached", slug: "history-editing", how: "ref", confidence: "certain" });
-    const ws = workstreams[0]!;
-    expect(ws.stage.fe).toBe("landed");
-    expect(ws.stage.be).toBe("building");
-    expect(ws.events).toHaveLength(1);
-    expect(ws.events[0]).toMatchObject({
-      kind: "verified-landing",
-      side: "fe",
-      source: { type: "pr", ref: "fe#417", sha: "ac1caffd6" },
-      action: "stage fe → landed",
-    });
-    expect(validate(ws, ws.slug)).toEqual([]);
+  test("a landing whose journal names two features is a verified landing on both, for certain, with its sha", () => {
+    const { work: out, unsorted, changes } = apply({ journals: [journal({ features: ["admin-usage", "admin-invoicings"] })] });
+    expect(changes[0]).toMatchObject({ kind: "attached", features: ["admin/usage", "admin/invoicing"] });
+    expect(unsorted).toEqual([]);
+    for (const feature of ["admin/usage", "admin/invoicing"]) {
+      const w = out.find((x) => x.feature === feature)!;
+      expect(w.events).toHaveLength(1);
+      expect(w.events[0]).toMatchObject({
+        kind: "verified-landing",
+        side: "fe",
+        source: { type: "pr", ref: "fe#417", sha: "ac1caffd6" },
+        attached: { how: "ref", confidence: "certain" },
+        evidence: journal().rel,
+      });
+      expect(w.events[0]!.action).toBeUndefined();
+      expect(w.keys.prs).toEqual(["fe#417"]);
+      expect(validate(w, feature)).toEqual([]);
+    }
   });
 
-  test("a ticket in the branch attaches, and the PR joins the keys it was missing", () => {
-    const { workstreams, changes } = apply({
-      workstreams: [w({ keys: { tickets: ["ALD-1"], prs: [], threads: [], vocab: [], people: [] } })],
-      landings: [landing({ ref: "fe#419", pr: 419, branch: "yickkiuleung/ald-1-join-credit-weights", title: "join the credit weights on the asset type" })],
-    });
-    expect(changes[0]).toMatchObject({ kind: "attached", how: "ref", confidence: "certain" });
-    expect(workstreams[0]!.keys.prs).toEqual(["fe#419"]);
+  test("the manifest's own spelling is followed: admin-invoicings is admin/invoicing, not admin/invoicings", () => {
+    const found = featuresFor(landing(), { work: [], journals: [journal({ features: ["admin-invoicings"] })], dirs: { "admin-invoicings": "admin/invoicing" } });
+    expect(found.map((c) => c.feature)).toEqual(["admin/invoicing"]);
   });
 
-  test("a landing the journal ties to one workstream attaches, but only as likely", () => {
-    const { changes } = apply({
-      workstreams: [w({ keys: { tickets: [], prs: [], threads: ["1788774985.655159"], vocab: [], people: [] } })],
-      journals: [journal({ merge: "ac1caffd6" })],
-    });
-    expect(changes[0]).toMatchObject({ kind: "attached", how: "vocab", confidence: "likely" });
+  test("with no journal entry yet, the features pr-facts maps the files to are the answer", () => {
+    const { work: out } = apply({ named: { "fe#417": ["admin-usage", "tasks"] } });
+    expect(out.map((w) => w.feature).sort()).toEqual(["admin/usage", "tasks"]);
+    expect(out[0]!.events[0]!.evidence).toBeUndefined();
+    expect(out[0]!.events[0]!.source!.sha).toBe("ac1caffd6");
   });
 
-  test("the journal entry for the sha becomes the event's evidence", () => {
-    const { workstreams } = apply({ journals: [journal({ merge: "ac1caffd6" })] });
-    expect(workstreams[0]!.events[0]!.evidence).toBe("alden/alden-portal/features/admin/usage/journal/2026-09/2026-09-09/x.md");
+  test("the journal outranks pr-facts, which only hints at what a change grazed", () => {
+    const { work: out } = apply({ journals: [journal()], named: { "fe#417": ["tasks", "admin-invoicings"] } });
+    expect(out.map((w) => w.feature)).toEqual(["admin/usage"]);
   });
 
-  test("with no journal entry the event carries the sha, for a later run to fill in", () => {
-    const { workstreams } = apply({});
-    expect(workstreams[0]!.events[0]!.evidence).toBeUndefined();
-    expect(workstreams[0]!.events[0]!.source!.sha).toBe("ac1caffd6");
+  test("with neither, a record already holding a ticket the branch names takes it", () => {
+    const held = work({ feature: "tasks", keys: { tickets: ["ALD-1"], prs: [], threads: [], vocab: [] } });
+    const { work: out, changes } = apply({ work: [held], landings: [landing({ ref: "fe#419", pr: 419, branch: "yickkiuleung/ald-1-join-credit-weights" })] });
+    expect(changes[0]).toMatchObject({ kind: "attached", features: ["tasks"] });
+    expect(out[0]!.keys.prs).toEqual(["fe#419"]);
   });
 
-  test("two claimants go to unsorted with both, and neither workstream changes", () => {
-    const a = w({ slug: "one", name: "One" });
-    const b = w({ slug: "two", name: "Two" });
-    const { workstreams, unsorted, changes } = apply({ workstreams: [a, b] });
-    expect(changes[0]!.kind).toBe("unsorted");
-    expect(workstreams.every((x) => x.events.length === 0)).toBe(true);
+  test("a landing that names no feature goes to the queue, and no record changes", () => {
+    const before = [work({ events: [] })];
+    const { work: out, unsorted } = apply({ work: before });
+    expect(out).toEqual(before);
     expect(unsorted).toHaveLength(1);
-    expect(unsorted[0]).toMatchObject({ id: "fe#417", kind: "landing", suggest: "one", needs: "read" });
-    expect(unsorted[0]!.candidates.map((c) => c.slug)).toEqual(["one", "two"]);
+    expect(unsorted[0]).toMatchObject({ id: "fe#417", kind: "landing", candidates: [], suggest: null, needs: "read" });
   });
 
-  test("a landing nobody claims goes to unsorted with no candidate and no suggestion", () => {
-    const { unsorted, workstreams } = apply({ workstreams: [w({ keys: { tickets: [], prs: [], threads: ["x"], vocab: [], people: [] } })] });
-    expect(unsorted[0]).toMatchObject({ id: "fe#417", candidates: [], suggest: null });
-    expect(workstreams[0]!.events).toEqual([]);
+  test("a feature no app has is not invented", () => {
+    const { work: out, unsorted } = apply({ named: { "fe#417": ["nowhere"] } });
+    expect(out).toEqual([]);
+    expect(unsorted).toHaveLength(1);
   });
 
-  test("candidatesFor stops at the rung that answers, rather than falling through to a weaker one", () => {
-    const byPr = w({ slug: "by-pr" });
-    const byJournal = w({ slug: "by-journal", keys: { tickets: [], prs: [], threads: ["x"], vocab: [], people: [] } });
-    const found = candidatesFor(landing(), [byPr, byJournal], [journal({ merge: "ac1caffd6" })]);
-    expect(found.map((c) => c.slug)).toEqual(["by-pr"]);
+  test("a landing a reader once queued is placed once something names it, and leaves the queue", () => {
+    const queued = apply({}).unsorted;
+    const { unsorted } = apply({ unsorted: queued, journals: [journal()] });
+    expect(unsorted).toEqual([]);
   });
 });
 
 describe("idempotence", () => {
   test("a landing already recorded is skipped and nothing changes", () => {
-    const once = apply({});
-    const twice = applyLandings({ workstreams: once.workstreams, landings: [landing()], journals: [], unsorted: once.unsorted });
+    const once = apply({ journals: [journal()] });
+    const twice = applyLandings({ ...once, landings: [landing()], journals: [journal()], features: FEATURES });
     expect(twice.changes[0]).toMatchObject({ kind: "skipped" });
-    expect(twice.workstreams).toEqual(once.workstreams);
+    expect(twice.work).toEqual(once.work);
   });
 
   test("a landing already unsorted is not queued twice", () => {
-    const once = apply({ workstreams: [w({ slug: "one" }), w({ slug: "two" })] });
-    const twice = applyLandings({ workstreams: once.workstreams, landings: [landing()], journals: [], unsorted: once.unsorted });
+    const once = apply({});
+    const twice = applyLandings({ work: once.work, landings: [landing()], journals: [], unsorted: once.unsorted, features: FEATURES });
     expect(twice.unsorted).toHaveLength(1);
     expect(twice.changes[0]).toMatchObject({ kind: "skipped", why: "already unsorted" });
   });
 
   test("a landing recognised by its sha alone is still the same landing", () => {
-    const once = apply({});
+    const once = apply({ journals: [journal()] });
     const renumbered = landing({ ref: "fe@ac1caffd6", pr: null, url: null });
-    expect(applyLandings({ workstreams: once.workstreams, landings: [renumbered], journals: [], unsorted: [] }).changes[0]!.kind).toBe("skipped");
-  });
-});
-
-describe("stages", () => {
-  test("a side already verified keeps its stage and still gets the event", () => {
-    const { workstreams, changes } = apply({ workstreams: [w({ stage: { fe: "verified" } })] });
-    expect(workstreams[0]!.stage.fe).toBe("verified");
-    expect(workstreams[0]!.events).toHaveLength(1);
-    expect(workstreams[0]!.events[0]!.action).toBeUndefined();
-    expect(changes[0]).toMatchObject({ kind: "attached", stage: null });
-  });
-
-  test("a side already shipped keeps its stage", () => {
-    expect(apply({ workstreams: [w({ stage: { fe: "shipped" } })] }).workstreams[0]!.stage.fe).toBe("shipped");
-  });
-
-  test("a side the record never had starts at landed", () => {
-    expect(apply({ workstreams: [w({ stage: { be: "building" } })] }).workstreams[0]!.stage.fe).toBe("landed");
+    expect(applyLandings({ work: once.work, landings: [renumbered], journals: [], unsorted: [], features: FEATURES }).changes[0]!.kind).toBe("skipped");
   });
 
   test("a release bot is not a person and lands nothing", () => {
@@ -212,19 +187,19 @@ describe("the summary", () => {
 });
 
 describe("the window", () => {
-  test("it starts at the newest landing that side already holds", () => {
-    const ws = w({
+  test("it starts at the newest landing any feature holds from that side", () => {
+    const w = work({
       events: [
         { at: "2026-09-08T09:00:00Z", kind: "verified-landing", side: "fe", summary: "x", attached: { how: "ref", confidence: "certain" } },
         { at: "2026-09-09T09:00:00Z", kind: "verified-landing", side: "be", summary: "y", attached: { how: "ref", confidence: "certain" } },
       ],
     });
-    expect(sinceFor([ws], "fe", "2026-09-09")).toBe("2026-09-08");
-    expect(sinceFor([ws], "be", "2026-09-09")).toBe("2026-09-09");
+    expect(sinceFor([w], "fe", "2026-09-09")).toBe("2026-09-08");
+    expect(sinceFor([w], "be", "2026-09-09")).toBe("2026-09-09");
   });
 
   test("a side with no landing yet starts cold, two weeks back", () => {
-    expect(sinceFor([w()], "fe", "2026-09-09")).toBe("2026-08-26");
+    expect(sinceFor([work()], "fe", "2026-09-09")).toBe("2026-08-26");
   });
 
   test("tickets are read from the branch as well as the title, case-insensitively", () => {

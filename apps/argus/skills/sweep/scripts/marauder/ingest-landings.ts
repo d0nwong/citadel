@@ -1,45 +1,44 @@
 #!/usr/bin/env bun
 /**
- * marauder ingest --landings — a merge on a base branch becomes an event (ARG-156).
+ * marauder ingest --landings — a merge on a base branch becomes an event on every feature
+ * it touched (ARG-156, ARG-164).
  *
  * A landing is the one input that is a fact rather than a claim: it is on the base branch
- * or it is not. So it attaches without anyone confirming, and moves that side's stage to
- * `landed`. What it never does is decide a workstream is `verified` or `shipped` — those
- * need the docs refresh and the reader.
+ * or it is not. So it attaches without anyone confirming. Where it attaches is read, not
+ * guessed, in this order:
  *
- * The ladder, in order, and it stops at the first rung that answers:
+ *   1. the journal entry written for the landing — its `features:` is what the change is
+ *      about, as the person who journalled it said
+ *   2. with no entry yet, the features `pr-facts` maps its changed files to
+ *   3. with neither, a feature whose record already holds the PR or a ticket the branch or
+ *      the title names
  *
- *   1. the PR number is already in a workstream's `keys.prs`
- *   2. the branch or the title names a ticket in a workstream's `keys.tickets`
- *   3. the journal entry for the same sha names tickets or features that only one
- *      workstream claims
- *
- * Two workstreams answering, or none, and the landing goes to `workstreams/_unsorted.json`
- * with every candidate and why it matched, and no workstream file changes. The sweep's
- * read step and the correction verbs are what empty that file.
+ * Every feature the first rung that answers names gets the event — a landing on two
+ * features is on both. A landing that names none goes to `queue/_unsorted.json` and no
+ * record changes; the sweep's read step and the correction verbs are what empty that file.
+ * Nothing here keeps a stage: the docs refresh says what is true now, and Linear says
+ * where a ticket is.
  *
  * Everything here is idempotent. A landing already recorded as an event is skipped, so a
- * second run with nothing new writes no byte. Git is read through `pr-facts`' own helper,
+ * second run with nothing new writes no byte. Git is read through `pr-facts`' own helpers,
  * against `origin/staging` and `origin/dev` by sha; nothing here fetches or checks out.
  */
 
-import { join } from "node:path";
-import { landingsSince, repoOf, type Landing, type RepoKind } from "../../../log-change/scripts/pr-facts.ts";
+import { landingFeatures, landingsSince, repoOf, type Landing, type RepoKind } from "../../../log-change/scripts/pr-facts.ts";
 import { loadAllJournals, type AppJournalEntry } from "../../../../scripts/lib/journal.ts";
 import {
-  UNSORTED_FILE,
-  WORKSTREAMS_DIR,
-  humanStage,
+  addEvent,
+  dirsById,
+  emptyWork,
   instantOf,
-  serializeWorkstream,
-  loadWorkstreams,
-  type AttachHow,
-  type Confidence,
+  loadState,
+  saveState,
+  type Candidate,
+  type FeatureRef,
   type Side,
-  type Stage,
   type UnsortedItem,
-  type Workstream,
-  type WorkstreamEvent,
+  type Work,
+  type WorkEvent,
 } from "./record.ts";
 
 /** a repo is a side: the frontend lands on staging, the backend on dev */
@@ -59,7 +58,7 @@ const AUTHORS: Record<string, string> = {
 const BOTS = [/release-token$/, /^dependabot/, /\[bot\]$/];
 export const isBot = (author: string) => BOTS.some((b) => b.test(author));
 
-/** how far back to look when no side has a landing yet */
+/** how far back to look when no feature holds a landing from that side yet */
 const COLD_START_DAYS = 14;
 
 // ---------------------------------------------------------------- the sentence
@@ -99,8 +98,6 @@ export function landingSummary(l: Landing): string {
 
 // ---------------------------------------------------------------- the ladder
 
-export type Candidate = { slug: string; how: AttachHow; why: string };
-
 const TICKET_IN_BRANCH = /\b((?:arg|ald)-\d+)\b/gi;
 
 /** every ticket a landing names, from its branch and its title, upper-cased */
@@ -115,65 +112,69 @@ export const ticketsOf = (l: Landing): string[] => [
 export const journalFor = (l: Landing, journals: AppJournalEntry[]): AppJournalEntry | undefined =>
   journals.find((j) => (j.merge && l.sha.startsWith(j.merge)) || j.pr === l.ref);
 
+/** manifest ids to feature directories, keeping the order and dropping what no app has */
+const toDirs = (ids: string[], dirs: Record<string, string>) => [...new Set(ids.map((id) => dirs[id]).filter((d): d is string => !!d))];
+
+export type LadderInput = {
+  work: Work[];
+  journals: AppJournalEntry[];
+  /** manifest id → feature directory, across every app */
+  dirs: Record<string, string>;
+  /** landing ref → the manifest ids `pr-facts` maps its changed files to */
+  named?: Record<string, string[]>;
+};
+
 /**
- * Who claims this landing. Rung by rung, stopping at the first rung that answers at all —
- * a rung that answers twice is an ambiguity to be resolved, not a reason to try the next
- * rung, which would only ever be weaker.
+ * The features a landing is on. Rung by rung, stopping at the first that names anything;
+ * every feature that rung names is a candidate, and every candidate gets the event.
  */
-export function candidatesFor(l: Landing, workstreams: Workstream[], journals: AppJournalEntry[]): Candidate[] {
-  const byPr = workstreams.filter((w) => w.keys.prs.includes(l.ref));
-  if (byPr.length) return byPr.map((w) => ({ slug: w.slug, how: "ref" as const, why: `${l.ref} is one of its PRs` }));
-
-  const tickets = ticketsOf(l);
-  const byTicket = workstreams.filter((w) => w.keys.tickets.some((t) => tickets.includes(t)));
-  if (byTicket.length)
-    return byTicket.map((w) => ({
-      slug: w.slug,
-      how: "ref" as const,
-      why: `it owns ${w.keys.tickets.filter((t) => tickets.includes(t)).join(", ")}, which the branch or title names`,
-    }));
-
+export function featuresFor(l: Landing, { work, journals, dirs, named = {} }: LadderInput): Candidate[] {
   const entry = journalFor(l, journals);
-  if (!entry) return [];
-  const byEntryTicket = workstreams.filter((w) => w.keys.tickets.some((t) => entry.tickets.includes(t)));
-  if (byEntryTicket.length)
-    return byEntryTicket.map((w) => ({ slug: w.slug, how: "vocab" as const, why: `the journal entry for this landing names ${entry.tickets.join(", ")}` }));
+  if (entry) {
+    const fromEntry = toDirs(entry.features, dirs);
+    const found = fromEntry.length ? fromEntry : [entry.featureDir];
+    return found.map((feature) => ({ feature, how: "ref" as const, why: `the journal entry for ${l.ref} names it` }));
+  }
 
-  const feats = entry.features.map((f) => f.replace(/^admin-/, "admin/"));
-  const byFeature = workstreams.filter((w) => w.features.some((f) => feats.includes(f)));
-  return byFeature.map((w) => ({ slug: w.slug, how: "vocab" as const, why: `the journal entry for this landing is filed under ${entry.features.join(", ")}` }));
+  const mapped = toDirs(named[l.ref] ?? [], dirs);
+  if (mapped.length) return mapped.map((feature) => ({ feature, how: "ref" as const, why: `pr-facts maps ${l.ref}'s files to it` }));
+
+  const byPr = work.filter((w) => w.keys.prs.includes(l.ref));
+  if (byPr.length) return byPr.map((w) => ({ feature: w.feature, how: "ref" as const, why: `${l.ref} is already on its record` }));
+  const tickets = ticketsOf(l);
+  return work
+    .filter((w) => w.keys.tickets.some((t) => tickets.includes(t)))
+    .map((w) => ({ feature: w.feature, how: "ref" as const, why: `it holds ${w.keys.tickets.filter((t) => tickets.includes(t)).join(", ")}, which the branch or title names` }));
 }
 
 // ---------------------------------------------------------------- applying
 
-const rank: Record<Stage, number> = { asked: 0, decided: 1, building: 2, landed: 3, verified: 4, shipped: 5 };
-/**
- * Only a side still on its way to the branch moves; `verified` and `shipped` are verdicts
- * and a landing after one of them is a follow-up. A side the record never had starts here.
- */
-const advances = (s: Stage | undefined) => s === undefined || rank[s] < rank.landed;
-
 /** a landing this record already holds, by PR key or by sha */
-const alreadyHas = (w: Workstream, l: Landing) =>
+const alreadyHas = (w: Work, l: Landing) =>
   w.events.some((e) => e.source?.ref === l.ref || (e.source?.sha && l.sha.startsWith(e.source.sha)));
 
 export type LandingChange =
-  | { kind: "attached"; landing: Landing; slug: string; how: AttachHow; confidence: Confidence; stage: string | null }
-  | { kind: "unsorted"; landing: Landing; candidates: Candidate[] }
+  | { kind: "attached"; landing: Landing; features: string[] }
+  | { kind: "unsorted"; landing: Landing }
   | { kind: "skipped"; landing: Landing; why: string };
 
 export type ApplyInput = {
-  workstreams: Workstream[];
+  work: Work[];
   landings: Landing[];
   journals: AppJournalEntry[];
   unsorted: UnsortedItem[];
+  /** every feature some app has — a landing on a feature with no record opens one */
+  features: FeatureRef[];
+  named?: Record<string, string[]>;
 };
-export type ApplyResult = { workstreams: Workstream[]; unsorted: UnsortedItem[]; changes: LandingChange[] };
+export type ApplyResult = { work: Work[]; unsorted: UnsortedItem[]; changes: LandingChange[] };
 
 /** the whole ingest as one pure function of what was read; the runner only does the IO */
-export function applyLandings({ workstreams, landings, journals, unsorted }: ApplyInput): ApplyResult {
-  const byslug = new Map(workstreams.map((w) => [w.slug, structuredClone(w)]));
+export function applyLandings({ work, landings, journals, unsorted, features, named }: ApplyInput): ApplyResult {
+  const byFeature = new Map(work.map((w) => [w.feature, structuredClone(w)]));
   const seenUnsorted = new Map(unsorted.map((u) => [u.id, u]));
+  const known = new Set([...features.map((f) => f.feature), ...work.map((w) => w.feature)]);
+  const dirs = dirsById(features);
   const changes: LandingChange[] = [];
 
   for (const l of [...landings].sort((a, b) => a.at.localeCompare(b.at))) {
@@ -181,84 +182,69 @@ export function applyLandings({ workstreams, landings, journals, unsorted }: App
       changes.push({ kind: "skipped", landing: l, why: "a release bot, not a person" });
       continue;
     }
-    const holder = [...byslug.values()].find((w) => alreadyHas(w, l));
+    const holder = [...byFeature.values()].find((w) => alreadyHas(w, l));
     if (holder) {
-      changes.push({ kind: "skipped", landing: l, why: `already an event on ${holder.slug}` });
+      changes.push({ kind: "skipped", landing: l, why: `already an event on ${holder.feature}` });
       continue;
     }
 
-    const candidates = candidatesFor(l, [...byslug.values()], journals);
-    if (candidates.length !== 1) {
-      const item = unsortedItem(l, candidates);
-      if (seenUnsorted.has(item.id)) changes.push({ kind: "skipped", landing: l, why: "already unsorted" });
+    const candidates = featuresFor(l, { work: [...byFeature.values()], journals, dirs, named }).filter((c) => known.has(c.feature));
+    if (!candidates.length) {
+      if (seenUnsorted.has(l.ref)) changes.push({ kind: "skipped", landing: l, why: "already unsorted" });
       else {
-        seenUnsorted.set(item.id, item);
-        changes.push({ kind: "unsorted", landing: l, candidates });
+        seenUnsorted.set(l.ref, unsortedItem(l));
+        changes.push({ kind: "unsorted", landing: l });
       }
       continue;
     }
 
-    const only = candidates[0]!;
-    const w = byslug.get(only.slug)!;
-    const side = SIDE_OF[l.repo];
-    const confidence: Confidence = only.how === "ref" ? "certain" : "likely";
-    // a person who said where this side really is outranks what a landing implies, until
-    // the next landing; when they said it is behind `landed`, the disagreement is queued
-    const held = humanStage(w, side);
-    if (held && rank[held.stage] < rank.landed) {
-      const item = unsortedItem(l, candidates);
-      const id = `${item.id}/stage`;
-      if (!seenUnsorted.has(id))
-        seenUnsorted.set(id, {
-          ...item,
-          id,
-          why: `${l.ref} is on the branch, and someone set ${w.slug}'s ${side} to ${held.stage} after the last landing`,
-          suggest: w.slug,
-          needs: "ask",
-        });
+    const entry = journalFor(l, journals);
+    const ticket = ticketsOf(l)[0];
+    for (const c of candidates) {
+      const w = byFeature.get(c.feature) ?? emptyWork(c.feature, l.at);
+      byFeature.set(c.feature, w);
+      const event: WorkEvent = {
+        at: l.at,
+        kind: "verified-landing",
+        side: SIDE_OF[l.repo],
+        summary: landingSummary(l),
+        source: { type: "pr", ref: l.ref, ...(l.url ? { url: l.url } : {}), sha: l.short },
+        attached: { how: "ref", confidence: "certain" },
+        ...(ticket ? { ticket } : {}),
+        ...(entry ? { evidence: entry.rel } : {}),
+      };
+      addEvent(w, event);
+      if (!w.keys.prs.includes(l.ref)) w.keys.prs = [...w.keys.prs, l.ref];
     }
-    const moved = !held && advances(w.stage[side]);
-    const event: WorkstreamEvent = {
-      at: l.at,
-      kind: "verified-landing",
-      side,
-      summary: landingSummary(l),
-      source: { type: "pr", ref: l.ref, ...(l.url ? { url: l.url } : {}), sha: l.short },
-      attached: { how: only.how, confidence },
-      ...(ticketsOf(l)[0] ? { ticket: ticketsOf(l)[0] } : {}),
-      ...(journalFor(l, journals) ? { evidence: journalFor(l, journals)!.rel } : {}),
-      ...(moved ? { action: `stage ${side} → landed` } : {}),
-    };
-    w.events = [...w.events, event].sort((a, b) => instantOf(a.at).localeCompare(instantOf(b.at)));
-    if (moved) w.stage[side] = "landed";
-    if (!w.keys.prs.includes(l.ref)) w.keys.prs = [...w.keys.prs, l.ref];
-    w.updated = instantOf(l.at) > instantOf(w.updated) ? l.at : w.updated;
-    changes.push({ kind: "attached", landing: l, slug: w.slug, how: only.how, confidence, stage: moved ? `${side} → landed` : null });
+    // a landing a reader once queued is placed now; it leaves the queue
+    seenUnsorted.delete(l.ref);
+    changes.push({ kind: "attached", landing: l, features: candidates.map((c) => c.feature) });
   }
 
   return {
-    workstreams: [...byslug.values()],
+    work: [...byFeature.values()],
     unsorted: [...seenUnsorted.values()].sort((a, b) => a.at.localeCompare(b.at)),
     changes,
   };
 }
 
-const unsortedItem = (l: Landing, candidates: Candidate[]): UnsortedItem => ({
+const unsortedItem = (l: Landing): UnsortedItem => ({
   id: l.ref,
   kind: "landing",
   summary: landingSummary(l),
   source: { type: "pr", ref: l.ref, ...(l.url ? { url: l.url } : {}), sha: l.short },
-  candidates,
-  suggest: candidates.length ? candidates[0]!.slug : null,
+  candidates: [],
+  why: "no journal entry for it yet, and pr-facts maps its files to no feature",
+  suggest: null,
   needs: "read",
   at: l.at,
 });
 
 // ---------------------------------------------------------------- running
 
-/** the day to read from: the newest landing this side already holds, else a cold start */
-export function sinceFor(workstreams: Workstream[], side: Side, today: string): string {
-  const newest = workstreams
+/** the day to read from: the newest landing any feature holds from this side, else a cold start */
+export function sinceFor(work: Work[], side: Side, today: string): string {
+  const newest = work
     .flatMap((w) => w.events)
     .filter((e) => e.kind === "verified-landing" && e.side === side)
     .map((e) => instantOf(e.at))
@@ -275,32 +261,23 @@ export type RunResult = ApplyResult & { written: string[] };
 
 export async function run(opts: RunOpts): Promise<RunResult> {
   const now = opts.now ?? new Date().toISOString();
-  const { workstreams } = await loadWorkstreams(opts.root);
+  const before = await loadState(opts.root);
   const journals = await loadAllJournals(opts.root);
-  const unsortedPath = join(opts.root, WORKSTREAMS_DIR, UNSORTED_FILE);
-  const unsorted: UnsortedItem[] = (await Bun.file(unsortedPath).exists()) ? await Bun.file(unsortedPath).json() : [];
 
   const landings: Landing[] = [];
-  for (const kind of (opts.sides ?? ["fe", "be"]) as RepoKind[])
-    landings.push(...(await landingsSince(repoOf(kind), opts.since ?? sinceFor(workstreams, SIDE_OF[kind], now.slice(0, 10)))));
-
-  const result = applyLandings({ workstreams, landings, journals, unsorted });
-  const written: string[] = [];
-  if (!opts.dryRun) {
-    const before = new Map(workstreams.map((w) => [w.slug, serializeWorkstream(w)]));
-    for (const w of result.workstreams) {
-      const text = serializeWorkstream(w);
-      if (before.get(w.slug) === text) continue;
-      await Bun.write(join(opts.root, WORKSTREAMS_DIR, `${w.slug}.json`), text);
-      written.push(`${WORKSTREAMS_DIR}/${w.slug}.json`);
-    }
-    const unsortedText = `${JSON.stringify(result.unsorted, null, 2)}\n`;
-    const had = (await Bun.file(unsortedPath).exists()) ? await Bun.file(unsortedPath).text() : "";
-    if (had !== unsortedText && (result.unsorted.length || had)) {
-      await Bun.write(unsortedPath, unsortedText);
-      written.push(`${WORKSTREAMS_DIR}/${UNSORTED_FILE}`);
+  const named: Record<string, string[]> = {};
+  for (const kind of (opts.sides ?? ["fe", "be"]) as RepoKind[]) {
+    const repo = repoOf(kind);
+    for (const l of await landingsSince(repo, opts.since ?? sinceFor(before.work, SIDE_OF[kind], now.slice(0, 10)))) {
+      landings.push(l);
+      // pr-facts reads the diff, so only for a landing no record holds and no entry names yet
+      const held = before.work.some((w) => alreadyHas(w, l));
+      if (!held && !isBot(l.author) && !journalFor(l, journals)) named[l.ref] = await landingFeatures(repo, l.sha).catch(() => []);
     }
   }
+
+  const result = applyLandings({ ...before, landings, journals, named });
+  const written = opts.dryRun ? [] : await saveState(opts.root, before, { ...before, work: result.work, unsorted: result.unsorted });
   return { ...result, written };
 }
 
@@ -309,9 +286,9 @@ export function formatChanges(changes: LandingChange[]): string {
   return changes
     .map((c) =>
       c.kind === "attached"
-        ? `  ${c.landing.ref.padEnd(9)} → ${c.slug}${c.stage ? ` (${c.stage})` : ""} · ${c.how}/${c.confidence}`
+        ? `  ${c.landing.ref.padEnd(9)} → ${c.features.join(", ")}`
         : c.kind === "unsorted"
-          ? `  ${c.landing.ref.padEnd(9)} → unsorted · ${c.candidates.length} candidate(s)${c.candidates.length ? `: ${c.candidates.map((x) => x.slug).join(", ")}` : ""}`
+          ? `  ${c.landing.ref.padEnd(9)} → unsorted · no feature named`
           : `  ${c.landing.ref.padEnd(9)} — ${c.why}`,
     )
     .join("\n");

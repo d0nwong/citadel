@@ -1,16 +1,21 @@
 #!/usr/bin/env bun
 /**
- * The decisions a person made in Pensieve, applied (ARG-160 AC4).
+ * The decisions a person made in Pensieve, applied (ARG-160 AC4, over features since ARG-164).
  *
  * Pensieve is read-only over the blackboard with one exception: it writes decision files.
- * A click on an Unsorted entry lands as `decisions/marauder/<slug>.json`, and this is the
+ * A click on an Unsorted entry lands as `decisions/marauder/<id>.json`, and this is the
  * other half of that contract — `marauder ingest` reads those files first, applies each
  * through the correction functions in `correct.ts`, and carries on. Nothing else applies
  * them, and nothing here writes: the command does the reading and the writing, as it does
  * for every other verb.
  *
- *   decisions/marauder/<slug>.json
- *   { id, action: "attach" | "new" | "dismiss" | "stage" | "verified", slug?, name?, reason, at, by }
+ *   decisions/marauder/<id>.json
+ *   { id, action: "attach" | "dismiss" | "verified", feature?, reason, at, by }
+ *
+ * `attach` names the feature by its directory under `features/`. A file written before the
+ * feature was the unit names a `slug` instead; those were all applied while workstreams
+ * existed, so their entries are gone from the queue and they apply nothing now. `new` and
+ * `stage` went with the workstreams: a file carrying one is said out loud, not applied.
  *
  * `verified` is the odd one: its `id` names an *event* rather than a queue entry, and it
  * is the user answering what a `directed-at-person` event asked them — the go-ahead for
@@ -21,49 +26,38 @@
  * applies it: `marauder.ts` `sentTickets` reads every `sent` decision with a job when it
  * builds a ticket plan, which is what holds the edits on a ticket Foundry is running.
  *
- * `id` is the entry's own id — a Slack `ts`, `fe#417`, `split/<slug>` — carried inside the
- * file because the file's *name* cannot be: an id is not a path segment, so Pensieve folds
- * it (`lib/marauder.ts` `decisionSlug`) and the fold is not reversible. Matching is on `id`
- * alone, which is why it is in there.
- *
  * Three rules hold this together:
  *
  *   - **The file is never edited and never deleted.** It stays where it is as the history
  *     of who decided what, and the entry leaving the queue is what stops it being applied
- *     twice. Applying it again is a no-op anyway — every correction is idempotent — but a
- *     decision naming an entry that is gone is skipped without a word, not reported as a
- *     problem: that is the normal state of every file after the run that applied it.
- *   - **A malformed file is a problem, and is said out loud.** Nothing else under
- *     `decisions/` is read any more, so an unreadable file here is reported or lost.
- *   - **Oldest first.** Two decisions can name the same workstream, and the record should
- *     read in the order the person made them.
+ *     twice. A decision naming an entry that is gone is skipped without a word.
+ *   - **A malformed file is a problem, and is said out loud.**
+ *   - **Oldest first.** Two decisions can name the same feature, and the record should read
+ *     in the order the person made them.
  */
 
 import { join } from "node:path";
-import { attach, confirmEvent, dismiss, newFrom, setStage, type Result, type State, type Who } from "./correct.ts";
-import { USER, type Side, type Stage } from "./record.ts";
+import { attach, confirmEvent, dismiss, type Result, type State, type Who } from "./correct.ts";
+import { USER } from "./record.ts";
 
 /** the group under `decisions/` this reads; the other groups are the old verdicts, archive */
 export const MARAUDER_GROUP = "marauder";
 
-export type MarauderAction = "attach" | "new" | "dismiss" | "stage" | "verified";
+export type MarauderAction = "attach" | "dismiss" | "verified";
 
 export type MarauderDecision = {
   /** the queue entry this decides, or — for `verified` — the event it answers */
   id: string;
   action: MarauderAction;
-  /** `attach` and `stage` — the workstream it lands on */
-  slug?: string;
-  /** `new` — what the workstream is called */
-  name?: string;
-  side?: Side;
-  stage?: Stage;
+  /** `attach` — the feature it lands on, as its directory under features/ */
+  feature?: string;
   reason?: string;
   at: string;
   by: string;
 };
 
-const ACTIONS: MarauderAction[] = ["attach", "new", "dismiss", "stage", "verified"];
+const ACTIONS: MarauderAction[] = ["attach", "dismiss", "verified"];
+const RETIRED = ["new", "stage", "split"];
 const isStr = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 
 /**
@@ -81,20 +75,18 @@ export function parseDecision(text: string): { decision: MarauderDecision } | { 
   if (typeof value !== "object" || value === null || Array.isArray(value)) return { error: "not a JSON object" };
   const d = value as Record<string, unknown>;
   if (!isStr(d.id)) return { error: "no id — the file must name the unsorted entry it decides" };
+  if (RETIRED.includes(String(d.action))) return { error: `"${String(d.action)}" went with the workstreams — attach the entry to a feature instead` };
   if (!ACTIONS.includes(d.action as MarauderAction)) return { error: `action "${String(d.action)}" is not one of ${ACTIONS.join(", ")}` };
   const action = d.action as MarauderAction;
-  if ((action === "attach" || action === "stage") && !isStr(d.slug)) return { error: `${action} names no workstream` };
-  if (action === "new" && !isStr(d.name)) return { error: "new names no workstream" };
+  // a file from before the feature was the unit names a slug, and applies to nothing now
+  const feature = isStr(d.feature) ? d.feature : isStr(d.slug) ? d.slug : undefined;
+  if (action === "attach" && !feature) return { error: "attach names no feature" };
   if (action === "dismiss" && !isStr(d.reason)) return { error: "dismiss gives no reason, and the reason is all that is left of the item" };
-  if (action === "stage" && !(isStr(d.side) && isStr(d.stage))) return { error: "stage says no side or no stage" };
   return {
     decision: {
       id: d.id,
       action,
-      ...(isStr(d.slug) ? { slug: d.slug } : {}),
-      ...(isStr(d.name) ? { name: d.name } : {}),
-      ...(isStr(d.side) ? { side: d.side as Side } : {}),
-      ...(isStr(d.stage) ? { stage: d.stage as Stage } : {}),
+      ...(feature ? { feature } : {}),
       ...(isStr(d.reason) ? { reason: d.reason } : {}),
       at: isStr(d.at) ? d.at : "",
       by: isStr(d.by) ? d.by : USER.name,
@@ -144,11 +136,9 @@ export function apply(state: State, decisions: MarauderDecision[]): { state: Sta
   for (const d of decisions) {
     const who: Who = { by: d.by, reason: d.reason, at: d.at || new Date().toISOString() };
     const result: Result =
-      d.action === "attach" ? attach(current, d.id, d.slug!, who)
-      : d.action === "new" ? newFrom(current, d.id, { ...who, name: d.name! })
+      d.action === "attach" ? attach(current, d.id, d.feature!, who)
       : d.action === "dismiss" ? dismiss(current, d.id, who)
-      : d.action === "verified" ? confirmEvent(current, d.id, who)
-      : setStage(current, d.slug!, d.side!, d.stage!, who);
+      : confirmEvent(current, d.id, who);
     current = result.state;
     // the correction already says what it did, in the record's own words
     if (result.changed) changes.push({ decision: d, notes: result.notes });

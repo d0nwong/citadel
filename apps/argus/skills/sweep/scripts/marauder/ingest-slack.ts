@@ -1,49 +1,45 @@
 #!/usr/bin/env bun
 /**
- * marauder ingest --slack — what the channel said becomes events (ARG-157).
+ * marauder ingest --slack — what the channel said becomes events on features (ARG-157, ARG-164).
  *
- * The accuracy is in the ladder, not in a classifier. A reply in a thread a workstream
- * already owns belongs to that workstream; a message naming a ticket or a PR it owns
- * belongs to it; a message using a field name only one workstream claims probably belongs
+ * The accuracy is in the ladder, not in a classifier. A reply in a thread a feature has
+ * learned belongs to that feature; a message naming a ticket or a PR in a feature's keys
+ * belongs to it; a message using words only one feature claims — its learned vocabulary,
+ * or one of its manifest aliases distinctive enough to mean something — probably belongs
  * to it. Everything below that is a reading job, and **this script never calls a model**:
  * an item it cannot place, or can place but cannot type, is written to
- * `workstreams/_unsorted.json` with `needs: "read"`, the item's own words, and one line per
- * open workstream. The sweep skill reads those entries and answers them with
- * `marauder attach --auto` or `marauder suggest`.
- *
- * A decision or an ask that matches nothing is proposed as a new workstream — `kind: "new"`
- * with a name in the item's own words. Nothing here ever creates a workstream file.
+ * `queue/_unsorted.json` with `needs: "read"` and the item's own words. The sweep skill
+ * reads those entries and answers them with `marauder attach --auto` or `marauder suggest`.
  *
  * A huddle canvas is not split here. The message carrying it goes to the queue as notes
  * nobody has read; the sweep reads them and records its key points with `marauder huddle`.
  *
  * The cursor is this script's since the rewire (ARG-161). It reads through
- * `slack-pull --json`, which advances `workstreams/.state.next.json`; the sweep promotes
- * that to `workstreams/.state.json` only after the tick's commit succeeds, so a crashed
- * tick replays the channel instead of skipping it. A dry run passes `--no-next` and moves
- * nothing.
+ * `slack-pull --json`, which advances `queue/.state.next.json`; the sweep promotes that to
+ * `queue/.state.json` only after the tick's commit succeeds, so a crashed tick replays the
+ * channel instead of skipping it. A dry run passes `--no-next` and moves nothing.
  */
 
-import { join } from "node:path";
 import type { Msg, Pull } from "./slack-pull.ts";
 import {
-  MILESTONES_FILE,
-  UNSORTED_FILE,
   USER,
-  WORKSTREAMS_DIR,
-  instantOf,
+  addEvent,
+  emptyWork,
   latestEvent,
-  loadMilestones,
-  loadWorkstreams,
-  serializeWorkstream,
+  loadState,
+  saveState,
   type AttachHow,
+  type Candidate,
   type Confidence,
   type EventKind,
+  type FeatureRef,
   type Milestones,
   type UnsortedItem,
-  type Workstream,
-  type WorkstreamEvent,
+  type Work,
+  type WorkEvent,
 } from "./record.ts";
+
+export type { Candidate };
 
 const SLACK_PULL = new URL("./slack-pull.ts", import.meta.url).pathname;
 
@@ -120,8 +116,6 @@ export function itemsOf(pull: Pull): SlackItem[] {
 
 // ---------------------------------------------------------------- the ladder
 
-export type Candidate = { slug: string; how: AttachHow; why: string };
-
 const TICKET = /\b((?:ARG|ALD)-\d+)\b/gi;
 const PR_REF = /\b((?:fe|be)#\d+)\b/gi;
 const bare = (s: string) => s.replace(/[`*_]/g, " ");
@@ -150,39 +144,76 @@ export function identifiers(text: string): string[] {
 export const tokenIn = (text: string, token: string) =>
   new RegExp(`(^|[^A-Za-z0-9_-])${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9_-]|$)`, "i").test(text);
 
+/** a camelCase, PascalCase, kebab, snake or path-shaped word — something nobody says by accident */
+const IDENTIFIER_SHAPED = /[a-z][A-Z]|[A-Za-z0-9][-_/.][A-Za-z0-9]|^\//;
+
 /**
- * Who this item belongs to. Thread, then explicit reference, then code vocabulary — each
- * rung stopping the ladder whether it answers once or twice, because a rung that answers
- * twice is an ambiguity to resolve and the next rung is only ever weaker. A token two
- * workstreams both claim is worth nothing, so it is dropped before the rung is judged.
+ * Whether a manifest alias is distinctive enough to place a message. Two or more words, or
+ * an identifier's shape; a single common word — "save", "invoice" — would claim half the
+ * channel, so it claims nothing.
  */
-export function slackCandidates(item: SlackItem, workstreams: Workstream[]): Candidate[] {
-  // a huddle is not a thread about one thing: every workstream that came out of the
-  // meeting names its notes, so an item split out of a canvas skips the thread rung
+export const usableAlias = (alias: string) => {
+  const a = alias.trim();
+  return a.length > 3 && (/\s/.test(a) || IDENTIFIER_SHAPED.test(a));
+};
+
+/** a feature's vocabulary: what it learned, and the aliases distinctive enough to count */
+export const vocabOf = (feature: string, work: Work[], features: FeatureRef[]): string[] => [
+  ...(work.find((w) => w.feature === feature)?.keys.vocab ?? []),
+  ...(features.find((f) => f.feature === feature)?.aliases ?? []).filter(usableAlias),
+];
+
+/** every token that exactly one feature claims, lower-cased, with the word as the feature has it */
+export type VocabIndex = Map<string, { feature: string; token: string }>;
+
+/** the vocabulary rung's index: a token two features both claim is worth nothing, so it is dropped here */
+export function vocabIndex(work: Work[], features: FeatureRef[] = []): VocabIndex {
+  const owners = new Map<string, { features: Set<string>; token: string }>();
+  const names = new Set([...work.map((w) => w.feature), ...features.map((f) => f.feature)]);
+  for (const feature of names)
+    for (const token of vocabOf(feature, work, features)) {
+      const k = token.toLowerCase();
+      const o = owners.get(k) ?? { features: new Set<string>(), token };
+      o.features.add(feature);
+      owners.set(k, o);
+    }
+  const out: VocabIndex = new Map();
+  for (const [k, o] of owners) if (o.features.size === 1) out.set(k, { feature: [...o.features][0]!, token: o.token });
+  return out;
+}
+
+/**
+ * Which feature this item belongs to. Thread, then explicit reference, then vocabulary —
+ * each rung stopping the ladder whether it answers once or twice, because a rung that
+ * answers twice is an ambiguity to resolve and the next rung is only ever weaker.
+ */
+export function slackCandidates(item: SlackItem, work: Work[], features: FeatureRef[] = [], vocab = vocabIndex(work, features)): Candidate[] {
+  // a huddle is not a thread about one thing: every feature that came out of the meeting
+  // names its notes, so an item read out of a canvas skips the thread rung
   const fromCanvas = item.id.includes("#");
-  const byThread = fromCanvas ? [] : workstreams.filter((w) => w.keys.threads.includes(item.threadTs ?? item.ts));
-  if (byThread.length) return byThread.map((w) => ({ slug: w.slug, how: "thread" as const, why: "it owns the thread this was said in" }));
+  const byThread = fromCanvas ? [] : work.filter((w) => w.keys.threads.includes(item.threadTs ?? item.ts));
+  if (byThread.length) return byThread.map((w) => ({ feature: w.feature, how: "thread" as const, why: "it has learned the thread this was said in" }));
 
   const text = bare(item.text);
   const refs = new Set([
     ...[...text.matchAll(TICKET)].map((m) => m[1]!.toUpperCase()),
     ...[...text.matchAll(PR_REF)].map((m) => m[1]!.toLowerCase()),
   ]);
-  const byRef = workstreams.filter((w) => [...w.keys.tickets, ...w.keys.prs].some((k) => refs.has(k)));
+  const byRef = work.filter((w) => [...w.keys.tickets, ...w.keys.prs].some((k) => refs.has(k)));
   if (byRef.length)
     return byRef.map((w) => ({
-      slug: w.slug,
+      feature: w.feature,
       how: "ref" as const,
       why: `it names ${[...w.keys.tickets, ...w.keys.prs].filter((k) => refs.has(k)).join(", ")}`,
     }));
 
-  const shared = new Set<string>();
-  const seen = new Set<string>();
-  for (const w of workstreams) for (const v of w.keys.vocab) (seen.has(v.toLowerCase()) ? shared : seen).add(v.toLowerCase());
-  const byVocab = workstreams
-    .map((w) => ({ w, hits: w.keys.vocab.filter((v) => !shared.has(v.toLowerCase()) && tokenIn(text, v)) }))
-    .filter((x) => x.hits.length);
-  return byVocab.map(({ w, hits }) => ({ slug: w.slug, how: "vocab" as const, why: `it uses ${hits.join(", ")}` }));
+  const lower = text.toLowerCase();
+  const hits = new Map<string, string[]>();
+  for (const [k, { feature, token }] of vocab) {
+    if (!lower.includes(k) || !tokenIn(text, token)) continue;
+    hits.set(feature, [...(hits.get(feature) ?? []), token]);
+  }
+  return [...hits].sort((a, b) => a[0].localeCompare(b[0])).map(([feature, tokens]) => ({ feature, how: "vocab" as const, why: `it uses ${tokens.join(", ")}` }));
 }
 
 // ---------------------------------------------------------------- what kind of thing it is
@@ -197,19 +228,19 @@ const QUESTION = /\?\s*$|\?\s/;
  * aimed at them whatever else it also does — the board's Needs you is the whole reason the
  * record exists — and a correction can re-kind it. `null` means it is a reading job.
  */
-export function classify(item: SlackItem, workstreams: Workstream[]): EventKind | null {
+export function classify(item: SlackItem, work: Work[]): EventKind | null {
   if (item.kind) return item.kind;
   if (item.mentionsUser && !item.authorIsUser) return "directed-at-person";
   const text = bare(item.text);
   if (LANDING_WORD.test(text) && (/\b(?:fe|be)#\d+\b/i.test(text) || /\bPR\b/.test(item.text))) return "claimed-landing";
   if (ROUTE.test(text)) return "contract-change";
-  const vocab = workstreams.flatMap((w) => w.keys.vocab).filter((v) => tokenIn(text, v));
+  const vocab = work.flatMap((w) => w.keys.vocab).filter((v) => tokenIn(text, v));
   if (new Set(vocab.map((v) => v.toLowerCase())).size >= 2) return "contract-change";
   return null;
 }
 
 /** an item with nothing in it worth a reader's attention is chat, and chat is not recorded */
-export function isChat(item: SlackItem, workstreams: Workstream[]): boolean {
+export function isChat(item: SlackItem, work: Work[]): boolean {
   if (item.kind === "chat") return true;
   if (item.kind) return false;
   const text = bare(item.text);
@@ -218,7 +249,7 @@ export function isChat(item: SlackItem, workstreams: Workstream[]): boolean {
     new RegExp(TICKET.source, "i").test(text) ||
     new RegExp(PR_REF.source, "i").test(text) ||
     DEADLINE_WORD.test(text) ||
-    workstreams.some((w) => w.keys.vocab.some((v) => tokenIn(text, v)));
+    work.some((w) => w.keys.vocab.some((v) => tokenIn(text, v)));
   if (item.mentionsUser || QUESTION.test(text) || signal) return false;
   return text.trim().split(/\s+/).length < 12;
 }
@@ -262,55 +293,52 @@ export function slackSummary(item: SlackItem, kind: EventKind): string {
   return `${who} ${VERB[kind]}${aimed}: ${said}.`;
 }
 
-/** a workstream nobody has opened, named in the words the item used */
-const proposedName = (item: SlackItem) => {
-  const s = clip(firstSentence(item.text) || item.text.trim(), 10).replace(/[.…]+$/, "").trim();
-  return s ? s[0]!.toUpperCase() + s.slice(1) : "Something new";
-};
-
 // ---------------------------------------------------------------- applying
 
 export type SlackChange =
-  | { kind: "attached"; item: SlackItem; slug: string; how: AttachHow; confidence: Confidence; eventKind: EventKind }
+  | { kind: "attached"; item: SlackItem; feature: string; how: AttachHow; confidence: Confidence; eventKind: EventKind }
   | { kind: "unsorted"; item: SlackItem; why: string; candidates: Candidate[] }
-  | { kind: "proposed"; item: SlackItem; name: string }
   | { kind: "skipped"; item: SlackItem; why: string };
 
 export type ApplyInput = {
-  workstreams: Workstream[];
+  work: Work[];
   items: SlackItem[];
   unsorted: UnsortedItem[];
   milestones: Milestones;
+  /** every feature some app has; the vocabulary rung reads their aliases, and a record can be opened for one */
+  features?: FeatureRef[];
 };
-export type ApplyResult = { workstreams: Workstream[]; unsorted: UnsortedItem[]; milestones: Milestones; changes: SlackChange[] };
+export type ApplyResult = { work: Work[]; unsorted: UnsortedItem[]; milestones: Milestones; changes: SlackChange[] };
 
 export const CONFIDENCE: Record<AttachHow, Confidence> = {
-  thread: "certain", ref: "certain", vocab: "likely", author: "guess", read: "guess", human: "certain",
+  thread: "certain", ref: "certain", vocab: "likely", read: "guess", human: "certain",
 };
 
-const alreadyHas = (workstreams: Workstream[], id: string) =>
-  workstreams.find((w) => w.events.some((e) => e.source?.ref === id));
+const alreadyHas = (work: Work[], id: string) => work.find((w) => w.events.some((e) => e.source?.ref === id));
 
 /**
- * A canvas is taken in whole or not at all. One event or one proposal sourced anywhere in
- * it means the meeting has been read, so the message carrying it is not asked about again
- * — which is what keeps a replayed pull from re-queueing notes `marauder huddle` recorded.
+ * A canvas is taken in whole or not at all. One event or one queue entry sourced anywhere
+ * in it means the meeting has been read, so the message carrying it is not asked about
+ * again — which is what keeps a replayed pull from re-queueing notes `marauder huddle`
+ * recorded.
  */
-const canvasTakenIn = (workstreams: Workstream[], unsorted: UnsortedItem[], ts: string) =>
-  workstreams.some((w) => w.events.some((e) => e.source?.ref?.split("#")[0] === ts)) ||
+const canvasTakenIn = (work: Work[], unsorted: UnsortedItem[], ts: string) =>
+  work.some((w) => w.events.some((e) => e.source?.ref?.split("#")[0] === ts)) ||
   unsorted.some((u) => u.id.startsWith(`${ts}#`));
 
 /** the whole ingest as one pure function of what was read; the runner only does the IO */
-export function applySlack({ workstreams, items, unsorted, milestones }: ApplyInput): ApplyResult {
-  const byslug = new Map(workstreams.map((w) => [w.slug, structuredClone(w)]));
+export function applySlack({ work, items, unsorted, milestones, features = [] }: ApplyInput): ApplyResult {
+  const byFeature = new Map(work.map((w) => [w.feature, structuredClone(w)]));
   const queue = new Map(unsorted.map((u) => [u.id, u]));
   const changes: SlackChange[] = [];
-  const open = () => [...byslug.values()];
+  const open = () => [...byFeature.values()];
+  // ingest learns threads, never vocabulary, so the vocabulary rung's index holds for the whole run
+  const vocab = vocabIndex(work, features);
 
   for (const item of items) {
     const holder = alreadyHas(open(), item.id);
     if (holder) {
-      changes.push({ kind: "skipped", item, why: `already an event on ${holder.slug}` });
+      changes.push({ kind: "skipped", item, why: `already an event on ${holder.feature}` });
       continue;
     }
     if (queue.has(item.id)) {
@@ -320,7 +348,7 @@ export function applySlack({ workstreams, items, unsorted, milestones }: ApplyIn
     if (item.canvas) {
       // the file arrives as a reply to the notes it belongs to, so ask about the notes
       const root = item.threadTs ?? item.ts;
-      if (canvasTakenIn(workstreams, unsorted, root)) {
+      if (canvasTakenIn(work, unsorted, root)) {
         changes.push({ kind: "skipped", item, why: "these huddle notes are already taken in" });
         continue;
       }
@@ -333,28 +361,27 @@ export function applySlack({ workstreams, items, unsorted, milestones }: ApplyIn
       continue;
     }
 
-    const candidates = slackCandidates(item, open());
+    const candidates = slackCandidates(item, open(), features, vocab);
     const kind = classify(item, open());
 
     if (!kind || candidates.length !== 1) {
       const why = !kind
         ? candidates.length === 1
-          ? `it belongs to ${candidates[0]!.slug}; what kind of thing it is needs reading`
-          : "what it is and what it belongs to both need reading"
+          ? `it belongs to ${candidates[0]!.feature}; what kind of thing it is needs reading`
+          : "what it is and which feature it belongs to both need reading"
         : candidates.length
-          ? `${candidates.length} workstreams claim it`
+          ? `${candidates.length} features claim it`
           : "nothing claims it";
-      const isNews = (kind === "contract-change" || kind === "new-ask") && !candidates.length;
-      const entry = unsortedItem(item, candidates, why, isNews ? proposedName(item) : undefined);
-      queue.set(entry.id, entry);
-      changes.push(isNews ? { kind: "proposed", item, name: entry.name! } : { kind: "unsorted", item, why, candidates });
+      queue.set(item.id, unsortedItem(item, candidates, why));
+      changes.push({ kind: "unsorted", item, why, candidates });
       continue;
     }
 
     const only = candidates[0]!;
-    const w = byslug.get(only.slug)!;
+    const w = byFeature.get(only.feature) ?? emptyWork(only.feature, item.at);
+    byFeature.set(w.feature, w);
     const question = w.open_questions.find((q) => q.ticket);
-    const event: WorkstreamEvent = {
+    const event: WorkEvent = {
       at: item.at,
       kind,
       summary: slackSummary(item, kind),
@@ -363,14 +390,13 @@ export function applySlack({ workstreams, items, unsorted, milestones }: ApplyIn
       attached: { how: only.how, confidence: CONFIDENCE[only.how] },
       ...(kind === "answers-question" && question?.ticket ? { ticket: question.ticket } : {}),
     };
-    w.events = [...w.events, event].sort((a, b) => instantOf(a.at).localeCompare(instantOf(b.at)));
+    addEvent(w, event);
     if (item.threadTs && !w.keys.threads.includes(item.threadTs)) w.keys.threads = [...w.keys.threads, item.threadTs];
-    w.updated = instantOf(item.at) > instantOf(w.updated) ? item.at : w.updated;
-    changes.push({ kind: "attached", item, slug: w.slug, how: only.how, confidence: CONFIDENCE[only.how], eventKind: kind });
+    changes.push({ kind: "attached", item, feature: w.feature, how: only.how, confidence: CONFIDENCE[only.how], eventKind: kind });
   }
 
   return {
-    workstreams: open(),
+    work: open(),
     unsorted: [...queue.values()].sort((a, b) => a.at.localeCompare(b.at)),
     milestones,
     changes,
@@ -384,30 +410,30 @@ export function applySlack({ workstreams, items, unsorted, milestones }: ApplyIn
 const SUMMARY_WORD_BUDGET = 18;
 const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
 
-const unsortedItem = (item: SlackItem, candidates: Candidate[], why: string, name?: string): UnsortedItem => {
+const unsortedItem = (item: SlackItem, candidates: Candidate[], why: string): UnsortedItem => {
   const who = item.authorIsUser ? "You" : item.author;
   const bodyBudget = Math.max(6, SUMMARY_WORD_BUDGET - wordCount(who));
   return {
     id: item.id,
-    kind: name ? "new" : "slack",
-    ...(name ? { name } : {}),
+    kind: "slack",
     summary: `${who}: ${clip(firstSentence(item.text) || item.text.trim(), bodyBudget)}`,
     text: item.text.slice(0, 2000),
+    ...(item.to.length ? { to: item.to } : {}),
     source: { type: item.id.includes("#") ? "huddle" : "slack", ref: item.id, url: item.permalink },
     candidates,
     why,
-    suggest: candidates.length === 1 ? candidates[0]!.slug : null,
+    suggest: candidates.length === 1 ? candidates[0]!.feature : null,
     needs: "read",
     at: item.at,
   };
 };
 
-/** what a reader needs beside the queue to answer it: the open list, one line each */
-export const openList = (workstreams: Workstream[]): string =>
-  workstreams
-    .filter((w) => !w.parked)
-    .map((w) => `  ${w.slug}: ${w.name} — done means ${w.done} Last: ${latestEvent(w)?.summary ?? "nothing yet"}`)
-    .join("\n");
+/** what a reader needs beside the queue to answer it: the features with something going on, one line each */
+export const openList = (work: Work[]): string =>
+  [
+    ...work.map((w) => `  ${w.feature}: last — ${latestEvent(w)?.summary ?? "nothing yet"}`),
+    "  (any other directory under an app's features/ can be named too; attaching opens its record)",
+  ].join("\n");
 
 // ---------------------------------------------------------------- running
 
@@ -424,47 +450,21 @@ async function pullChannel(since?: string, dryRun?: boolean): Promise<Pull> {
 }
 
 export async function run(opts: RunOpts): Promise<RunResult> {
-  const { workstreams } = await loadWorkstreams(opts.root);
-  const milestones = await loadMilestones(opts.root);
-  const unsortedPath = join(opts.root, WORKSTREAMS_DIR, UNSORTED_FILE);
-  const unsorted: UnsortedItem[] = (await Bun.file(unsortedPath).exists()) ? await Bun.file(unsortedPath).json() : [];
-
+  const before = await loadState(opts.root);
   const pull = opts.pull ?? (await pullChannel(opts.since, opts.dryRun));
-  const items = itemsOf(pull);
-  const result = applySlack({ workstreams, items, unsorted, milestones });
-  const written: string[] = [];
-  if (!opts.dryRun) {
-    const before = new Map(workstreams.map((w) => [w.slug, serializeWorkstream(w)]));
-    for (const w of result.workstreams) {
-      const text = serializeWorkstream(w);
-      if (before.get(w.slug) === text) continue;
-      await Bun.write(join(opts.root, WORKSTREAMS_DIR, `${w.slug}.json`), text);
-      written.push(`${WORKSTREAMS_DIR}/${w.slug}.json`);
-    }
-    written.push(...(await writeJson(unsortedPath, result.unsorted, `${WORKSTREAMS_DIR}/${UNSORTED_FILE}`)));
-    written.push(...(await writeJson(join(opts.root, WORKSTREAMS_DIR, MILESTONES_FILE), result.milestones, `${WORKSTREAMS_DIR}/${MILESTONES_FILE}`)));
-  }
+  const result = applySlack({ ...before, items: itemsOf(pull) });
+  const written = opts.dryRun ? [] : await saveState(opts.root, before, { ...before, work: result.work, unsorted: result.unsorted, milestones: result.milestones });
   return { ...result, written };
-}
-
-async function writeJson(path: string, value: unknown, label: string): Promise<string[]> {
-  const text = `${JSON.stringify(value, null, 2)}\n`;
-  const had = (await Bun.file(path).exists()) ? await Bun.file(path).text() : "";
-  if (had === text || (!had && text.trim() === "[]")) return [];
-  await Bun.write(path, text);
-  return [label];
 }
 
 export function formatChanges(changes: SlackChange[]): string {
   return changes
     .map((c) =>
       c.kind === "attached"
-        ? `  ${c.item.id.padEnd(22)} → ${c.slug} · ${c.eventKind} · ${c.how}/${c.confidence}`
-        : c.kind === "proposed"
-            ? `  ${c.item.id.padEnd(22)} → proposed workstream "${c.name}"`
-            : c.kind === "unsorted"
-              ? `  ${c.item.id.padEnd(22)} → unsorted · ${c.why}`
-              : `  ${c.item.id.padEnd(22)} — ${c.why}`,
+        ? `  ${c.item.id.padEnd(22)} → ${c.feature} · ${c.eventKind} · ${c.how}/${c.confidence}`
+        : c.kind === "unsorted"
+          ? `  ${c.item.id.padEnd(22)} → unsorted · ${c.why}`
+          : `  ${c.item.id.padEnd(22)} — ${c.why}`,
     )
     .join("\n");
 }

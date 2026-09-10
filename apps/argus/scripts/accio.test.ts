@@ -474,6 +474,6 @@ describe("journal walker — every app's features/**/journal", () => {
     for (const gone of ["accio point", "accio ticket", "accio arc", "accio journal"]) expect(help).not.toContain(gone);
     const arc = await $`bun ${ROOT}/scripts/accio.ts arc`.nothrow().quiet();
     expect(arc.exitCode).toBe(1);
-    expect(arc.stderr.toString()).toContain("marauder show <slug>");
+    expect(arc.stderr.toString()).toContain("marauder show <feature>");
   });
 });

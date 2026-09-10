@@ -1,10 +1,10 @@
 /**
- * decisions.ts — what a person decided in Pensieve, applied (ARG-160 AC4).
+ * decisions.ts — what a person decided in Pensieve, applied (ARG-160 AC4, over features since ARG-164).
  *
  * The cases are the other half of the contract Pensieve's `server/decisions.ts` writes: a
  * decision file is read, applied through the correction functions, and left on disk; one
  * naming an entry that is gone applies nothing and complains about nothing; one that is
- * malformed is said out loud, because nothing else in the sweep reads this group.
+ * malformed — or carries a verb the workstreams took with them — is said out loud.
  *
  *   bun test skills/sweep/scripts/marauder/decisions.test.ts
  */
@@ -15,23 +15,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { apply, parseDecision, readDecisions, type MarauderDecision } from "./decisions.ts";
 import { CONFIRMED, dismiss, type State } from "./correct.ts";
-import type { UnsortedItem, Workstream, WorkstreamEvent } from "./record.ts";
+import type { FeatureRef, UnsortedItem, Work, WorkEvent } from "./record.ts";
 
-const w = (over: Partial<Workstream> = {}): Workstream => ({
-  slug: "history-subtask-rows",
-  name: "History tab: editing subtask asset rows",
-  features: ["admin/usage"],
-  wants: [],
-  done: "A subtask row on History can be edited.",
-  stage: { fe: "asked" },
-  overlay: null,
-  parked: false,
-  milestone: null,
-  keys: { tickets: [], prs: ["fe#417"], threads: [], vocab: [], people: [] },
+const FEATURES: FeatureRef[] = [{ feature: "admin/usage", app: "alden/alden-portal", aliases: [] }];
+
+const w = (over: Partial<Work> = {}): Work => ({
+  feature: "admin/usage",
+  keys: { tickets: [], prs: ["fe#417"], threads: [], vocab: [] },
   open_questions: [],
-  facts: [],
   events: [],
-  opened: "2026-09-09",
   updated: "2026-09-09T04:00:00Z",
   ...over,
 });
@@ -43,18 +35,18 @@ const item = (over: Partial<UnsortedItem> = {}): UnsortedItem => ({
   text: "the `assetEntityId` on each subtask row should be editable",
   source: { type: "slack", ref: "1788949866.296519", url: "https://alden-studios.slack.com/archives/C07/p1788949866296519" },
   candidates: [],
-  suggest: "history-subtask-rows",
+  suggest: "admin/usage",
   needs: "read",
   at: "2026-09-09T14:31:06Z",
   ...over,
 });
 
-const state = (over: Partial<State> = {}): State => ({ workstreams: [w()], unsorted: [item()], milestones: {}, ...over });
+const state = (over: Partial<State> = {}): State => ({ work: [w()], unsorted: [item()], milestones: {}, features: FEATURES, ...over });
 
 const decision = (over: Partial<MarauderDecision> = {}): MarauderDecision => ({
   id: item().id,
   action: "attach",
-  slug: "history-subtask-rows",
+  feature: "admin/usage",
   at: "2026-09-09T20:00:00.000Z",
   by: "Liam Leung",
   ...over,
@@ -76,7 +68,7 @@ describe("reading the files", () => {
   test("oldest first, and the id inside the file is what matches — not its name", async () => {
     const root = await blackboard({
       "1788949866-296519.json": decision(),
-      "fe-420.json": decision({ id: "fe#420", action: "dismiss", slug: undefined, reason: "chat", at: "2026-09-09T19:00:00.000Z" }),
+      "fe-420.json": decision({ id: "fe#420", action: "dismiss", feature: undefined, reason: "chat", at: "2026-09-09T19:00:00.000Z" }),
     });
     const { decisions, unreadable } = await readDecisions(root);
     expect(unreadable).toEqual([]);
@@ -99,12 +91,12 @@ describe("reading the files", () => {
   test.each([
     ["not JSON", "{"],
     ["not an object", "[]"],
-    ["no id", { action: "attach", slug: "x" }],
+    ["no id", { action: "attach", feature: "x" }],
     ["an unknown verb", { id: "x", action: "ignore" }],
-    ["an attach naming no workstream", { id: "x", action: "attach" }],
-    ["a new with no name", { id: "x", action: "new" }],
+    ["an attach naming no feature", { id: "x", action: "attach" }],
     ["a dismiss with no reason", { id: "x", action: "dismiss" }],
-    ["a stage with no side", { id: "x", action: "stage", slug: "y", stage: "landed" }],
+    ["a new, which went with the workstreams", { id: "x", action: "new", name: "Something" }],
+    ["a stage, which went with the workstreams", { id: "x", action: "stage", slug: "y", side: "fe", stage: "landed" }],
   ])("%s is reported, since nothing else in the sweep reads this group", async (_what, file) => {
     const root = await blackboard({ "bad.json": file });
     const { decisions, unreadable } = await readDecisions(root);
@@ -115,16 +107,20 @@ describe("reading the files", () => {
 
   test("a file that parses carries who decided and why", () => {
     const parsed = parseDecision(JSON.stringify(decision({ reason: "it is Sam's subtask thread" })));
-    expect(parsed).toMatchObject({ decision: { by: "Liam Leung", reason: "it is Sam's subtask thread" } });
+    expect(parsed).toMatchObject({ decision: { by: "Liam Leung", reason: "it is Sam's subtask thread", feature: "admin/usage" } });
+  });
+
+  test("an attach written before the feature was the unit still parses, naming its slug", () => {
+    expect(parseDecision(JSON.stringify({ id: "x", action: "attach", slug: "usage-page", at: "", by: "Liam Leung" }))).toMatchObject({ decision: { feature: "usage-page" } });
   });
 });
 
 describe("applying them", () => {
-  test("an attach moves the entry onto the workstream and learns from it", () => {
+  test("an attach moves the entry onto the feature and learns from it", () => {
     const { state: next, changes } = apply(state(), [decision()]);
     expect(changes).toHaveLength(1);
     expect(next.unsorted).toEqual([]);
-    const w0 = next.workstreams[0]!;
+    const w0 = next.work[0]!;
     expect(w0.events.at(-1)!.summary).toBe(item().summary);
     expect(w0.events.at(-1)!.attached).toMatchObject({ how: "human", by: "Liam Leung" });
     // the correction leaves a rule behind, which is the whole point of making it by hand
@@ -132,30 +128,20 @@ describe("applying them", () => {
     expect(w0.keys.vocab).toContain("assetEntityId");
   });
 
-  test("a new opens a workstream from the entry", () => {
-    const { state: next, changes } = apply(state(), [
-      decision({ action: "new", slug: undefined, name: "Editing subtask asset rows" }),
-    ]);
-    expect(changes).toHaveLength(1);
-    expect(next.workstreams.map((x) => x.slug)).toContain("editing-subtask-asset-rows");
-    expect(next.unsorted).toEqual([]);
+  test("an old attach naming a workstream slug applies nothing", () => {
+    const { state: next, changes } = apply(state(), [decision({ feature: "history-subtask-rows" })]);
+    expect(changes).toEqual([]);
+    expect(next.unsorted).toHaveLength(1);
   });
 
   test("a dismiss drops the entry, and the reason is why it is nowhere", () => {
     const { state: next, changes } = apply(state(), [
-      decision({ action: "dismiss", slug: undefined, reason: "answered in the thread" }),
+      decision({ action: "dismiss", feature: undefined, reason: "answered in the thread" }),
     ]);
     expect(next.unsorted).toEqual([]);
     expect(changes[0]!.notes[0]).toContain("dismissed — answered in the thread");
-    // and it teaches nothing: there is no workstream this belongs to
-    expect(next.workstreams[0]!.events).toEqual([]);
-  });
-
-  test("a stage says where a side really is", () => {
-    const { state: next } = apply(state(), [
-      decision({ action: "stage", side: "fe", stage: "building", reason: "Carlos has a branch" }),
-    ]);
-    expect(next.workstreams[0]!.stage.fe).toBe("building");
+    // and it teaches nothing: there is no feature this belongs to
+    expect(next.work[0]!.events).toEqual([]);
   });
 
   test("a decision naming an entry that is gone applies nothing and says nothing", () => {
@@ -177,7 +163,7 @@ describe("applying them", () => {
       unsorted: [item(), item({ id: "fe#420", summary: "A merge that named nothing.", suggest: null })],
     });
     const { state: next, changes } = apply(two, [
-      decision({ id: "fe#420", action: "dismiss", slug: undefined, reason: "a revert", at: "2026-09-09T19:00:00.000Z" }),
+      decision({ id: "fe#420", action: "dismiss", feature: undefined, reason: "a revert", at: "2026-09-09T19:00:00.000Z" }),
       decision(),
     ]);
     expect(changes.map((c) => c.decision.id)).toEqual(["fe#420", "1788949866.296519"]);
@@ -200,35 +186,36 @@ describe("dismiss, the correction the decision file needed", () => {
 });
 
 describe("verified — the user answering what an event asked them (ARG-161)", () => {
-  const held = (over: Partial<WorkstreamEvent> = {}): WorkstreamEvent => ({
+  const held = (over: Partial<WorkEvent> = {}): WorkEvent => ({
     at: "2026-09-09T15:00:00Z",
     kind: "directed-at-person",
     summary: "ALD-1's Pending bullet looks answered, and Foundry is running the ticket.",
+    to: ["you"],
     source: { type: "ticket", ref: "ALD-1" },
-    attached: { how: "human", confidence: "certain" },
+    attached: { how: "human", confidence: "certain", by: "Liam Leung" },
     ticket: "ALD-1",
     ...over,
   });
-  const withHeld = (over: Partial<WorkstreamEvent> = {}) => state({ workstreams: [w({ events: [held(over)] })] });
+  const withHeld = (over: Partial<WorkEvent> = {}) => state({ work: [w({ events: [held(over)] })] });
 
   test("it stamps the event the go-ahead, keyed by the id the event is named by", () => {
     const { state: next, changes } = apply(withHeld(), [
-      decision({ id: "ALD-1", action: "verified", slug: undefined, reason: "delete the bullet" }),
+      decision({ id: "ALD-1", action: "verified", feature: undefined, reason: "delete the bullet" }),
     ]);
-    expect(next.workstreams[0]!.events[0]!.action).toBe(`${CONFIRMED} delete the bullet — Liam Leung`);
+    expect(next.work[0]!.events[0]!.action).toBe(`${CONFIRMED} delete the bullet — Liam Leung`);
     expect(changes[0]!.notes[0]).toContain("confirmed ALD-1");
   });
 
   test("a second confirmation of the same event changes nothing", () => {
-    const once = apply(withHeld(), [decision({ id: "ALD-1", action: "verified", slug: undefined })]);
-    expect(apply(once.state, [decision({ id: "ALD-1", action: "verified", slug: undefined })]).changes).toEqual([]);
+    const once = apply(withHeld(), [decision({ id: "ALD-1", action: "verified", feature: undefined })]);
+    expect(apply(once.state, [decision({ id: "ALD-1", action: "verified", feature: undefined })]).changes).toEqual([]);
   });
 
-  test("an event no workstream carries is skipped, like every other stale decision", () => {
-    expect(apply(withHeld(), [decision({ id: "fe#999", action: "verified", slug: undefined })]).changes).toEqual([]);
+  test("an event no feature carries is skipped, like every other stale decision", () => {
+    expect(apply(withHeld(), [decision({ id: "fe#999", action: "verified", feature: undefined })]).changes).toEqual([]);
   });
 
-  test("it needs no slug, no name and no reason — the event says what was asked", () => {
+  test("it needs no feature and no reason — the event says what was asked", () => {
     const parsed = parseDecision(JSON.stringify({ id: "ALD-1", action: "verified", at: "2026-09-09T20:00:00.000Z", by: "Liam Leung" }));
     expect(parsed).toHaveProperty("decision");
   });

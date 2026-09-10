@@ -1,12 +1,13 @@
 ---
 name: sweep
-description: One idempotent pass over the whole workspace loop — marauder ingest takes in the base branches and the channel, the sweep places what attached to nothing, dispatches log-change and feature-docs per landing, runs the coherence check and the event-driven ticket pass, then renders the board and commits. Run via /loop 15m /sweep or on demand; every stage is state-driven and catch-up-safe, so the first run after days away backfills everything. Use when the user says "sweep", "run the sweep", "catch me up on everything", or asks to run the workspace loop.
+description: One idempotent pass over the whole workspace loop — marauder ingest takes in the base branches and the channel, the sweep places what attached to nothing, dispatches log-change and feature-docs per landing, runs the event-driven ticket pass, then renders the board and commits. Run via /loop 15m /sweep or on demand; every stage is state-driven and catch-up-safe, so the first run after days away backfills everything. Use when the user says "sweep", "run the sweep", "catch me up on everything", or asks to run the workspace loop.
 ---
 
 # sweep — the scheduler for the workspace loop
 
-The workspace is a blackboard: durable state lives in files (`workstreams/`, per-feature
-`journal/`, `docs/`), reconciliation is deterministic (`marauder ingest`, `pr-facts`,
+The workspace is a blackboard: durable state lives in files — per feature, `docs/` (what is
+true), `journal/` (why it changed) and `work.json` (what is going on, if anything), plus
+`queue/` for what attached to nothing — reconciliation is deterministic (`marauder ingest`, `pr-facts`,
 `accio audit`), and agents are stateless workers. The sweep is the scheduler and stays
 deliberately dumb: **the files decide what runs.** Every stage is idempotent, so a tick
 after three days away does three days of work and a tick after ten quiet minutes does
@@ -24,7 +25,7 @@ Three invariants:
 
 **Where the archive is.** `reports/`, `reports/points.json`, `digests/` and `arcs/` are
 everything the loop wrote before 2026-09-09, when the report, the digest, the point and
-the arc were replaced by the workstream and the pages rendered from it. They stay
+the arc were replaced by marauder's records and the pages rendered from them. They stay
 readable in Pensieve as history. Nothing in this skill writes to them again.
 
 ## Procedure
@@ -39,13 +40,16 @@ Three things in one run, in this order. The verdicts a person gave in Pensieve
 (`decisions/marauder/*.json`) are applied first, because each one names an entry in the
 queue as it stands *before* this tick changes that queue. Then every merge on
 `origin/staging` and `origin/dev` since each side's newest landing becomes a
-`verified-landing` event and advances that side's stage. Then the channel since the cursor
-runs down the attachment ladder — thread root, ticket or PR reference, code vocabulary,
-author — and becomes events wherever both the workstream and the kind are provable.
-Everything else goes to `workstreams/_unsorted.json`. No script here calls a model, and
-none creates a workstream.
+`verified-landing` event on every feature it touched — the features its journal entry
+names, else the ones `pr-facts` maps its files to. Then the channel since the cursor runs
+down the attachment ladder over features — a thread a feature has learned, a ticket or PR
+in its keys, then words only one feature claims (its learned vocabulary, or a manifest
+alias of two or more words or an identifier's shape) — and becomes events wherever both
+the feature and the kind are provable. A feature with nothing going on gets its
+`work.json` the first time something lands on it. Everything else goes to
+`queue/_unsorted.json`. No script here calls a model.
 
-The cursor is `workstreams/.state.json`, and `slack-pull` advances it into
+The cursor is `queue/.state.json`, and `slack-pull` advances it into
 `.state.next.json`. **Promote it at step 7, after the commit** — a crashed tick has to
 replay the channel, never skip it.
 
@@ -60,7 +64,7 @@ bun run marauder huddle <ts> --points <file> --reason "read the 09:34 huddle"
 A key point is one thing the meeting settled, asked for or dated — not one bullet. The
 canvas says everything twice, once under Summary and once under Action items; write each
 thing once. A meeting is usually three to eight points. Each point is
-`{ kind, slug, summary, to, why, text, name, date, owner }`:
+`{ kind, feature, summary, to, why, text, name, date, owner }`:
 
 - `summary` is the sentence a reader sees, in `style.md`'s voice: a person does something,
   about twenty words (the page prints the date in front, inside the ceiling), a full stop
@@ -69,34 +73,35 @@ thing once. A meeting is usually three to eight points. Each point is
 - `kind` is the event kind: `contract-change` for a thing settled, `new-ask` for work asked
   for, `directed-at-person` for an ask aimed at a person (`to`, with `you` for the reader),
   `deadline` for a date (`name`, `date`, `owner`), `chat` for anything not about the work.
-- `slug` is the workstream it belongs to when you would bet on it, `null` when you would
-  not. A slug-less decision or ask becomes a proposal in the queue, named by `name`; a
-  slug-less ask aimed at you stays in the queue with `to`; a slug-less date is a milestone.
+- `feature` is the feature it belongs to, as its directory under `features/`
+  (`admin/usage`, `tasks`), when you would bet on it, `null` when you would not. A point
+  naming no feature stays in the queue with the features the ladder would look at; one
+  aimed at you keeps its `to`; a date naming no feature is only a milestone.
 - `chat` is small talk, and logistics that name nobody on the record — "Carlos monitors
   New York hours after launch". It is never recorded. Logistics aimed at you is an ask.
-- `text` is the bullet it came from, verbatim, so the workstream learns its vocabulary.
+- `text` is the bullet it came from, verbatim, so the feature learns its vocabulary.
 
 The verb validates the file and refuses it whole, naming the point, when a sentence breaks
-a style rule, a slug does not exist, or a deadline lacks its date. Reading the same notes
+a style rule, a feature has no directory under any app's `features/`, or a deadline lacks
+its date. Reading the same notes
 again replaces every point the sweep recorded before and keeps any a person placed.
 
-**2. Place what attached to nothing.** `workstreams/_unsorted.json`, every entry with
+**2. Place what attached to nothing.** `queue/_unsorted.json`, every entry with
 `needs: "read"`. Ingest deliberately stops at what it can prove; this is the step that
 reads. Each entry carries its own words, its candidates and why none of them was certain;
-read it against the open list, which is `bun run marauder board` — every open workstream in
-the team's own words, offline and free:
+read it against the features — `bun run marauder board` for the ones with something going
+on, `bun run accio "<the words>"` for which feature a screen or field belongs to:
 
-- it plainly belongs to one workstream →
-  `bun run marauder attach <id> <slug> --auto --reason "<why, in one clause>"`. `--auto`
+- it plainly belongs to one feature →
+  `bun run marauder attach <id> <feature> --auto --reason "<why, in one clause>"`. `--auto`
   records it as the sweep's own reading rather than a person's decision, which is what
-  lets a wrong one be recognised later.
-- it probably does, and you would not bet on it → `bun run marauder suggest <id> <slug>`.
+  lets a wrong one be recognised later. A feature with nothing going on gets its record.
+- it probably does, and you would not bet on it → `bun run marauder suggest <id> <feature>`.
   It stays in the queue carrying the guess, and one click in Pensieve settles it.
-- it belongs to nothing that exists → leave it. A `kind: "new"` entry is a proposal, and
-  **opening a workstream is the user's** (Autonomy).
+- it belongs to no feature → leave it. **Dismissing is the user's** (Autonomy).
 
 Attaching teaches: the thread root, the tickets, the PRs and the identifiers the item used
-go onto that workstream's `keys`, so the next message like it attaches on its own. That is
+go onto that feature's `keys`, so the next message like it attaches on its own. That is
 why the judgement is worth making here rather than deferring it every tick.
 
 **3. Landings scan.** Both repos:
@@ -116,8 +121,8 @@ for one feature share a folder and every run ends in a commit; parallel writers 
 over the tree. Each run is a general-purpose subagent with **`model: "opus"`** (the entry
 it writes is the "why" layer — judgement, not transcription) and gets, for its landing:
 
-- the workstream ingest attached it to, and the ticket that workstream's `keys.tickets`
-  names — `bun run marauder show <slug>` is the whole story in one page;
+- the features ingest attached it to, and the ticket the landing or those features'
+  `keys.tickets` name — `bun run marauder show <feature>` is the story in one page;
 - the open `decided` entry it supersedes, if any:
   `grep -rln 'status: decided' alden/alden-portal/features/*/journal/ alden/alden-portal/features/*/*/journal/ 2>/dev/null`
   (both globs — nested features like `admin/invoicing` keep their journal a level deeper).
@@ -128,8 +133,8 @@ log-change step 6 then drives `feature-docs` for the affected features.
 
 **The join is smaller than it used to be.** A landing's ticket was once inferred against
 every open ticket in Linear, one semantic guess per landing. Ingest has already attached
-the landing to a workstream by PR number, ticket reference or vocabulary, and that
-workstream names its tickets — so the attribution is a record, not a guess. A landing
+the landing to the features it touched, and the branch, the title and those features'
+keys name its tickets — so the attribution is a record, not a guess. A landing
 ingest could not place is one step 2 either placed or left alone; an unplaced landing is
 journaled `ticket: null`, exactly as before, and its queue entry is the question the user
 answers in Pensieve.
@@ -143,7 +148,8 @@ no landing behind it gets a `log-change` run **at decision time**: `status: deci
 entry in that product doc's "Decided, not yet landed" region, and the landing entry later
 supersedes it. Dedupe against step 4's `decided` grep: one entry per decision, not one per
 tick. Product direction with no rule behind it yet is not a rule change — it is already an
-event on its workstream, and that is where it stays.
+event on its feature, and that is where it stays. A fact the sweep verifies reaches the
+docs the same way, through a journal entry, never as a second record on the feature.
 
 **4c. Stale pass.** `bun run accio stale` — one line per feature whose docs no longer
 describe the code, with why (`tiers`, `fe-core`, `be-handlers`, `journal`). Dispatch
@@ -155,31 +161,23 @@ bookkeeping, and `accio audit` fails on it until the product tier catches up. Th
 tick is a cost cap, not a judgement: the list is state, so the remainder is picked up next
 tick.
 
-**5. Coherence check.** `bun run marauder check` — the workstreams busy enough that two
-capabilities could be hiding in one of them, each with what done means and its recent
-events. Read them. Where two separable pieces of work are plainly visible:
-
-```sh
-bun run marauder propose-split <slug> --groups '[{"name":"…","events":["…"]},{"name":"…","events":["…"]}]'
-```
-
-That queues the proposal for a person to accept; **nothing here cuts a workstream** (below).
-Where a workstream still reads as one thing, say nothing — asking twice about the same
-one is noise, and a proposal already waiting keeps it off this list anyway.
+**5. (Retired.)** The coherence check went with the workstreams on 2026-09-10: a feature
+cannot stop being one thing, so there is nothing to split. The number is kept so the steps
+after it keep theirs.
 
 **6. Ticket pass.** Linear is the sweep's terminal surface — the queue the user actually
 reads — so this stage makes it current, through the `ticket-pass` worker (the loop's only
 Linear writer, Autonomy). The work runs in **one `ticket-pass` subagent**, a bulky reader
 of ticket bodies and doc trees.
 
-Its inputs are this tick's workstream events (`bun run marauder changed --since <prev
+Its inputs are this tick's events by feature (`bun run marauder changed --since <prev
 tick ISO>`), and for each ticket the diff `bun run marauder ticket-plan` computes between
-the body and its workstream's `open_questions` and `facts`. Each event's kind decides its
-own action, and what needs a person comes back as a flag rather than an edit (ARG-159).
-The worker's procedure, its action table and its prompt are `skills/sweep/ticket-pass.md`.
+the body and the feature's events and `open_questions`. Each event's kind decides its own
+action, and what needs a person comes back as a flag rather than an edit (ARG-159). The
+worker's procedure, its action table and its prompt are `skills/sweep/ticket-pass.md`.
 
-**Skip the spawn** when there is nothing for it: no workstream gained an event this tick
-and no feature was refreshed this tick.
+**Skip the spawn** when there is nothing for it: no feature gained an event this tick and
+no feature was refreshed this tick.
 
 Otherwise, **after dispatch has finished** (a parallel writer would trip over dispatch's
 tree), spawn ONE general-purpose subagent via the Agent tool with **`model: "opus"`**
@@ -187,10 +185,10 @@ tree), spawn ONE general-purpose subagent via the Agent tool with **`model: "opu
 1–4. Hand it conclusions, not sources.
 
 When it returns, re-read the record rather than trusting what it says: the worker writes
-what it did back onto the workstreams (`marauder ticket`, `resolved`, `held`), so
+what it did back onto the features' records (`marauder ticket`, `resolved`, `held`), so
 `bun run marauder changed --since <prev tick>` says what happened and the board renders it.
 A flag it could not act on is already an event; one it only mentioned is lost, so anything
-in its Needs-you list naming no workstream goes in this tick's terminal output.
+in its Needs-you list naming no feature goes in this tick's terminal output.
 
 **7. Audit, render, commit.**
 
@@ -205,8 +203,8 @@ tick's terminal output; the docs ones clear themselves through the next tick's s
 None of them reaches the board, which holds the work, not the loop's own housekeeping.
 Never silence one by inventing the missing fact.
 
-`render` rewrites `marauder/board.md`, one page per workstream and today's changelog, from
-`workstreams/*.json` and nothing else. A run that changed no record writes no byte, and a
+`render` rewrites `marauder/board.md` and today's changelog from the features' `work.json`
+and nothing else. A run that changed no record writes no byte, and a
 page that breaks one of `skills/sweep/style.md`'s three mechanical rules is never written —
 the run exits non-zero naming the line, and that is a bug in the record or the renderer,
 not something to work around.
@@ -214,9 +212,9 @@ not something to work around.
 Then commit — one commit per writer, as today, with the render's last:
 
 ```sh
-git add workstreams/ marauder/ decisions/
+git add '*/work.json' queue/ marauder/ decisions/
 git commit -m "<the board's first Needs-you headline, or: quiet tick>"
-mv workstreams/.state.next.json workstreams/.state.json
+mv queue/.state.next.json queue/.state.json
 ```
 
 Any decision file Pensieve wrote since the last tick rides in that commit, untouched. The
@@ -227,7 +225,6 @@ replay rather than skip.
 
 ```sh
 bun run marauder ingest --landings --slack --dry-run
-bun run marauder check
 bun run marauder render --dry-run
 ```
 
@@ -245,19 +242,16 @@ rather than restating it.
 - journal entries, doc regeneration, the rendered pages under `marauder/`, local git
   commits — and those commits include whatever Pensieve has written under `decisions/`
   (step 7), as-is;
-- **the events ingest writes onto `workstreams/*.json`** — a merge on a base branch, a
-  message the ladder places, the stage a landing implies — and the three readings the
-  sweep makes of what ingest could not: `huddle` (step 1), `attach --auto` and `suggest`
-  (step 2). Each is marked as the sweep's own reading, which is what makes a wrong one
-  findable;
-- **queueing a split** with `propose-split` when a workstream has stopped being one thing
-  (step 5). The proposal is a queue entry; the cut happens when a person accepts it;
+- **the events ingest writes onto a feature's `work.json`** — a merge on a base branch, a
+  message the ladder places — opening the record of a feature that had nothing going on,
+  and the three readings the sweep makes of what ingest could not: `huddle` (step 1),
+  `attach --auto` and `suggest` (step 2). Each is marked as the sweep's own reading, which
+  is what makes a wrong one findable;
 - **the ticket pass's own corrections** — `marauder ticket` writing back the key it filed,
   `pending` recording a question-to-bullet pairing, `resolved` taking an answered question
   off the record, `held` putting a withheld edit in front of the reader (ARG-159);
-- filing Alden tickets from the asks a workstream carries, and folding a tick's events
-  into the tickets its workstream names — both in `ticket-pass`, the loop's only Linear
-  writer;
+- filing Alden tickets from the asks a feature's events carry, and folding a tick's events
+  into the tickets they name — both in `ticket-pass`, the loop's only Linear writer;
 - **deleting a Pending bullet once its question is answered**, and writing the answer into
   Technical Notes. Settled 2026-09-09: the bullet is wrong the moment the question is
   answered, and one annotated "Answered:" reads as still open. The pairing between a
@@ -301,15 +295,12 @@ rather than restating it.
 - **rewrite the ask itself.** A fact that may have unsaid a Scope sentence is a flag, not
   an edit: the worker quotes the sentence and the fact, and leaves the body alone;
 - write to Linear from any worker other than `ticket-pass`;
-- **open, cut, park or dismiss a workstream, or say where a side has really got to.**
-  `new`, `split`, `dismiss` and `stage` are the user's verdicts and arrive as
-  `decisions/marauder/<id>.json` from Pensieve; a stage a person set outranks what a
-  landing implies until the next landing, which is exactly the judgement the sweep must
-  not make for them;
+- **dismiss a queue entry.** `dismiss` is the user's verdict and arrives as
+  `decisions/marauder/<id>.json` from Pensieve, reason and all;
 - create, edit or delete a file under `decisions/` — Pensieve writes them, the sweep and
   its workers only read and commit them; a decision the sweep disagrees with is something
   it says in the terminal, not a file change;
-- hand-edit `workstreams/*.json` or anything under `marauder/`. The records change through
+- hand-edit a `work.json`, anything under `queue/` or anything under `marauder/`. The records change through
   the verbs and the pages are rendered from them; an edit by hand is a fact with no
   provenance and the next render throws it away;
 - write anything under `reports/`, `digests/` or `arcs/`. They are the archive;

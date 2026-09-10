@@ -1,42 +1,34 @@
 #!/usr/bin/env bun
 /**
- * The workstream record (ARG-154).
+ * The feature record (ARG-164).
  *
- * A workstream is something a person asks "is that done yet?" about — "History tab:
- * editing asset quantities per billing cycle", "Rollover credits instead of a retainer
- * top-up". Not a PR, not a ticket, not a feature folder. Everything that arrives from
- * Slack or from a base branch is an event on one, and every page a reader sees is
- * rendered from these files alone.
+ * The feature is the unit. Its dual-tier docs under `<app>/features/<dir>/docs/` are what
+ * is true, its journal is why, and `work.json` beside them is what is going on in it, if
+ * anything: the keys an arriving event attaches by, the questions still open, and the
+ * events themselves. A feature with nothing going on has no `work.json`, and that is not a
+ * problem. Linear carries a ticket's status; nothing here keeps a stage.
  *
- * One JSON file per workstream under `workstreams/`, plus `workstreams/_milestones.json`
- * for the dates workstreams point at and `workstreams/_unsorted.json` for what attached
- * to nothing. Files starting with `_` are never a workstream.
+ * What attached to nothing waits in `queue/_unsorted.json`, the dates the team set in
+ * `queue/_milestones.json`, and the Slack cursor in `queue/.state.json`.
  *
- * This module owns the shape and nothing else: the type, the readers, the validator, and
- * the one serializer every writer goes through so a `git diff workstreams/` stays the
+ * This module owns the shape and nothing else: the types, the readers, the validator, and
+ * the one serializer every writer goes through so a `git diff` of a `work.json` stays the
  * review surface. Ingest, corrections and rendering are their own files.
  */
 
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import { readdir } from "node:fs/promises";
+import { appRoots } from "../../../../scripts/lib/journal.ts";
+import { featureDir, type Feature } from "../../../../scripts/lib/manifest.ts";
 
 // ---------------------------------------------------------------- the vocabulary
 
 /** the reader: `you` everywhere a page addresses them, their own name where it names them */
 export const USER = { token: "you", name: "Liam Leung" };
 
-/** the two sides of a piece of work; a workstream records only the sides it has */
+/** the two sides a landing can arrive on; an event says which, a record keeps no stage */
 export const SIDES = ["fe", "be"] as const;
 export type Side = (typeof SIDES)[number];
-
-/**
- * How far one side has got. `landed` is verified by git — FE on `origin/staging`, BE on
- * `origin/dev`. `verified` needs the docs refresh and the user; `shipped` needs the
- * product owner. "Waiting on" and "parked" are overlays, not stages: work waits while it
- * is at some stage, and the board says both.
- */
-export const STAGES = ["asked", "decided", "building", "landed", "verified", "shipped"] as const;
-export type Stage = (typeof STAGES)[number];
-export const stageRank = (s: Stage) => STAGES.indexOf(s);
 
 /** what an event is, as a closed set; the action a kind licenses is the ticket pass's table, not this file's */
 export const EVENT_KINDS = [
@@ -52,7 +44,7 @@ export const EVENT_KINDS = [
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 /** the rung of the attachment ladder that put this event here */
-export const ATTACH_HOWS = ["thread", "ref", "vocab", "author", "read", "human"] as const;
+export const ATTACH_HOWS = ["thread", "ref", "vocab", "read", "human"] as const;
 export type AttachHow = (typeof ATTACH_HOWS)[number];
 
 export const CONFIDENCES = ["certain", "likely", "guess"] as const;
@@ -74,7 +66,7 @@ export type EventSource = {
 /** `human` is what a correction writes, and it carries who made it */
 export type Attachment = { how: AttachHow; confidence: Confidence; by?: string };
 
-export type WorkstreamEvent = {
+export type WorkEvent = {
   /** an ISO instant when the minute is known, a plain `YYYY-MM-DD` when only the day is */
   at: string;
   kind: EventKind;
@@ -102,96 +94,81 @@ export type OpenQuestion = {
   ticket?: string;
 };
 
-export type Fact = {
-  fact: string;
-  evidence?: string;
-  /** `dev@bbc394b7`, `staging@ac1caffd6` — the ref and sha the fact was read at */
-  verified?: string;
-};
-
 /** the keys an event attaches by, deterministically, before anyone reads anything */
-export type WorkstreamKeys = {
+export type WorkKeys = {
   tickets: string[];
   prs: string[];
   threads: string[];
   vocab: string[];
-  people: string[];
 };
 
-export type Overlay = { waiting_on: string; for: string; since: string };
-
-export type Workstream = {
-  slug: string;
-  name: string;
-  features: string[];
-  driver?: string;
-  wants: string[];
-  done: string;
-  stage: Partial<Record<Side, Stage>>;
-  overlay?: Overlay | null;
-  parked: boolean;
+export type Work = {
+  /** the feature's directory under its app's `features/` — `admin/invoicing`, `tasks` */
+  feature: string;
+  keys: WorkKeys;
   milestone?: string | null;
-  keys: WorkstreamKeys;
   open_questions: OpenQuestion[];
-  facts: Fact[];
-  events: WorkstreamEvent[];
-  opened: string;
+  events: WorkEvent[];
   updated: string;
 };
 
 export type Milestone = { name: string; date: string; owner: string };
 export type Milestones = Record<string, Milestone>;
 
-/** an event that attached to nothing, or to more than one thing — the corrections queue */
+/** a feature the ladder can attach to: every directory under an app's `features/` that is one */
+export type FeatureRef = {
+  feature: string;
+  /** relative to the workspace root — `alden/alden-portal`, `pensieve` */
+  app: string;
+  /** the manifest id, when the app's manifest names this directory */
+  id?: string;
+  /** the manifest's words for it — the vocabulary the ladder reads beside the learned keys */
+  aliases: string[];
+};
+
+export type Candidate = { feature: string; how: AttachHow; why: string };
+
+/** an event that attached to nothing, or to more than one feature — the corrections queue */
 export type UnsortedItem = {
   id: string;
-  /** `new` proposes a workstream nobody has opened; `split` proposes cutting one in two */
-  kind: "landing" | "slack" | "new" | "split";
+  kind: "landing" | "slack";
   summary: string;
-  /** `new` only: the name proposed for it, in the item's own words */
-  name?: string;
+  /** the features a reader would look at first, when the item did not name one */
   features?: string[];
   /** the item as it was said, so a correction can learn its vocabulary */
   text?: string;
-  /** `split` only: the workstream to cut, and the grouping proposed for it */
-  slug?: string;
-  groups?: { name: string; events: string[] }[];
   /** who an ask is aimed at; `you` is the user, and the board's Needs you reads this */
   to?: string[];
   source?: EventSource;
-  candidates: { slug: string; how: AttachHow; why: string }[];
+  candidates: Candidate[];
   /** why it is here at all, when no candidate says it */
   why?: string;
   suggest: string | null;
-  /** what the script wants done: read it against the open list (or, for a huddle's notes, read them and run `marauder huddle`), or ask a person */
+  /** what the script wants done: read it against the features (or, for a huddle's notes, read them and run `marauder huddle`), or ask a person */
   needs?: "read" | "ask";
   at: string;
 };
 
+/** everything the verbs read and write, loaded once per run */
+export type State = { work: Work[]; unsorted: UnsortedItem[]; milestones: Milestones; features: FeatureRef[] };
+
 // ---------------------------------------------------------------- reading and writing
 
-/**
- * A name to a slug: lowercased, runs of non-alphanumerics to one `-`, trimmed. It was the
- * point id's rule (`improvements/shared-contracts.md`) and outlived it — `new` and `split` name a
- * workstream file with it, so a workstream a person opens by typing its name lands at the
- * path everything else already expects.
- */
+/** A name to a slug: lowercased, runs of non-alphanumerics to one `-`, trimmed. Milestone ids use it. */
 export const slug = (name: string) =>
   name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-export const WORKSTREAMS_DIR = "workstreams";
+export const QUEUE_DIR = "queue";
 export const MILESTONES_FILE = "_milestones.json";
 export const UNSORTED_FILE = "_unsorted.json";
+export const WORK_FILE = "work.json";
 
 /** the file's key order, so two writers produce the same bytes and a diff reads top down */
-const KEY_ORDER = [
-  "slug", "name", "features", "driver", "wants", "done", "stage", "overlay", "parked",
-  "milestone", "keys", "open_questions", "facts", "events", "opened", "updated",
-] as const;
-const KEYS_ORDER = ["tickets", "prs", "threads", "vocab", "people"] as const;
+const KEY_ORDER = ["feature", "keys", "milestone", "open_questions", "events", "updated"] as const;
+const KEYS_ORDER = ["tickets", "prs", "threads", "vocab"] as const;
 const EVENT_ORDER = ["at", "kind", "side", "summary", "to", "source", "attached", "ticket", "evidence", "action"] as const;
 const SOURCE_ORDER = ["type", "ref", "url", "sha"] as const;
 
@@ -202,8 +179,8 @@ const ordered = <T extends object>(value: T, order: readonly string[]): T => {
   return out as T;
 };
 
-/** the one way a workstream is written: fixed key order, two spaces, trailing newline */
-export function serializeWorkstream(w: Workstream): string {
+/** the one way a record is written: fixed key order, two spaces, trailing newline */
+export function serializeWork(w: Work): string {
   const shaped = ordered(
     {
       ...w,
@@ -215,60 +192,47 @@ export function serializeWorkstream(w: Workstream): string {
   return `${JSON.stringify(shaped, null, 2)}\n`;
 }
 
-const has = (o: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+/** an empty record for a feature that had nothing going on until now */
+export const emptyWork = (feature: string, at: string): Work => ({
+  feature,
+  keys: { tickets: [], prs: [], threads: [], vocab: [] },
+  open_questions: [],
+  events: [],
+  updated: at,
+});
+
 const isStr = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 const isStrList = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 
 /**
  * Everything wrong with a record, as sentences a person can act on. An empty array means
- * the file is a workstream; anything else and no reader may use it.
+ * the file is a feature's record; anything else and no reader may use it. `feature` is
+ * the directory the file sits in, which the record has to agree with.
  */
-export function validate(value: unknown, slug?: string): string[] {
+export function validate(value: unknown, feature?: string): string[] {
   const p: string[] = [];
   if (typeof value !== "object" || value === null || Array.isArray(value)) return ["the file is not a JSON object"];
   const w = value as Record<string, unknown>;
 
-  for (const k of ["slug", "name", "done", "opened", "updated"]) if (!isStr(w[k])) p.push(`${k} is missing`);
-  if (isStr(w.slug) && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(w.slug)) p.push(`slug "${w.slug}" is not lower-case-and-hyphens`);
-  if (slug && isStr(w.slug) && w.slug !== slug) p.push(`slug "${w.slug}" does not match the file name "${slug}"`);
-  if (!isStrList(w.features)) p.push("features is missing");
-  if (!isStrList(w.wants)) p.push("wants is missing");
-  if (has(w, "driver") && w.driver !== undefined && !isStr(w.driver)) p.push("driver is not a name");
-  if (typeof w.parked !== "boolean") p.push("parked is missing");
-
-  const stage = w.stage as Record<string, unknown> | undefined;
-  if (typeof stage !== "object" || stage === null) p.push("stage is missing");
-  else {
-    const sides = Object.keys(stage);
-    if (!sides.length) p.push("stage names no side");
-    for (const s of sides) {
-      if (!(SIDES as readonly string[]).includes(s)) p.push(`stage has an unknown side "${s}"`);
-      else if (!(STAGES as readonly string[]).includes(String(stage[s]))) p.push(`stage.${s} is "${String(stage[s])}", which is not a stage`);
-    }
-  }
-
-  if (w.overlay !== undefined && w.overlay !== null) {
-    const o = w.overlay as Record<string, unknown>;
-    for (const k of ["waiting_on", "for", "since"]) if (!isStr(o[k])) p.push(`overlay.${k} is missing`);
-  }
+  for (const k of ["feature", "updated"]) if (!isStr(w[k])) p.push(`${k} is missing`);
+  if (feature && isStr(w.feature) && w.feature !== feature) p.push(`feature "${w.feature}" does not match the directory "${feature}"`);
+  if (w.milestone !== undefined && w.milestone !== null && !isStr(w.milestone)) p.push("milestone is not a milestone id");
 
   const keys = w.keys as Record<string, unknown> | undefined;
   if (typeof keys !== "object" || keys === null) p.push("keys is missing");
   else {
     for (const k of KEYS_ORDER) if (!isStrList(keys[k])) p.push(`keys.${k} is missing`);
-    const attachable = KEYS_ORDER.filter((k) => k !== "vocab" && k !== "people")
-      .reduce((n, k) => n + (isStrList(keys[k]) ? (keys[k] as string[]).length : 0), 0);
-    if (!attachable) p.push("keys names no ticket, PR or thread, so nothing can attach to it");
+    for (const k of Object.keys(keys)) if (!(KEYS_ORDER as readonly string[]).includes(k)) p.push(`keys has an unknown list "${k}"`);
   }
 
-  for (const [i, q] of (Array.isArray(w.open_questions) ? w.open_questions : []).entries()) {
-    const o = q as Record<string, unknown>;
-    if (!isStr(o.q)) p.push(`open question ${i + 1} has no question`);
-    if (!isStr(o.asked_by)) p.push(`open question ${i + 1} has no asked_by`);
-    if (!isStr(o.at)) p.push(`open question ${i + 1} has no at`);
-  }
   if (!Array.isArray(w.open_questions)) p.push("open_questions is missing");
-  if (!Array.isArray(w.facts)) p.push("facts is missing");
+  else
+    for (const [i, q] of w.open_questions.entries()) {
+      const o = q as Record<string, unknown>;
+      if (!isStr(o.q)) p.push(`open question ${i + 1} has no question`);
+      if (!isStr(o.asked_by)) p.push(`open question ${i + 1} has no asked_by`);
+      if (!isStr(o.at)) p.push(`open question ${i + 1} has no at`);
+    }
 
   if (!Array.isArray(w.events)) p.push("events is missing");
   else
@@ -299,71 +263,170 @@ export function validate(value: unknown, slug?: string): string[] {
   return p;
 }
 
-export type ParseResult = { workstream: Workstream | null; problems: string[] };
+export type ParseResult = { work: Work | null; problems: string[] };
 
 /** one file's text back into the record, with everything wrong with it */
-export function parseWorkstream(text: string, slug?: string): ParseResult {
+export function parseWork(text: string, feature?: string): ParseResult {
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch (err) {
-    return { workstream: null, problems: [`the file is not JSON — ${(err as Error).message}`] };
+    return { work: null, problems: [`the file is not JSON — ${(err as Error).message}`] };
   }
-  const problems = validate(value, slug);
-  return { workstream: problems.length ? null : (value as Workstream), problems };
+  const problems = validate(value, feature);
+  return { work: problems.length ? null : (value as Work), problems };
 }
 
 export type LoadResult = {
-  workstreams: Workstream[];
+  work: Work[];
   milestones: Milestones;
-  /** files that could not be read, by file name */
+  /** files that could not be read, relative to the workspace root */
   problems: { file: string; problems: string[] }[];
 };
 
-const slugOf = (file: string) => file.replace(/\.json$/, "");
+/** where a feature's record lives, relative to the workspace root */
+export const workPath = (app: string, feature: string) => join(app, "features", feature, WORK_FILE);
 
-/** every workstream under `dir`, newest update first, with the milestones they point at */
-export async function loadWorkstreams(root = ".", dir = WORKSTREAMS_DIR): Promise<LoadResult> {
-  const base = join(root, dir);
-  const workstreams: Workstream[] = [];
+/** every `work.json` under every app's `features/`, newest update first, with the milestones they point at */
+export async function loadWork(root = "."): Promise<LoadResult> {
+  const work: Work[] = [];
   const problems: LoadResult["problems"] = [];
-  const files: string[] = [];
-  for await (const f of new Bun.Glob("*.json").scan({ cwd: base, onlyFiles: true })) files.push(f);
-  for (const file of files.sort()) {
-    if (file.startsWith("_")) continue;
-    const parsed = parseWorkstream(await Bun.file(join(base, file)).text(), slugOf(file));
-    if (parsed.workstream) workstreams.push(parsed.workstream);
-    else problems.push({ file, problems: parsed.problems });
+  const seen = new Set<string>();
+  for (const { dir } of await appRoots(root)) {
+    const files: string[] = [];
+    for await (const f of new Bun.Glob(`**/${WORK_FILE}`).scan({ cwd: dir, onlyFiles: true })) files.push(f);
+    for (const file of files.sort()) {
+      const feature = file.slice(0, -`/${WORK_FILE}`.length);
+      const rel = relative(root, join(dir, file));
+      const parsed = parseWork(await Bun.file(join(dir, file)).text(), feature);
+      if (!parsed.work) problems.push({ file: rel, problems: parsed.problems });
+      else if (seen.has(feature)) problems.push({ file: rel, problems: [`another app already has a record for ${feature}`] });
+      else {
+        seen.add(feature);
+        work.push(parsed.work);
+      }
+    }
   }
   return {
-    workstreams: workstreams.sort((a, b) => b.updated.localeCompare(a.updated) || a.slug.localeCompare(b.slug)),
-    milestones: await loadMilestones(root, dir),
+    work: work.sort((a, b) => instantOf(b.updated).localeCompare(instantOf(a.updated)) || a.feature.localeCompare(b.feature)),
+    milestones: await loadMilestones(root),
     problems,
   };
 }
 
-export async function loadMilestones(root = ".", dir = WORKSTREAMS_DIR): Promise<Milestones> {
-  const file = Bun.file(join(root, dir, MILESTONES_FILE));
+export async function loadMilestones(root = "."): Promise<Milestones> {
+  const file = Bun.file(join(root, QUEUE_DIR, MILESTONES_FILE));
   if (!(await file.exists())) return {};
   return (await file.json()) as Milestones;
+}
+
+export async function loadUnsorted(root = "."): Promise<UnsortedItem[]> {
+  const file = Bun.file(join(root, QUEUE_DIR, UNSORTED_FILE));
+  return (await file.exists()) ? ((await file.json()) as UnsortedItem[]) : [];
+}
+
+/** the directories inside a feature that are its own, never another feature */
+const OWN = new Set(["docs", "journal"]);
+
+/**
+ * Every feature of every app: a directory under `features/` holding `docs/`, `journal/`
+ * or a `work.json`. Features nest (`admin` has docs, and so does `admin/usage`), so the
+ * walk goes on below one; it never goes into a feature's own `docs/` or `journal/`.
+ * Pensieve has a feature named `journal`, which sits at the top of its tree and is found.
+ */
+export async function loadFeatures(root = "."): Promise<FeatureRef[]> {
+  const out: FeatureRef[] = [];
+  const taken = new Set<string>();
+  for (const { app, dir } of await appRoots(root)) {
+    const aliases = await manifestAliases(join(root, app));
+    const walk = async (rel: string, depth: number) => {
+      const here = join(dir, rel);
+      const entries = await readdir(here, { withFileTypes: true }).catch(() => []);
+      const names = new Set(entries.map((e) => e.name));
+      const isFeature = rel !== "" && (names.has("docs") || names.has("journal") || names.has(WORK_FILE));
+      if (isFeature && !taken.has(rel)) {
+        taken.add(rel);
+        const m = aliases.get(rel);
+        out.push({ feature: rel, app, ...(m?.id ? { id: m.id } : {}), aliases: m?.aliases ?? [] });
+      }
+      if (depth >= 3) return;
+      for (const e of entries) {
+        if (!e.isDirectory() || e.name.startsWith(".")) continue;
+        if (isFeature && OWN.has(e.name)) continue;
+        await walk(rel ? `${rel}/${e.name}` : e.name, depth + 1);
+      }
+    };
+    await walk("", 0);
+  }
+  return out.sort((a, b) => a.feature.localeCompare(b.feature));
+}
+
+/** the app's manifest, by feature directory: its id and the words people use for it */
+async function manifestAliases(appDir: string): Promise<Map<string, { id: string; aliases: string[] }>> {
+  const file = Bun.file(join(appDir, ".doc-workspace/feature-manifest.json"));
+  const out = new Map<string, { id: string; aliases: string[] }>();
+  if (!(await file.exists())) return out;
+  const m = (await file.json()) as { features?: Feature[] };
+  for (const f of m.features ?? []) out.set(featureDir(f), { id: f.id, aliases: f.aliases ?? [] });
+  return out;
+}
+
+/** manifest id → feature directory, across every app, for the journal's and pr-facts' `features:` */
+export const dirsById = (features: FeatureRef[]): Record<string, string> =>
+  Object.fromEntries(features.filter((f) => f.id).map((f) => [f.id!, f.feature]));
+
+/** the whole state a verb works on: records, queue, milestones and the features they may name */
+export async function loadState(root = "."): Promise<State & { problems: LoadResult["problems"] }> {
+  const { work, milestones, problems } = await loadWork(root);
+  return { work, unsorted: await loadUnsorted(root), milestones, features: await loadFeatures(root), problems };
+}
+
+/**
+ * Write back what changed between two states and nothing else, so a run that decided
+ * nothing writes no byte. A record goes to its feature's directory in the app that has
+ * it; a feature no app has is refused rather than invented.
+ */
+export async function saveState(root: string, before: State, after: State): Promise<string[]> {
+  const written: string[] = [];
+  const had = new Map(before.work.map((w) => [w.feature, serializeWork(w)]));
+  const apps = new Map([...before.features, ...after.features].map((f) => [f.feature, f.app]));
+  for (const w of after.work) {
+    const text = serializeWork(w);
+    if (had.get(w.feature) === text) continue;
+    const app = apps.get(w.feature);
+    if (!app) throw new Error(`no app has a feature directory ${w.feature}, so its record has nowhere to go`);
+    const rel = workPath(app, w.feature);
+    await Bun.write(join(root, rel), text);
+    written.push(rel);
+  }
+  for (const [file, value, was] of [
+    [UNSORTED_FILE, after.unsorted, before.unsorted],
+    [MILESTONES_FILE, after.milestones, before.milestones],
+  ] as const) {
+    const text = `${JSON.stringify(value, null, 2)}\n`;
+    if (text === `${JSON.stringify(was, null, 2)}\n`) continue;
+    await Bun.write(join(root, QUEUE_DIR, file), text);
+    written.push(`${QUEUE_DIR}/${file}`);
+  }
+  return written;
 }
 
 /** a day-grain `at` is ordered at the end of its day, so a landing follows the chat about it */
 export const instantOf = (at: string) => (at.length === 10 ? `${at}T23:59:59Z` : at);
 
-/** the latest event, by `at`; a workstream with no event has none */
-export const latestEvent = (w: Workstream): WorkstreamEvent | undefined =>
-  [...w.events].sort((a, b) => instantOf(a.at).localeCompare(instantOf(b.at))).at(-1);
+export const byAt = (a: { at: string }, b: { at: string }) => instantOf(a.at).localeCompare(instantOf(b.at));
+
+/** the latest event, by `at`; a record with no event has none */
+export const latestEvent = (w: Work): WorkEvent | undefined => [...w.events].sort(byAt).at(-1);
 
 /** how an event is named on the command line: its source, else the instant it happened */
-export const eventId = (e: WorkstreamEvent) => e.source?.ref ?? e.at;
+export const eventId = (e: WorkEvent) => e.source?.ref ?? e.at;
 
 /**
- * One name per event, unique inside its workstream — two rulings out of the same huddle
- * share a source, so the second one gets its day appended and then a counter. `split`
- * takes these, and `check` prints them.
+ * One name per event, unique inside its record — two rulings out of the same huddle share
+ * a source, so the second one gets a counter.
  */
-export function eventKeys(w: Workstream): string[] {
+export function eventKeys(w: Work): string[] {
   const counts = new Map<string, number>();
   return w.events.map((e) => {
     const base = eventId(e);
@@ -373,30 +436,16 @@ export function eventKeys(w: Workstream): string[] {
   });
 }
 
-/**
- * The stage a person set by hand on this side, when they set it after the last landing.
- * Ingest reads it before writing a stage: a landing is a fact, but so is someone saying
- * the work is not done, and the person wins until the next landing says otherwise.
- */
-export function humanStage(w: Workstream, side: Side): { stage: Stage; at: string } | null {
-  const at = (e: WorkstreamEvent) => instantOf(e.at);
-  const lastLanding = w.events.filter((e) => e.kind === "verified-landing" && e.side === side).map(at).sort().at(-1) ?? "";
-  const set = w.events
-    .filter((e) => e.attached.how === "human" && e.side === side && e.action?.startsWith("stage "))
-    .sort((a, b) => at(a).localeCompare(at(b)))
-    .at(-1);
-  if (!set || at(set) < lastLanding) return null;
-  const stage = set.action!.split("→").at(-1)!.trim() as Stage;
-  return (STAGES as readonly string[]).includes(stage) ? { stage, at: set.at } : null;
+/** add an event to a record, keeping the events in time order and `updated` at the newest */
+export function addEvent(w: Work, e: WorkEvent) {
+  w.events = [...w.events, e].sort(byAt);
+  if (instantOf(e.at) > instantOf(w.updated)) w.updated = e.at;
 }
-
-/** the sides this workstream records, in FE-then-BE order */
-export const sidesOf = (w: Workstream): Side[] => SIDES.filter((s) => w.stage[s] !== undefined);
 
 if (import.meta.main) {
   const root = process.argv[2] ?? ".";
-  const { workstreams, problems } = await loadWorkstreams(root);
+  const { work, problems } = await loadWork(root);
   for (const p of problems) console.error(`${p.file}: ${p.problems.join("; ")}`);
-  console.log(`${workstreams.length} workstream${workstreams.length === 1 ? "" : "s"}${problems.length ? ` · ${problems.length} unreadable` : ""}`);
+  console.log(`${work.length} feature${work.length === 1 ? "" : "s"} with something going on${problems.length ? ` · ${problems.length} unreadable` : ""}`);
   process.exit(problems.length ? 1 : 0);
 }

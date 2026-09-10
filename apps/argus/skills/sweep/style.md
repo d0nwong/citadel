@@ -1,7 +1,7 @@
 # style — how the loop writes for a reader
 
-The voice for every page a person reads: `marauder/board.md`, `marauder/<slug>.md`, each
-`marauder/changelog/<day>.md`, and anything else the loop renders for a human. Stated
+The voice for every page a person reads: `marauder/board.md`, each `marauder/changelog/<day>.md`,
+what `marauder show <feature>` prints, and anything else the loop renders for a human. Stated
 once, here. The renderer enforces the three mechanical rules at the bottom and refuses to
 write a page that breaks one.
 

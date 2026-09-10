@@ -7,10 +7,10 @@
  * pagination, thread following, user-id resolution, noise filtering and permalinks. The
  * ingest places what this prints. Nothing here writes to Slack.
  *
- *   slack-pull                    everything since workstreams/.state.json's last_ts
+ *   slack-pull                    everything since queue/.state.json's last_ts
  *   slack-pull --since 2026-08-28 override the cursor (date or unix ts); state untouched
  *   slack-pull --json             structured output instead of the transcript
- *   slack-pull --no-next          don't write workstreams/.state.next.json
+ *   slack-pull --no-next          don't write queue/.state.next.json
  *
  * State protocol: this never touches `.state.json` except to adopt the digest's old cursor
  * once (below). It writes the advanced cursor to `.state.next.json`; the sweep promotes it
@@ -30,8 +30,8 @@ export const ME = "U09R2MYP6A0";
 const WATCH_EXPIRY_S = 48 * 3600;
 
 const ROOT = new URL("../../../..", import.meta.url).pathname.replace(/\/$/, "");
-const STATE = join(ROOT, "workstreams/.state.json");
-const STATE_NEXT = join(ROOT, "workstreams/.state.next.json");
+const STATE = join(ROOT, "queue/.state.json");
+const STATE_NEXT = join(ROOT, "queue/.state.next.json");
 /** where the cursor lived while the digest owned it; adopted once, then deleted (ARG-161) */
 const DIGEST_STATE = join(ROOT, "digests/.state.json");
 const USER_CACHE = join(ROOT, ".state/slack-users.json");
@@ -361,7 +361,7 @@ export async function readCursor(state = STATE, digest = DIGEST_STATE, now = Dat
     const moved: State = { last_ts: carried.last_ts, watched_threads: carried.watched_threads ?? {} };
     await Bun.write(state, JSON.stringify(moved, null, 2) + "\n");
     await old.delete();
-    console.error(`slack-pull: cursor moved to workstreams/.state.json (last_ts ${moved.last_ts})`);
+    console.error(`slack-pull: cursor moved to queue/.state.json (last_ts ${moved.last_ts})`);
     return moved;
   }
   return { last_ts: String(Math.floor(now / 1000) - 24 * 3600), watched_threads: {} };
