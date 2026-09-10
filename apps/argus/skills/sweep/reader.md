@@ -71,7 +71,8 @@ Jokes, thanks with no ask behind them, logistics naming nobody on the record: le
 out. A thank-you that acknowledges a result is evidence on that ask, not an ask.
 
 ### Write for a reader
-A person does something in every sentence. Twenty-five words at most. An id (ALD-41,
+A person does something in every sentence. Aim for fifteen words; twenty-five is the
+hard ceiling and a sentence over it is refused. An id (ALD-41,
 fe#421, R-3) never starts a sentence and never stands in for the thing; say the thing.
 Say what is true now, not what happened this run. No "tick", "tier", "arc".
 

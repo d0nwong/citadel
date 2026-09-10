@@ -14,8 +14,8 @@ that thread, so place only what you would bet on.
 2. If it is about the work of exactly one feature, name that feature's directory.
 3. If it is chat, thanks, logistics naming nobody, or about the team's tooling rather
    than the product, answer `null`.
-4. If it plainly belongs to one of two features and you cannot choose, answer `null`
-   and name both in `note`.
+4. If it plainly straddles two features, a task table on the projects page, say, answer
+   both, most relevant first. Never more than two.
 
 ## Rules
 
@@ -30,8 +30,9 @@ A meeting about three features goes to the one it spends the most words on; the 
 of that feature will see the rest.
 
 ### Bet or abstain
-`null` is a valid answer and costs nothing; a wrong feature costs the thread.
+`null` is a valid answer and costs nothing; a wrong feature costs the thread. Two
+features is for a thread that is about both, not for a guess between them.
 
 ## Output
 
-One JSON object, nothing else: `{ "<message id>": { "feature": "<dir>" | null, "note"?: "<why, one clause>" }, ... }`
+One JSON object, nothing else: `{ "<message id>": { "feature": "<dir>" | ["<dir>", "<dir>"] | null, "note"?: "<why, one clause>" }, ... }`

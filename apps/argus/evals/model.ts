@@ -105,7 +105,7 @@ async function summaries(features: string[]): Promise<string> {
   return out.join("\n");
 }
 
-export async function attribute(unplaced: Unplaced[], features: string[], day: string, calls: Call[], allMessages: Msg[]): Promise<Record<string, string | null>> {
+export async function attribute(unplaced: Unplaced[], features: string[], day: string, calls: Call[], allMessages: Msg[]): Promise<Record<string, string[]>> {
   if (!unplaced.length) return {};
   const skill = await Bun.file(join(REPO, "skills/sweep/attribute.md")).text();
   const byId = new Map(allMessages.map((m) => [m.ts, m]));
@@ -120,10 +120,14 @@ export async function attribute(unplaced: Unplaced[], features: string[], day: s
   const prompt = `${skill}\n\n# Features\n\n${await summaries(features)}\n\n# Unplaced (${unplaced.length} messages in ${groups.size} threads)\n\n${items.join("\n\n")}\n\nAnswer with the JSON object only, one entry per message id.`;
   try {
     const r = await ask(ATTRIBUTE_MODEL, prompt, { label: `attribute ${day}` });
-    const j = extractJson(r.text) as Record<string, { feature: string | null }>;
+    const j = extractJson(r.text) as Record<string, { feature: string | string[] | null }>;
     calls.push({ step: "attribute", day, model: ATTRIBUTE_MODEL, input: r.input, output: r.output, cost: r.cost, seconds: r.seconds, ok: true });
-    const out: Record<string, string | null> = {};
-    for (const [id, v] of Object.entries(j)) out[id] = v && typeof v === "object" && v.feature && features.includes(v.feature) ? v.feature : null;
+    const out: Record<string, string[]> = {};
+    for (const [id, v] of Object.entries(j)) {
+      const raw = v && typeof v === "object" ? v.feature : null;
+      const list = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f) => typeof f === "string" && features.includes(f)).slice(0, 2);
+      out[id] = list;
+    }
     return out;
   } catch (e) {
     calls.push({ step: "attribute", day, model: ATTRIBUTE_MODEL, input: 0, output: 0, cost: 0, seconds: 0, ok: false, note: String((e as Error).message).slice(0, 200) });
@@ -237,32 +241,35 @@ export async function runModel(batches: Batch[], opts: { features: string[]; day
       threads = { ...threads, ...p.threads };
       const all = b.slack ? flatten(b.slack) : [];
       const chosen = await attribute(p.unplaced, features, day, calls, all);
-      // apply the model's placements: message → slice, thread → learned
+      // apply the model's placements: message → slice(s), thread → learned (first feature); a second feature also sees it
+      const also: Record<string, string> = {};
+      const put = (f: string, m: Msg) => {
+        if (!p.slices.has(f)) p.slices.set(f, { feature: f, messages: [], landings: [] });
+        if (!p.slices.get(f)!.messages.some((x) => x.ts === m.ts)) p.slices.get(f)!.messages.push(m);
+      };
       for (const u of p.unplaced) {
-        const f = chosen[u.id];
-        if (!f) continue;
-        if (u.kind === "message") {
-          const m = all.find((x) => x.ts === u.id)!;
-          if (!p.slices.has(f)) p.slices.set(f, { feature: f, messages: [], landings: [] });
-          p.slices.get(f)!.messages.push(m);
-          if (!threads[m.thread]) threads[m.thread] = { feature: f, by: "sweep", at: b.pulled_at };
-        }
+        const fs = chosen[u.id] ?? [];
+        if (!fs.length || u.kind !== "message") continue;
+        const m = all.find((x) => x.ts === u.id)!;
+        for (const f of fs) put(f, m);
+        if (!threads[m.thread]) threads[m.thread] = { feature: fs[0]!, by: "sweep", at: b.pulled_at };
+        if (fs[1]) also[m.thread] = fs[1];
       }
       // a reply whose root the model just placed follows it
       for (const u of p.unplaced) {
-        if (chosen[u.id] || u.kind !== "message" || !u.thread) continue;
+        if (chosen[u.id]?.length || u.kind !== "message" || !u.thread) continue;
         const f = threads[u.thread]?.feature;
         if (!f) continue;
         const m = all.find((x) => x.ts === u.id)!;
-        if (!p.slices.has(f)) p.slices.set(f, { feature: f, messages: [], landings: [] });
-        p.slices.get(f)!.messages.push(m);
+        put(f, m);
+        if (also[u.thread]) put(also[u.thread]!, m);
       }
       for (const s of p.slices.values()) {
         s.messages.sort((a, c) => Number(a.ts) - Number(c.ts));
         for (const m of s.messages) add(m.ts, s.feature);
         for (const l of s.landings) add(l.ref, s.feature);
       }
-      log(`${day}: ${all.length} msgs, ${b.landings.length} landings; ${p.unplaced.length} unplaced → ${Object.values(chosen).filter(Boolean).length} placed by the model`);
+      log(`${day}: ${all.length} msgs, ${b.landings.length} landings; ${p.unplaced.length} unplaced → ${Object.values(chosen).filter((f) => f.length).length} placed by the model`);
       for (const f of opts.features) {
         const s = p.slices.get(f);
         if (!s || (!s.messages.length && !s.landings.length)) continue;
