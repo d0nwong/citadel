@@ -39,7 +39,7 @@ export type Expectations = {
   batches: string[];
   items: Expectation[];
   /** asks that must close, or must stay open, on a named message; filled by hand in task 16 */
-  closures: { feature: string; ask: string; closes_on: string | null }[];
+  closures: { feature: string; root: string; closes_on: string | null; why?: string }[];
 };
 
 export async function loadBatches(): Promise<Batch[]> {

@@ -86,16 +86,39 @@ async function deterministic() {
   return score(got, want, e.items);
 }
 
+async function model(days?: number, keep = false) {
+  const { runModel, scoreClosures } = await import("./model.ts");
+  const batches = await loadBatches();
+  const e = await loadExpectations();
+  const features = [...new Set(e.closures.map((c) => c.feature))].sort();
+  const run = await runModel(batches, { features, days, keep, log: (l) => console.log(l) });
+  const s = score(run.got, resolved(e), e.items);
+  const closures = scoreClosures(e.closures, run.ledgers);
+  const cost = run.calls.reduce((n, c) => n + c.cost, 0);
+  const biggest = run.calls.reduce((m, c) => (c.input > m ? c.input : m), 0);
+  const failed = run.calls.filter((c) => !c.ok);
+  console.log(`calls: ${run.calls.length} (${failed.length} failed), cost $${cost.toFixed(2)}, largest input ${biggest} tokens`);
+  for (const c of failed) console.log(`  failed ${c.step} ${c.feature ?? ""} ${c.day}: ${c.note}`);
+  for (const c of closures) console.log(`  ${c.pass ? "PASS" : "FAIL"} ${c.line}`);
+  if (keep) console.log(`workspace kept at ${run.workspace}`);
+  return { s, closures, cost, biggest, calls: run.calls.length };
+}
+
 if (import.meta.main) {
-  if (process.argv.includes("--model")) {
-    console.error("--model: not yet (task 15)");
-    process.exit(2);
-  }
-  const s = await deterministic();
-  const label = "deterministic";
+  const argv = process.argv.slice(2);
+  const opt = (k: string) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
+  const isModel = argv.includes("--model");
+  const label = isModel ? `model${opt("--days") ? ` (${opt("--days")} days)` : ""}` : "deterministic";
+  let s: Score;
+  let extra = "";
+  if (isModel) {
+    const r = await model(opt("--days") ? Number(opt("--days")) : undefined, argv.includes("--keep"));
+    s = r.s;
+    extra = `, closures ${r.closures.filter((c) => c.pass).length}/${r.closures.length}, $${r.cost.toFixed(2)} over ${r.calls} calls, largest input ${r.biggest}`;
+  } else s = await deterministic();
   console.log(format(s, label));
   if (process.argv.includes("--wrong")) for (const w of s.wrongOnes) console.log(`  ${w.id}  ${w.by}: ${JSON.stringify(w.text.slice(0, 80))}  expected ${w.expected ?? "none"}, got ${w.got ?? "unplaced"}`);
-  const line = `- ${new Date().toISOString().slice(0, 16).replace("T", " ")} ${label}: ${Math.round(100 * fraction(s))}% (${s.hit}/${s.expected}), ${s.nonePlaced} chat wrongly placed, ${s.unanswered} unanswered`;
+  const line = `- ${new Date().toISOString().slice(0, 16).replace("T", " ")} ${label}: ${Math.round(100 * fraction(s))}% (${s.hit}/${s.expected}), ${s.nonePlaced} chat wrongly placed, ${s.unanswered} unanswered${extra}`;
   const f = Bun.file(SCORES);
   const prev = (await f.exists()) ? await f.text() : "# Replay scores\n\nOne line per run of `bun run evals`. The gate is attribution ≥ 80% with every closure case passing.\n\n";
   await Bun.write(SCORES, prev.trimEnd() + "\n" + line + "\n");

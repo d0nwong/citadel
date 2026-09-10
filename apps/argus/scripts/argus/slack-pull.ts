@@ -43,7 +43,7 @@ export type SlackMessage = {
   text?: string;
   reply_count?: number;
   latest_reply?: string;
-  reactions?: { name: string; count: number }[];
+  reactions?: { name: string; count: number; users?: string[] }[];
   files?: { id?: string; name?: string; title?: string; permalink?: string; filetype?: string; url_private?: string }[];
   attachments?: { title?: string; text?: string; fallback?: string; title_link?: string }[];
 };
@@ -156,7 +156,12 @@ export function toMsg(m: SlackMessage, users: Users, canvas: string | null = nul
     mentionsMe: (m.text ?? "").includes(`<@${ME}>`),
     bot: !!m.bot_id && !m.user,
     text: normaliseText(m.text, users),
-    reactions: (m.reactions ?? []).map((r) => `:${r.name}:${r.count > 1 ? `×${r.count}` : ""}`).join(" "),
+    reactions: (m.reactions ?? [])
+      .map((r) => {
+        const who = (r.users ?? []).map((u) => (u === ME ? "you" : (users[u] ?? u))).join(", ");
+        return `:${r.name}:${r.count > 1 ? `×${r.count}` : ""}${who ? ` (${who})` : ""}`;
+      })
+      .join(" "),
     files,
     canvas,
     permalink: permalink(m.ts, m.thread_ts),

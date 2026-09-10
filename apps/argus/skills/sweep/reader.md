@@ -44,9 +44,10 @@ for a feature with nothing new.
 Every status change, new entry and story sentence points at a message, a PR, a commit, a
 file and line, or says "assumption". A claim you cannot point at does not go in.
 
-### Closure needs the asker or the team
-An ask closes on a message from the person who asked, or from the team, acknowledging
-the result. A landing alone moves it to `built`, not `closed`.
+### Closure is a person saying so
+An ask closes when the asker or the team acknowledges the result, in words or with a
+reaction on the reply that reported it, or when whoever built it says in the thread that
+it is on staging. A landing alone moves it to `built`, not `closed`.
 
 ### Only a decider flips a rule
 Foong decides product rules. A developer's message about how the code behaves confirms

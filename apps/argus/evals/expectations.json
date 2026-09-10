@@ -6400,5 +6400,30 @@
       "prefilled_by": "landing"
     }
   ],
-  "closures": []
+  "closures": [
+    {
+      "feature": "admin/invoicing",
+      "root": "1788945950.659069",
+      "closes_on": "1788968005.391699",
+      "why": "Sam wanted the due-on-receipt button; Liam said it was done and Sam gave it a thumbs-up"
+    },
+    {
+      "feature": "admin/invoicing",
+      "root": "1788927279.211769",
+      "closes_on": "1788992279.220779",
+      "why": "Sam's table updates; Carlos said in staging"
+    },
+    {
+      "feature": "admin/clients",
+      "root": "1788774666.093519",
+      "closes_on": "1788876901.203079",
+      "why": "Sam passes back more info for Angie; Carlos said in staging"
+    },
+    {
+      "feature": "admin/usage",
+      "root": "1788774985.655159",
+      "closes_on": null,
+      "why": "Liam asked whether all History fields are editable; Foong never answered"
+    }
+  ]
 }
