@@ -21,7 +21,7 @@ export type Patch = {
     update?: { id: string; status: AskStatus; at: string; evidence: Evidence[]; to?: string | null; ticket?: string | null; requirements?: string[] }[];
   };
   tickets?: { clear?: { key: string; blocker: number; at: string; evidence: Evidence[]; deployed?: boolean }[] };
-  landings?: { add?: Landing[] };
+  landings?: { add?: Landing[]; link?: { ref: string; asks: string[] }[] };
   proposals?: { add?: Omit<Proposal, "id">[] };
   /** what the reader could not settle; goes to the terminal, never to the ledger */
   notes?: string[];
@@ -105,8 +105,14 @@ export function parsePatch(v: unknown): Patch {
       p.tickets!.clear!.push({ key: c.key, blocker: c.blocker, at: c.at, evidence: evidenceList(c.evidence, `${path}.evidence`), ...(typeof c.deployed === "boolean" ? { deployed: c.deployed } : {}) });
     });
   }
-  const landings = section("landings", ["add"]);
-  if (landings) p.landings = { add: list(landings, "landings", "add") as Landing[] };
+  const landings = section("landings", ["add", "link"]);
+  if (landings) {
+    p.landings = { add: list(landings, "landings", "add") as Landing[], link: [] };
+    list(landings, "landings", "link").forEach((l, i) => {
+      if (!isObj(l) || typeof l.ref !== "string" || !Array.isArray(l.asks)) throw err(`patch.landings.link[${i}]`, "expected { ref, asks }");
+      p.landings!.link!.push({ ref: l.ref, asks: l.asks as string[] });
+    });
+  }
   const proposals = section("proposals", ["add"]);
   if (proposals) p.proposals = { add: list(proposals, "proposals", "add") as Omit<Proposal, "id">[] };
   if (v.notes !== undefined) {
@@ -150,7 +156,12 @@ export function applyPatch(l: Ledger, p: Patch): Ledger {
     const cleared: Cleared = { at: c.at, evidence: c.evidence };
     b.cleared = cleared;
   }
-  for (const ld of p.landings?.add ?? []) if (!next.landings.some((x) => x.repo === ld.repo && x.number === ld.number && x.sha === ld.sha)) next.landings.push(ld);
+  for (const ld of p.landings?.add ?? []) if (!next.landings.some((x) => x.ref === ld.ref)) next.landings.push(ld);
+  for (const lk of p.landings?.link ?? []) {
+    const ld = next.landings.find((x) => x.ref === lk.ref);
+    if (!ld) throw err("patch.landings.link", `${lk.ref} is not a landing in this ledger`);
+    ld.asks = [...new Set([...ld.asks, ...lk.asks])];
+  }
   for (const pr of p.proposals?.add ?? []) next.proposals.push({ id: "", ...pr });
   return next;
 }

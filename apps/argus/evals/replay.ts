@@ -36,11 +36,13 @@ export type Score = {
 };
 
 /** `got` maps an id to every feature it was placed on; a landing may be on several */
-export function score(got: Map<string, string[]>, want: Map<string, string | null>, items: { id: string; by: string; text: string }[]): Score {
+export function score(got: Map<string, string[]>, want: Map<string, string | null>, items: { id: string; by: string; text: string; thread?: string }[]): Score {
   const s: Score = { expected: 0, hit: 0, wrong: 0, unplaced: 0, none: 0, noneUnplaced: 0, nonePlaced: 0, unanswered: 0, wrongOnes: [] };
   for (const i of items) {
     if (!want.has(i.id)) { s.unanswered++; continue; }
     const w = want.get(i.id)!;
+    // a chat reply inside a thread the user placed: the thread rule puts it with its root, and that is fine
+    if (w === null && i.thread && typeof want.get(i.thread) === "string") continue;
     const g = got.get(i.id) ?? [];
     if (w === null) {
       s.none++;

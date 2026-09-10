@@ -23,7 +23,7 @@ shown here.
     "update": [ { "id": "A-1", "status": "answered|built|acknowledged|closed|dropped", "at": "2026-09-10", "evidence": [ …evidence ] } ]
   },
   "tickets":   { "clear": [ { "key": "ALD-41", "blocker": 0, "at": "2026-09-10", "deployed": true, "evidence": [ …evidence ] } ] },
-  "landings":  { "add": [ { "at": "2026-09-10", "repo": "be", "number": 771, "sha": "<full sha>", "title": "…", "by": "Sam O", "url": "<pr url>", "asks": ["A-1"], "files": ["src/…"] } ] },
+  "landings":  { "link": [ { "ref": "be#771", "asks": ["A-1"] } ] },
   "proposals": { "add": [ { "kind": "ticket", "title": "[FE] …", "body": "## Summary\n…", "asks": ["A-2"], "at": "2026-09-10" } ] },
   "notes": [ "what you could not settle, one clause each" ]
 }
@@ -41,5 +41,6 @@ Evidence, exactly one of:
 ```
 
 `to` is a first name, `"you"` for the user, or `null`. `blocker` is the index in the
-ticket's blockers list. `origin.kind` is `slack` or `huddle`. A permalink is the
+ticket's blockers list. Landings are already on the ledger when you read it; `link` names
+the asks a landing served. `origin.kind` is `slack` or `huddle`. A permalink is the
 `https://alden-studios.slack.com/archives/…` link printed on the message.

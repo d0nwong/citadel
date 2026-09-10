@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Batch, Slice } from "../scripts/argus/batch.ts";
 import { applyPatch, parsePatch } from "../scripts/argus/patch.ts";
+import { featureDirOf, loadManifest } from "../scripts/argus/manifest.ts";
 import { placeBatch } from "../scripts/argus/place.ts";
 import { listFeatures, ledgerPath, root } from "../scripts/argus/paths.ts";
 import type { Ledger } from "../scripts/argus/schema.ts";
@@ -91,11 +92,15 @@ export function splitByDay(b: Batch): Batch[] {
 // ---------------------------------------------------------------- the two steps
 
 async function summaries(features: string[]): Promise<string> {
+  const manifest = await loadManifest();
+  const byDir = new Map(manifest.features.map((f) => [featureDirOf(f), f]));
   const out: string[] = [];
   for (const f of features) {
+    const m = byDir.get(f);
     const l = await readLedger(f);
-    const asks = (l?.asks ?? []).filter((a) => a.status !== "closed" && a.status !== "dropped").map((a) => `    - ${a.text}`);
-    out.push(`- ${f}${l?.summary ? ` — ${l.summary}` : ""}${asks.length ? `\n${asks.join("\n")}` : ""}`);
+    const head = [m?.name, m?.entry_routes.length ? `routes ${m.entry_routes.slice(0, 3).join(" ")}` : "", m?.aliases.length ? `also called: ${m.aliases.slice(0, 8).join(", ")}` : ""].filter(Boolean).join("; ");
+    const asks = (l?.asks ?? []).filter((a) => a.status !== "closed" && a.status !== "dropped").map((a) => `    - open: ${a.text}`);
+    out.push(`- ${f}${head ? ` — ${head}` : ""}${l?.summary ? `\n    ${l.summary}` : ""}${asks.length ? `\n${asks.join("\n")}` : ""}`);
   }
   return out.join("\n");
 }
@@ -150,8 +155,12 @@ export const RAW_DIR = join(REPO, "evals/last-run");
 export async function read(feature: string, slice: Slice, day: string, calls: Call[]): Promise<{ ok: boolean; diff: string[]; note?: string; notes?: string[] }> {
   const skill = await Bun.file(join(REPO, "skills/sweep/reader.md")).text();
   const shapes = await Bun.file(join(REPO, "skills/sweep/shapes.md")).text();
-  const ledger = await readLedger(feature);
-  if (!ledger) return { ok: false, diff: [], note: "no ledger" };
+  const before = await readLedger(feature);
+  if (!before) return { ok: false, diff: [], note: "no ledger" };
+  // code knows the landings; put them on the ledger first, the model only links them
+  const fresh = slice.landings.filter((l) => !before.landings.some((x) => x.ref === l.ref)).map((l) => ({ at: l.at, repo: l.repo, ref: l.ref, number: l.number, sha: l.sha, title: l.title, by: l.by, url: l.url, asks: [], files: l.files }));
+  if (fresh.length) await writeLedger(feature, applyPatch(before, { landings: { add: fresh } }), { actor: "model", now: new Date(`${day}T22:00:00Z`) });
+  const ledger = (await readLedger(feature))!;
   const archFile = Bun.file(join(root(), "alden/alden-portal/features", feature, "docs/arch.md"));
   const arch = (await archFile.exists()) ? archExcerpt(await archFile.text()) : "(no arch doc)";
   const base = `${skill}\n\n${shapes}\n\n# The feature: ${feature}\n\n# ledger.json as it stands (code pointers omitted)\n\n\`\`\`json\n${ledgerForReader(ledger)}\n\`\`\`\n\n# What is new (${day})\n\n${renderSlice(slice)}\n\n# From docs/arch.md\n\n${arch}\n\nToday is ${day}. Return the patch as one JSON object in a \`\`\`json fence, nothing else.`;
@@ -200,7 +209,10 @@ export async function runModel(batches: Batch[], opts: { features: string[]; day
   for (const f of await listFeatures()) {
     const src = ledgerPath(f);
     mkdirSync(join(ws, "alden/alden-portal/features", f, "docs"), { recursive: true });
-    if (await Bun.file(src).exists()) cpSync(src, join(ws, "alden/alden-portal/features", f, "ledger.json"));
+    if (await Bun.file(src).exists()) {
+      const l = (await Bun.file(src).json()) as Ledger;
+      await Bun.write(join(ws, "alden/alden-portal/features", f, "ledger.json"), JSON.stringify({ ...l, as_of: "2026-01-01T00:00:00.000Z" }, null, 2));
+    }
     const arch = join(REPO, "alden/alden-portal/features", f, "docs/arch.md");
     if (await Bun.file(arch).exists()) cpSync(arch, join(ws, "alden/alden-portal/features", f, "docs/arch.md"));
   }

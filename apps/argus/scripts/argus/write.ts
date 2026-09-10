@@ -75,8 +75,8 @@ export function describeDiff(prev: Ledger | null, next: Ledger): string[] {
     if (!was) out.push(`+ ${t.key} ${t.ready ? "ready" : "blocked"}`);
     else if (was.ready !== t.ready) out.push(`${t.key} ${t.ready ? "ready" : "blocked again"}`);
   }
-  const pl = new Set((prev?.landings ?? []).map((l) => `${l.repo}#${l.number}`));
-  for (const l of next.landings) if (!pl.has(`${l.repo}#${l.number}`)) out.push(`+ ${l.repo}#${l.number} landed: ${l.title}`);
+  const pl = new Set((prev?.landings ?? []).map((l) => l.ref));
+  for (const l of next.landings) if (!pl.has(l.ref)) out.push(`+ ${l.ref} landed: ${l.title}`);
   const pp = by(prev?.proposals ?? []);
   for (const p of next.proposals) if (!pp.has(p.id)) out.push(`+ ${p.id} proposed: ${p.title}`);
   for (const p of prev?.proposals ?? []) if (!next.proposals.some((n) => n.id === p.id)) out.push(`- ${p.id} gone`);

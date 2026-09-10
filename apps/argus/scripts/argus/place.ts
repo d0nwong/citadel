@@ -35,7 +35,7 @@ export function keysOf(ledgers: Map<string, Ledger>): Keys {
       for (const h of a.history) for (const e of h.evidence) if (e.kind === "pr") prs.set(`${e.repo}#${e.number}`, feature);
     }
     for (const t of l.tickets) for (const b of t.blockers) if (b.kind === "landing") prs.set(b.ref, feature);
-    for (const ld of l.landings) prs.set(`${ld.repo}#${ld.number}`, feature);
+    for (const ld of l.landings) prs.set(ld.ref, feature);
   }
   return { tickets, prs };
 }

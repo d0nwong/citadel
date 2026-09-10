@@ -142,7 +142,7 @@ version; code checks it and diffs it. Nested features (`admin/usage`) keep their
 
   // Landings on the base branches that touched this feature. The timeline.
   "landings": [
-    { "at": "2026-09-10", "repo": "be", "number": 771, "sha": "…", "title": "credit emails link to the production domain", "by": "Sam O", "url": "…", "asks": [ "A-17" ], "files": [ "src/services/emailService.ts" ] }
+    { "at": "2026-09-10", "repo": "be", "ref": "be#771", "number": 771, "sha": "…", "title": "credit emails link to the production domain", "by": "Sam O", "url": "…", "asks": [ "A-17" ], "files": [ "src/services/emailService.ts" ] }
   ],
 
   // Proposals the model wants a click for. Pensieve renders them; a click runs the verb.

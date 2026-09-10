@@ -30,9 +30,9 @@ for a feature with nothing new.
    result, whether or not any doc changed.
 3. For each message that asks for something or decides something, add an ask, or a
    requirement, or flip one. A decision from someone who can decide it flips a rule.
-4. For each landing, add it to `landings` with the asks it served, clear any blocker
-   whose ref it is (only if the branch and deploy match), and note a mismatch it opened
-   or closed between the two codebases.
+4. For each new landing (already on the ledger), link the asks it served, clear any
+   blocker whose ref it is (only if the branch and deploy match), and note a mismatch it
+   opened or closed between the two codebases.
 5. When an ask wants work you own, add a proposal, never a ticket.
 6. Rewrite the four story texts as they read now. Leave `on_you` alone; it is derived.
 7. Return the patch. A refusal comes back naming the path; fix that and nothing else.
@@ -93,5 +93,5 @@ When you cannot tell what a message decided, leave the ask as it was and say in
 
 - [ ] The patch holds only fields `shapes.md` shows, and every evidence item has a kind from its list
 - [ ] Every open ask that had news moved, and every one that had none did not
-- [ ] Every landing in the slice is in `landings`
+- [ ] Every landing in the slice that served an ask is linked to it
 - [ ] The story reads as an answer to "how is this going?", not a diary

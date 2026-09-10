@@ -95,11 +95,13 @@ export type Ticket = {
 export type Landing = {
   at: string;
   repo: Repo;
-  number: number;
+  /** `fe#417`, or `fe@ac1caffd6` for a commit pushed straight at the branch */
+  ref: string;
+  number: number | null;
   sha: string;
   title: string;
   by: string;
-  url: string;
+  url: string | null;
   asks: string[];
   files: string[];
 };
@@ -339,14 +341,17 @@ function ticket(v: unknown, path: string): Ticket {
 
 function landing(v: unknown, path: string): Landing {
   const o = obj(v, path);
+  if (o.number !== null && typeof o.number !== "number") throw new SchemaError(`${path}.number`, "expected a number or null");
+  if (o.url !== null && typeof o.url !== "string") throw new SchemaError(`${path}.url`, "expected a string or null");
   return {
     at: str(o, "at", path),
     repo: repo(o, path),
-    number: num(o, "number", path),
+    ref: str(o, "ref", path),
+    number: o.number as number | null,
     sha: str(o, "sha", path),
     title: str(o, "title", path),
     by: str(o, "by", path),
-    url: str(o, "url", path),
+    url: o.url as string | null,
     asks: strs(o, "asks", path),
     files: strs(o, "files", path),
   };
