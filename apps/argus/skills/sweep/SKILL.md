@@ -23,7 +23,8 @@ On a schedule (`bun run sweep` is `/loop 15m /sweep`) or when asked. Never two a
    messages by ticket key or PR. The rest goes to `state/unplaced.json`.
 3. **Attribute.** `argus prompt attribute <batch>` prints the unplaced messages with the
    feature list; answer it yourself, then `argus place <id> <feature>` for each message
-   you would bet on. Leave the rest.
+   you would bet on. Leave the rest. Then `argus place <batch>` once more, so the slices
+   carry what the threads just learned.
 4. **Read.** For each feature with a slice in `<batch>.placed.json`, one general-purpose
    subagent with `model: "opus"` whose whole prompt is `argus prompt reader <feature>
    <batch>`. Save its reply to a file and `argus patch <feature> <file>`. A refusal names
