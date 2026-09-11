@@ -130,16 +130,16 @@ schema.ts
 - [ ] Send reaches Foundry with the ticket key as the idempotency key
 
 ### Phase 7: Retire
-- [ ] Task 29: Rewrite the sweep skill under 120 lines in the agreed shape
-- [ ] Task 30: Delete the retired list in argus
-- [ ] Task 31: Rewrite README and CLAUDE.md
-- [ ] Task 32: Delete the retired routes and server code in Pensieve
-- [ ] Task 33: One full `/sweep` on a copy, then merge and run for real
+- [x] Task 29: Rewrite the sweep skill under 120 lines in the agreed shape
+- [x] Task 30: Delete the retired list in argus
+- [x] Task 31: Rewrite README and CLAUDE.md
+- [x] Task 32: Delete the retired routes and server code in Pensieve
+- [x] Task 33: One full `/sweep` on a copy, then merge and run for real
 
 ### Checkpoint: Complete
-- [ ] `git grep marauder` empty outside `docs/`
-- [ ] Every skill under its cap; the cap test is green
-- [ ] `bun run sweep` runs a working day with no false Needs-me
+- [x] `git grep marauder` empty outside `docs/`
+- [x] Every skill under its cap; the cap test is green
+- [ ] `bun run sweep` runs a working day with no false Needs-me (the user starts the loop)
 
 ## Risks and Mitigations
 
