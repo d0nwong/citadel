@@ -141,8 +141,7 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     const out = await $`bun ${ROOT}/scripts/accio.ts audit`.nothrow().quiet();
     // "tiers disagree" is repo state (a product tier the sweep has not re-run yet), not a
     // code defect — it is asserted by its own test below and worked off by /sweep
-    // the arch cap is worked off by task 20 of the rebuild; drop this filter once every arch doc is under it
-    const problems = out.stdout.toString().split("\n").filter(l => /^\s{2}\S/.test(l) && !l.includes("tiers disagree") && !l.includes("over the 250-line cap"));
+    const problems = out.stdout.toString().split("\n").filter(l => /^\s{2}\S/.test(l) && !l.includes("tiers disagree"));
     expect(problems).toEqual([]);
   });
 

@@ -98,21 +98,21 @@ schema.ts
 - [ ] If any line above fails, the design changes here. Nothing below starts.
 
 ### Phase 4: Seed and docs
-- [ ] Task 17: Seed every feature's ledger
-- [ ] Task 18: `feature-docs` becomes arch-only under the caps
-- [ ] Task 19: Trim `accio` to find, stale, sync for the arch tier
-- [ ] Task 20: Bring every `arch.md` under 250 lines
+- [x] Task 17: Seed every feature's ledger
+- [x] Task 18: `feature-docs` becomes arch-only under the caps
+- [x] Task 19: Trim `accio` to find, stale, sync for the arch tier
+- [x] Task 20: Bring every `arch.md` under 250 lines
 
 ### Checkpoint: Every feature validates
-- [ ] `argus validate` passes for every feature
-- [ ] `accio stale` reports nothing after Task 20
+- [x] `argus validate` passes for every feature
+- [x] `accio stale` reports nothing after Task 20
 - [ ] The user bulk-confirms one feature with `argus confirm <feature> --all`
 
 ### Phase 5: Pensieve
-- [ ] Task 21: `server/ledger.ts` reads ledgers and derives on-you, ready, unplaced
-- [ ] Task 22: `server/argus.ts` spawns the CLI
-- [ ] Task 23: Home: Needs-me, Ready, Unplaced
-- [ ] Task 24: Feature page: the five questions, requirements, asks, tickets, landings
+- [x] Task 21: `server/ledger.ts` reads ledgers and derives on-you, ready, unplaced
+- [x] Task 22: `server/argus.ts` spawns the CLI
+- [x] Task 23: Home: Needs-me, Ready, Unplaced
+- [x] Task 24: Feature page: the five questions, requirements, asks, tickets, landings
 - [ ] Task 25: Ask over the ledger
 
 ### Checkpoint: Stories 1, 2, 5, 6, 7
