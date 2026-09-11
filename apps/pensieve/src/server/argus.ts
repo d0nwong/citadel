@@ -5,8 +5,12 @@
  * back as data (`ok: false`, its problems), never as a thrown error, so the page can show
  * the sentence the user needs; a process that will not start or hangs comes back the
  * same way with `error` set.
+ *
+ * `node:child_process`, not `Bun.spawn`: the dev server renders through Vite's Node
+ * runtime, where `Bun` is not defined, and the tests run under bun, where both exist.
  */
 
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { WORKSPACE_DIR } from "./workspace";
 
@@ -22,6 +26,65 @@ export interface ArgusOptions {
   timeoutMs?: number;
 }
 
+interface Ran {
+  code: number | null;
+  err: string;
+  out: string;
+  startError?: string;
+  timedOut: boolean;
+}
+
+function run(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  timeout: number
+): Promise<Ran> {
+  return new Promise((resolve) => {
+    let out = "";
+    let err = "";
+    let timedOut = false;
+    let settled = false;
+    const done = (r: Ran) => {
+      if (!settled) {
+        settled = true;
+        resolve(r);
+      }
+    };
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    } catch (e) {
+      done({
+        code: null,
+        err: "",
+        out: "",
+        startError: (e as Error).message,
+        timedOut: false,
+      });
+      return;
+    }
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeout);
+    child.stdout?.on("data", (d: Buffer) => {
+      out += d.toString();
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      err += d.toString();
+    });
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      done({ code: null, err, out, startError: e.message, timedOut });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      done({ code, err, out, timedOut });
+    });
+  });
+}
+
 /** run one verb; `args` are passed as given, `--json` is added */
 export async function argus<T = Record<string, unknown>>(
   verb: string,
@@ -30,35 +93,25 @@ export async function argus<T = Record<string, unknown>>(
 ): Promise<ArgusResult<T>> {
   const cwd = opts.cwd ?? WORKSPACE_DIR;
   const timeout = opts.timeoutMs ?? ARGUS_TIMEOUT_MS;
-  const started = start(
-    ["bun", join(cwd, ARGUS_SCRIPT), verb, ...args, "--json"],
-    cwd
+  const r = await run(
+    "bun",
+    [join(cwd, ARGUS_SCRIPT), verb, ...args, "--json"],
+    cwd,
+    timeout
   );
-  if ("error" in started) {
+  if (r.startError) {
     return {
-      error: `argus ${verb} could not start: ${started.error}`,
+      error: `argus ${verb} could not start: ${r.startError}`,
       ok: false,
     };
   }
-  const { proc } = started;
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    proc.kill();
-  }, timeout);
-  const [out, err] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  clearTimeout(timer);
-  if (timedOut) {
+  if (r.timedOut) {
     return {
       error: `argus ${verb} took longer than ${Math.round(timeout / 1000)} s`,
       ok: false,
     };
   }
-  const last = out.trim().split("\n").filter(Boolean).at(-1);
+  const last = r.out.trim().split("\n").filter(Boolean).at(-1);
   if (last) {
     try {
       const parsed = JSON.parse(last) as ArgusResult<T>;
@@ -69,24 +122,11 @@ export async function argus<T = Record<string, unknown>>(
       // fall through to the exit code
     }
   }
-  if (code === 0) {
+  if (r.code === 0) {
     return { ok: true } as ArgusResult<T>;
   }
-  const lastErr = err.trim().split("\n").filter(Boolean).at(-1);
-  return { error: lastErr ?? `argus ${verb} exited ${code}`, ok: false };
-}
-
-type Started = { proc: ReturnType<typeof spawnPiped> } | { error: string };
-
-const spawnPiped = (cmd: string[], cwd: string) =>
-  Bun.spawn(cmd, { cwd, stderr: "pipe", stdout: "pipe" });
-
-function start(cmd: string[], cwd: string): Started {
-  try {
-    return { proc: spawnPiped(cmd, cwd) };
-  } catch (e) {
-    return { error: (e as Error).message };
-  }
+  const lastErr = r.err.trim().split("\n").filter(Boolean).at(-1);
+  return { error: lastErr ?? `argus ${verb} exited ${r.code}`, ok: false };
 }
 
 /** the sentence a page shows for a result that did not land */
