@@ -8,6 +8,7 @@
  *   move     an ask belongs to another feature: dropped here, re-created there with its trail, thread re-pointed
  *   confirm  a requirement is confirmed or contradicted by the user, one or all
  *   place    an unplaced message belongs to a feature; the thread remembers it
+ *   dismiss  an unplaced message belongs to no feature; the thread remembers that too
  *   ticket   a proposal was filed; the key goes on the ask and the ticket list
  *   sent     a ticket went to Foundry; the job is recorded on it
  */
@@ -94,6 +95,30 @@ export async function placeMessage(id: string, feature: string, o: VerbOptions =
   const existing = await readLedger(feature, o.app);
   const ledger = existing ? null : await writeLedger(feature, emptyLedger(feature, "", now.toISOString()), { actor: "user", now, app: o.app });
   return { placed: true, feature, thread, ledger };
+}
+
+export type DismissResult = { dismissed: boolean; thread: string | null; removed: number };
+
+/**
+ * An unplaced message is nobody's. It and its thread leave the unplaced list, and the
+ * thread is recorded as belonging to no feature, so a later reply in it is dropped by
+ * `place` rather than offered again. A landing has no thread and is only removed.
+ */
+export async function dismissMessage(id: string, o: VerbOptions = {}): Promise<DismissResult> {
+  const now = o.now ?? new Date();
+  const unplaced = await readUnplaced();
+  const entry = unplaced.find((u) => u.id === id);
+  if (!entry) throw new Error(`${id}: not in the unplaced list`);
+  const thread = entry.thread ?? (entry.kind === "message" ? entry.id : null);
+  const keep = unplaced.filter((u) => u.id !== id && !(thread && (u.thread === thread || u.id === thread)));
+  if (o.dryRun) return { dismissed: false, thread, removed: unplaced.length - keep.length };
+  if (thread) {
+    const threads = await readThreads();
+    threads[thread] = { feature: null, by: "user", at: now.toISOString() };
+    await writeThreads(threads);
+  }
+  await writeUnplaced(keep);
+  return { dismissed: true, thread, removed: unplaced.length - keep.length };
 }
 
 export async function recordTicket(feature: string, proposalId: string, key: string, o: VerbOptions = {}): Promise<WriteResult> {

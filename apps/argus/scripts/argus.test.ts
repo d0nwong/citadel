@@ -122,6 +122,11 @@ describe("click verbs through the CLI", () => {
     const t = await argus("ticket", "admin/invoicing", "P-1", "ALD-60");
     expect(t.out).toContain("+ ALD-60 ready");
   });
+  test("dismiss needs an unplaced list too", async () => {
+    const r = await argus("dismiss", "123");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("not in the unplaced list");
+  });
   test("place needs an unplaced list", async () => {
     const r = await argus("place", "123", "tasks");
     expect(r.code).toBe(1);

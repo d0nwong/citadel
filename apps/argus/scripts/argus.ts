@@ -26,7 +26,7 @@ import { readUnplaced } from "./argus/state.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
 import { seedFeature } from "./argus/seed.ts";
-import { closeAsk, confirmRequirement, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./argus/verbs.ts";
+import { closeAsk, confirmRequirement, dismissMessage, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./argus/verbs.ts";
 import { readLedger, writeLedger } from "./argus/write.ts";
 
 export type Flags = { dryRun: boolean; json: boolean; actor: "model" | "user"; rest: string[]; opts: Record<string, string> };
@@ -67,6 +67,7 @@ const USAGE = `argus — the ledger CLI
   argus move <feature> <A-n> <to-feature>           the ask belongs to another feature; its thread follows
   argus confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]
   argus place <message-id> <feature>
+  argus dismiss <message-id>         the message belongs to no feature; its thread is dropped from now on
   argus file <feature> <P-n>|<A-n>   the ticket a proposal, or an ask, would become: title, body, team, project
   argus ticket <feature> <P-n>|<A-n> <ALD-key> [--title "<t>"]
   argus sent <feature> <ALD-key> --repo <name> [--job <id>]   record that Pensieve sent it to Foundry
@@ -233,6 +234,15 @@ const verbs: Record<string, Verb> = {
     const d = proposalId.startsWith("A-") ? await draftForAsk(feature, proposalId) : await draftFor(feature, proposalId);
     if (f.json) console.log(JSON.stringify({ ok: true, ...d }));
     else console.log(`${d.team} · ${d.project}\n# ${d.title}\n\n${d.body}`);
+    return 0;
+  },
+
+  async dismiss(f) {
+    const [id] = f.rest;
+    if (!id) throw new Usage("dismiss <message-id>");
+    const r = await dismissMessage(id, { dryRun: f.dryRun });
+    if (f.json) console.log(JSON.stringify({ ok: true, ...r }));
+    else console.log(`${id}: nobody's${r.thread ? ` (thread ${r.thread} dropped from now on)` : ""}, ${r.removed} entr${r.removed === 1 ? "y" : "ies"} off the list${f.dryRun ? " (dry run)" : ""}`);
     return 0;
   },
 

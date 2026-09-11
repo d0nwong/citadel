@@ -8,7 +8,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readThreads, readUnplaced, writeUnplaced, type Unplaced } from "./state.ts";
-import { closeAsk, confirmRequirement, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./verbs.ts";
+import { closeAsk, confirmRequirement, dismissMessage, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./verbs.ts";
 import { readLedger } from "./write.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
@@ -102,6 +102,23 @@ describe("place", () => {
     await expect(placeMessage("1789000000.000001", "nope")).rejects.toThrow("not a feature");
     expect(await readUnplaced()).toHaveLength(4);
     expect(await readThreads()).toEqual({});
+  });
+  test("dismiss takes a root and its replies off the list and marks the thread nobody's", async () => {
+    const r = await dismissMessage("1789000000.000001", { now: T0 });
+    expect(r).toEqual({ dismissed: true, thread: "1789000000.000001", removed: 2 });
+    expect((await readUnplaced()).map((u) => u.id)).toEqual(["1789000000.000003", "fe#430"]);
+    expect(await readThreads()).toEqual({ "1789000000.000001": { feature: null, by: "user", at: T0.toISOString() } });
+    await expect(dismissMessage("1789000000.000001")).rejects.toThrow("not in the unplaced list");
+  });
+  test("dismissing a reply dismisses its thread; a landing has no thread; a dry run changes nothing", async () => {
+    await dismissMessage("1789000000.000002", { now: T0 });
+    expect((await readThreads())["1789000000.000001"]?.feature).toBeNull();
+    const l = await dismissMessage("fe#430", { now: T0 });
+    expect(l).toEqual({ dismissed: true, thread: null, removed: 1 });
+    expect(Object.keys(await readThreads())).toEqual(["1789000000.000001"]);
+    const d = await dismissMessage("1789000000.000003", { dryRun: true });
+    expect(d.dismissed).toBe(false);
+    expect((await readUnplaced()).map((u) => u.id)).toEqual(["1789000000.000003"]);
   });
   test("dry run reports and writes nothing", async () => {
     const r = await placeMessage("1789000000.000001", "tasks", { dryRun: true });

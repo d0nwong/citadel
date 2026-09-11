@@ -9,8 +9,8 @@ import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { threadsPath, unplacedPath } from "./paths.ts";
 
-/** thread root ts → feature, with who placed it and when */
-export type ThreadMap = Record<string, { feature: string; by: "user" | "sweep"; at: string }>;
+/** thread root ts → feature, with who placed it and when; `null` is the user's verdict that the thread is nobody's */
+export type ThreadMap = Record<string, { feature: string | null; by: "user" | "sweep"; at: string }>;
 
 export type UnplacedKind = "message" | "landing";
 

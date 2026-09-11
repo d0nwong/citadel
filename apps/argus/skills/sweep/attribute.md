@@ -31,7 +31,8 @@ of that feature will see the rest.
 
 ### Bet or abstain
 `null` is a valid answer and costs nothing; a wrong feature costs the thread. Two
-features is for a thread that is about both, not for a guess between them.
+features is for a thread that is about both, not for a guess between them. A thread the
+user marked as nothing never reaches you again; leave what looks like chat to them.
 
 ## Output
 

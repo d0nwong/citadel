@@ -80,6 +80,13 @@ describe("placeBatch", () => {
     expect(p.threads["1"]?.feature).toBe("admin/usage");
   });
 
+  test("a thread the user marked as nobody's is neither sliced nor unplaced", () => {
+    const b = flat([msg("1", "chat root", "1"), msg("2", "ALD-41 mentioned in a chat thread", "1"), msg("3", "elsewhere", "3")]);
+    const p = placeBatch(b, ledgers, { "1": { feature: null, by: "user", at: "x" } }, features, NOW);
+    expect([...p.slices.keys()]).toEqual([]);
+    expect(p.unplaced.map((u) => u.id)).toEqual(["3"]);
+    expect(p.threads).toEqual({});
+  });
   test("a huddle canvas travels in the unplaced text; a reply to an unplaced root is unplaced under it", () => {
     const b = flat([{ ...msg("1", "AI huddle notes are ready", "1", "Slackbot"), canvas: "## Summary\n- x" }, msg("2", "thanks", "1")]);
     const p = placeBatch(b, ledgers, {}, features, NOW);

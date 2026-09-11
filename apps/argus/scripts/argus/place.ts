@@ -85,8 +85,11 @@ export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: 
   const messages = batch.slack ? flatten(batch.slack) : [];
   const placedThread = new Map<string, string>();
   const resolveThread = (m: Msg) => threads[m.thread]?.feature ?? learned[m.thread]?.feature ?? placedThread.get(m.thread) ?? null;
+  /** the user said this thread belongs to no feature: its messages are neither sliced nor unplaced */
+  const nobodys = (m: Msg) => m.thread in threads && threads[m.thread]!.feature === null;
 
   for (const m of messages) {
+    if (nobodys(m)) continue;
     const byThread = resolveThread(m);
     const feature = byThread ?? featureByKey(m.text, keys, landingsByKey);
     if (feature) {
@@ -164,7 +167,7 @@ export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<
     if (Object.keys(p.threads).length) await writeThreads({ ...threads, ...p.threads });
     const existing = await readUnplaced();
     const ids = new Set(existing.map((u) => u.id));
-    const merged = [...existing.filter((u) => !p.slices.size || !isPlacedNow(u, p)), ...p.unplaced.filter((u) => !ids.has(u.id))];
+    const merged = [...existing.filter((u) => !isNobodys(u, threads) && (!p.slices.size || !isPlacedNow(u, p))), ...p.unplaced.filter((u) => !ids.has(u.id))];
     await writeUnplaced(merged);
   }
   return placed;
@@ -172,3 +175,6 @@ export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<
 
 /** an older unplaced message whose thread this batch taught is placed too */
 const isPlacedNow = (u: Unplaced, p: Placement) => u.kind === "message" && (u.thread ?? u.id) in p.threads;
+
+/** an older unplaced message whose thread the user has since dismissed leaves the list too */
+const isNobodys = (u: Unplaced, threads: ThreadMap) => u.kind === "message" && (u.thread ?? u.id) in threads && threads[u.thread ?? u.id]!.feature === null;
