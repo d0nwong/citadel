@@ -76,7 +76,11 @@ import {
   LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
 } from "../lib/ask-tools";
-import { isFeature } from "../lib/marauder";
+
+/** a feature is its directory under an app's features/, one level of nesting at most */
+const isFeature = (v: unknown): v is string =>
+  typeof v === "string" && /^[a-z0-9-]+(\/[a-z0-9-]+)?$/.test(v);
+
 import { proposeDecisionTool, proposeTicketTool } from "./ask-tools.server";
 import { WORKSPACE_DIR } from "./workspace";
 
@@ -107,7 +111,7 @@ const expandHome = (p: string) =>
 /**
  * The allowlist for a set of checkouts. A `Bash(...)` rule is a literal command prefix, so
  * each checkout gets its rules in both spellings the session will type: `~/git/…` as the
- * skill writes it, and the absolute path as `marauder show` prints it. The bridged tool joins
+ * skill writes it, and the absolute path as `argus show` prints it. The bridged tool joins
  * them under its `mcp__tanstack__` name — without that rule the session's call is denied.
  */
 export function allowedToolsFor(checkouts: readonly string[]): string[] {
@@ -126,7 +130,7 @@ export function allowedToolsFor(checkouts: readonly string[]): string[] {
   return [...rules];
 }
 
-/** Files, search, git history, the accio and marauder read verbs, the `ask` skill, Linear reads and the bridged tools. Nothing that writes. */
+/** Files, search, git history, the accio and argus read verbs, the `ask` skill, Linear reads and the bridged tools. Nothing that writes. */
 export const ALLOWED_TOOLS = allowedToolsFor(CHECKOUTS);
 
 /** Belt and braces under `default`: these never even reach the permission check. */
@@ -169,13 +173,13 @@ console.log(
  * The file map and the retrieval recipes live in argus (`CLAUDE.md`, the `ask` skill),
  * which the run loads with `--setting-sources project`; they are not repeated here.
  */
-export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus blackboard. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog, and nobody can grant, allow or approve anything. A denied tool stays denied for this run; say what you could not do in one sentence and answer from what you have. Never tell the user to grant, allow or approve anything, and never wait for approval.
+export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus ledgers. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog and no one to answer one, so never tell the user to grant, allow or approve anything — a denied tool is an answer, and you work around it once.
 
-To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature's work is \`bun run marauder show <feature>\`; everything open is \`bun run marauder board\`; a day is \`bun run marauder changelog <YYYY-MM-DD>\`; a ticket is the feature whose tickets name it, then mcp__linear__get_issue; a doc or endpoint is \`bun run accio "<the thing>"\`. Read the product checkouts with Read, Glob, Grep and \`git -C <repo> log\` / \`git -C <repo> show origin/<branch>:<path>\`. Never run git fetch, git branch, git checkout, find, python3, or cat/grep/ls through Bash — each is a denied turn. The marauder verbs that write are denied: a correction is proposed, never run.
+To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature's record is \`argus show <feature>\` (its ledger.json: the story, the requirements with their status, the asks with their history, the tickets, the landings); what nobody could place is state/unplaced.json; where a screen or field lives in the code is \`accio find "<words>"\`; a ticket is \`mcp__linear__get_issue\`. Code from a product checkout is \`git -C <repo> show origin/<branch>:<path>\` at the sha the ledger names; never run git fetch, pull, checkout or stash.
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
-You cannot write files, edit tickets or comments, or run the sweep. To correct what the loop got wrong, call \`propose_decision\` once as the ask skill's Correcting section says; to hand a ticket to Foundry, call it once with action "send" and the ticket key. Either way the user confirms it on the card: say it is proposed in one sentence, never say it is done, and never say it has been sent. To file a new ticket, draft it per the linear-ticket skill and call \`propose_ticket\` once; the user files it on the card — say it is proposed, never that it is filed.`;
+You cannot write files, edit tickets or comments, or run the sweep; the argus verbs that write are denied. To change the record — close an ask, confirm or contradict a requirement, place an unplaced message — call \`propose_decision\` once as the ask skill's Correcting section says; the user confirms it on the card, so never say it is done. To open a ticket, draft it per the linear-ticket skill and call \`propose_ticket\` once; say the draft is ready, never that it is filed.`;
 
 /**
  * The extra system prompt a conversation opened from a feature page carries (LIA-162 AC4,
@@ -185,7 +189,7 @@ You cannot write files, edit tickets or comments, or run the sweep. To correct w
  * thing read rather than the board.
  */
 export const featurePrompt = (feature: string) =>
-  `This conversation was opened on the feature \`${feature}\` (its directory under an app's features/). "it" in a question, a correction or a send means that feature unless the user names something else. Start with \`bun run marauder show ${feature}\` — that is its whole story — and read \`<app>/features/${feature}/work.json\` when the verb is denied.`;
+  `This conversation was opened on the feature \`${feature}\` (its directory under an app's features/). "it" in a question, a correction or a send means that feature unless the user names something else. Start with \`argus show ${feature}\` — that is its whole record — and read \`<app>/features/${feature}/ledger.json\` when the verb is denied.`;
 
 export type AuthMode = "host" | "api-key";
 

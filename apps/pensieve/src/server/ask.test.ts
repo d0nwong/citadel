@@ -455,8 +455,8 @@ describe("ARG-167 AC5 — the feature a conversation was opened on", () => {
 
   test("it rides with the run as a system prompt and as tool context", () => {
     const prompt = featurePrompt("admin/invoicing");
-    expect(prompt).toContain("marauder show admin/invoicing");
-    expect(prompt).toContain("features/admin/invoicing/work.json");
+    expect(prompt).toContain("argus show admin/invoicing");
+    expect(prompt).toContain("features/admin/invoicing/ledger.json");
     expect(featureOf("admin/invoicing", "admin/usage")).toBe("admin/invoicing");
     expect(featureOf(null, "admin/usage")).toBe("admin/usage");
     expect(featureOf(null, "Not A Slug")).toBeUndefined();
@@ -658,38 +658,33 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
     );
     expect(ADAPTER_CONFIG.allowedTools).not.toContain(PROPOSE_TICKET);
   });
-  test("LIA-162 (AC4) — the marauder read verbs are allowed one by one, and the write verbs are not", () => {
-    // The allowlist is a command prefix match, so a bare `bun run marauder` rule would
-    // carry `marauder attach` with it — and a correction is proposed, never run.
-    for (const v of ["board", "show", "changelog", "check"]) {
+  test("the argus read verbs are allowed one by one, and the write verbs are not", () => {
+    // The allowlist is a command prefix match, so a bare `argus` rule would carry
+    // `argus close` with it — and a change to the record is proposed, never run.
+    for (const v of ["show", "validate"]) {
+      expect(ADAPTER_CONFIG.allowedTools).toContain(`Bash(argus ${v}:*)`);
       expect(ADAPTER_CONFIG.allowedTools).toContain(
-        `Bash(bun run marauder ${v}:*)`
-      );
-      expect(ADAPTER_CONFIG.allowedTools).toContain(
-        `Bash(bun scripts/marauder.ts ${v}:*)`
+        `Bash(bun scripts/argus.ts ${v}:*)`
       );
     }
-    expect(ADAPTER_CONFIG.allowedTools).not.toContain(
-      "Bash(bun run marauder:*)"
-    );
+    expect(ADAPTER_CONFIG.allowedTools).not.toContain("Bash(argus:*)");
     for (const v of [
-      "attach",
-      "new",
-      "dismiss",
-      "stage",
-      "split",
-      "render",
-      "ingest",
+      "close",
+      "confirm",
+      "place",
+      "ticket",
+      "write",
+      "pull",
+      "commit",
+      "send",
     ]) {
       expect(
-        ADAPTER_CONFIG.allowedTools.some((t) =>
-          t.startsWith(`Bash(bun run marauder ${v}`)
-        )
+        ADAPTER_CONFIG.allowedTools.some((t) => t.startsWith(`Bash(argus ${v}`))
       ).toBe(false);
     }
     // Every checkout arrangement carries them: the rules come from BASE_TOOLS, not from
     // the per-checkout git rules, so a run with no checkouts at all still has them.
-    expect(allowedToolsFor([])).toContain("Bash(bun run marauder show:*)");
+    expect(allowedToolsFor([])).toContain("Bash(argus show:*)");
   });
   test("the page can render every name a run may call: the allowlist collapsed to tool names, and the denied ones", () => {
     for (const t of [
@@ -723,9 +718,9 @@ describe("LIA-104 — the system prompt", () => {
       /no permission dialog/i,
       /never tell the user to grant, allow or approve/i,
       /skills\/ask\/SKILL\.md/,
-      /bun run marauder show <feature>/,
-      /bun run marauder board/,
-      /bun run marauder changelog/,
+      /argus show <feature>/,
+      /state\/unplaced\.json/,
+      /accio find/,
       /mcp__linear__get_issue/,
       /git -C <repo> show origin/,
       /never run git fetch/i,
@@ -735,11 +730,7 @@ describe("LIA-104 — the system prompt", () => {
       /call `propose_decision` once as the ask skill's Correcting section says/,
       /confirms it on the card/i,
       /never say it is done/i,
-      // LIA-162: a send is the same tool, and the write verbs are off the table.
-      /action "send" and the ticket key/,
-      /never say it has been sent/i,
-      /marauder verbs that write are denied/i,
-      // LIA-113: the panel's name, and the one way a new ticket leaves the session.
+      /argus verbs that write are denied/i,
       /^You are Argus, a panel inside Pensieve/,
       /draft it per the linear-ticket skill and call `propose_ticket` once/,
       /never that it is filed/i,

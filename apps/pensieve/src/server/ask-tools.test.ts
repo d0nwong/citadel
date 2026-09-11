@@ -1,182 +1,177 @@
 /**
- * `propose_decision`, retargeted (LIA-162 AC5) and moved onto features (ARG-167). It
- * answers one of the two things a person actually does — a correction on an Unsorted
- * entry, attach or dismiss, or a send.
- *
- * The point of every test here is the same: the tool writes nothing. It checks a draft
- * against the same functions the pages check theirs against, and answers a proposal or a
- * refusal in those pages' own words.
+ * `propose_decision` over the ledger. It answers one of the four things a person does to
+ * the record — close an ask, confirm or contradict a requirement, place an unplaced
+ * message — and the point of every test is the same: the tool writes nothing. It checks
+ * against the record and answers a proposal or a refusal in the pages' own words.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, test } from "bun:test";
+import type { Ledger, Unplaced } from "../lib/ledger";
 import { proposeDecision } from "./ask-tools.server";
-import { writeSendDecision } from "./decisions";
-import type { UnsortedItem, Work } from "./marauder";
-import type { SendSources } from "./send";
+import type { LedgerRef } from "./ledger";
 
-let dir: string;
-beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "pensieve-tools-"));
-});
-afterEach(() => rm(dir, { force: true, recursive: true }));
+const FIXTURE = new URL("../test/fixtures/ledger.json", import.meta.url)
+  .pathname;
+const ledger = async (): Promise<Ledger> => Bun.file(FIXTURE).json();
 
-const item = (i: Partial<UnsortedItem> = {}): UnsortedItem => ({
-  at: "2026-09-09T12:00:00.000Z",
-  candidates: [],
-  id: "1788949866.296519",
-  kind: "slack",
-  suggest: "tasks",
-  summary: "Sam asks whether the subtask rows keep their own price",
-  ...i,
-});
+const sources = async () => {
+  const l = await ledger();
+  const refs: LedgerRef[] = [
+    {
+      app: "alden/alden-portal",
+      dir: "admin/invoicing",
+      feature: "alden/alden-portal/admin/invoicing",
+      ledger: l,
+    },
+  ];
+  const unplaced: Unplaced[] = [
+    {
+      at: "2026-09-11",
+      batch: "b",
+      by: "Sam O",
+      candidates: ["tasks"],
+      id: "1789000000.000001",
+      kind: "message",
+      text: "Sam asks whether the subtask rows keep their own price",
+      url: "u",
+    },
+  ];
+  return { ledgers: async () => refs, unplaced: async () => unplaced };
+};
 
-const work = (): Work => ({
-  app: "alden/alden-portal",
-  events: [],
-  feature: "tasks",
-  keys: { prs: [], threads: [], tickets: ["LIA-133"], vocab: [] },
-  milestone: null,
-  name: "Tasks",
-  openQuestions: [],
-  updated: "2026-09-09",
-});
-
-const correction = { unsorted: async () => [item()] };
-
-const send = (): SendSources => ({
-  decisionsDir: dir,
-  foundry: async () => ({ configured: true, url: "http://localhost:3777" }),
-  issues: async () => [],
-  work: async () => [work()],
-});
-
-const sources = () => ({ correction, send: send() });
-
-describe("AC5 — a correction, in the same two verbs the Unsorted page offers", () => {
-  test("attach: names the feature, and the entry's own summary is what the card names", async () => {
+describe("close", () => {
+  test("an open ask is proposed with its own text as the subject", async () => {
     const out = await proposeDecision(
       {
-        action: "attach",
-        feature: "tasks",
-        id: "1788949866.296519",
-        reason: "Sam is describing the subtask rows",
+        feature: "admin/invoicing",
+        id: "A-2",
+        reason: "answered in the standup",
+        verb: "close",
       },
       {},
-      sources()
+      await sources()
     );
     expect(out).toMatchObject({
       ok: true,
       proposal: {
-        action: "attach",
-        feature: "tasks",
-        id: "1788949866.296519",
-        subject: "Sam asks whether the subtask rows keep their own price",
+        feature: "admin/invoicing",
+        id: "A-2",
+        subject: expect.stringContaining("Sam asked you and Carlos"),
+        verb: "close",
       },
     });
   });
-
-  test("a dismiss without a reason is refused in the page's own sentence", async () => {
-    const noReason = await proposeDecision(
-      { action: "dismiss", id: "1788949866.296519" },
-      {},
-      sources()
-    );
-    expect(!noReason.ok && noReason.error).toContain("say why");
-  });
-
-  test("an entry that is not in the queue is refused, with where to find the id", async () => {
-    const out = await proposeDecision(
-      { action: "attach", feature: "tasks", id: "made-up" },
-      {},
-      sources()
-    );
-    expect(!out.ok && out.error).toContain("queue/_unsorted.json");
-  });
-
-  test.each(["new", "stage", "park"])(
-    "AC4 — %p is refused by the schema",
-    async (action) => {
-      const out = await proposeDecision(
-        { action, id: "1788949866.296519" },
-        {},
-        sources()
-      );
-      expect(!out.ok && out.error).toContain("propose_decision:");
-    }
-  );
-});
-
-describe("AC5 — a send, checked the way the feature page's button is", () => {
-  test("a ticket that may go answers a proposal naming its feature", async () => {
-    const out = await proposeDecision(
-      { action: "send", ticket: "LIA-133" },
-      {},
-      sources()
-    );
-    expect(out).toMatchObject({
-      ok: true,
-      proposal: {
-        action: "send",
-        feature: "tasks",
-        subject: "Tasks",
-        ticket: "LIA-133",
-      },
-    });
-  });
-
-  test("the repo may still be missing — the card collects it, as the form does", async () => {
-    const out = await proposeDecision(
-      { action: "send", ticket: "LIA-133" },
-      {},
-      sources()
-    );
-    expect(out.ok && "repo" in out.proposal).toBe(false);
-  });
-
-  test("a ticket already sent is refused in the page's own words", async () => {
-    await writeSendDecision(
-      {
-        action: "sent",
-        at: "2026-09-09T20:00:00.000Z",
-        by: "Liam Leung",
-        job: { id: "9f1c2d3e", url: "" },
-        ticket: "LIA-133",
-      },
-      dir
-    );
-    const out = await proposeDecision(
-      { action: "send", ticket: "LIA-133" },
-      {},
-      sources()
-    );
-    expect(!out.ok && out.error).toContain("already sent");
-  });
-
-  test("Foundry unconfigured refuses the proposal, so no card offers a click that cannot land", async () => {
-    const out = await proposeDecision(
-      { action: "send", ticket: "LIA-133" },
-      {},
-      {
-        correction,
-        send: {
-          ...send(),
-          foundry: async () => ({
-            configured: false,
-            reason: "FOUNDRY_API_TOKEN is not set",
-            url: "http://localhost:3777",
-          }),
-        },
-      }
-    );
-    expect(!out.ok && out.error).toContain("FOUNDRY_API_TOKEN");
-  });
-
-  test("a send naming no ticket is refused", async () => {
+  test("a closed ask, an unknown ask and a missing reason are refused in words", async () => {
+    const s = await sources();
     expect(
-      await proposeDecision({ action: "send" }, {}, sources())
-    ).toMatchObject({ ok: false });
+      !(
+        await proposeDecision(
+          { feature: "admin/invoicing", id: "A-1", reason: "x", verb: "close" },
+          {},
+          s
+        )
+      ).ok
+    ).toBe(true);
+    const unknown = await proposeDecision(
+      { feature: "admin/invoicing", id: "A-9", reason: "x", verb: "close" },
+      {},
+      s
+    );
+    expect(!unknown.ok && unknown.error).toContain("no ask A-9");
+    const noReason = await proposeDecision(
+      { feature: "admin/invoicing", id: "A-2", verb: "close" },
+      {},
+      s
+    );
+    expect(!noReason.ok && noReason.error).toContain("how it got done");
   });
 });
+
+describe("confirm and contradict", () => {
+  test("an assumed rule can be confirmed; a confirmed one cannot be confirmed again but can be contradicted", async () => {
+    const s = await sources();
+    expect(
+      await proposeDecision(
+        {
+          feature: "admin/invoicing",
+          id: "R-3",
+          reason: "Foong said so",
+          verb: "confirm",
+        },
+        {},
+        s
+      )
+    ).toMatchObject({ ok: true, proposal: { id: "R-3", verb: "confirm" } });
+    expect(
+      !(
+        await proposeDecision(
+          {
+            feature: "admin/invoicing",
+            id: "R-1",
+            reason: "x",
+            verb: "confirm",
+          },
+          {},
+          s
+        )
+      ).ok
+    ).toBe(true);
+    expect(
+      await proposeDecision(
+        {
+          feature: "admin/invoicing",
+          id: "R-1",
+          reason: "Foong reversed it",
+          verb: "contradict",
+        },
+        {},
+        s
+      )
+    ).toMatchObject({ ok: true, proposal: { id: "R-1", verb: "contradict" } });
+  });
+  test("an unknown feature is refused with what a feature looks like", async () => {
+    const out = await proposeDecision(
+      { feature: "Invoicing", id: "R-1", reason: "x", verb: "confirm" },
+      {},
+      await sources()
+    );
+    expect(!out.ok && out.error).toContain("admin/usage");
+  });
+});
+
+describe("place", () => {
+  test("an unplaced message onto a feature needs no reason; an unknown id says where to look", async () => {
+    const s = await sources();
+    expect(
+      await proposeDecision(
+        { feature: "admin/invoicing", id: "1789000000.000001", verb: "place" },
+        {},
+        s
+      )
+    ).toMatchObject({
+      ok: true,
+      proposal: {
+        subject: expect.stringContaining("subtask rows"),
+        verb: "place",
+      },
+    });
+    const out = await proposeDecision(
+      { feature: "admin/invoicing", id: "nope", verb: "place" },
+      {},
+      s
+    );
+    expect(!out.ok && out.error).toContain("state/unplaced.json");
+  });
+});
+
+test.each(["attach", "dismiss", "send", "new"])(
+  "%p is not a verb",
+  async (verb) => {
+    const out = await proposeDecision(
+      { feature: "admin/invoicing", id: "A-2", verb },
+      {},
+      await sources()
+    );
+    expect(!out.ok && out.error).toContain("propose_decision:");
+  }
+);

@@ -25,13 +25,10 @@
 import { toolDefinition } from "@tanstack/ai";
 import { z } from "zod";
 import { PROPOSE_DECISION, PROPOSE_TICKET } from "../lib/ask-tools";
-import type { MarauderDraft } from "../lib/marauder";
-import { checkDraft as checkCorrection } from "../lib/marauder";
+import type { Unplaced } from "../lib/ledger";
+import type { LedgerRef } from "./ledger";
+import { listLedgers, readUnplaced } from "./ledger";
 import { TEAM_NAME } from "./linear";
-import type { UnsortedItem } from "./marauder";
-import { readUnsorted } from "./marauder";
-import type { SendSources } from "./send";
-import { checkSend } from "./send";
 import type { TicketSources } from "./ticket";
 import { checkDraft } from "./ticket";
 
@@ -39,27 +36,24 @@ import { checkDraft } from "./ticket";
 const REASON_MAX = 280;
 
 /**
- * A correction names the queue entry it decides and, for an attach, the feature it lands
- * on; a send names the ticket. `new` and `stage` went with the workstreams (ARG-167).
+ * The four things a person does to the record from a conversation: close an ask, confirm
+ * or contradict a requirement, place an unplaced message. Each names the feature's
+ * directory and the id, and all but place carry a reason.
  */
 const decisionInput = z.object({
-  action: z.enum(["attach", "dismiss", "send"]),
-  feature: z.string().optional(),
-  id: z.string().optional(),
+  feature: z.string(),
+  id: z.string(),
   reason: z.string().max(REASON_MAX).optional(),
-  repo: z.string().optional(),
-  ticket: z.string().optional(),
+  verb: z.enum(["close", "confirm", "contradict", "place"]),
 });
 
 const decisionProposal = z.object({
-  action: z.enum(["attach", "dismiss", "send"]),
-  feature: z.string().optional(),
-  id: z.string().optional(),
+  feature: z.string(),
+  id: z.string(),
   reason: z.string().optional(),
-  repo: z.string().optional(),
-  /** What the card shows as the thing being decided: the entry's summary, or the ticket. */
+  /** What the card shows as the thing being decided: the ask's or rule's text, or the message. */
   subject: z.string(),
-  ticket: z.string().optional(),
+  verb: z.enum(["close", "confirm", "contradict", "place"]),
 });
 
 const decisionOutput = z.union([
@@ -84,105 +78,127 @@ export interface AskToolContext {
   threadId?: string;
 }
 
-/** Where the correction half reads from; the send half has `SendSources` of its own. */
-export interface CorrectionSources {
-  unsorted: () => Promise<UnsortedItem[]>;
+/** Where the check reads from: the ledgers and the unplaced list, never a write. */
+export interface DecisionSources {
+  ledgers: () => Promise<LedgerRef[]>;
+  unplaced: () => Promise<Unplaced[]>;
 }
 
-const correctionSources = (): CorrectionSources => ({
-  unsorted: () => readUnsorted(),
+const decisionSources = (): DecisionSources => ({
+  ledgers: async () => (await listLedgers()).ledgers,
+  unplaced: () => readUnplaced(),
 });
 
+const NEEDS_REASON: Record<Proposal["verb"], string | null> = {
+  close: "say how it got done — the record keeps the reason",
+  confirm: "say who confirmed it, or how you know",
+  contradict: "say who said otherwise, and what",
+  place: null,
+};
+
 /**
- * Check the correction and answer a proposal, or say why there is none. `checkDraft` is the
- * Unsorted page's own pre-flight, so a card refused here is refused in the words that page
- * would have used; on top of it, an `attach` or `dismiss` has to name an entry that
- * is actually in the queue — the one thing a session can get wrong that a click cannot.
+ * Check the proposal against the record and answer it, or say why there is none: the
+ * feature must have a ledger, the id must be an open ask, a live requirement or an
+ * unplaced message, and the verbs that record a reason must carry one. What a click could
+ * not get wrong, a session can — the id is the usual slip.
  */
-async function proposeCorrection(
-  draft: MarauderDraft,
-  sources: CorrectionSources
+async function answerFor(
+  d: z.infer<typeof decisionInput>,
+  sources: DecisionSources
 ): Promise<ProposeDecisionOutput> {
-  const error = checkCorrection(draft);
-  if (error) {
-    return { error, ok: false };
+  const need = NEEDS_REASON[d.verb];
+  if (need && !d.reason?.trim()) {
+    return { error: `${d.verb}: ${need}`, ok: false };
   }
-  const item = (await sources.unsorted()).find((u) => u.id === draft.id);
-  if (!item) {
+  if (d.verb === "place") {
+    const entry = (await sources.unplaced()).find((u) => u.id === d.id);
+    if (!entry) {
+      return {
+        error: `"${d.id}" is not in the unplaced list — read state/unplaced.json for the id`,
+        ok: false,
+      };
+    }
+    const ledgers = await sources.ledgers();
+    if (!ledgers.some((l) => l.dir === d.feature)) {
+      return {
+        error: `"${d.feature}" has no ledger — name a feature directory such as admin/usage`,
+        ok: false,
+      };
+    }
     return {
-      error: `"${draft.id}" is not in the unsorted queue — read queue/_unsorted.json for the id`,
+      note: PROPOSAL_NOTE,
+      ok: true,
+      proposal: {
+        feature: d.feature,
+        id: d.id,
+        subject: entry.text.slice(0, 200),
+        verb: "place",
+      },
+    };
+  }
+  const ref = (await sources.ledgers()).find((l) => l.dir === d.feature);
+  if (!ref) {
+    return {
+      error: `"${d.feature}" has no ledger — name a feature directory such as admin/usage`,
       ok: false,
     };
   }
-  return {
-    note: PROPOSAL_NOTE,
-    ok: true,
-    proposal: {
-      action: draft.action as Proposal["action"],
-      id: draft.id,
-      subject: item.summary,
-      ...(draft.feature ? { feature: draft.feature } : {}),
-      ...(draft.reason ? { reason: draft.reason } : {}),
-    },
-  };
-}
-
-/**
- * Check the send and answer a proposal. The repo may still be missing here — the card
- * collects it, the same way the feature page's form does — so the check runs with
- * `repoRequired: false`; everything else it refuses on (a ticket already sent, a ticket
- * someone has started, Foundry unconfigured) is a refusal the button would give too.
- */
-async function proposeSend(
-  ticket: string,
-  repo: string,
-  sources?: SendSources
-): Promise<ProposeDecisionOutput> {
-  const check = await checkSend(ticket, repo, sources, { repoRequired: false });
-  if (!check.ok) {
-    return { error: check.error, ok: false };
+  if (d.verb === "close") {
+    const ask = ref.ledger.asks.find((a) => a.id === d.id);
+    if (!ask) {
+      return {
+        error: `${d.feature} has no ask ${d.id} — read its ledger.json for the ids`,
+        ok: false,
+      };
+    }
+    if (ask.status === "closed" || ask.status === "dropped") {
+      return { error: `${d.id} is already ${ask.status}`, ok: false };
+    }
+    return {
+      note: PROPOSAL_NOTE,
+      ok: true,
+      proposal: {
+        feature: d.feature,
+        id: d.id,
+        reason: d.reason,
+        subject: ask.text,
+        verb: "close",
+      },
+    };
+  }
+  const req = ref.ledger.requirements.find((r) => r.id === d.id);
+  if (!req) {
+    return {
+      error: `${d.feature} has no requirement ${d.id} — read its ledger.json for the ids`,
+      ok: false,
+    };
+  }
+  const target = d.verb === "confirm" ? "confirmed" : "contradicted";
+  if (req.status === target) {
+    return { error: `${d.id} is already ${target}`, ok: false };
   }
   return {
     note: PROPOSAL_NOTE,
     ok: true,
     proposal: {
-      action: "send",
-      subject: check.work?.name ?? check.ticket,
-      ticket: check.ticket,
-      ...(check.repo ? { repo: check.repo } : {}),
-      ...(check.work ? { feature: check.work.feature } : {}),
+      feature: d.feature,
+      id: d.id,
+      reason: d.reason,
+      subject: req.text,
+      verb: d.verb,
     },
   };
 }
 
-/** The call routed to its half, with the optional fields spread only where they were given. */
-function answerFor(
-  d: z.infer<typeof decisionInput>,
-  sources: { correction?: CorrectionSources; send?: SendSources }
-): Promise<ProposeDecisionOutput> {
-  if (d.action === "send") {
-    return proposeSend(d.ticket ?? "", d.repo ?? "", sources.send);
-  }
-  return proposeCorrection(
-    {
-      action: d.action,
-      id: d.id ?? "",
-      ...(d.feature ? { feature: d.feature } : {}),
-      ...(d.reason ? { reason: d.reason } : {}),
-    },
-    sources.correction ?? correctionSources()
-  );
-}
-
 /**
- * Check whichever the call is and answer a proposal, or say why there is none. Writes
- * nothing — not `decisions/`, not Foundry. The one trace a bridged call leaves is the log
- * line, since the run itself happens inside the harness.
+ * The tool. It never writes: it checks and answers a proposal, and the card the chat
+ * renders from the part is where the click lands. The log line is the only trace of the
+ * call, since the run itself happens inside the harness.
  */
 export async function proposeDecision(
   args: unknown,
   context: AskToolContext = {},
-  sources: { correction?: CorrectionSources; send?: SendSources } = {}
+  sources: DecisionSources = decisionSources()
 ): Promise<ProposeDecisionOutput> {
   const where = context.threadId ? ` · thread ${context.threadId}` : "";
   const parsed = decisionInput.safeParse(args);
@@ -194,9 +210,8 @@ export async function proposeDecision(
   }
   const d = parsed.data;
   const answer = await answerFor(d, sources);
-  const what = d.action === "send" ? (d.ticket ?? "") : (d.id ?? "");
   console.log(
-    `[ask] propose_decision ${d.action} ${what}${where} · ${answer.ok ? "proposed" : `refused: ${answer.error}`}`
+    `[ask] propose_decision ${d.verb} ${d.feature} ${d.id}${where} · ${answer.ok ? "proposed" : `refused: ${answer.error}`}`
   );
   return answer;
 }
@@ -207,7 +222,7 @@ export async function proposeDecision(
  */
 export const proposeDecisionTool = toolDefinition({
   description:
-    'Propose one thing for the user to confirm on a card. Either a correction to what the loop got wrong — { id, action: "attach" | "dismiss", feature?, reason }, where id is an entry\'s own id from queue/_unsorted.json and feature is the directory under features/ (admin/invoicing) — or a send — { action: "send", ticket: "LIA-nn", repo? } — handing a ticket to Foundry. It checks the draft against the features, decisions/, Linear and Foundry\'s availability and answers a proposal Pensieve shows as a card with a Confirm button, or { ok: false, error } when it cannot be made. It writes nothing: the file is written only when the user confirms, so never say the entry has been attached or dismissed, or that the ticket has been sent. Call it once per decision.',
+    'Propose one change to a feature\'s ledger for the user to confirm on a card: { verb: "close", feature, id: "A-n", reason } closes an ask; { verb: "confirm" | "contradict", feature, id: "R-n", reason } settles a requirement; { verb: "place", feature, id: "<message ts>" } puts an unplaced message on a feature. `feature` is the directory under features/, such as admin/usage. Nothing is written until the user confirms; never say it is done.',
   inputSchema: decisionInput,
   name: PROPOSE_DECISION,
   outputSchema: decisionOutput,

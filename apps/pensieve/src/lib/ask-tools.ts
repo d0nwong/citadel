@@ -10,23 +10,24 @@
  */
 
 /**
- * `marauder`'s read verbs, each named in full. The allowlist is a command *prefix* match,
- * so `Bash(bun run marauder:*)` would allow `marauder attach` and `marauder dismiss` with
+ * `argus`'s read verbs, each named in full. The allowlist is a command *prefix* match,
+ * so `Bash(argus:*)` would allow `argus close` and `argus confirm` with
  * it — and a correction is the user's, proposed on a card and never run by the session
  * (LIA-162 AC4). Listing the four read verbs one by one is what keeps the write verbs out.
  *
- * Both spellings, because a rule is literal: `bun run marauder …` is what the `ask` skill
- * writes, `bun scripts/marauder.ts …` is what a path-qualified call would be.
+ * Every spelling, because a rule is literal: `argus show …` is what the `ask` skill
+ * writes, `bun scripts/argus.ts …` is what a path-qualified call would be.
  */
-const MARAUDER_READ_VERBS = ["board", "show", "changelog", "check"] as const;
+const ARGUS_READ_VERBS = ["show", "validate"] as const;
 
-export const marauderReadRules = (): string[] =>
-  MARAUDER_READ_VERBS.flatMap((v) => [
-    `Bash(bun run marauder ${v}:*)`,
-    `Bash(bun scripts/marauder.ts ${v}:*)`,
+/** argus's read verbs, in both spellings a session might use; the write verbs are never listed */
+export const argusReadRules = (): string[] =>
+  ARGUS_READ_VERBS.flatMap((v) => [
+    `Bash(argus ${v}:*)`,
+    `Bash(bun scripts/argus.ts ${v}:*)`,
+    `Bash(bun run argus ${v}:*)`,
   ]);
 
-/** The harness's own read-only set, plus the accio and marauder read verbs and the `ask` skill. */
 export const BASE_TOOLS = [
   "Read",
   "Grep",
@@ -36,7 +37,8 @@ export const BASE_TOOLS = [
   "Bash(git show:*)",
   "Bash(bun run accio:*)",
   "Bash(bun scripts/accio.ts:*)",
-  ...marauderReadRules(),
+  "Bash(accio:*)",
+  ...argusReadRules(),
 ] as const;
 
 /** `accio sync` and `accio map` write `.state/` and the manifest — denied under the allow above. */
