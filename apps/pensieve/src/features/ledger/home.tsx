@@ -5,7 +5,7 @@
  * because the record changed, not because the page pretended.
  */
 
-import { Check, Send as SendIcon } from "lucide-react";
+import { Check, FilePlus2, Send as SendIcon, X } from "lucide-react";
 import { useState } from "react";
 import { Empty, Tag } from "#/components/bits";
 import { Button } from "#/components/ui/button";
@@ -17,22 +17,39 @@ import {
   RepoField,
   useCommit,
 } from "#/features/work/controls";
-import type { LedgerWrite, PlaceWrite, SendReadyResult } from "#/lib/api";
-import { closeAsk, placeUnplaced, sendReady } from "#/lib/api";
+import type {
+  FileProposalResult,
+  LedgerWrite,
+  PlaceWrite,
+  SendReadyResult,
+} from "#/lib/api";
+import {
+  closeAsk,
+  dropAsk,
+  fileAsk,
+  placeUnplaced,
+  sendReady,
+} from "#/lib/api";
 import type { Unplaced } from "#/lib/ledger";
 import type { FoundryRepo } from "#/server/foundry";
 import type { HomeAsk, HomeTicket } from "#/server/ledger";
 import { FeatureName, Status } from "./bits";
 
 function AskRow({ ask }: { ask: HomeAsk }) {
-  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"close" | "drop" | null>(null);
   const [reason, setReason] = useState("");
   const { busy, commit, error } = useCommit<LedgerWrite>();
-  const done = () =>
+  const ticket = useCommit<FileProposalResult>();
+  const [filed, setFiled] = useState<{ key: string; url: string } | null>(null);
+  const settle = () =>
     commit(
-      () => closeAsk({ data: { ask: ask.id, dir: ask.dir, reason } }),
-      () => setOpen(false)
+      () =>
+        mode === "drop"
+          ? dropAsk({ data: { ask: ask.id, dir: ask.dir, reason } })
+          : closeAsk({ data: { ask: ask.id, dir: ask.dir, reason } }),
+      () => setMode(null)
     );
+  const key = ask.ticket ?? filed?.key;
   return (
     <li className="border-border border-b py-3 last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -41,17 +58,57 @@ function AskRow({ ask }: { ask: HomeAsk }) {
           {ask.by}, {ask.at}
         </span>
         <FeatureName dir={ask.dir} feature={ask.feature} />
-        {!open && (
-          <Button
-            className="ml-auto"
-            onClick={() => setOpen(true)}
-            size="xs"
-            type="button"
-            variant="outline"
-          >
-            <Check />
-            Done
-          </Button>
+        {key &&
+          (filed?.url ? (
+            <a
+              className="mono text-xs underline decoration-1 underline-offset-2"
+              href={filed.url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {key}
+            </a>
+          ) : (
+            <span className="mono text-xs">{key}</span>
+          ))}
+        {!mode && (
+          <span className="ml-auto flex gap-1">
+            {!key && (
+              <Button
+                disabled={ticket.busy}
+                onClick={() =>
+                  ticket.commit(
+                    () => fileAsk({ data: { ask: ask.id, dir: ask.dir } }),
+                    (v) => setFiled({ key: v.key, url: v.url })
+                  )
+                }
+                size="xs"
+                type="button"
+                variant="outline"
+              >
+                <FilePlus2 />
+                {ticket.busy ? "Filing" : "Ticket"}
+              </Button>
+            )}
+            <Button
+              onClick={() => setMode("close")}
+              size="xs"
+              type="button"
+              variant="outline"
+            >
+              <Check />
+              Done
+            </Button>
+            <Button
+              onClick={() => setMode("drop")}
+              size="xs"
+              type="button"
+              variant="ghost"
+            >
+              <X />
+              Ignore
+            </Button>
+          </span>
         )}
       </div>
       <p className="mt-1 text-[15px] text-foreground leading-relaxed">
@@ -67,26 +124,37 @@ function AskRow({ ask }: { ask: HomeAsk }) {
           the thread
         </a>
       )}
-      {open && (
+      <CommitError
+        v={
+          ticket.error?.ok === false
+            ? { error: ticket.error.error, ok: false }
+            : null
+        }
+      />
+      {mode && (
         <form
           className="mt-2 flex flex-col gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            done();
+            settle();
           }}
         >
           <input
             autoFocus
             className={FIELD_CLASS}
-            id={`done-${ask.feature}-${ask.id}`}
+            id={`${mode}-${ask.feature}-${ask.id}`}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="How it got done, in a few words"
+            placeholder={
+              mode === "drop"
+                ? "Why it is not an ask, in a few words"
+                : "How it got done, in a few words"
+            }
             value={reason}
           />
           <Confirm
             busy={busy}
-            label="Close it"
-            onCancel={() => setOpen(false)}
+            label={mode === "drop" ? "Ignore it" : "Close it"}
+            onCancel={() => setMode(null)}
           />
           <CommitError
             v={error?.ok === false ? { error: error.error, ok: false } : null}

@@ -5,7 +5,7 @@
  * requirement and Close on an ask each run one argus verb; the reload is the record's.
  */
 
-import { Check, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Check, FilePlus2, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { useState } from "react";
 import { Tag } from "#/components/bits";
 import { Button } from "#/components/ui/button";
@@ -20,6 +20,8 @@ import {
   closeAsk,
   confirmAll,
   confirmRequirement,
+  dropAsk,
+  fileAsk,
   fileProposal,
 } from "#/lib/api";
 import {
@@ -297,9 +299,20 @@ export function Requirements({ ledger, dir }: { ledger: Ledger; dir: string }) {
 }
 
 function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
-  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"close" | "drop" | null>(null);
   const [reason, setReason] = useState("");
   const { busy, commit, error } = useCommit<LedgerWrite>();
+  const ticket = useCommit<FileProposalResult>();
+  const [filed, setFiled] = useState<{ key: string; url: string } | null>(null);
+  const settle = () =>
+    commit(
+      () =>
+        mode === "drop"
+          ? dropAsk({ data: { ask: ask.id, dir, reason } })
+          : closeAsk({ data: { ask: ask.id, dir, reason } }),
+      () => setMode(null)
+    );
+  const key = ask.ticket ?? filed?.key;
   return (
     <li className="border-border border-b py-3 last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -309,23 +322,62 @@ function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
           {ask.by}
           {ask.to ? ` → ${ask.to}` : ""} · {ask.at}
         </span>
-        {ask.ticket && <span className="mono text-xs">{ask.ticket}</span>}
+        {key &&
+          (filed?.url ? (
+            <a
+              className="mono text-xs underline decoration-1 underline-offset-2"
+              href={filed.url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {key}
+            </a>
+          ) : (
+            <span className="mono text-xs">{key}</span>
+          ))}
         {ask.blockers?.length ? (
           <Tag tone={ask.ready ? "documented" : "decided"}>
             {ask.ready ? "unblocked" : "waiting"}
           </Tag>
         ) : null}
-        {isOpen(ask) && !open && (
-          <Button
-            className="ml-auto"
-            onClick={() => setOpen(true)}
-            size="xs"
-            type="button"
-            variant="outline"
-          >
-            <Check />
-            Done
-          </Button>
+        {isOpen(ask) && !mode && (
+          <span className="ml-auto flex gap-1">
+            {!key && (
+              <Button
+                disabled={ticket.busy}
+                onClick={() =>
+                  ticket.commit(
+                    () => fileAsk({ data: { ask: ask.id, dir } }),
+                    (v) => setFiled({ key: v.key, url: v.url })
+                  )
+                }
+                size="xs"
+                type="button"
+                variant="outline"
+              >
+                <FilePlus2 />
+                {ticket.busy ? "Filing" : "Ticket"}
+              </Button>
+            )}
+            <Button
+              onClick={() => setMode("close")}
+              size="xs"
+              type="button"
+              variant="outline"
+            >
+              <Check />
+              Done
+            </Button>
+            <Button
+              onClick={() => setMode("drop")}
+              size="xs"
+              type="button"
+              variant="ghost"
+            >
+              <X />
+              Ignore
+            </Button>
+          </span>
         )}
       </div>
       <p className="mt-0.5 text-[15px] text-foreground leading-relaxed">
@@ -341,6 +393,13 @@ function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
           the thread
         </a>
       )}
+      <CommitError
+        v={
+          ticket.error?.ok === false
+            ? { error: ticket.error.error, ok: false }
+            : null
+        }
+      />
       {ask.blockers && ask.blockers.length > 0 && (
         <ul className="mt-1 ml-3 border-border border-l pl-3 text-xs">
           {ask.blockers.map((b, i) => (
@@ -371,29 +430,30 @@ function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
           ))}
         </ol>
       )}
-      {open && (
+      {mode && (
         <form
           className="mt-2 flex flex-col gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            commit(
-              () => closeAsk({ data: { ask: ask.id, dir, reason } }),
-              () => setOpen(false)
-            );
+            settle();
           }}
         >
           <input
             autoFocus
             className={FIELD_CLASS}
-            id={`close-${dir}-${ask.id}`}
+            id={`${mode}-${dir}-${ask.id}`}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="How it got done, in a few words"
+            placeholder={
+              mode === "drop"
+                ? "Why it is not an ask, in a few words"
+                : "How it got done, in a few words"
+            }
             value={reason}
           />
           <Confirm
             busy={busy}
-            label="Close it"
-            onCancel={() => setOpen(false)}
+            label={mode === "drop" ? "Ignore it" : "Close it"}
+            onCancel={() => setMode(null)}
           />
           <CommitError
             v={error?.ok === false ? { error: error.error, ok: false } : null}
