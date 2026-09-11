@@ -1,0 +1,67 @@
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+
+# derived API spec cache (1.7MB) — rebuild with `accio sync`.
+# The fingerprint + meta ARE tracked, so diffs survive a fresh clone.
+.state/openapi.json
+# rebuilt from the frontend repo by `accio sync`; the fingerprint above is what
+# needs to survive a fresh clone so spec diffs still work.
+.state/accio-index.json
+.state/symbols.json
+
+# the Slack cursor — disposable local state; each feature's work.json is the record. `.next` is
+# the advanced cursor slack-pull writes, promoted only once the tick's commit succeeds
+queue/.state.json
+queue/.state.next.json
+queue/.lock/
+# where that cursor lived while the digest owned it. slack-pull adopts it on its first run
+# and deletes it (ARG-161); the lines stay so an un-migrated checkout cannot commit one
+digests/.state.json
+digests/.state.next.json
+# slack-pull's 24h user-id → name cache
+.state/slack-users.json
+
+# TanStack AI's Claude Code adapter writes these into the cwd for one run
+# (Pensieve's Ask) and removes them in its `finally`; a crash leaves them behind.
+tanstack-claude-*
+.tanstack-mcp-bridge-*
+tanstack-output-schema-*
+
+# argus run state: the cursor and the batches are local; threads.json, unplaced.json and deploys.json are committed
+state/cursor.json
+state/cursor.next.json
+state/batches/
+state/slack-users.json
+evals/last-run/

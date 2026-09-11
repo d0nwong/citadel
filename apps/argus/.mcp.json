@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "linear": {
+      "type": "http",
+      "url": "${MCP_GATEWAY_URL:-http://localhost:9090}/linear/mcp",
+      "headersHelper": "bun scripts/mcp-headers.ts"
+    },
+    "slack": {
+      "type": "http",
+      "url": "${MCP_GATEWAY_URL:-http://localhost:9090}/slack/mcp",
+      "headersHelper": "bun scripts/mcp-headers.ts"
+    }
+  }
+}

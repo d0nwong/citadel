@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>__TITLE__</title>
+    <style>
+      /* ---- Theme tokens: adapt to light/dark (Craft: colors adapt) ---- */
+      :root {
+        color-scheme: light dark;
+        --bg: #f5f6f8;
+        --panel: #ffffff;
+        --chrome: rgba(250, 250, 252, 0.72); /* translucent nav/footer material */
+        --border: #e4e7ec;
+        --hairline: rgba(0, 0, 0, 0.07);
+        --text: #1c1f23;
+        --muted: #616873;
+        --accent: #0a68da;
+        --select: #1a7f37; /* "post"/commit = green, meaningful */
+        --add-bg: #e6ffec;
+        --add-num: #ccffd8;
+        --del-bg: #ffebe9;
+        --del-num: #ffd7d5;
+        --hl: #fff8c5;
+        --hl-border: #d4a72c;
+        --critical: #cf222e;
+        --warning: #9a6700;
+        --suggestion: #0969da;
+        --nit: #656d76;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+        --shadow-lift: 0 6px 24px rgba(0, 0, 0, 0.10);
+        /* size-specific tracking (Typography §15) */
+        --track-display: -0.014em;
+        --track-body: 0;
+        --ease: cubic-bezier(0.32, 0.72, 0, 1); /* critically-damped feel */
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #131417;
+          --panel: #1d1f24;
+          --chrome: rgba(24, 26, 30, 0.72);
+          --border: #2c2f36;
+          --hairline: rgba(255, 255, 255, 0.09);
+          --text: #e6e8eb;
+          --muted: #9aa1ab;
+          --accent: #519dff;
+          --select: #3fb950;
+          --add-bg: rgba(63, 185, 80, 0.15);
+          --add-num: rgba(63, 185, 80, 0.28);
+          --del-bg: rgba(248, 81, 73, 0.15);
+          --del-num: rgba(248, 81, 73, 0.28);
+          --hl: rgba(210, 153, 34, 0.20);
+          --hl-border: #d29922;
+          --critical: #ff7b72;
+          --warning: #e3b341;
+          --suggestion: #79c0ff;
+          --nit: #9aa1ab;
+          --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+          --shadow-lift: 0 8px 28px rgba(0, 0, 0, 0.5);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-optical-sizing: auto;
+        letter-spacing: var(--track-body);
+        background: var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      code,
+      pre,
+      .diff {
+        font-family:
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ---- Chrome: translucent material, content scrolls under (Materials §12) ---- */
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--chrome);
+        -webkit-backdrop-filter: saturate(180%) blur(20px);
+        backdrop-filter: saturate(180%) blur(20px);
+        border-bottom: 1px solid var(--hairline);
+        padding: 12px 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      header .back {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 500;
+        padding: 4px 10px 4px 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--panel);
+        white-space: nowrap;
+        transition:
+          background 120ms var(--ease),
+          transform 120ms var(--ease),
+          color 120ms var(--ease);
+      }
+      header .back:hover {
+        color: var(--text);
+        background: color-mix(in srgb, var(--text) 6%, var(--panel));
+      }
+      header .back:active {
+        transform: scale(0.96);
+      }
+      header h1 {
+        font-size: 16px;
+        margin: 0;
+        font-weight: 600;
+        letter-spacing: var(--track-display); /* tighten large text */
+      }
+      header h1 a {
+        color: inherit;
+        text-decoration: none;
+      }
+      header h1 a:hover {
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      header h1 a .ext {
+        color: var(--muted);
+        font-weight: 400;
+        margin-left: 6px;
+        font-size: 13px;
+      }
+      header .meta {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      header .spacer {
+        flex: 1;
+      }
+      .pill {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.005em;
+        border: 1px solid transparent;
+      }
+      .pill.critical {
+        color: var(--critical);
+        background: color-mix(in srgb, var(--critical) 15%, transparent);
+      }
+      .pill.warning {
+        color: var(--warning);
+        background: color-mix(in srgb, var(--warning) 18%, transparent);
+      }
+      .pill.suggestion {
+        color: var(--suggestion);
+        background: color-mix(in srgb, var(--suggestion) 15%, transparent);
+      }
+      .pill.nit {
+        color: var(--nit);
+        background: color-mix(in srgb, var(--nit) 15%, transparent);
+      }
+
+      /* ---- Buttons: instant press feedback on pointer-down (Response §1) ---- */
+      button {
+        font: inherit;
+        cursor: pointer;
+        border-radius: 7px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
+        padding: 5px 12px;
+        transition:
+          background 120ms var(--ease),
+          transform 120ms var(--ease),
+          box-shadow 120ms var(--ease);
+      }
+      button:hover {
+        background: color-mix(in srgb, var(--text) 6%, var(--panel));
+      }
+      button:active {
+        transform: scale(0.96);
+      }
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      button.primary {
+        background: var(--select);
+        border-color: transparent;
+        color: #fff;
+        font-weight: 600;
+        box-shadow: var(--shadow);
+      }
+      button.primary:hover {
+        background: color-mix(in srgb, #000 8%, var(--select));
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 0;
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+      nav {
+        padding: 16px 8px 16px 16px;
+        position: sticky;
+        top: 57px;
+        align-self: start;
+        max-height: calc(100vh - 57px);
+        overflow-y: auto;
+      }
+      nav .file {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        margin: 12px 0 4px;
+        word-break: break-all;
+      }
+      nav a {
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+        padding: 4px 8px;
+        border-radius: 7px;
+        color: var(--text);
+        text-decoration: none;
+        font-size: 13px;
+        transition:
+          background 120ms var(--ease),
+          transform 120ms var(--ease);
+      }
+      nav a:hover {
+        background: color-mix(in srgb, var(--text) 8%, transparent);
+      }
+      nav a:active {
+        transform: scale(0.98);
+      }
+      nav a .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex: none;
+        align-self: center;
+      }
+      nav a.posted-yes .title {
+        text-decoration: none;
+      }
+      nav a .state {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--select);
+        font-weight: 600;
+      }
+
+      main {
+        padding: 16px 24px 80px;
+        min-width: 0;
+      }
+      /* Reviewer recommendation banner (from /agent-skills:review) */
+      .reco {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-left-width: 4px;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 16px;
+        box-shadow: var(--shadow);
+      }
+      .reco.ok {
+        border-left-color: var(--select);
+      }
+      .reco.warn {
+        border-left-color: var(--warning);
+      }
+      .reco.info {
+        border-left-color: var(--suggestion);
+      }
+      .reco-badge {
+        flex: none;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 999px;
+        color: #fff;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+      }
+      .reco-badge.ok {
+        background: var(--select);
+      }
+      .reco-badge.warn {
+        background: var(--warning);
+      }
+      .reco-badge.info {
+        background: var(--suggestion);
+      }
+      .reco-sum {
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      button.approve {
+        border-color: var(--select);
+        color: var(--select);
+        font-weight: 600;
+      }
+      button.approve:hover {
+        background: color-mix(in srgb, var(--select) 12%, var(--panel));
+      }
+      /* ---- Cards: settle on select with a critically-damped transition (§4) ---- */
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        margin-bottom: 16px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        transition:
+          border-color 180ms var(--ease),
+          box-shadow 180ms var(--ease),
+          transform 180ms var(--ease);
+      }
+      .card.selected {
+        border-color: var(--select);
+        box-shadow:
+          0 0 0 1px var(--select),
+          var(--shadow-lift);
+      }
+      .card-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        background: color-mix(in srgb, var(--text) 3%, var(--panel));
+        flex-wrap: wrap;
+      }
+      .card-head .loc {
+        color: var(--muted);
+        font-size: 12px;
+        font-family:
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      }
+      .card-head .title {
+        font-weight: 600;
+        letter-spacing: -0.006em;
+      }
+      .card-head label.post {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        user-select: none;
+        cursor: pointer;
+        padding: 3px 8px;
+        border-radius: 7px;
+        transition:
+          background 120ms var(--ease),
+          transform 100ms var(--ease);
+      }
+      .card-head label.post:hover {
+        background: color-mix(in srgb, var(--text) 7%, transparent);
+      }
+      .card-head label.post:active {
+        transform: scale(0.97);
+      }
+      .card-head input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--select);
+        cursor: pointer;
+      }
+
+      .diff {
+        border-bottom: 1px solid var(--border);
+        overflow-x: auto;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      .diff table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      .diff td {
+        padding: 0 8px;
+        white-space: pre;
+      }
+      .diff .num {
+        width: 1%;
+        min-width: 40px;
+        text-align: right;
+        color: var(--muted);
+        user-select: none;
+        background: color-mix(in srgb, var(--text) 3%, var(--panel));
+        border-right: 1px solid var(--border);
+      }
+      .diff tr.add td.code {
+        background: var(--add-bg);
+      }
+      .diff tr.add td.num {
+        background: var(--add-num);
+      }
+      .diff tr.del td.code {
+        background: var(--del-bg);
+      }
+      .diff tr.del td.num {
+        background: var(--del-num);
+      }
+      .diff tr.target td.code {
+        background: var(--hl);
+        box-shadow: inset 3px 0 0 var(--hl-border);
+      }
+      .diff .nosnippet {
+        padding: 10px 14px;
+        color: var(--muted);
+        font-family: inherit;
+      }
+
+      .body-wrap {
+        padding: 12px 14px;
+      }
+      .body-wrap textarea {
+        width: 100%;
+        min-height: 72px;
+        resize: vertical;
+        font: 13px/1.5 inherit;
+        font-family: inherit;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        color: var(--text);
+        transition:
+          border-color 120ms var(--ease),
+          box-shadow 120ms var(--ease);
+      }
+      .body-wrap textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+      }
+      .body-wrap .hint {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .edited-flag {
+        color: var(--warning);
+        font-size: 11px;
+        font-weight: 600;
+        display: none;
+      }
+      .card.edited .edited-flag {
+        display: inline;
+      }
+      .posted-flag {
+        color: var(--select);
+        font-size: 11px;
+        font-weight: 600;
+        display: none;
+      }
+      .card.posted .posted-flag {
+        display: inline;
+      }
+      .card.posted {
+        border-color: var(--select);
+      }
+      /* once posted, dim the checkbox so it's clearly done */
+      .card.posted label.post {
+        opacity: 0.55;
+      }
+      .post-status {
+        font-size: 12px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .post-status.ok {
+        color: var(--select);
+        font-weight: 600;
+      }
+      .post-status.err {
+        color: var(--critical);
+        font-weight: 600;
+      }
+      button[disabled] {
+        opacity: 0.6;
+        cursor: default;
+      }
+
+      footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--chrome);
+        -webkit-backdrop-filter: saturate(180%) blur(20px);
+        backdrop-filter: saturate(180%) blur(20px);
+        border-top: 1px solid var(--hairline);
+        box-shadow: 0 -1px 0 var(--hairline);
+        padding: 10px 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 10;
+      }
+      footer .count {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .empty {
+        text-align: center;
+        color: var(--muted);
+        padding: 60px 0;
+        font-size: 15px;
+      }
+      details.raw {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      details.raw pre {
+        background: color-mix(in srgb, var(--text) 4%, var(--panel));
+        padding: 8px;
+        border-radius: 8px;
+        overflow-x: auto;
+        user-select: all;
+      }
+
+      /* ---- Narrow screens: nav stacks above content (Flexibility §16.5) ---- */
+      @media (max-width: 900px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        nav {
+          position: static;
+          max-height: none;
+          padding: 8px 16px;
+        }
+      }
+
+      /* ---- Accessibility: reduced motion / transparency / contrast (§14) ---- */
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+        button:active,
+        nav a:active,
+        header .back:active,
+        .card-head label.post:active {
+          transform: none !important;
+        }
+      }
+      @media (prefers-reduced-transparency: reduce) {
+        header,
+        footer {
+          background: var(--panel);
+          -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+        }
+      }
+      @media (prefers-contrast: more) {
+        :root {
+          --border: color-mix(in srgb, var(--text) 45%, transparent);
+          --muted: var(--text);
+          --chrome: var(--panel);
+        }
+        header,
+        footer {
+          -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      const PAYLOAD = __PAYLOAD__;
+    </script>
+
+    <header>
+      <a class="back" href="../../../index.html" title="Back to the review list">‹ All reviews</a>
+      <h1 id="hdr-title"></h1>
+      <span class="meta" id="hdr-meta"></span>
+      <span class="spacer"></span>
+      <span id="hdr-pills"></span>
+    </header>
+
+    <div class="layout">
+      <nav id="nav"></nav>
+      <main id="main"></main>
+    </div>
+
+    <footer>
+      <span class="count" id="count">0 selected</span>
+      <button onclick="setAll(true)">Select all</button>
+      <button onclick="setAll(false)">Select none</button>
+      <span class="spacer" style="flex: 1"></span>
+      <span class="post-status" id="post-status"></span>
+      <button onclick="exportSelections()">Export</button>
+      <button class="approve" id="approve-btn" onclick="approvePR()">
+        Approve PR
+      </button>
+      <button class="primary" id="post-btn" onclick="postSelected()">
+        Post selected → GitHub
+      </button>
+    </footer>
+
+    <script>
+      const esc = (s) =>
+        String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+      const state = {}; // id -> {post, body}
+      const meta = PAYLOAD.meta,
+        comments = PAYLOAD.comments;
+
+      document.getElementById("hdr-title").innerHTML = meta.url
+        ? `<a href="${esc(meta.url)}" target="_blank" rel="noopener">#${esc(meta.number)} ${esc(meta.title)}<span class="ext">↗ open PR</span></a>`
+        : `#${esc(meta.number)} ${esc(meta.title)}`;
+      document.getElementById("hdr-meta").textContent =
+        `${meta.repo} · ${meta.author} · ${meta.head_ref} → ${meta.base_ref} · ${String(meta.head_sha || "").slice(0, 7)}`;
+      document.title = `Review triage · #${meta.number} ${meta.title}`;
+
+      const sevOrder = ["critical", "warning", "suggestion", "nit"];
+      const counts = {};
+      comments.forEach(
+        (c) => (counts[c.severity] = (counts[c.severity] || 0) + 1),
+      );
+      document.getElementById("hdr-pills").innerHTML = sevOrder
+        .filter((s) => counts[s])
+        .map((s) => `<span class="pill ${s}">${counts[s]} ${s}</span>`)
+        .join(" ");
+
+      function snippetHtml(c) {
+        if (!c.snippet || !c.snippet.length)
+          return `<div class="nosnippet">${c.path ? "No diff context found for this anchor." : "PR-level comment (not anchored to a line)."}</div>`;
+        const rows = c.snippet
+          .map((l) => {
+            const cls = [l.type, l.target ? "target" : ""].join(" ").trim();
+            const sign = l.type === "add" ? "+" : l.type === "del" ? "-" : " ";
+            return `<tr class="${cls}"><td class="num">${l.old_no ?? ""}</td><td class="num">${l.new_no ?? ""}</td><td class="code">${esc(sign + l.text)}</td></tr>`;
+          })
+          .join("");
+        return `<div class="diff"><table>${rows}</table></div>`;
+      }
+
+      function locText(c) {
+        if (!c.path) return "PR-level";
+        const range = c.start_line ? `${c.start_line}–${c.line}` : c.line;
+        return `${c.path}:${range}${c.side === "LEFT" ? " (old)" : ""}`;
+      }
+
+      function recoHtml() {
+        const rec = String(meta.recommendation || "").toLowerCase();
+        const sum = meta.summary || "";
+        if (!rec && !sum) return "";
+        const map = {
+          approve: ["Approve", "ok"],
+          request_changes: ["Request changes", "warn"],
+          comment: ["Comment", "info"],
+        };
+        const [label, kind] = map[rec] || ["Recommendation", "info"];
+        const badge = rec
+          ? `<span class="reco-badge ${kind}">${esc(label)}</span>`
+          : "";
+        return `<div class="reco ${rec ? kind : ""}">${badge}<div class="reco-sum">${esc(sum)}</div></div>`;
+      }
+
+      const main = document.getElementById("main");
+      if (!comments.length) {
+        main.innerHTML =
+          recoHtml() +
+          '<div class="empty">No findings for this PR. Nothing to triage 🎉</div>';
+      } else {
+        main.innerHTML =
+          recoHtml() +
+          comments
+            .map(
+            (c) => `
+    <div class="card" id="card-${c.id}">
+      <div class="card-head">
+        <span class="pill ${esc(c.severity)}">${esc(c.severity)}</span>
+        <span class="title">${esc(c.title || "")}</span>
+        <span class="loc">${esc(locText(c))}</span>
+        <span class="edited-flag">edited</span>
+        <span class="posted-flag">✓ posted</span>
+        <label class="post"><input type="checkbox" data-id="${c.id}" onchange="toggle('${c.id}', this.checked)"> Post</label>
+      </div>
+      ${snippetHtml(c)}
+      <div class="body-wrap">
+        <textarea data-id="${c.id}" oninput="edit('${c.id}', this.value)">${esc(c.body)}</textarea>
+        <div class="hint">This exact text is what gets posted to GitHub (markdown supported). Edits are kept on export.</div>
+      </div>
+    </div>`,
+          )
+          .join("");
+      }
+
+      const nav = document.getElementById("nav");
+      {
+        const groups = {};
+        comments.forEach((c) => {
+          const k = c.path || "PR-level";
+          (groups[k] = groups[k] || []).push(c);
+        });
+        nav.innerHTML = Object.entries(groups)
+          .map(
+            ([file, cs]) =>
+              `<div class="file">${esc(file)}</div>` +
+              cs
+                .map(
+                  (c) =>
+                    `<a href="#card-${c.id}" id="nav-${c.id}">
+         <span class="dot" style="background: var(--${esc(c.severity)})"></span>
+         <span class="title">${esc(c.title || c.id)}</span>
+         <span class="state" id="navstate-${c.id}"></span>
+       </a>`,
+                )
+                .join(""),
+          )
+          .join("");
+      }
+
+      comments.forEach((c) => {
+        state[c.id] = { post: false, body: c.body };
+      });
+
+      function toggle(id, checked) {
+        state[id].post = checked;
+        document
+          .getElementById("card-" + id)
+          .classList.toggle("selected", checked);
+        document.getElementById("navstate-" + id).textContent = checked
+          ? "✓"
+          : "";
+        updateCount();
+      }
+      function edit(id, value) {
+        state[id].body = value;
+        const orig = comments.find((c) => c.id === id).body;
+        document
+          .getElementById("card-" + id)
+          .classList.toggle("edited", value !== orig);
+      }
+      function setAll(v) {
+        comments.forEach((c) => {
+          document.querySelector(`input[data-id="${c.id}"]`).checked = v;
+          toggle(c.id, v);
+        });
+      }
+      function updateCount() {
+        const n = Object.values(state).filter((s) => s.post).length;
+        document.getElementById("count").textContent =
+          `${n} of ${comments.length} selected`;
+      }
+      updateCount();
+
+      function buildSelections() {
+        return {
+          repo: meta.repo,
+          pr: meta.number,
+          head_sha: meta.head_sha,
+          exported_at: new Date().toISOString(),
+          decisions: comments.map((c) => ({
+            id: c.id,
+            post: state[c.id].post,
+            path: c.path ?? null,
+            line: c.line ?? null,
+            side: c.side ?? null,
+            start_line: c.start_line ?? null,
+            severity: c.severity,
+            body: state[c.id].body,
+          })),
+        };
+      }
+
+      function markPosted(id) {
+        const card = document.getElementById("card-" + id);
+        if (card) card.classList.add("posted");
+        const ns = document.getElementById("navstate-" + id);
+        if (ns) ns.textContent = "posted";
+      }
+
+      async function postSelected() {
+        const selected = comments.filter((c) => state[c.id].post);
+        if (!selected.length) {
+          setStatus("Nothing selected — check “Post” on the comments you want.", "err");
+          return;
+        }
+        if (
+          !confirm(
+            `Post ${selected.length} comment(s) to ${meta.repo} #${meta.number}?\n` +
+              `This writes review comments to the real PR on GitHub.`,
+          )
+        )
+          return;
+
+        const btn = document.getElementById("post-btn");
+        btn.disabled = true;
+        const label = btn.textContent;
+        btn.textContent = "Posting…";
+        setStatus("Posting…", "");
+
+        try {
+          const r = await fetch("/api/post", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildSelections()),
+          });
+          if (!r.ok) throw new Error(`server responded ${r.status}`);
+          const res = await r.json();
+          if (res.error) throw new Error(res.error);
+          (res.results || [])
+            .filter((x) => x.ok)
+            .forEach((x) => markPosted(x.id));
+          if (res.failed) {
+            const first = (res.results || []).find((x) => !x.ok);
+            setStatus(
+              `Posted ${res.posted}, ${res.failed} failed${first ? " — " + first.error : ""}`,
+              "err",
+            );
+          } else {
+            setStatus(`✓ Posted ${res.posted} comment(s) to #${meta.number}`, "ok");
+          }
+        } catch (e) {
+          setStatus(
+            `Couldn’t reach the office-hours server (${e.message}). Use Export instead, then run post_selections.py.`,
+            "err",
+          );
+        } finally {
+          btn.disabled = false;
+          btn.textContent = label;
+        }
+      }
+
+      function setStatus(msg, kind) {
+        const el = document.getElementById("post-status");
+        el.textContent = msg;
+        el.className = "post-status" + (kind ? " " + kind : "");
+      }
+
+      async function approvePR() {
+        if (
+          !confirm(
+            `Approve ${meta.repo} #${meta.number} on GitHub?\n` +
+              `This submits an approving review on the real PR.`,
+          )
+        )
+          return;
+        const btn = document.getElementById("approve-btn");
+        const label = btn.textContent;
+        let approved = false;
+        btn.disabled = true;
+        btn.textContent = "Approving…";
+        setStatus("Approving…", "");
+        try {
+          const r = await fetch("/api/review", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              repo: meta.repo,
+              pr: meta.number,
+              event: "APPROVE",
+            }),
+          });
+          if (!r.ok) throw new Error(`server responded ${r.status}`);
+          const res = await r.json();
+          if (res.error || !res.ok) throw new Error(res.error || "review failed");
+          approved = true;
+          setStatus(
+            res.removed_from_board
+              ? `✓ Approved #${meta.number} — removed from the review list`
+              : `✓ Approved #${meta.number}`,
+            "ok",
+          );
+          // approved & off the board: lock the actions, relabel, offer the way back
+          document.getElementById("post-btn").disabled = true;
+          btn.textContent = "Approved ✓";
+        } catch (e) {
+          setStatus(
+            `Couldn’t approve (${e.message}). Fallback: gh pr review ${meta.number} --repo ${meta.repo} --approve`,
+            "err",
+          );
+        } finally {
+          if (!approved) {
+            btn.disabled = false;
+            btn.textContent = label;
+          }
+        }
+      }
+
+      function exportSelections() {
+        const out = buildSelections();
+        const json = JSON.stringify(out, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `pr-review-selections-pr${meta.number}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        // copy-paste fallback
+        let d = document.getElementById("raw-out");
+        if (!d) {
+          d = document.createElement("details");
+          d.className = "raw";
+          d.id = "raw-out";
+          d.innerHTML =
+            "<summary>Exported — how to post these</summary>" +
+            '<div style="margin:8px 0;line-height:1.6">Saved <code>pr-review-selections-pr' +
+            esc(meta.number) +
+            ".json</code> to your downloads. To post the checked comments to the PR, either:" +
+            "<br>• tell Claude Code: <code>post the office-hours selections for #" +
+            esc(meta.number) +
+            "</code>, or<br>• run <code>python3 scripts/post_selections.py &lt;that file&gt;</code> " +
+            "(add <code>--dry-run</code> first to preview).</div>" +
+            "<pre></pre>";
+          document
+            .querySelector("footer")
+            .insertAdjacentElement("beforebegin", d);
+          d.style.margin = "0 24px 60px";
+        }
+        d.querySelector("pre").textContent = json;
+        d.open = true;
+      }
+    </script>
+  </body>
+</html>

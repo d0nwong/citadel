@@ -1,0 +1,116 @@
+# argus
+
+The record behind **alden-portal**, and the loop that keeps it current. It watches
+#dev-team Slack and the two repos' base branches, and keeps one `ledger.json` per feature:
+the requirements the business asked for and whether anyone confirmed them, the asks and
+what happened to each, the user's tickets with what they wait on, the landings, and the
+tickets waiting to be filed. Built for one tech lead on a part-time schedule: every run is
+safe to repeat, and the first run after days away catches up.
+
+## The three systems
+
+| | job | never |
+|---|---|---|
+| **argus** (this repo) | Knows. One ledger per feature, kept by the sweep; the arch doc beside it; the `argus` and `accio` CLIs. | Post to Slack. Close a ticket. Send work anywhere. |
+| **Pensieve** (`~/git/pensieve`) | Shows and decides. Renders the ledgers; every click runs one `argus` verb; Ask answers over the same record and proposes changes for a click. | Write the checkout with its own code. |
+| **Foundry** (`~/git/foundry`) | Executes. Takes a ticket key and a repo over HTTP, runs it in a forge, pushes a PR. | Read the ledger. Judge readiness. |
+
+One line: **argus knows, you decide in Pensieve, Foundry does.**
+
+## The ledger
+
+`<app>/features/<dir>/ledger.json` is the record of one feature. `SPEC.md` is the source
+of truth for its shape; in short:
+
+- **story** — four answers with evidence: is it going well, do the two codebases agree,
+  does the code do what was asked, is the architecture sound. The fifth, what is on you,
+  is derived from the asks.
+- **requirements** — one row per business rule, `assumed`, `confirmed`, `contradicted`
+  or `retired`, with who settled it and when. This is the product doc.
+- **asks** — who asked for what, when, and its history from `asked` to `closed`. An ask
+  may carry blockers (a landing, an answer, another ticket); code clears the landings.
+- **tickets** — the user's own, with typed blockers; `ready` is derived.
+- **landings** and **proposals** — what merged to a base branch, and the tickets the
+  reader wants filed.
+
+Every claim carries evidence: a Slack permalink, a PR, a commit, a file and line, or the
+word "assumption". `argus validate` refuses anything else, and ids are never reused.
+
+`docs/arch.md` beside the ledger is how the feature is built, under 250 curated lines;
+`accio sync` writes its generated regions from the code and the OpenAPI spec.
+
+## The run
+
+`/sweep` (`skills/sweep/SKILL.md`), on a loop or on demand:
+
+1. `argus pull` — Slack since the cursor, landings on `origin/staging` and `origin/dev`.
+2. `argus place <batch>` — the deterministic joins: files to features, replies to threads,
+   ticket keys and PRs to the ledger that lists them. The rest is unplaced.
+3. Attribute — the model places what it would bet on (`skills/sweep/attribute.md`).
+4. Read — one Opus subagent per feature with a slice returns a patch
+   (`skills/sweep/reader.md`, `shapes.md`); code applies and validates the whole.
+5. `argus reconcile` — a landing blocker clears when Bitbucket says the merge deployed.
+6. `accio stale` and the `feature-docs` skill for arch docs that drifted.
+7. `argus validate`, commit, promote the cursor.
+
+What the run cannot place waits in `state/unplaced.json` for a click in Pensieve. What
+it proposes waits under the feature's proposals for File. It never writes Linear or Slack.
+
+## Layout
+
+```
+SPEC.md  tasks/  docs/intent  docs/ideas       the rebuild's spec, plan and why
+scripts/argus.ts  scripts/argus/               the argus CLI and its verbs
+scripts/accio.ts  scripts/accio/               the code-and-docs index
+skills/sweep  ask  feature-docs  linear-ticket  the skills; sweep/reader.md, attribute.md, shapes.md, style.md
+alden/alden-portal/.doc-workspace/feature-manifest.json
+alden/alden-portal/features/<dir>/ledger.json  docs/arch.md
+pensieve/features  foundry/features             arch docs for the other two apps
+state/                                          cursor (local), threads.json, unplaced.json, deploys.json, batches/ (local)
+evals/                                          the 14-day fixture, expectations, replay scorer, scores.md
+```
+
+## Setting it up
+
+```sh
+bun install
+bun link                      # `argus` and `accio` on PATH
+./scripts/bootstrap.sh env    # SLACK_TOKEN into .env, mode 600
+```
+
+Both product checkouts must exist (`~/git/alden-portal-fe`, `~/git/alden-connect-portal-be`,
+or `FE_REPO` / `BE_REPO`); the run reads them at `origin/*` and never switches a branch.
+The deploy check reads the credentials `bb` keeps in `~/.bitbucket-rest-cli-config.json`
+(`BITBUCKET_CONFIG` to point elsewhere). Linear and Slack are the MCP servers in `.mcp.json`, both behind the local MCP gateway
+(mcp-proxy on :9090, `infra/compose.yaml`, started by `./scripts/bootstrap.sh mcp`); a
+session presents `MCP_GATEWAY_TOKEN` from `.env`, and the gateway holds the keys.
+
+## Running it
+
+```sh
+bun run sweep                 # claude '/loop 15m /sweep'
+argus pull                    # the batch, or "nothing new"
+argus place <batch>           # the joins
+argus reconcile               # clear what deployed
+argus validate                # every ledger and arch doc
+argus show admin/usage        # one ledger
+argus close admin/usage A-7 --reason "..."         # the click verbs, as Pensieve runs them
+argus confirm admin/usage R-3 --reason "..." [--contradict]
+argus place <message-ts> admin/usage
+argus file admin/usage P-2 · argus ticket admin/usage P-2 ALD-52 · argus sent admin/usage ALD-52 --repo <name> --job <id>
+argus seed --all              # requirement rows from the old rule tables (once)
+accio find "status select"    # what backs a thing
+accio stale · accio sync --offline · accio audit
+bun test · bun run typecheck · bun run evals [--model]
+```
+
+Everything commits locally and never pushes. Anything needing your judgement reaches you
+in Pensieve, not in a file you have to be told to open.
+
+## The gate
+
+The replay under `evals/` is how a change to a prompt or a join is measured: 14 real days
+of the channel and both repos, the expectations placed by hand, and the closure cases
+that must close on the right message. `bun run evals --model` runs the real prompts;
+`evals/scores.md` keeps every score. The rebuild passed at 85% attribution and 4 of 4
+closures on 2026-09-11.

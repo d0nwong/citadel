@@ -1,0 +1,22 @@
+{
+  "name": "argus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "argus: the ledgers behind alden-portal, and the loop that keeps them current",
+  "type": "module",
+  "scripts": {
+    "sweep": "claude '/loop 15m /sweep' --model claude-sonnet-5 --dangerously-skip-permissions",
+    "accio": "bun scripts/accio.ts",
+    "sync-skills": "bun scripts/sync-skills.ts",
+    "argus": "bun scripts/argus.ts",
+    "typecheck": "tsc --noEmit",
+    "evals": "bun evals/replay.ts"
+  },
+  "bin": {
+    "argus": "./scripts/argus.ts",
+    "accio": "./scripts/accio.ts"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}
