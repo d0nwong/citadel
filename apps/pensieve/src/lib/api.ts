@@ -22,7 +22,7 @@ import {
   needsVerify,
   PENSIEVE_USER,
 } from "#/lib/marauder";
-import { isSendable } from "#/lib/send";
+import { isSendable, REPO_REQUIRED } from "#/lib/send";
 import type {
   AskStatus,
   Conversation,
@@ -1036,3 +1036,72 @@ export const fileProposal = createServerFn({ method: "POST" })
       url: made.url,
     };
   });
+
+export type SendReadyResult =
+  | { ok: true; job: { id: string; url: string }; replay: boolean }
+  | { error: string; ok: false; status?: number };
+
+/**
+ * Send a ready ticket to Foundry: `POST /api/jobs` with the ticket as the idempotency key,
+ * then `argus sent` records the job on the ledger. Pensieve posts because it holds the
+ * Foundry token and the client; argus keeps the record.
+ */
+export const sendReady = createServerFn({ method: "POST" })
+  .validator((input: { dir: string; ticket: string; repo: string }) => ({
+    dir: trimmed(input.dir),
+    repo: trimmed(input.repo),
+    ticket: trimmed(input.ticket),
+  }))
+  .handler(async ({ data }): Promise<SendReadyResult> => {
+    if (!data.repo) {
+      return { error: REPO_REQUIRED, ok: false };
+    }
+    const fd = await import("#/server/foundry");
+    const a = await import("#/server/argus");
+    let job: FoundryJob;
+    let replay: boolean;
+    try {
+      ({ job, replay } = await fd.createJob({
+        idempotencyKey: data.ticket,
+        repo: data.repo,
+        ticketId: data.ticket,
+      }));
+    } catch (e) {
+      if (e instanceof fd.FoundryError) {
+        return { error: e.message, ok: false, status: e.status };
+      }
+      throw e;
+    }
+    const recorded = await a.argus("sent", [
+      data.dir,
+      data.ticket,
+      "--repo",
+      data.repo,
+      "--job",
+      job.id,
+    ]);
+    if (!recorded.ok) {
+      return {
+        error: `Foundry took ${data.ticket}, but the ledger did not record it: ${a.argusNote(recorded)}`,
+        ok: false,
+      };
+    }
+    return { job: { id: job.id, url: fd.jobUrl(job.id) }, ok: true, replay };
+  });
+
+/** What Send needs on the home page: whether Foundry is reachable and the repos it tracks. */
+export const getSendOptions = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{
+    configured: boolean;
+    reason?: string;
+    repos: FoundryRepo[];
+  }> => {
+    const fd = await import("#/server/foundry");
+    const c = fd.foundryConfig();
+    return {
+      configured: c.configured,
+      reason: c.reason,
+      repos: c.configured ? await fd.trackedRepos() : [],
+    };
+  }
+);

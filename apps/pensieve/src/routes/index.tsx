@@ -9,11 +9,14 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageHeader } from "#/components/bits";
 import { DocLayout } from "#/components/toc";
 import { NeedsMe, Ready, UnplacedList } from "#/features/ledger/home";
-import { getHome } from "#/lib/api";
+import { getHome, getSendOptions } from "#/lib/api";
 
 export const Route = createFileRoute("/")({
   staticData: { crumb: "Home" },
-  loader: () => getHome(),
+  loader: async () => {
+    const [home, send] = await Promise.all([getHome(), getSendOptions()]);
+    return { ...home, send };
+  },
   component: HomePage,
 });
 
@@ -41,7 +44,7 @@ function HomePage() {
           <h2 className="mb-1 border-border border-b pb-1 font-semibold text-[15px]">
             Ready to work on
           </h2>
-          <Ready asks={h.readyAsks} tickets={h.ready} />
+          <Ready asks={h.readyAsks} send={h.send} tickets={h.ready} />
         </section>
         <section>
           <h2 className="mb-1 border-border border-b pb-1 font-semibold text-[15px]">

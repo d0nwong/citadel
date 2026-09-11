@@ -13,11 +13,14 @@ import {
   CommitError,
   Confirm,
   FIELD_CLASS,
+  JobLine,
+  RepoField,
   useCommit,
 } from "#/features/work/controls";
-import type { LedgerWrite, PlaceWrite } from "#/lib/api";
-import { closeAsk, placeUnplaced } from "#/lib/api";
+import type { LedgerWrite, PlaceWrite, SendReadyResult } from "#/lib/api";
+import { closeAsk, placeUnplaced, sendReady } from "#/lib/api";
 import type { Unplaced } from "#/lib/ledger";
+import type { FoundryRepo } from "#/server/foundry";
 import type { HomeAsk, HomeTicket } from "#/server/ledger";
 import { FeatureName, Status } from "./bits";
 
@@ -115,9 +118,11 @@ export function NeedsMe({ asks }: { asks: HomeAsk[] }) {
 export function Ready({
   tickets,
   asks,
+  send,
 }: {
   tickets: HomeTicket[];
   asks: HomeAsk[];
+  send: SendOptions;
 }) {
   if (tickets.length === 0 && asks.length === 0) {
     return (
@@ -154,32 +159,89 @@ export function Ready({
         </li>
       ))}
       {tickets.map((t) => (
-        <li
-          className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-border border-b py-3 last:border-b-0"
-          key={`${t.feature}/${t.key}`}
-        >
-          <span className="mono text-sm">{t.key}</span>
-          <span className="min-w-0 flex-1 text-foreground text-sm">
-            {t.title}
-          </span>
-          <FeatureName dir={t.dir} feature={t.feature} />
-          {t.sent?.length ? (
-            <Tag tone="implemented">sent</Tag>
-          ) : (
+        <TicketRow key={`${t.feature}/${t.key}`} row={t} send={send} />
+      ))}
+    </ul>
+  );
+}
+
+export interface SendOptions {
+  configured: boolean;
+  reason?: string;
+  repos: FoundryRepo[];
+}
+
+function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
+  const [open, setOpen] = useState(false);
+  const [repo, setRepo] = useState("");
+  const { busy, commit, error } = useCommit<SendReadyResult>();
+  const [job, setJob] = useState<{ id: string; url: string } | null>(null);
+  const sent = row.sent?.at(-1);
+  return (
+    <li className="border-border border-b py-3 last:border-b-0">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="mono text-sm">{row.key}</span>
+        <span className="min-w-0 flex-1 text-foreground text-sm">
+          {row.title}
+        </span>
+        <FeatureName dir={row.dir} feature={row.feature} />
+        {sent || job ? (
+          <Tag tone="implemented">sent</Tag>
+        ) : send.configured ? (
+          !open && (
             <Button
-              disabled
+              onClick={() => setOpen(true)}
               size="xs"
-              title="Send comes with the tickets phase"
               type="button"
               variant="outline"
             >
               <SendIcon />
               Send
             </Button>
-          )}
-        </li>
-      ))}
-    </ul>
+          )
+        ) : (
+          <span className="text-muted-foreground text-xs" title={send.reason}>
+            Foundry is off
+          </span>
+        )}
+      </div>
+      {job && <JobLine id={job.id} url={job.url} />}
+      {open && !job && (
+        <form
+          className="mt-2 flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            commit(
+              () =>
+                sendReady({ data: { dir: row.dir, repo, ticket: row.key } }),
+              (v) => {
+                setJob(v.job);
+                setOpen(false);
+              }
+            );
+          }}
+        >
+          <RepoField
+            id={`send-repo-${row.feature}-${row.key}`}
+            onChange={setRepo}
+            repos={send.repos}
+            value={repo}
+          />
+          <p className="text-muted-foreground text-xs">
+            Foundry composes the brief from {row.key} and claims it in Linear.
+            The idempotency key is the ticket, so this cannot queue twice.
+          </p>
+          <Confirm
+            busy={busy}
+            label="Send to Foundry"
+            onCancel={() => setOpen(false)}
+          />
+          <CommitError
+            v={error?.ok === false ? { error: error.error, ok: false } : null}
+          />
+        </form>
+      )}
+    </li>
   );
 }
 
