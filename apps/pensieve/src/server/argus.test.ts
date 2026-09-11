@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { argus, argusNote } from "./argus";
@@ -51,5 +51,28 @@ describe("argus", () => {
     const h = await argus("hang", [], { cwd, timeoutMs: 300 });
     expect(h.ok).toBe(false);
     expect(argusNote(h)).toContain("longer than");
+  });
+});
+
+describe("argus with code and data apart", () => {
+  test("the script comes from argusDir; the data is the cwd and ARGUS_ROOT", async () => {
+    const data = await mkdtemp(join(tmpdir(), "pensieve-data-"));
+    try {
+      await writeFile(
+        join(cwd, "scripts/argus.ts"),
+        "console.log(JSON.stringify({ ok: true, root: process.env.ARGUS_ROOT, cwd: process.cwd() }));"
+      );
+      const r = await argus<{ root: string; cwd: string }>("show", [], {
+        argusDir: cwd,
+        cwd: data,
+      });
+      if (!r.ok) {
+        throw new Error("argus failed");
+      }
+      expect(r.root).toBe(data);
+      expect(await realpath(r.cwd)).toBe(await realpath(data));
+    } finally {
+      await rm(data, { force: true, recursive: true });
+    }
   });
 });

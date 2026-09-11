@@ -84,7 +84,7 @@ const isFeature = (v: unknown): v is string =>
   typeof v === "string" && /^[a-z0-9-]+(\/[a-z0-9-]+)?$/.test(v);
 
 import { proposeDecisionTool, proposeTicketTool } from "./ask-tools.server";
-import { WORKSPACE_DIR } from "./workspace";
+import { ARGUS_DIR, WORKSPACE_DIR } from "./workspace";
 
 // ── configuration ──────────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ export function allowedToolsFor(checkouts: readonly string[]): string[] {
 }
 
 /** Files, search, git history, the accio and argus read verbs, the `ask` skill, Linear reads and the bridged tools. Nothing that writes. */
-export const ALLOWED_TOOLS = allowedToolsFor(CHECKOUTS);
+export const ALLOWED_TOOLS = allowedToolsFor([...CHECKOUTS, WORKSPACE_DIR]);
 
 /** Belt and braces under `default`: these never even reach the permission check. */
 export const DISALLOWED_TOOLS = [
@@ -146,16 +146,20 @@ export const DISALLOWED_TOOLS = [
 
 /**
  * The adapter configuration (`docs/adapters/claude-code.md`). `cwd` is the sandbox's
- * virtual root, which the local-process provider maps onto the argus checkout.
+ * virtual root, which the local-process provider maps onto argus's code (ARGUS_DIR). The
+ * data it reads, WORKSPACE_DIR, is an extra directory (`--add-dir`), and the verbs find it
+ * through ARGUS_ROOT.
  * `settingSources` stays at `['project']`: it is what loads argus's `.mcp.json` (the Linear
  * and Slack servers, both behind the local MCP gateway) and argus symlinks its skills into its own `.claude/skills` — the host's
  * `~/.claude` stays out of the run.
  */
 export const ADAPTER_CONFIG = {
+  addDirs: [WORKSPACE_DIR],
   allowedTools: ALLOWED_TOOLS,
   cwd: "/workspace",
   disallowedTools: DISALLOWED_TOOLS,
   emitDiff: false,
+  env: { ARGUS_ROOT: WORKSPACE_DIR },
   // One turn per model round-trip, so every tool call is one: a question about a feature
   // that reads its page, a journal entry and a doc or two is 15–25. When the cap is hit the CLI
   // still prints its result (finish reason `length`) and then exits 1 — see `askStream`.
@@ -177,9 +181,9 @@ console.log(
  * The file map and the retrieval recipes live in argus (`CLAUDE.md`, the `ask` skill),
  * which the run loads with `--setting-sources project`; they are not repeated here.
  */
-export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus ledgers. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog and no one to answer one, so never tell the user to grant, allow or approve anything — a denied tool is an answer, and you work around it once.
+export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus ledgers. Your working directory is argus's code (its skills, CLAUDE.md and scripts); its data (the ledgers, the arch docs and state/) is in ${WORKSPACE_DIR}, which the argus and accio verbs read on their own. This is not a terminal: there is no permission dialog and no one to answer one, so never tell the user to grant, allow or approve anything — a denied tool is an answer, and you work around it once.
 
-To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature's record is \`argus show <feature>\` (its ledger.json: the story, the requirements with their status, the asks with their history, the tickets, the landings); what nobody could place is state/unplaced.json; where a screen or field lives in the code is \`accio find "<words>"\`; a ticket is \`mcp__linear__get_issue\`; a Slack permalink is \`mcp__slack__slack_read_thread\` (the channel id and ts from the link). Code from a product checkout is \`git -C <repo> show origin/<branch>:<path>\` at the sha the ledger names; never run git fetch, pull, checkout or stash.
+To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature's record is \`argus show <feature>\` (its ledger.json: the story, the requirements with their status, the asks with their history, the tickets, the landings); what nobody could place is ${WORKSPACE_DIR}/state/unplaced.json; the record's own history is \`git -C ${WORKSPACE_DIR} log\`; where a screen or field lives in the code is \`accio find "<words>"\`; a ticket is \`mcp__linear__get_issue\`; a Slack permalink is \`mcp__slack__slack_read_thread\` (the channel id and ts from the link). Code from a product checkout is \`git -C <repo> show origin/<branch>:<path>\` at the sha the ledger names; never run git fetch, pull, checkout or stash.
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
@@ -193,7 +197,7 @@ You cannot write files, edit tickets or comments, or run the sweep; the argus ve
  * thing read rather than the board.
  */
 export const featurePrompt = (feature: string) =>
-  `This conversation was opened on the feature \`${feature}\` (its directory under an app's features/). "it" in a question, a correction or a send means that feature unless the user names something else. Start with \`argus show ${feature}\` — that is its whole record — and read \`<app>/features/${feature}/ledger.json\` when the verb is denied.`;
+  `This conversation was opened on the feature \`${feature}\` (its directory under an app's features/). "it" in a question, a correction or a send means that feature unless the user names something else. Start with \`argus show ${feature}\` — that is its whole record — and read \`${WORKSPACE_DIR}/<app>/features/${feature}/ledger.json\` when the verb is denied.`;
 
 export type AuthMode = "host" | "api-key";
 
@@ -207,7 +211,7 @@ export function askAdapter(overrides: Partial<ClaudeCodeTextConfig> = {}) {
 }
 
 /**
- * One sandbox for the process, pinned to the checkout (no temp dir, never removed on
+ * One sandbox for the process, pinned to argus's code (no temp dir, never removed on
  * destroy). `fileEvents: false` — the default watcher would fs.watch the whole checkout.
  * `@tanstack/ai-sandbox` 0.5.6 declares a projection it only provides when a `workspace`
  * is defined; narrowing `provides` to the sandbox itself is enough (see LIA-100).
@@ -215,7 +219,7 @@ export function askAdapter(overrides: Partial<ClaudeCodeTextConfig> = {}) {
 const sandbox = defineSandbox({
   fileEvents: false,
   id: "ask",
-  provider: localProcessSandbox({ dir: WORKSPACE_DIR }),
+  provider: localProcessSandbox({ dir: ARGUS_DIR }),
 });
 export const sandboxMiddleware: ChatMiddleware = {
   ...withSandbox(sandbox),

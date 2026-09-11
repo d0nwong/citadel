@@ -1,6 +1,6 @@
 /**
  * Node-only. The one way Pensieve writes the workspace: it runs `bun scripts/argus.ts
- * <verb> … --json` inside WORKSPACE_DIR and reads the JSON the verb prints. Nothing else
+ * <verb> … --json` from ARGUS_DIR against WORKSPACE_DIR (passed as ARGUS_ROOT) and reads the JSON the verb prints. Nothing else
  * in this app touches a ledger or a state file. A refusal from argus's validator comes
  * back as data (`ok: false`, its problems), never as a thrown error, so the page can show
  * the sentence the user needs; a process that will not start or hangs comes back the
@@ -12,7 +12,7 @@
 
 import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { WORKSPACE_DIR } from "./workspace";
+import { ARGUS_DIR, WORKSPACE_DIR } from "./workspace";
 
 export const ARGUS_SCRIPT = "scripts/argus.ts";
 export const ARGUS_TIMEOUT_MS = 30_000;
@@ -22,6 +22,9 @@ export type ArgusResult<T = Record<string, unknown>> =
   | { ok: false; problems?: { path: string; rule: string }[]; error?: string };
 
 export interface ArgusOptions {
+  /** argus's code, where `scripts/argus.ts` is; `cwd` when that is given, else ARGUS_DIR */
+  argusDir?: string;
+  /** the data the verb reads and writes, passed as ARGUS_ROOT; WORKSPACE_DIR by default */
   cwd?: string;
   timeoutMs?: number;
 }
@@ -38,6 +41,7 @@ function run(
   cmd: string,
   args: string[],
   cwd: string,
+  env: NodeJS.ProcessEnv,
   timeout: number
 ): Promise<Ran> {
   return new Promise((resolve) => {
@@ -53,7 +57,7 @@ function run(
     };
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+      child = spawn(cmd, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
     } catch (e) {
       done({
         code: null,
@@ -92,11 +96,13 @@ export async function argus<T = Record<string, unknown>>(
   opts: ArgusOptions = {}
 ): Promise<ArgusResult<T>> {
   const cwd = opts.cwd ?? WORKSPACE_DIR;
+  const code = opts.argusDir ?? opts.cwd ?? ARGUS_DIR;
   const timeout = opts.timeoutMs ?? ARGUS_TIMEOUT_MS;
   const r = await run(
     "bun",
-    [join(cwd, ARGUS_SCRIPT), verb, ...args, "--json"],
+    [join(code, ARGUS_SCRIPT), verb, ...args, "--json"],
     cwd,
+    { ...process.env, ARGUS_ROOT: cwd },
     timeout
   );
   if (r.startError) {

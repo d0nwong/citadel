@@ -6,7 +6,7 @@
  * typed, serialisable shapes. Nothing here writes.
  */
 
-import type { Dirent } from "node:fs";
+import { type Dirent, existsSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, relative, resolve } from "node:path";
@@ -17,6 +17,19 @@ import { dropTitle, outline } from "./sections";
 
 export const WORKSPACE_DIR = resolve(
   process.env.WORKSPACE_DIR || join(homedir(), "git/argus")
+);
+
+/**
+ * argus's code: its CLI, skills, CLAUDE.md and `.mcp.json`. `ARGUS_DIR` names it; otherwise
+ * the argus beside Pensieve in citadel (`apps/argus`), and failing that the workspace itself,
+ * the layout from before code and data split.
+ */
+export const ARGUS_DIR = resolve(
+  process.env.ARGUS_DIR ||
+    [join(process.cwd(), "../argus"), WORKSPACE_DIR].find((d) =>
+      existsSync(join(d, "scripts/argus.ts"))
+    ) ||
+    WORKSPACE_DIR
 );
 
 /** Workspace directories that are never an app, so the scan does not descend into them. */

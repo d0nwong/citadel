@@ -68,13 +68,18 @@ See `tasks/plan.md` for the order and the checkpoints.
     and `.state`; `ROOT` stays the code root. evals read features from it too. The data tests
     skip without data (135 pass, 13 skip) and all 148 pass with `ARGUS_ROOT=~/git/argus`.
     `mcp-headers.ts` prefers `MCP_GATEWAY_TOKEN` from the environment, then the root `.env`.
-- [ ] **T7: Split code from data in Pensieve.** (M)
+- [x] **T7: Split code from data in Pensieve.** (M)
   - Acceptance: `WORKSPACE_DIR` is the data, a new `ARGUS_DIR` (default `../argus`) is the code,
     verbs are spawned as `bun $ARGUS_DIR/scripts/argus.ts` with `ARGUS_ROOT=$WORKSPACE_DIR`, and
     Ask's cwd is `ARGUS_DIR`.
   - Verify: `bun run --filter pensieve test` (including `ask.test.ts`), and a feature page plus
     one click verb work in dev.
   - Files: `src/server/workspace.ts`, `argus.ts`, `ask.ts`, `.env.example`.
+  - Done: `ARGUS_DIR` (env, else `../argus`, else the workspace) is the code. Verbs run
+    `bun $ARGUS_DIR/scripts/argus.ts` with the data as cwd and `ARGUS_ROOT`. Ask's sandbox is
+    `ARGUS_DIR`, with the data as `addDirs`, `env.ARGUS_ROOT`, `git -C <data>` read rules and
+    absolute data paths in its prompt. 137 pass; a real `argus show tasks` from citadel
+    against `~/git/argus` returns ok and writes nothing.
 - [ ] **T8: Move to one `.env`.** (M)
   - Acceptance: a root `.env.example` holds every key once (`FOUNDRY_MCP_TOKEN` becomes
     `MCP_GATEWAY_TOKEN`, and `BITBUCKET_TOKEN` and `GH_TOKEN` are added). Foundry reads the root
@@ -117,6 +122,8 @@ See `tasks/plan.md` for the order and the checkpoints.
   - Acceptance: an image that includes `apps/argus`, mounts `argus-data` read-only except for
     `decisions/`, and mounts the FE/BE clones read-only. Ask runs on `CLAUDE_CODE_OAUTH_TOKEN`,
     and Send reaches `http://foundry-web:3777`.
+  - The data mount can't be `/workspace`: that is the sandbox's virtual name for Ask's cwd
+    (`ARGUS_DIR`). Mount it at `/argus-data` and set `WORKSPACE_DIR` and `ARGUS_DIR` explicitly.
   - Verify: the smoke test in the spec (feature page, a click verb, Send, an Ask answer).
   - Files: `apps/pensieve/Dockerfile`, `apps/pensieve/compose.yaml`.
 
