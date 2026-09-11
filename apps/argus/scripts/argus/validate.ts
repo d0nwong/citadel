@@ -86,7 +86,10 @@ function userEvidence(l: Ledger): Map<string, Evidence> {
       if (e.kind === "user") m.set(`${path}[${i}]`, e);
     });
   l.requirements.forEach((r, i) => walk(r.evidence, `ledger.requirements[${i}].evidence`));
-  l.asks.forEach((a, i) => a.history.forEach((h, j) => walk(h.evidence, `ledger.asks[${i}].history[${j}].evidence`)));
+  l.asks.forEach((a, i) => {
+    a.history.forEach((h, j) => walk(h.evidence, `ledger.asks[${i}].history[${j}].evidence`));
+    (a.blockers ?? []).forEach((b, j) => b.cleared && walk(b.cleared.evidence, `ledger.asks[${i}].blockers[${j}].cleared.evidence`));
+  });
   l.tickets.forEach((t, i) =>
     t.blockers.forEach((b, j) => b.cleared && walk(b.cleared.evidence, `ledger.tickets[${i}].blockers[${j}].cleared.evidence`)),
   );
@@ -146,6 +149,17 @@ export function validateLedger(input: unknown, opts: ValidateOptions = {}): Prob
       out.push({ path: `${path}.status`, rule: `status is ${a.status} with no history to show how` });
     for (const r of a.requirements ?? [])
       if (!reqIds.has(r)) out.push({ path: `${path}.requirements`, rule: `${r} is not a requirement in this ledger` });
+    (a.blockers ?? []).forEach((b, j) => {
+      if (b.cleared) {
+        hasEvidence(b.cleared.evidence, `${path}.blockers[${j}].cleared.evidence`, out);
+        noAssumption(b.cleared.evidence, `${path}.blockers[${j}].cleared.evidence`, out);
+      }
+    });
+    if (a.blockers?.length) {
+      const derived = a.blockers.every((b) => b.cleared !== null);
+      if (a.ready !== derived)
+        out.push({ path: `${path}.ready`, rule: derived ? "every blocker is cleared, so ready must be true" : "a blocker is not cleared, so ready must be false" });
+    } else if (a.ready !== undefined) out.push({ path: `${path}.ready`, rule: "ready is only set on an ask with blockers" });
     if (a.ticket && !ticketKeys.has(a.ticket))
       out.push({ path: `${path}.ticket`, rule: `${a.ticket} is not a ticket in this ledger` });
   });
@@ -231,7 +245,17 @@ export function assertLedger(input: unknown, opts: ValidateOptions = {}): Ledger
 
 /** derive `ready` for every ticket; what `write` runs before validating */
 export function deriveReady(l: Ledger): Ledger {
-  return { ...l, tickets: l.tickets.map((t) => ({ ...t, ready: t.blockers.every((b) => b.cleared !== null) })) };
+  return {
+    ...l,
+    tickets: l.tickets.map((t) => ({ ...t, ready: t.blockers.every((b) => b.cleared !== null) })),
+    asks: l.asks.map((a) => {
+      if (!a.blockers?.length) {
+        const { ready: _r, ...rest } = a;
+        return rest;
+      }
+      return { ...a, ready: a.blockers.every((b) => b.cleared !== null) };
+    }),
+  };
 }
 
 /** whether an ask still needs somebody */

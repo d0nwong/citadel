@@ -20,9 +20,11 @@ shown here.
   "asks": {
     "add":    [ { "text": "Sam wants a button on draft invoices for due on receipt.", "by": "Sam O", "to": "you", "at": "2026-09-09",
                   "origin": { "kind": "slack", "url": "<permalink of the root>", "thread": "<root ts>" }, "requirements": ["R-3"] } ],
-    "update": [ { "id": "A-1", "status": "answered|built|acknowledged|closed|dropped", "at": "2026-09-10", "evidence": [ …evidence ] } ]
+    "update": [ { "id": "A-1", "status": "answered|built|acknowledged|closed|dropped", "at": "2026-09-10", "evidence": [ …evidence ] } ],
+    "block":  [ { "id": "A-1", "blocker": { "kind": "landing", "repo": "be", "ref": "be#771" } } ]
   },
-  "tickets":   { "clear": [ { "key": "ALD-41", "blocker": 0, "at": "2026-09-10", "deployed": true, "evidence": [ …evidence ] } ] },
+  "tickets":   { "clear": [ { "key": "ALD-41", "blocker": 0, "at": "2026-09-10", "deployed": true, "evidence": [ …evidence ] } ],
+                 "block": [ { "key": "ALD-41", "blocker": { "kind": "answer", "from": "Foong Leung", "question": "…" } } ] },
   "landings":  { "link": [ { "ref": "be#771", "asks": ["A-1"] } ] },
   "proposals": { "add": [ { "kind": "ticket", "title": "[FE] …", "body": "## Summary\n…", "asks": ["A-2"], "at": "2026-09-10" } ] },
   "notes": [ "what you could not settle, one clause each" ]
@@ -42,7 +44,10 @@ Evidence, exactly one of:
 
 `by` is the asker's name, or `"someone"` when the message does not say. An ask `update`
 may omit `status` to add evidence without moving it. `to` is a first name, `"you"` for
-the user, or `null`. `blocker` is the index in the
-ticket's blockers list. Landings are already on the ledger when you read it; `link` names
+the user, or `null`. A blocker is `{ "kind": "landing", "repo": "fe|be", "ref": "be#771" }`
+(leave `ref` empty when the thread only says "in PR"), `{ "kind": "answer", "from": "<name>",
+"question": "…" }`, or `{ "kind": "ticket", "key": "ALD-40" }`; "let me know when merged"
+is a landing blocker on that ask. In `clear`, `blocker` is the index in the blockers
+list. Landings are already on the ledger when you read it; `link` names
 the asks a landing served. `origin.kind` is `slack` or `huddle`. A permalink is the
 `https://alden-studios.slack.com/archives/…` link printed on the message.

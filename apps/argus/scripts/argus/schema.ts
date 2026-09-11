@@ -73,6 +73,10 @@ export type Ask = {
   history: AskHistory[];
   requirements?: string[];
   ticket?: string | null;
+  /** what the ask waits for; code clears a landing, a person answers an answer */
+  blockers?: Blocker[];
+  /** derived: present only with blockers; true when every one is cleared */
+  ready?: boolean;
 };
 
 export type Cleared = { at: string; evidence: Evidence[] };
@@ -285,6 +289,8 @@ function ask(v: unknown, path: string): Ask {
     }),
   };
   if (o.requirements !== undefined) a.requirements = strs(o, "requirements", path);
+  if (o.blockers !== undefined) a.blockers = arr(o, "blockers", path).map((b, i) => blocker(b, `${path}.blockers[${i}]`));
+  if (o.ready !== undefined) a.ready = bool(o, "ready", path);
   if (o.ticket !== undefined) {
     if (o.ticket !== null && typeof o.ticket !== "string") throw new SchemaError(`${path}.ticket`, "expected a string or null");
     a.ticket = o.ticket;

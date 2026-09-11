@@ -16,6 +16,7 @@
 import { listFeatures, ledgerPath, root } from "./argus/paths.ts";
 import { validateDoc, validateLedger, ValidationError } from "./argus/validate.ts";
 import { archDocPath, isFeature } from "./argus/paths.ts";
+import { reconcileAll } from "./argus/blockers.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
 import { seedFeature } from "./argus/seed.ts";
@@ -48,6 +49,7 @@ const USAGE = `argus — the ledger CLI
 
   argus pull [--since <date>] [--no-slack] [--no-landings] [--no-fetch] [--out <dir>]
   argus place <batch-id|path>        the deterministic joins → <batch>.placed.json + state/unplaced.json
+  argus reconcile [<feature>...]     clear the landing and ticket blockers the facts allow (asks Bitbucket whether a landing deployed)
 
   argus close <feature> <A-n> --reason "<why>"
   argus confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]
@@ -128,6 +130,14 @@ const verbs: Record<string, Verb> = {
     if (f.json) console.log(JSON.stringify({ ok: true, batch: r.batch?.id ?? null, path: r.path, reason: r.reason, messages: r.batch?.slack ? r.batch.slack.newTopLevel.length + r.batch.slack.threads.reduce((n, t) => n + t.replies.length, 0) : 0, landings: r.batch?.landings.length ?? 0 }));
     else if (!r.batch) console.log(r.reason ?? "nothing new");
     else console.log(`${f.dryRun ? "would write" : "wrote"} ${r.path}: ${r.batch.landings.length} landing(s), slack since ${r.batch.since.slack ?? "skipped"}`);
+    return 0;
+  },
+
+  async reconcile(f) {
+    const r = await reconcileAll({ dryRun: f.dryRun, features: f.rest.length ? f.rest : undefined });
+    if (f.json) console.log(JSON.stringify({ ok: true, results: r.map((x) => ({ feature: x.feature, cleared: x.cleared, wrote: x.write?.wrote ?? false })) }));
+    else if (!r.length) console.log("nothing to clear");
+    else for (const x of r) console.log(`${x.feature}${f.dryRun ? " (dry run)" : ""}\n  ${x.cleared.join("\n  ")}`);
     return 0;
   },
 

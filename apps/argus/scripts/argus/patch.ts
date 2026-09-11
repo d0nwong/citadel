@@ -6,8 +6,8 @@
  * Anything outside the shape is refused by path before it reaches the ledger.
  */
 
-import type { Ask, AskStatus, Cleared, Evidence, Landing, Ledger, Proposal, Requirement, RequirementStatus, StoryKey, StoryText } from "./schema.ts";
-import { parseEvidence, SchemaError, STORY_KEYS } from "./schema.ts";
+import type { Ask, AskStatus, Blocker, Cleared, Evidence, Landing, Ledger, Proposal, Requirement, RequirementStatus, StoryKey, StoryText } from "./schema.ts";
+import { BLOCKER_KINDS, parseEvidence, SchemaError, STORY_KEYS } from "./schema.ts";
 
 export type Patch = {
   summary?: string;
@@ -17,11 +17,16 @@ export type Patch = {
     update?: { id: string; status?: RequirementStatus; by?: string; at?: string; evidence: Evidence[]; text?: string }[];
   };
   asks?: {
-    add?: Omit<Ask, "id" | "history" | "status">[];
+    add?: Omit<Ask, "id" | "history" | "status" | "ready">[];
+    /** a wait on something: a landing, an answer, another ticket */
+    block?: { id: string; blocker: Blocker }[];
     /** `status` omitted = more evidence on the current status */
     update?: { id: string; status?: AskStatus; at: string; evidence: Evidence[]; to?: string | null; ticket?: string | null; requirements?: string[] }[];
   };
-  tickets?: { clear?: { key: string; blocker: number; at: string; evidence: Evidence[]; deployed?: boolean }[] };
+  tickets?: {
+    clear?: { key: string; blocker: number; at: string; evidence: Evidence[]; deployed?: boolean }[];
+    block?: { key: string; blocker: Blocker }[];
+  };
   landings?: { add?: Landing[]; link?: { ref: string; asks: string[] }[] };
   proposals?: { add?: Omit<Proposal, "id">[] };
   /** what the reader could not settle; goes to the terminal, never to the ledger */
@@ -83,13 +88,27 @@ export function parsePatch(v: unknown): Patch {
       p.requirements!.update!.push({ id: r.id, evidence: evidenceList(r.evidence, `${path}.evidence`), ...(typeof r.status === "string" ? { status: r.status as RequirementStatus } : {}), ...(typeof r.by === "string" ? { by: r.by } : {}), ...(typeof r.at === "string" ? { at: r.at } : {}), ...(typeof r.text === "string" ? { text: r.text } : {}) });
     });
   }
-  const asks = section("asks", ["add", "update"]);
+  const asks = section("asks", ["add", "update", "block"]);
   if (asks) {
-    p.asks = { add: [], update: [] };
+    p.asks = { add: [], block: [], update: [] };
+    list(asks, "asks", "block").forEach((b, i) => {
+      const path = `patch.asks.block[${i}]`;
+      if (!isObj(b) || typeof b.id !== "string") throw err(path, "expected { id, blocker }");
+      p.asks!.block!.push({ id: b.id, blocker: parseBlocker(b.blocker, `${path}.blocker`) });
+    });
     list(asks, "asks", "add").forEach((a, i) => {
       const path = `patch.asks.add[${i}]`;
       if (!isObj(a) || typeof a.text !== "string" || typeof a.at !== "string" || !isObj(a.origin)) throw err(path, "expected { text, by, to, at, origin }");
-      p.asks!.add!.push({ text: a.text, by: typeof a.by === "string" && a.by ? a.by : "someone", to: typeof a.to === "string" ? a.to : null, at: a.at, origin: a.origin as Ask["origin"], ...(Array.isArray(a.requirements) ? { requirements: a.requirements as string[] } : {}), ...(typeof a.ticket === "string" ? { ticket: a.ticket } : {}) });
+      p.asks!.add!.push({
+        text: a.text,
+        by: typeof a.by === "string" && a.by ? a.by : "someone",
+        to: typeof a.to === "string" ? a.to : null,
+        at: a.at,
+        origin: a.origin as Ask["origin"],
+        ...(Array.isArray(a.requirements) ? { requirements: a.requirements as string[] } : {}),
+        ...(typeof a.ticket === "string" ? { ticket: a.ticket } : {}),
+        ...(Array.isArray(a.blockers) ? { blockers: a.blockers.map((b, j) => parseBlocker(b, `${path}.blockers[${j}]`)) } : {}),
+      });
     });
     list(asks, "asks", "update").forEach((a, i) => {
       const path = `patch.asks.update[${i}]`;
@@ -97,9 +116,14 @@ export function parsePatch(v: unknown): Patch {
       p.asks!.update!.push({ id: a.id, at: a.at, evidence: evidenceList(a.evidence, `${path}.evidence`), ...(typeof a.status === "string" ? { status: a.status as AskStatus } : {}), ...(a.to !== undefined ? { to: a.to as string | null } : {}), ...(a.ticket !== undefined ? { ticket: a.ticket as string | null } : {}), ...(Array.isArray(a.requirements) ? { requirements: a.requirements as string[] } : {}) });
     });
   }
-  const tickets = section("tickets", ["clear"]);
+  const tickets = section("tickets", ["clear", "block"]);
   if (tickets) {
-    p.tickets = { clear: [] };
+    p.tickets = { block: [], clear: [] };
+    list(tickets, "tickets", "block").forEach((b, i) => {
+      const path = `patch.tickets.block[${i}]`;
+      if (!isObj(b) || typeof b.key !== "string") throw err(path, "expected { key, blocker }");
+      p.tickets!.block!.push({ key: b.key, blocker: parseBlocker(b.blocker, `${path}.blocker`) });
+    });
     list(tickets, "tickets", "clear").forEach((c, i) => {
       const path = `patch.tickets.clear[${i}]`;
       if (!isObj(c) || typeof c.key !== "string" || typeof c.blocker !== "number" || typeof c.at !== "string") throw err(path, "expected { key, blocker (index), at, evidence }");
@@ -121,6 +145,22 @@ export function parsePatch(v: unknown): Patch {
     p.notes = v.notes as string[];
   }
   return p;
+}
+
+/** a blocker as the model writes it: never cleared, a landing's ref may still be unknown */
+function parseBlocker(v: unknown, path: string): Blocker {
+  if (!isObj(v) || typeof v.kind !== "string" || !(BLOCKER_KINDS as readonly string[]).includes(v.kind)) throw err(path, `expected { kind: ${BLOCKER_KINDS.join(" | ")}, … }`);
+  switch (v.kind) {
+    case "landing":
+      if (v.repo !== "fe" && v.repo !== "be") throw err(`${path}.repo`, "expected fe or be");
+      return { kind: "landing", repo: v.repo, ref: typeof v.ref === "string" ? v.ref : "", branch: typeof v.branch === "string" ? v.branch : v.repo === "be" ? "origin/dev" : "origin/staging", deployed: false, cleared: null };
+    case "answer":
+      if (typeof v.from !== "string" || typeof v.question !== "string") throw err(path, "expected { kind: answer, from, question }");
+      return { kind: "answer", from: v.from, question: v.question, cleared: null };
+    default:
+      if (typeof v.key !== "string") throw err(path, "expected { kind: ticket, key }");
+      return { kind: "ticket", key: v.key, cleared: null };
+  }
 }
 
 /** the ledger with the patch applied; ids allocated later by write; validation later by write */
@@ -149,6 +189,16 @@ export function applyPatch(l: Ledger, p: Patch): Ledger {
     if (u.to !== undefined) a.to = u.to;
     if (u.ticket !== undefined) a.ticket = u.ticket;
     if (u.requirements !== undefined) a.requirements = u.requirements;
+  }
+  for (const b of p.asks?.block ?? []) {
+    const a = next.asks.find((x) => x.id === b.id);
+    if (!a) throw err("patch.asks.block", `${b.id} is not an ask`);
+    a.blockers = [...(a.blockers ?? []), b.blocker];
+  }
+  for (const b of p.tickets?.block ?? []) {
+    const t = next.tickets.find((x) => x.key === b.key);
+    if (!t) throw err("patch.tickets.block", `${b.key} is not a ticket`);
+    t.blockers.push(b.blocker);
   }
   for (const c of p.tickets?.clear ?? []) {
     const t = next.tickets.find((x) => x.key === c.key);
