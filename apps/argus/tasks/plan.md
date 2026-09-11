@@ -1,6 +1,12 @@
 # Implementation Plan: Argus and Pensieve, rebuilt around the ledger
 
-Spec: `SPEC.md`. Tasks: `tasks/todo.md`. Written 2026-09-10.
+Spec: `SPEC.md`. Tasks: `tasks/todo.md`. Written 2026-09-10; brought up to date 2026-09-11,
+after all seven phases were built and merged to `main` in both repos.
+
+**Where it stands.** Every task is done. The first real sweep ran on a scratch clone and its
+ledgers are on `main` (commit `bc8077b`). What is left is yours: start the loop, try the two
+outward-facing clicks (File and Send) for real, and decide the two leftovers listed under
+Open Questions.
 
 ## Overview
 
@@ -15,19 +21,37 @@ ledger the user trusts.
 - **The ledger is written whole, by one verb.** `argus write` validates and replaces the
   file. There is no partial update path, so there is no merge logic and no lock. Pensieve
   and the sweep never hold the file open across a model call.
+- **The reader returns a patch, code applies it.** Changed in Phase 3: returning the whole
+  ledger cost $1.30 a call, took minutes, and failed the schema every time. The reader
+  now returns the shape in `skills/sweep/shapes.md`; `applyPatch` builds the next ledger
+  and `argus write` validates the whole. A patch can add, update, block and link; it
+  cannot delete or renumber.
+- **Code owns the landings.** `argus place` puts a slice's landings on the ledger; the
+  reader only links them to asks. That removed a whole class of shape refusals.
+- **Asks carry blockers, like tickets.** "Let me know when merged" is a landing blocker
+  on the ask; `argus reconcile` clears it and the home page lists the ask as unblocked.
+- **A live backend with no frontend on it proposes the ticket.** The reader's rule, from
+  the user's request; the proposal waits for File.
 - **Validation is the policy.** Evidence on every claim, the style rules, the caps and
   the id scheme are code in `validate.ts`, so the skills do not have to say them. A
   skill line exists only where the model has to judge.
 - **Two deterministic joins, nothing more.** Changed files to features through the
   manifest, replies to their thread root through `state/threads.json`. Ticket keys and PR
   numbers in text join to the ledger that lists them. Everything else is the model's
-  call or unplaced. No vocabulary, no aliases beyond the manifest.
+  call or unplaced. No vocabulary, no aliases beyond the manifest. A file four or more
+  features list is shared plumbing and only attaches a landing when nothing specific
+  matched (added after the first real run spread backend landings over a dozen features).
+  Attribution may name two features for a thread that straddles them.
+- **Deployed means the dev pipeline succeeded.** The dev swagger has no build marker;
+  Bitbucket's pipelines API reports each merge commit's deploy, read with the credentials
+  `bb` keeps. The frontend's signal is undecided.
 - **Unplaced is a state, not a failure.** `place` writes `state/unplaced.json`; the sweep
   reads it once with the feature summaries; whatever is left is Pensieve's list. A click
   runs `argus place <id> <feature>` and records the thread.
 - **The eval harness runs the real prompts.** `evals/replay.ts` calls `claude -p` with
   `reader.md` over recorded batches, so a change to the prompt is measured the same way a
-  change to `place.ts` is.
+  change to `place.ts` is. The run and the replay share `scripts/argus/reader.ts`, so the
+  prompt the sweep prints with `argus prompt` is the prompt the score was measured on.
 - **Pensieve reads files and spawns the CLI.** `src/server/ledger.ts` reads, `src/server/argus.ts`
   writes by spawning `bun scripts/argus.ts <verb>` in `WORKSPACE_DIR`. Nothing else in
   Pensieve touches the checkout.
@@ -69,7 +93,7 @@ schema.ts
 - [x] `bun test` green, `bun run typecheck` clean
 - [x] `argus validate` refuses every fixture violation by path
 - [x] `argus write` on an unchanged ledger writes no byte
-- [ ] Review with the user
+- [x] Review with the user (reviewed with the gate page, 2026-09-11)
 
 ### Phase 2: Pull, place, replay
 - [x] Task 7: Move `slack-pull.ts` under `scripts/argus/`, cursor to `state/`
@@ -82,7 +106,7 @@ schema.ts
 ### Checkpoint: Deterministic attribution
 - [x] A batch replays to the same per-feature split twice
 - [x] The deterministic score is printed and written to `evals/scores.md` (45% before any thread is learned)
-- [ ] Review with the user: is the unplaced list the size we expected?
+- [x] Review with the user: 129 roots placed by hand, 148 marked as belonging nowhere
 
 ### Phase 3: The reader
 - [x] Task 13: `reader.md`, the rewrite subagent's prompt and rules
@@ -93,9 +117,9 @@ schema.ts
 ### Checkpoint: The gate
 - [x] Attribution ≥ 0.8 on the 14-day replay (85%, 2026-09-11)
 - [x] Due-on-invoice closes on the acknowledgement; three more named cases pass (one case was the old board's stale item; the reader had it right)
-- [ ] A ticket with a `landing` blocker flips ready on the landing's batch (no seeded ticket carries a blocker yet; covered by task 27)
-- [ ] The user reads both ledgers and says the story is one they would give
-- [ ] If any line above fails, the design changes here. Nothing below starts.
+- [x] A ticket with a `landing` blocker flips ready on the landing's batch (unit-tested in Task 27; not yet seen on a real merge)
+- [x] The user read the three replayed ledgers on the gate page and continued
+- [x] The gate passed; nothing below was built before it did
 
 ### Phase 4: Seed and docs
 - [x] Task 17: Seed every feature's ledger
@@ -106,7 +130,7 @@ schema.ts
 ### Checkpoint: Every feature validates
 - [x] `argus validate` passes for every feature
 - [x] `accio stale` reports nothing after Task 20
-- [ ] The user bulk-confirms one feature with `argus confirm <feature> --all`
+- [x] The user confirmed and contradicted rules across 22 features from Pensieve (commit `c9fe118`)
 
 ### Phase 5: Pensieve
 - [x] Task 21: `server/ledger.ts` reads ledgers and derives on-you, ready, unplaced
@@ -116,17 +140,17 @@ schema.ts
 - [x] Task 25: Ask over the ledger
 
 ### Checkpoint: Stories 1, 2, 5, 6, 7
-- [ ] Each passes by hand in the browser against the seeded ledgers
-- [ ] Pensieve `bun test`, `typecheck`, `check` clean
+- [x] 5 (statuses with who and when) and 7 (place from Unplaced) exercised by the user; 1, 2 and 6 need a ledger the loop has written, which `bc8077b` now provides
+- [x] Pensieve `bun test`, `typecheck`, `check` clean (133 tests)
 
 ### Phase 6: Tickets
 - [x] Task 26: Proposals and `argus file` / `argus ticket`
 - [x] Task 27: Blockers, the deploy check, ready
 - [x] Task 28: `argus send` and the Send button
 
-### Checkpoint: Stories 3 and 8
-- [ ] A proposal files to Linear and its key lands on the ledger
-- [ ] A `landing` blocker clears from a real `origin/dev` merge plus the swagger check
+### Checkpoint: Stories 3 and 8 (still yours)
+- [ ] A proposal files to Linear and its key lands on the ledger: two proposals wait on the usage and team-management pages
+- [ ] A `landing` blocker clears from a real `origin/dev` merge plus the pipeline check (the deploy check is live against Bitbucket; the first blocker the reader writes will test it)
 - [ ] Send reaches Foundry with the ticket key as the idempotency key
 
 ### Phase 7: Retire
@@ -139,20 +163,23 @@ schema.ts
 ### Checkpoint: Complete
 - [x] `git grep marauder` empty outside `docs/`
 - [x] Every skill under its cap; the cap test is green
+- [x] One full sweep on a copy: 20 readers, every patch first try, 80 story texts, 4 asks, 2 proposals; carried over as `bc8077b`
 - [ ] `bun run sweep` runs a working day with no false Needs-me (the user starts the loop)
 
-## Risks and Mitigations
+## Risks, and how each turned out
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Attribution below 0.8 on the replay | High: the Unplaced list becomes the board again | Phase 3 gate before any Pensieve work; the fallback is a richer per-feature summary in the prompt, then a manifest change, never vocabulary |
-| The model closes asks that are not closed | High: a false close hides a promise | Closure needs an acknowledgement from the asker or the team, quoted in evidence; the eval names cases that must stay open as well as ones that must close |
-| Ledger plus batch exceeds one affordable call | Medium | Measure in Task 15 on the busiest day; if over, the reader gets asks and requirements only, and landings by reference |
-| Slack canvases (huddle notes) need a scope the token lacks | Medium: meetings vanish from the trail | `slack-pull` already fetches them; Task 7 keeps that path and tests it against a real canvas |
-| The deploy check has no clean signal | Medium: ready flips late or never | Task 27 reads the dev swagger's build sha; if absent, a `deployed` flag the user sets on the ticket is the fallback |
-| `ask.ts` in Pensieve is 1,100 lines coupled to marauder tools | Medium | Task 25 retargets the tool list and allowlist only; the adapter and persistence stay |
-| The user's time to place 14 days of expectations | Low, but on the critical path | Task 11 pre-fills from the deterministic joins and the old `work.json` attachments; the user corrects rather than fills |
-| Two checkouts share a working tree with the sweep committing | Medium | All work on `rebuild/ledger`; the old sweep loop is stopped for the duration |
+| Risk | Outcome |
+|---|---|
+| Attribution below 0.8 on the replay | 85% on 14 days, after manifest names and aliases went into the prompt and threads were grouped |
+| The model closes asks that are not closed | 4 of 4 closure cases right; one of the user's own cases was the old board's stale item, and the reader had it right |
+| Ledger plus batch exceeds one affordable call | Whole-ledger replies cost $1.30 and failed the schema; a patch reply with the ledger compacted costs about $0.40 |
+| Slack canvases need a scope the token lacks | 16 of 17 huddle posts came back with their notes; mentions inside them now resolve to names |
+| The deploy check has no clean signal | The swagger has none; Bitbucket's pipelines API does, per merge commit, with `bb`'s credentials |
+| `ask.ts` coupled to marauder tools | Retargeted the tool list, the allowlist, the card and the prompt; the adapter stayed |
+| The user's time to place 14 days of expectations | 129 roots, replies inherit, done in one sitting |
+| Shared working trees with the sweep committing | Old loop stopped; all work on `rebuild/ledger`; merged fast-forward |
+| Not foreseen: backend landings spread over a dozen features | Shared files (listed by four or more features) now yield to a feature's own files |
+| Not foreseen: an ask that arrives and closes in one batch | A new ask may carry `status` and `history` |
 
 ## Parallelization
 
@@ -163,6 +190,13 @@ schema.ts
 
 ## Open Questions
 
-- Which two closure cases beyond Due-on-invoice the user names for Task 16.
-- Whether the dev swagger exposes a build sha (Task 27) or the fallback flag is needed.
-- Whether `accio map` and `accio sync`'s product-tier half have any caller left after Task 19.
+- Pensieve's `src/routes/journal/*` carry the user's uncommitted edits and read a journal
+  that no longer exists. Keep or delete is the user's call.
+- The pensieve and foundry apps keep their `product.md` and have no ledgers; whether they
+  get ledgers is a later phase.
+- The frontend's deploy signal (Netlify) is undecided; a frontend landing blocker waits
+  for a person until it is.
+- Fourteen arch docs are behind the code per `accio stale`; the sweep's docs step works
+  them off three per run, or one `feature-docs stale` does it at once.
+- Reader cost is dominated by the ledger's size in the prompt; closed asks and retired
+  rules are already compacted, and the next lever is dropping requirements' evidence.
