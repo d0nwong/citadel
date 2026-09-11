@@ -81,7 +81,7 @@ if [[ "$MODE" == "start" ]]; then
     echo "serve: no dist/ — running bun run build"
     bun run build
   fi
-  bun server.ts &
+  scripts/argus-env.sh bun server.ts &
 else
   bun run dev &
 fi

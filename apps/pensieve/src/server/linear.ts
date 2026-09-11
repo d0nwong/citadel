@@ -95,7 +95,7 @@ export function linearConfig(): LinearConfig {
     : {
         configured: false,
         reason:
-          "LINEAR_API_KEY is not set — add it to Pensieve's .env (mint one at linear.app → Settings → Security & access → Personal API keys)",
+          "LINEAR_API_KEY is not set — it lives in argus's .env, which `bun run dev` and `bun run start` read it from (scripts/argus-env.sh); Pensieve's own .env also works (mint one at linear.app → Settings → Security & access → Personal API keys)",
         team: TEAM_NAME,
       };
 }

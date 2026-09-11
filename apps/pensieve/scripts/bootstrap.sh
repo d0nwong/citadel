@@ -203,10 +203,18 @@ cmd_envfiles_secrets() {
     "the Points page can ignore a point but not Send it" \
     "cd ~/git/foundry && foundry auth --api" \
     "prints the token; paste it into .env"
-  report_secret LINEAR_API_KEY \
-    "a proposal card still checks its project, but File cannot create the issue" \
-    "linear.app -> Settings -> Security & access -> Personal API keys" \
-    "mint one there; paste it into .env"
+  # File's key lives in argus's .env, beside the MCP gateway; scripts/argus-env.sh copies
+  # it into the environment when this .env has none.
+  local argus_env; argus_env="$(env_effective WORKSPACE_DIR "$HOME/git/argus")"
+  argus_env="${argus_env/#\~/$HOME}/.env"
+  if [ -z "$(env_get LINEAR_API_KEY)" ] && grep -Eq "^LINEAR_API_KEY=.+" "$argus_env" 2>/dev/null; then
+    ok "LINEAR_API_KEY from argus's .env ${c_dim}(scripts/argus-env.sh)${c_0}"
+  else
+    report_secret LINEAR_API_KEY \
+      "a proposal card still checks its project, but File cannot create the issue" \
+      "linear.app -> Settings -> Security & access -> Personal API keys" \
+      "mint one there; put it in argus's .env (or this one)"
+  fi
 }
 
 # Ask's state: one JSON file per conversation, outside the blackboard so the "argus owns

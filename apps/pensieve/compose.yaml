@@ -15,6 +15,8 @@ services:
       FOUNDRY_API_TOKEN: ${FOUNDRY_API_TOKEN:-}
       # … and File on a proposal card needs the Linear key, for the same reason.
       LINEAR_API_KEY: ${LINEAR_API_KEY:-}
+      # Ask's Linear and Slack MCP servers (argus's .mcp.json) are the host's MCP gateway.
+      MCP_GATEWAY_URL: ${MCP_GATEWAY_URL:-http://host.docker.internal:9090}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

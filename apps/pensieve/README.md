@@ -87,7 +87,10 @@ prints one, and `FOUNDRY_API_TOKEN` in this repo's `.env` is where Pensieve read
 the environment and nowhere else, fresh on every request. `FOUNDRY_URL` defaults to
 `http://localhost:3777`. With no token, Unsorted and Verify still work — Send is shown off, with the reason.
 
-Filing a ticket from a proposal card needs `LINEAR_API_KEY` in the same `.env` — a personal
+Filing a ticket from a proposal card needs `LINEAR_API_KEY` in the environment. Its home is
+argus's `.env`, which also feeds the MCP gateway: `bun run dev` and `bun run start` go through
+`scripts/argus-env.sh`, which copies that one key in when neither the shell nor this `.env`
+sets it. It is a personal
 API key from linear.app (Settings → Security & access), which files into Linear as the key's owner. Without it a proposal is still checked against the last project list
 Pensieve cached, and File is shown off with the reason.
 

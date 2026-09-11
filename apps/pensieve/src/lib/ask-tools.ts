@@ -125,6 +125,47 @@ export const LINEAR_WRITE_TOOLS = linear([
   "save_release_note",
 ]);
 
+const slack = (names: readonly string[]) =>
+  names.map((n) => `mcp__slack__slack_${n}`);
+
+/**
+ * Slack's hosted MCP server, which argus's `.mcp.json` reaches through the local gateway
+ * like Linear's: the read tools, so a permalink in a question is read rather than relayed.
+ */
+export const SLACK_READ_TOOLS = slack([
+  "read_thread",
+  "read_channel",
+  "read_canvas",
+  "read_file",
+  "read_list",
+  "read_user_profile",
+  "get_reactions",
+  "list_channel_members",
+  "list_user_channels",
+  "search_public",
+  "search_public_and_private",
+  "search_channels",
+  "search_users",
+  "search_emojis",
+]);
+
+/** Everything on that server that posts, reacts, uploads or edits, by name: Argus never writes to Slack. */
+export const SLACK_WRITE_TOOLS = slack([
+  "send_message",
+  "send_message_draft",
+  "schedule_message",
+  "add_reaction",
+  "create_canvas",
+  "update_canvas",
+  "create_conversation",
+  "create_list",
+  "update_list",
+  "add_list_record",
+  "update_list_record",
+  "get_file_upload_url",
+  "complete_file_upload",
+]);
+
 // ── the bridged tools ───────────────────────────────────────────────────────────
 
 /**
@@ -167,5 +208,7 @@ export const ASK_TOOL_PART_NAMES: readonly string[] = [
     "ToolSearch",
     ...LINEAR_READ_TOOLS,
     ...LINEAR_WRITE_TOOLS,
+    ...SLACK_READ_TOOLS,
+    ...SLACK_WRITE_TOOLS,
   ]),
 ];

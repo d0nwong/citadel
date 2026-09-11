@@ -75,6 +75,8 @@ import {
   HARNESS_WRITE_TOOLS,
   LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
+  SLACK_READ_TOOLS,
+  SLACK_WRITE_TOOLS,
 } from "../lib/ask-tools";
 
 /** a feature is its directory under an app's features/, one level of nesting at most */
@@ -118,6 +120,7 @@ export function allowedToolsFor(checkouts: readonly string[]): string[] {
   const rules = new Set<string>([
     ...BASE_TOOLS,
     ...LINEAR_READ_TOOLS,
+    ...SLACK_READ_TOOLS,
     ...bridgedToolRules(),
   ]);
   for (const c of checkouts) {
@@ -138,13 +141,14 @@ export const DISALLOWED_TOOLS = [
   ...HARNESS_WRITE_TOOLS,
   ...ACCIO_WRITE_VERBS,
   ...LINEAR_WRITE_TOOLS,
+  ...SLACK_WRITE_TOOLS,
 ];
 
 /**
  * The adapter configuration (`docs/adapters/claude-code.md`). `cwd` is the sandbox's
  * virtual root, which the local-process provider maps onto the argus checkout.
  * `settingSources` stays at `['project']`: it is what loads argus's `.mcp.json` (the Linear
- * server) and argus symlinks its skills into its own `.claude/skills` — the host's
+ * and Slack servers, both behind the local MCP gateway) and argus symlinks its skills into its own `.claude/skills` — the host's
  * `~/.claude` stays out of the run.
  */
 export const ADAPTER_CONFIG = {
@@ -175,7 +179,7 @@ console.log(
  */
 export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus ledgers. Your working directory is the argus checkout. This is not a terminal: there is no permission dialog and no one to answer one, so never tell the user to grant, allow or approve anything — a denied tool is an answer, and you work around it once.
 
-To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature's record is \`argus show <feature>\` (its ledger.json: the story, the requirements with their status, the asks with their history, the tickets, the landings); what nobody could place is state/unplaced.json; where a screen or field lives in the code is \`accio find "<words>"\`; a ticket is \`mcp__linear__get_issue\`. Code from a product checkout is \`git -C <repo> show origin/<branch>:<path>\` at the sha the ledger names; never run git fetch, pull, checkout or stash.
+To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature's record is \`argus show <feature>\` (its ledger.json: the story, the requirements with their status, the asks with their history, the tickets, the landings); what nobody could place is state/unplaced.json; where a screen or field lives in the code is \`accio find "<words>"\`; a ticket is \`mcp__linear__get_issue\`; a Slack permalink is \`mcp__slack__slack_read_thread\` (the channel id and ts from the link). Code from a product checkout is \`git -C <repo> show origin/<branch>:<path>\` at the sha the ledger names; never run git fetch, pull, checkout or stash.
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 

@@ -51,6 +51,8 @@ const {
   BRIDGED_MCP_PREFIX,
   LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
+  SLACK_READ_TOOLS,
+  SLACK_WRITE_TOOLS,
   ASK_TOOL_PART_NAMES,
   PROPOSE_DECISION,
   PROPOSE_TICKET,
@@ -658,6 +660,27 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
     );
     expect(ADAPTER_CONFIG.allowedTools).not.toContain(PROPOSE_TICKET);
   });
+  test("Slack: the read tools are allowed under mcp__slack__, every write is denied by name, and the page renders both", () => {
+    // Argus reads a permalink through the gateway's Slack server and never posts, reacts or edits.
+    for (const t of SLACK_READ_TOOLS) {
+      expect(ADAPTER_CONFIG.allowedTools).toContain(t);
+    }
+    for (const t of SLACK_WRITE_TOOLS) {
+      expect(ADAPTER_CONFIG.disallowedTools).toContain(t);
+      expect(ADAPTER_CONFIG.allowedTools).not.toContain(t);
+    }
+    expect(ADAPTER_CONFIG.allowedTools).toContain(
+      "mcp__slack__slack_read_thread"
+    );
+    expect(ADAPTER_CONFIG.disallowedTools).toContain(
+      "mcp__slack__slack_send_message"
+    );
+    const all = [...SLACK_READ_TOOLS, ...SLACK_WRITE_TOOLS];
+    expect(all.every((t) => t.startsWith("mcp__slack__slack_"))).toBe(true);
+    for (const t of all) {
+      expect(ASK_TOOL_PART_NAMES).toContain(t);
+    }
+  });
   test("the argus read verbs are allowed one by one, and the write verbs are not", () => {
     // The allowlist is a command prefix match, so a bare `argus` rule would carry
     // `argus close` with it — and a change to the record is proposed, never run.
@@ -722,6 +745,7 @@ describe("LIA-104 — the system prompt", () => {
       /state\/unplaced\.json/,
       /accio find/,
       /mcp__linear__get_issue/,
+      /mcp__slack__slack_read_thread/,
       /git -C <repo> show origin/,
       /never run git fetch/i,
       /cite every path/i,
