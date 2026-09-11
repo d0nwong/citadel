@@ -113,7 +113,7 @@ schema.ts
 - [x] Task 22: `server/argus.ts` spawns the CLI
 - [x] Task 23: Home: Needs-me, Ready, Unplaced
 - [x] Task 24: Feature page: the five questions, requirements, asks, tickets, landings
-- [ ] Task 25: Ask over the ledger
+- [x] Task 25: Ask over the ledger
 
 ### Checkpoint: Stories 1, 2, 5, 6, 7
 - [ ] Each passes by hand in the browser against the seeded ledgers
