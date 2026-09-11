@@ -232,7 +232,7 @@ test('LIA-92 AC4 — no LINEAR_API_KEY: 503 without instructions; 202 with them,
 
   const refused = await handleTriggerJob(post({ repo: REPO_NAME, ticketId: `TEST-${rand}-A4` }), noLinear)
   expect(refused.status).toBe(503)
-  expect(((await refused.json()) as { error: string }).error).toContain('bootstrap.sh env')
+  expect(((await refused.json()) as { error: string }).error).toContain('no LINEAR_API_KEY in the citadel .env')
   expect(await rowCount()).toBe(before)
   expect(ignited.length).toBe(ignitedBefore)
 
@@ -244,7 +244,7 @@ test('LIA-92 AC4 — no LINEAR_API_KEY: 503 without instructions; 202 with them,
   expect(ignited).toContain(job.id)
   expect(claimed.some((c) => c.id === `uuid-${ticketId}`)).toBe(false)
   const logs = await logsOf(job.id)
-  expect(logs.some((l) => l.stream === 'err' && l.text.includes(`Linear claim for ${ticketId} skipped`) && l.text.includes('bootstrap.sh env'))).toBe(true)
+  expect(logs.some((l) => l.stream === 'err' && l.text.includes(`Linear claim for ${ticketId} skipped`) && l.text.includes('no LINEAR_API_KEY in the citadel .env'))).toBe(true)
 })
 
 test('LIA-92 AC5 — a ticketId Linear does not know is a 400 naming it, and inserts nothing', async () => {

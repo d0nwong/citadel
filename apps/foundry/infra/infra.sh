@@ -51,7 +51,7 @@ cmd_up() {
   info "starting the foundry stack"
   dc up -d --wait --wait-timeout 90 "$@"
   ok "postgres ready on port $(pg_port)  ${c_dim}(postgres.foundry.local)${c_0}"
-  say "  ${c_dim}the MCP gateway forges use is argus's: ~/git/argus/scripts/bootstrap.sh mcp${c_0}"
+  say "  ${c_dim}the MCP gateway forges use is argus's: apps/argus/infra/compose.yaml${c_0}"
   say ""
   say "  DATABASE_URL=$(pg_url)"
   say "  ${c_dim}bun run infra:psql   # a psql shell in the container${c_0}"
@@ -108,7 +108,7 @@ infra — foundry's local development stack
   bun run infra:url               print DATABASE_URL (for scripts / .env files)
 
 Settings live in infra/.env, created from infra/.env.example on first up.
-The MCP gateway forges use is argus's (~/git/argus/infra; bootstrap.sh mcp).
+The MCP gateway forges use is argus's (apps/argus/infra/compose.yaml).
 USAGE
 }
 

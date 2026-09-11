@@ -80,7 +80,7 @@ See `tasks/plan.md` for the order and the checkpoints.
     `ARGUS_DIR`, with the data as `addDirs`, `env.ARGUS_ROOT`, `git -C <data>` read rules and
     absolute data paths in its prompt. 137 pass; a real `argus show tasks` from citadel
     against `~/git/argus` returns ok and writes nothing.
-- [ ] **T8: Move to one `.env`.** (M)
+- [x] **T8: Move to one `.env`.** (M)
   - Acceptance: a root `.env.example` holds every key once (`FOUNDRY_MCP_TOKEN` becomes
     `MCP_GATEWAY_TOKEN`, and `BITBUCKET_TOKEN` and `GH_TOKEN` are added). Foundry reads the root
     `.env`. `ARGUS_ENV`, `argus-env.sh` and the liamai fallback are gone.
@@ -88,6 +88,14 @@ See `tasks/plan.md` for the order and the checkpoints.
     Pensieve's tests pass.
   - Files: `.env.example`, `apps/foundry/bin/foundry`, `web/.../foundry-env.ts`, `job-api.ts`,
     Pensieve's `package.json` scripts.
+  - Done: one root `.env.example`; the four app copies are gone. Foundry (CLI and web) reads the
+    root `.env`, with the environment as the fallback in a container, and sends forges
+    `FOUNDRY_MCP_TOKEN=$MCP_GATEWAY_TOKEN`; `migrate_env`, `ARGUS_ENV` and the liamai fallback
+    are gone. Pensieve's `root-env.sh` replaces `argus-env.sh` and exports only Pensieve's own
+    keys (checked: a Slack or gateway token in the file never reaches it). Foundry web 34/34,
+    Pensieve 137/0, no new lint.
+  - Left for later: the old names still appear in the argus and Pensieve bootstraps (T9
+    replaces them) and in Foundry's and Pensieve's READMEs (T15).
 
 ## Phase 4: Ops
 

@@ -94,8 +94,8 @@ async function preflight(
   else throw new Error('no Claude credential for the forge — run: foundry auth')
   // Gateway token only — the Linear/Slack keys stay on the host, behind argus's
   // gateway, which serves both; FOUNDRY_MCP_SERVERS in .env narrows what box-init registers.
-  if (cred.FOUNDRY_MCP_TOKEN) {
-    credEnv.FOUNDRY_MCP_TOKEN = cred.FOUNDRY_MCP_TOKEN
+  if (cred.MCP_GATEWAY_TOKEN) {
+    credEnv.FOUNDRY_MCP_TOKEN = cred.MCP_GATEWAY_TOKEN
     credEnv.FOUNDRY_MCP_URL = MCP_URL
     credEnv.FOUNDRY_MCP_SERVERS = cred.FOUNDRY_MCP_SERVERS || 'linear,slack'
   }

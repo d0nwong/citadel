@@ -1,7 +1,7 @@
 /**
  * The credential reader parses the one `.env` `foundry auth` writes: KEY=value
  * lines only, the last line for a key wins, and a missing file is empty rather
- * than an error. The upstream keys come from argus's `.env` when it has them.
+ * than an error. A key the file lacks comes from the environment, as in a container.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -44,20 +44,17 @@ describe('readEnvFile', () => {
 })
 
 describe('readCredentials', () => {
-  test("argus's value wins for the keys argus owns; foundry's own keys stay foundry's", async () => {
-    const own = path.join(root, 'own')
-    const argus = path.join(root, 'argus')
-    await writeFile(own, 'FOUNDRY_MCP_TOKEN=gw\nLINEAR_API_KEY=stale\nSLACK_TOKEN=stale\n')
-    await writeFile(argus, 'LINEAR_API_KEY=lin\nSLACK_TOKEN=xoxp\nMCP_GATEWAY_TOKEN=gw\nBITBUCKET_CONFIG=x\n')
-    expect(await readCredentials(own, argus)).toEqual({ FOUNDRY_MCP_TOKEN: 'gw', LINEAR_API_KEY: 'lin', SLACK_TOKEN: 'xoxp' })
+  test("the file's value wins; a key it lacks comes from the environment", async () => {
+    const file = path.join(root, 'creds')
+    await writeFile(file, 'MCP_GATEWAY_TOKEN=gw\nLINEAR_API_KEY=lin\n')
+    expect(await readCredentials(file, { CLAUDE_CODE_OAUTH_TOKEN: 'env-claude', HOME: '/x', LINEAR_API_KEY: 'env-lin' })).toEqual({
+      CLAUDE_CODE_OAUTH_TOKEN: 'env-claude',
+      LINEAR_API_KEY: 'lin',
+      MCP_GATEWAY_TOKEN: 'gw',
+    })
   })
 
-  test("with no argus file, or a key argus lacks, foundry's copy is the fallback", async () => {
-    const own = path.join(root, 'own2')
-    await writeFile(own, 'LINEAR_API_KEY=mine\n')
-    expect((await readCredentials(own, path.join(root, 'absent'))).LINEAR_API_KEY).toBe('mine')
-    const argus = path.join(root, 'argus2')
-    await writeFile(argus, 'SLACK_TOKEN=xoxp\n')
-    expect(await readCredentials(own, argus)).toEqual({ LINEAR_API_KEY: 'mine', SLACK_TOKEN: 'xoxp' })
+  test('with no file (a container) the environment supplies the credentials, and nothing else of it', async () => {
+    expect(await readCredentials(path.join(root, 'absent'), { PATH: '/bin', SLACK_TOKEN: 'xoxp' })).toEqual({ SLACK_TOKEN: 'xoxp' })
   })
 })

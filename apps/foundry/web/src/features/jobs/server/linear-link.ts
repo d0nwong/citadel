@@ -27,7 +27,7 @@ import { readFoundryEnv } from './foundry-env'
 const API = 'https://api.linear.app/graphql'
 
 /**
- * The host's personal API key, from argus's `.env` (`readFoundryEnv`). `process.env` is
+ * The host's personal API key, from citadel's `.env` (`readFoundryEnv`). `process.env` is
  * the fallback for headless setups and tests. Undefined means Linear was never
  * configured — every caller degrades from there rather than failing a job.
  */
