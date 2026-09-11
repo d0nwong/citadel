@@ -207,6 +207,11 @@ The old repos keep running until the stack has proven itself. Only one sweep may
 - **Foundry sees host paths:** tracked repos and `--mount` forges are stored as absolute host
   paths, so `foundry-web` mounts the host's `~/git` at the same absolute path.
 
+- **Tokens reach Claude's helpers as files (checked 2026-09-11, T13):** Claude Code runs a
+  headersHelper without any variable that looks like a secret (`MCP_GATEWAY_TOKEN` and
+  `CLAUDE_CODE_OAUTH_TOKEN` never reach it), so compose mounts the gateway token as a secret at
+  `/run/secrets/mcp_gateway_token`, and `mcp-headers.ts` reads it there.
+
 ## Open questions
 
 None.

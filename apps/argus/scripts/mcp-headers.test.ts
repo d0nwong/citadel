@@ -11,10 +11,11 @@ test("gatewayToken: the value, unquoted; blank or absent is none; the last line 
   expect(gatewayToken("MCP_GATEWAY_TOKEN=a\nMCP_GATEWAY_TOKEN=b")).toBe("b");
 });
 
-test("resolveToken: the environment wins, then the file; blank env falls through", () => {
-  expect(resolveToken({ MCP_GATEWAY_TOKEN: "env" }, "MCP_GATEWAY_TOKEN=file")).toBe("env");
-  expect(resolveToken({ MCP_GATEWAY_TOKEN: " " }, "MCP_GATEWAY_TOKEN=file")).toBe("file");
-  expect(resolveToken({}, undefined)).toBeUndefined();
+test("resolveToken: the environment, then the secret file, then the .env; a blank falls through", () => {
+  expect(resolveToken({ MCP_GATEWAY_TOKEN: "env" }, "secret", "MCP_GATEWAY_TOKEN=file")).toBe("env");
+  expect(resolveToken({}, "secret\n", "MCP_GATEWAY_TOKEN=file")).toBe("secret");
+  expect(resolveToken({ MCP_GATEWAY_TOKEN: " " }, "  ", "MCP_GATEWAY_TOKEN=file")).toBe("file");
+  expect(resolveToken({}, undefined, undefined)).toBeUndefined();
 });
 
 test("ENV_FILE is the citadel root's .env", async () => {

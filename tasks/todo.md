@@ -68,6 +68,8 @@ See `tasks/plan.md` for the order and the checkpoints.
     and `.state`; `ROOT` stays the code root. evals read features from it too. The data tests
     skip without data (135 pass, 13 skip) and all 148 pass with `ARGUS_ROOT=~/git/argus`.
     `mcp-headers.ts` prefers `MCP_GATEWAY_TOKEN` from the environment, then the root `.env`.
+    (Claude Code strips that variable from a headersHelper's environment, so a container hands
+    the token over as a secret file instead; see T13.)
 - [x] **T7: Split code from data in Pensieve.** (M)
   - Acceptance: `WORKSPACE_DIR` is the data, a new `ARGUS_DIR` (default `../argus`) is the code,
     verbs are spawned as `bun $ARGUS_DIR/scripts/argus.ts` with `ARGUS_ROOT=$WORKSPACE_DIR`, and
@@ -145,13 +147,24 @@ See `tasks/plan.md` for the order and the checkpoints.
     through `just migrate`, and it reaches the gateway at `http://mcp:9090`.
   - Verify: `POST /api/jobs` starts a forge job that settles, and the forge reaches Linear MCP.
   - Files: `apps/foundry/infra/Dockerfile.web`, its compose file.
-- [ ] **T13: Add the Pensieve service.** (M, needs T7)
+- [x] **T13: Add the Pensieve service.** (M, needs T7)
   - Acceptance: an image that includes `apps/argus`, mounts `argus-data` read-only except for
     `decisions/`, and mounts the FE/BE clones read-only. Ask runs on `CLAUDE_CODE_OAUTH_TOKEN`,
     and Send reaches `http://foundry-web:3777`.
   - The data mount can't be `/workspace`: that is the sandbox's virtual name for Ask's cwd
     (`ARGUS_DIR`). Mount it at `/argus-data` and set `WORKSPACE_DIR` and `ARGUS_DIR` explicitly.
   - Verify: the smoke test in the spec (feature page, a click verb, Send, an Ask answer).
+  - Done: the image builds from the repo root with argus's code, trusts `/app/apps/argus`, and
+    sets a system-wide git `safe.directory`; a root `.dockerignore` keeps `.env` out (checked:
+    none in the image). Compose passes only Pensieve's keys, mounts the data at `/argus-data`,
+    the FE/BE checkouts read-only, and a volume for Claude's transcripts so a resumed
+    conversation survives a restart. Three fixes found by the trial: `apps/argus/.claude/
+    settings.json` approves the linear and slack servers (trust alone left them pending); the
+    gateway token reaches the headersHelper as a compose secret file, because Claude Code runs
+    helpers without secret-looking variables; the gateway's healthcheck waits for every
+    upstream route. Trial on port 13778 against a copy of the data: pages serve, Claude is
+    logged in by token, both MCP servers connect, `argus show` reads the data. Send waits on
+    T12's decision.
   - Files: `apps/pensieve/Dockerfile`, `apps/pensieve/compose.yaml`.
 
 **Checkpoint B:** the stack runs without the sweep. Review before T14.

@@ -9,3 +9,5 @@ include:
     env_file: .env
   - path: apps/foundry/infra/compose.yaml
     env_file: .env
+  - path: apps/pensieve/compose.yaml
+    env_file: .env

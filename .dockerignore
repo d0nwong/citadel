@@ -1,0 +1,9 @@
+# The build context is the repo root. Secrets and anything machine-built stay out.
+.env
+**/.env
+**/*.local
+.git
+**/node_modules
+**/dist
+**/.tanstack
+**/.DS_Store

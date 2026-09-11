@@ -1,33 +1,50 @@
+# Pensieve, included by citadel's root compose.yaml (`just up`). Built from the repo root, so
+# the workspace's lockfile installs it and argus's code comes along.
 services:
   pensieve:
-    build: .
+    build:
+      context: ../..
+      dockerfile: apps/pensieve/Dockerfile
+    image: citadel/pensieve:local
     ports:
-      - "3778:3778"
+      - "${PENSIEVE_PORT:-3778}:3778"
     environment:
-      WORKSPACE_DIR: /workspace
-      # Ask's state — conversations — lives on the named volume below.
+      WORKSPACE_DIR: /argus-data
+      ARGUS_DIR: /app/apps/argus
       PENSIEVE_HOME: /data
-      # Ask in the container bills a key: there is no `claude login` inside it.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      # Foundry runs on the host (bun · :3777); host-gateway is how a container reaches it.
-      FOUNDRY_URL: ${FOUNDRY_URL:-http://host.docker.internal:3777}
-      # Send needs Foundry's trigger-API token; the container has only its environment.
-      FOUNDRY_API_TOKEN: ${FOUNDRY_API_TOKEN:-}
-      # … and File on a proposal card needs the Linear key, for the same reason.
+      # Only the keys Pensieve reads, never the Slack token: an Ask run inherits all of this.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       LINEAR_API_KEY: ${LINEAR_API_KEY:-}
-      # Ask's Linear and Slack MCP servers (argus's .mcp.json) are the host's MCP gateway.
-      MCP_GATEWAY_URL: ${MCP_GATEWAY_URL:-http://host.docker.internal:9090}
+      FOUNDRY_API_TOKEN: ${FOUNDRY_API_TOKEN:-}
+      # Foundry as the container reaches it: the host's published port.
+      FOUNDRY_URL: ${PENSIEVE_FOUNDRY_URL:-http://host.docker.internal:3777}
+      # Ask's Slack and Linear servers (argus's .mcp.json): the gateway, by service name. Its
+      # token arrives as a file (secrets, below): Claude Code runs the headersHelper without
+      # any variable that looks like a secret.
+      MCP_GATEWAY_URL: http://mcp:9090
+      FE_REPO: /repos/fe
+      BE_REPO: /repos/be
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      # read-only: the sweep in argus owns every file here …
-      - ${WORKSPACE_DIR:-~/git/argus}:/workspace:ro
-      # … except decisions/, the one directory this app writes (a Send / Ignore verdict
-      # per point). Mounted writable over the read-only tree; the sweep commits what lands.
-      - ${WORKSPACE_DIR:-~/git/argus}/decisions:/workspace/decisions
-      # Ask's conversations: survive `docker compose down && up`.
+      # argus's data, read and written through argus's verbs (a click writes one ledger).
+      # Until cutover it is the host checkout; after it, the volume the sweep shares.
+      - ${ARGUS_DATA_DIR:-~/git/argus}:/argus-data
+      - ${FE_REPO_HOST:-~/git/alden-portal-fe}:/repos/fe:ro
+      - ${BE_REPO_HOST:-~/git/alden-connect-portal-be}:/repos/be:ro
       - pensieve-home:/data
+      - pensieve-claude:/root/.claude
+    secrets:
+      - mcp_gateway_token
+    depends_on:
+      mcp:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   pensieve-home:
+  pensieve-claude:
+
+secrets:
+  mcp_gateway_token:
+    environment: MCP_GATEWAY_TOKEN
