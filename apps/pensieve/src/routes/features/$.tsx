@@ -1,7 +1,8 @@
 /**
  * /features/$ — one feature, read from its ledger: the five questions a founder asks,
- * the requirements with who confirmed them, the asks with what happened to each, the
- * tickets and their blockers, the proposals, the landings. The arch doc is one link away.
+ * then what is in motion (the asks with what happened to each, the tickets and their
+ * blockers, the proposals), then the requirements with who confirmed them, then the
+ * landings. The arch doc is one link away.
  * A splat, because a feature is a directory and a directory nests: `admin/invoicing`.
  */
 
@@ -69,10 +70,10 @@ function FeaturePage() {
       />
       <div className="flex flex-col gap-10">
         <Story dir={dir} ledger={ledger} />
-        <Requirements dir={dir} ledger={ledger} />
         <Asks dir={dir} ledger={ledger} />
         <Tickets tickets={ledger.tickets} />
         <Proposals dir={dir} proposals={ledger.proposals} />
+        <Requirements dir={dir} ledger={ledger} />
         <Landings landings={ledger.landings} />
       </div>
     </DocLayout>
