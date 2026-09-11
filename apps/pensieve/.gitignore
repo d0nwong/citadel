@@ -1,0 +1,10 @@
+node_modules
+dist
+.tanstack
+.nitro
+.output
+.env
+*.local
+.DS_Store
+*.tsbuildinfo
+.playwright-cli

@@ -1,0 +1,355 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+/* Dark mode is a class on <html>, set before first paint by the inline script in
+   routes/__root.tsx from the stored choice or the system preference (components/theme.tsx). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Pensieve: tokens ────────────────────────────────────────────────────────
+   Docs-site neutrals — white and grey, one blue, system sans — in shadcn's names so
+   the vendored chat blocks under components/ai and the app's own pages read as one
+   system. Light is the default set; `.dark` overrides only the values. */
+:root {
+  --radius: 0.5rem;
+
+  --background: #ffffff;
+  --foreground: #181d27;
+  /* body copy and nav labels — a step softer than headings */
+  --foreground-secondary: #414651;
+  --card: #ffffff;
+  --card-foreground: #181d27;
+  --popover: #ffffff;
+  --popover-foreground: #181d27;
+  --muted: #fafafa;
+  --muted-foreground: #535862;
+  /* the third text tier — timestamps, paths, placeholders */
+  --subtle: #717680;
+  --border: #e9eaeb;
+  --input: #d5d7da;
+  --ring: #2563eb;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #181d27;
+  --accent: #f5f5f5;
+  --accent-foreground: #181d27;
+  --destructive: #dc2626;
+
+  --st-decided: #b45309;
+  --st-implemented: #2563eb;
+  --st-documented: #15803d;
+  --st-superseded: #78716c;
+  --st-hold: #dc2626;
+
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground-secondary);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  --font-sans:
+    "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji",
+    "Segoe UI Symbol";
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.dark {
+  --background: #0c0e12;
+  --foreground: #f7f7f7;
+  --foreground-secondary: #cecfd2;
+  --card: #13161b;
+  --card-foreground: #f7f7f7;
+  --popover: #13161b;
+  --popover-foreground: #f7f7f7;
+  --muted: #13161b;
+  --muted-foreground: #94979c;
+  --subtle: #85888e;
+  --border: #22262f;
+  --input: #373a41;
+  --ring: #7aa2f7;
+  --primary: #7aa2f7;
+  --primary-foreground: #0f172a;
+  --secondary: #1f242f;
+  --secondary-foreground: #f7f7f7;
+  --accent: #1f242f;
+  --accent-foreground: #f7f7f7;
+  --destructive: #f87171;
+
+  --st-decided: #f59e0b;
+  --st-implemented: #7aa2f7;
+  --st-documented: #4ade80;
+  --st-superseded: #a8a29e;
+  --st-hold: #f87171;
+  --sidebar: hsl(240 5.9% 10%);
+  --sidebar-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-primary: hsl(224.3 76.3% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(240 3.7% 15.9%);
+  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-border: hsl(240 3.7% 15.9%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-foreground-secondary: var(--foreground-secondary);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-st-decided: var(--st-decided);
+  --color-st-implemented: var(--st-implemented);
+  --color-st-documented: var(--st-documented);
+  --color-st-superseded: var(--st-superseded);
+  --color-st-hold: var(--st-hold);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* The chrome reads at 14px (`text-sm`); prose is 16px, set on `.prose-pensieve`. */
+}
+
+/* Tailwind 4 defaults an unqualified `border` to currentColor; the vendored shadcn parts
+   (sidebar, sheet) rely on the v3 default instead, so every border starts from the token. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
+}
+
+html {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+  color: var(--foreground);
+  color-scheme: light;
+  background: var(--background);
+  text-rendering: optimizeLegibility;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  min-height: 100dvh;
+  margin: 0;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+/* ── type helpers ─────────────────────────────────────────────────────── */
+/* a small label above a field or a section — sentence case, no tracking */
+.kicker {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--subtle);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* ── rendered markdown ────────────────────────────────────────────────── */
+.prose-pensieve {
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--foreground-secondary);
+}
+.prose-pensieve :where(h1, h2, h3, h4, strong) {
+  color: var(--foreground);
+}
+.prose-pensieve :where(h1, h2, h3, h4) {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  scroll-margin-top: 5rem;
+}
+.prose-pensieve :where(h1) {
+  margin: 0 0 1rem;
+  font-size: 28px;
+  line-height: 1.25;
+}
+/* every h2 opens a section, and a dashed rule is what separates sections */
+.prose-pensieve :where(h2) {
+  padding-top: 2.5rem;
+  margin: 2.5rem 0 1rem;
+  font-size: 20px;
+  line-height: 1.3;
+  border-top: 1px dashed var(--border);
+}
+.prose-pensieve :where(h2:first-child) {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: 0;
+}
+.prose-pensieve :where(h3) {
+  margin: 2rem 0 0.6rem;
+  font-size: 17px;
+  line-height: 1.35;
+}
+.prose-pensieve :where(h4) {
+  margin: 1.5rem 0 0.4rem;
+  font-size: 16px;
+}
+.prose-pensieve :where(p, ul, ol, blockquote, table, pre) {
+  margin: 0 0 1.25rem;
+}
+.prose-pensieve :where(ul, ol) {
+  padding-left: 1.5rem;
+}
+.prose-pensieve :where(li) {
+  margin: 0.5rem 0;
+}
+.prose-pensieve :where(li > ul, li > ol) {
+  margin: 0.35rem 0 0;
+}
+.prose-pensieve :where(li > p) {
+  margin: 0;
+}
+.prose-pensieve :where(a) {
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: none;
+}
+.prose-pensieve :where(a:hover) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.prose-pensieve :where(strong) {
+  font-weight: 600;
+}
+.prose-pensieve :where(code) {
+  padding: 0.1em 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.prose-pensieve :where(pre) {
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.prose-pensieve :where(pre code) {
+  padding: 0;
+  font-size: inherit;
+  background: none;
+  border: 0;
+}
+.prose-pensieve :where(blockquote) {
+  padding: 0.75rem 1rem;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+}
+.prose-pensieve :where(hr) {
+  margin: 2.5rem 0;
+  border: 0;
+  border-top: 1px dashed var(--border);
+}
+.prose-pensieve :where(table) {
+  display: block;
+  overflow-x: auto;
+  font-size: 14px;
+  border-collapse: collapse;
+}
+.prose-pensieve :where(th, td) {
+  padding: 0.6rem 0.9rem;
+  vertical-align: top;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.prose-pensieve :where(th) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+.prose-pensieve :where(input[type="checkbox"]) {
+  margin-right: 0.4rem;
+  accent-color: var(--primary);
+}
+.prose-pensieve :where(h2 + ul) {
+  margin-top: 0.4rem;
+}
+
+/* Digests and sweep reports list one finding per item, each a headline and a detail
+   line — they read as entries, not bullets, so the items stand further apart. */
+.prose-loose :where(li) {
+  margin: 1.4rem 0;
+}
+.prose-loose :where(li > ul, li > ol) {
+  margin: 0.5rem 0 0;
+}
+.prose-loose :where(h2 + ul, h3 + ul) {
+  margin-top: 0.6rem;
+}
+
+/* An arc's "Where we are" on a card in the index: one paragraph among chrome, so it sits
+   at the page's reading size without the leading a whole document needs. */
+.prose-tight {
+  font-size: 15px;
+  line-height: 1.55;
+}
+.prose-tight :where(p, ul, ol) {
+  margin: 0.4rem 0 0;
+}
+.prose-tight :where(p:first-child) {
+  margin-top: 0;
+}
+
+/* The sidebar still scrolls (wheel, trackpad, touch) but draws no scrollbar. */
+[data-slot="sidebar-content"] {
+  scrollbar-width: none;
+}
+[data-slot="sidebar-content"]::-webkit-scrollbar {
+  display: none;
+}

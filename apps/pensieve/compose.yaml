@@ -1,0 +1,33 @@
+services:
+  pensieve:
+    build: .
+    ports:
+      - "3778:3778"
+    environment:
+      WORKSPACE_DIR: /workspace
+      # Ask's state — conversations — lives on the named volume below.
+      PENSIEVE_HOME: /data
+      # Ask in the container bills a key: there is no `claude login` inside it.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Foundry runs on the host (bun · :3777); host-gateway is how a container reaches it.
+      FOUNDRY_URL: ${FOUNDRY_URL:-http://host.docker.internal:3777}
+      # Send needs Foundry's trigger-API token; the container has only its environment.
+      FOUNDRY_API_TOKEN: ${FOUNDRY_API_TOKEN:-}
+      # … and File on a proposal card needs the Linear key, for the same reason.
+      LINEAR_API_KEY: ${LINEAR_API_KEY:-}
+      # Ask's Linear and Slack MCP servers (argus's .mcp.json) are the host's MCP gateway.
+      MCP_GATEWAY_URL: ${MCP_GATEWAY_URL:-http://host.docker.internal:9090}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # read-only: the sweep in argus owns every file here …
+      - ${WORKSPACE_DIR:-~/git/argus}:/workspace:ro
+      # … except decisions/, the one directory this app writes (a Send / Ignore verdict
+      # per point). Mounted writable over the read-only tree; the sweep commits what lands.
+      - ${WORKSPACE_DIR:-~/git/argus}/decisions:/workspace/decisions
+      # Ask's conversations: survive `docker compose down && up`.
+      - pensieve-home:/data
+    restart: unless-stopped
+
+volumes:
+  pensieve-home:
