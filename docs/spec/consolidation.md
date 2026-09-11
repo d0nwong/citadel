@@ -31,9 +31,10 @@ with the ledger data still in files. When step 1 is done:
    for release-please to attribute.
 5. **The sweep container loops with a shell `while` + `sleep 900`** around `claude -p "/sweep"`,
    guarded by `flock`. `/loop` is interactive and doesn't belong in a container.
-6. **Foundry's web server runs in compose with `/var/run/docker.sock` mounted.** Its job runner
-   only calls the `docker` CLI (`exec`, `wait`, `ps`) and forges use named volumes, so this works
-   as-is. A forge made with `--mount DIR` needs a host path, not a container path.
+6. **Foundry web runs on the host in step 1** (decided at checkpoint B). It pushes and opens PRs
+   with the user's own git, gh and bb credentials, which live in the macOS keychain, so
+   `just foundry` runs it with the root .env. Containerizing it (tokens and a credential helper,
+   same-path mounts, the Docker socket) is part of the deploy work.
 
 ## Tech stack
 
@@ -74,12 +75,12 @@ Copy it over by hand if you want it.
 |---|---|---|---|
 | `mcp` | mcp-proxy, pinned digest | 9090 | Slack and Linear upstreams |
 | `postgres` | postgres:18-alpine | 5432 | Foundry (step 2: argus as well) |
-| `foundry-web` | built from apps/foundry | 3777 | postgres, docker.sock, mcp, host `~/git` at the same path |
+| `foundry-web` | host process (`just foundry`), not compose | 3777 | postgres, mcp, host Docker, your git/gh/bb |
 | `pensieve` | built from apps/pensieve | 3778 | `argus-data` (ro, except `decisions/`), foundry-web, mcp |
 | `sweep` | built from apps/argus | none | `argus-data` (rw), FE/BE clones, mcp, Slack, Bitbucket |
 
-Inside the stack, services find each other by name (`http://mcp:9090`, `http://foundry-web:3777`)
-instead of `host.docker.internal`. Forges are started by Foundry, not by compose, so they keep
+Inside the stack, services find each other by name (`http://mcp:9090`); Pensieve reaches Foundry
+on the host at `host.docker.internal:3777`. Forges are started by Foundry, not by compose, so they keep
 reaching the gateway through the published host port.
 
 ## Commands
@@ -182,8 +183,9 @@ The old repos keep running until the stack has proven itself. Only one sweep may
 3. On a fresh clone, `just bootstrap` writes one `.env` and `just check` reports nothing
    missing. There's no `.env` in any app directory, and nothing reads `ARGUS_ENV` or
    `~/.config/liamai/env`.
-4. After `docker compose up -d`, all five services are healthy. Pensieve at :3778 shows today's
-   ledgers, Send to Foundry creates a job at :3777, and Ask answers a question.
+4. After `just up`, the gateway, postgres, Pensieve and the sweep are healthy, and `just foundry`
+   runs Foundry. Pensieve at :3778 shows today's ledgers, Send to Foundry creates a job at
+   :3777, and Ask answers a question.
 5. The sweep service finishes a tick and pushes to `d0nwong/argus`, and `~/git/argus` has no new
    commits for 24 hours after cutover.
 6. A `feat(pensieve):` merge makes release-please propose `pensieve-v0.2.0` and nothing else.
@@ -211,6 +213,10 @@ The old repos keep running until the stack has proven itself. Only one sweep may
   headersHelper without any variable that looks like a secret (`MCP_GATEWAY_TOKEN` and
   `CLAUDE_CODE_OAUTH_TOKEN` never reach it), so compose mounts the gateway token as a secret at
   `/run/secrets/mcp_gateway_token`, and `mcp-headers.ts` reads it there.
+
+- **Foundry web stays on the host in step 1 (checkpoint B, 2026-09-11):** it runs `git push`
+  and opens PRs with `gh` and `bb`, and its credentials are keychain-backed. `just foundry`
+  runs it; containerizing it moves to the deploy work.
 
 ## Open questions
 

@@ -141,12 +141,14 @@ See `tasks/plan.md` for the order and the checkpoints.
     volume a container from another project holds. Trial on project `citadel-t11`, ports
     19090/15432 and a throwaway volume: both healthy, `/_readyz` 200, migrations applied, the
     guard refused `foundry-pgdata`; the live stack was untouched.
-- [ ] **T12: Add the foundry-web service.** (M, needs T2)
-  - Acceptance: an image built from the workspace, with `docker.sock` and a `foundry-home`
-    volume mounted, and the host's `~/git` mounted at the same absolute path. Migrations run
-    through `just migrate`, and it reaches the gateway at `http://mcp:9090`.
-  - Verify: `POST /api/jobs` starts a forge job that settles, and the forge reaches Linear MCP.
-  - Files: `apps/foundry/infra/Dockerfile.web`, its compose file.
+- [x] **T12: Foundry web stays on the host; `just foundry` runs it.** (decided at checkpoint B)
+  - Why: Foundry web runs `git push` and opens PRs with `gh` and `bb` using keychain-backed
+    credentials a container cannot read. Containerizing it (tokens, a credential helper,
+    same-path mounts for `~/git` and `~/.foundry`, the Docker socket, and T2's `server.ts`) moves
+    to the deploy work.
+  - Done: `just foundry` runs the dev server with the stack's DATABASE_URL; it reads the root
+    .env itself. Pensieve's container reaches it at `host.docker.internal:3777`. Until cutover the
+    live Foundry holds :3777 and the live postgres :5432, so it is for after the switch.
 - [x] **T13: Add the Pensieve service.** (M, needs T7)
   - Acceptance: an image that includes `apps/argus`, mounts `argus-data` read-only except for
     `decisions/`, and mounts the FE/BE clones read-only. Ask runs on `CLAUDE_CODE_OAUTH_TOKEN`,
@@ -167,7 +169,7 @@ See `tasks/plan.md` for the order and the checkpoints.
     T12's decision.
   - Files: `apps/pensieve/Dockerfile`, `apps/pensieve/compose.yaml`.
 
-**Checkpoint B:** the stack runs without the sweep. Review before T14.
+**Checkpoint B:** the stack runs without the sweep. Review before T14. (passed 2026-09-11)
 
 - [ ] **T14: Add the sweep image and service, behind a profile.** (M–L, needs T1)
   - Acceptance: the image has bun, the claude CLI, git and the argus code. On first start,

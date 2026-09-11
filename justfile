@@ -63,3 +63,8 @@ serve app *args:
 # Install bb, the Bitbucket CLI Foundry opens PRs with.
 setup-bb:
     apps/foundry/scripts/setup-bb.sh
+
+# Foundry web on this Mac, which pushes and opens PRs with your own git, gh and bb credentials.
+# Needs the stack's postgres (just up postgres mcp).
+foundry *args:
+    DATABASE_URL="$(bun scripts/stack.ts url)" bun run --filter foundry-web dev "$@"

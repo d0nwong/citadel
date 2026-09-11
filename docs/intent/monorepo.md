@@ -37,7 +37,8 @@ the sweep. The same stack deploys later with little extra work.
   the root files. Each image is tagged with its app's version and compose pins the tags.
 - **Sweep auth in the container:** `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, on the
   subscription rather than a billed API key. The same token unblocks Pensieve's Ask in Docker.
-- **Foundry:** runs in compose with the host Docker socket mounted, so it can start forges.
+- **Foundry:** its web server runs on the host in step 1 (changed at checkpoint B): it pushes and
+  opens PRs with keychain-backed credentials. Containerizing it is part of the deploy work.
 
 ## Order
 

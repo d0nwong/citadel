@@ -24,8 +24,8 @@ unknowns are checked first so a bad answer can still change the plan.
   starts a second writer by accident.
 - **Tags:** Foundry's are already `foundry-v*`, the component form release-please uses. Pensieve
   has none. argus's one tag, `pre-rebuild`, becomes `argus-pre-rebuild`.
-- **foundry-web mounts the host's `~/git` at the same absolute path,** because Foundry stores
-  tracked repos and `--mount` forges as host paths (found in T2).
+- **Foundry web stays on the host in step 1** (checkpoint B): it pushes and opens PRs with
+  keychain-backed git, gh and bb credentials. `just foundry` runs it.
 
 ## Dependency graph
 
@@ -75,7 +75,6 @@ T3 → T4 → T5 must run in order, because they rewrite the same history.
 |---|---|---|
 | headersHelper doesn't run under `claude -p` (untrusted folder) | High: the sweep and Ask lose Slack/Linear MCP | T1 checks first; the fallback is pre-trusting the folder in the image's `~/.claude.json` |
 | Two sweeps write the data repo | High: conflicting commits, a rewound cursor | Compose profile, the `flock`, and cutover stops the host loop first |
-| The mounted `docker.sock` is root-equivalent on the host | Medium: fine locally, not for a deploy | Accepted for step 1; noted in the spec for the deploy review |
 | Pensieve's spawn and Ask paths break after the split | Medium | T7 has its own tests; `ask.test.ts` already exercises git over `WORKSPACE_DIR` |
 | filter-repo drops a code file whose history ran through a data path | Low | T4 checks with a diff of `git ls-files` against the argus checkout's code paths |
 | `setup-token` OAuth token expires | Low | `just check` reports its age; `just auth claude` renews it |
