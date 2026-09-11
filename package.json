@@ -1,0 +1,18 @@
+{
+  "name": "citadel",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.0",
+  "workspaces": [
+    "apps/argus",
+    "apps/foundry",
+    "apps/foundry/web",
+    "apps/pensieve"
+  ],
+  "scripts": {
+    "argus": "bun apps/argus/scripts/argus.ts",
+    "accio": "bun apps/argus/scripts/accio.ts",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' test"
+  }
+}

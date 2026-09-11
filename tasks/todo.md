@@ -20,14 +20,16 @@ See `tasks/plan.md` for the order and the checkpoints.
 
 ## Phase 2: One repo
 
-- [ ] **T3: Import Foundry and Pensieve with their histories.** (M)
+- [x] **T3: Import Foundry and Pensieve with their histories.** (M)
   - Acceptance: the docs commit comes first, then Foundry under `apps/foundry` and Pensieve
     under `apps/pensieve`. Each is merged with `--allow-unrelated-histories`. Foundry's tags are
     already `foundry-v*`, and Pensieve has none.
   - Verify: `git log --oneline -- apps/foundry | wc -l` is 136, the same for `apps/pensieve` is
     102, and `git log --follow apps/foundry/bin/foundry` reaches its first commit.
   - Files: history only.
-- [ ] **T4: Import argus's code-only history into `apps/argus`.** (M)
+  - Done: `git rev-list --count <merge>^2` is 136 and 102 (a path-limited `git log` leaves out
+    merges and empty commits, so it reads lower).
+- [x] **T4: Import argus's code-only history into `apps/argus`.** (M)
   - Acceptance: `filter-repo --path` keeps scripts, skills, .claude, evals, tasks, docs, infra,
     SPEC.md, README.md, CLAUDE.md, package.json, tsconfig.json, bun.lock, .mcp.json,
     .gitignore, .env.example and .cursor. There are no `alden/`, `*/features/`, `state/` or
@@ -35,12 +37,21 @@ See `tasks/plan.md` for the order and the checkpoints.
   - Verify: `git ls-files apps/argus` matches the argus checkout's code paths, and
     `git log --oneline -- apps/argus | grep -c "quiet run"` is 0.
   - Files: history only.
-- [ ] **T5: Set up one Bun workspace.** (M)
+  - Done: 223 commits, no data paths, no "quiet run" commits, no code file missing.
+- [x] **T5: Set up one Bun workspace.** (M)
   - Acceptance: a root `package.json` with `workspaces` and `packageManager: bun@1.4.0`, one
     `bun.lock`, and the per-app lockfiles removed. The `argus` and `accio` bins resolve.
   - Verify: `bun install && bun run --filter '*' typecheck && bun run --filter '*' test`, and
     `bun run argus validate` against `ARGUS_ROOT=~/git/argus`.
   - Files: `package.json`, `bun.lock`, each app's `package.json`.
+  - Baseline before the switch: Foundry web 34/34, Pensieve 135 pass. argus typecheck was already
+    broken on a clean install (`@types/bun` dropped in d8f3405; the old checkout's stale
+    `node_modules` hid it), so T5 declares it. 11 argus tests read data (OpenAPI cache, accio
+    index, arch docs) and fail without it; T6 fixes them. The bar for T5 is "same as baseline".
+  - Done: one `bun.lock`, results identical to baseline. `latest` pins resolved to the old
+    locks' versions; Foundry web's react-query went 5.102.0 → 5.102.8 to match Pensieve (two
+    copies of query-core broke its router types); argus got a `test` script.
+  - Follow-up (not step 1): argus's 12 pre-existing type errors, the same 12 in the old checkout.
 
 **Checkpoint A:** histories and workspace are green. Review, then push citadel `main`.
 
@@ -49,7 +60,8 @@ See `tasks/plan.md` for the order and the checkpoints.
 - [ ] **T6: Make all of argus honor `ARGUS_ROOT`.** (S)
   - Acceptance: `accio` (`manifest.ts`, `find.ts`) resolves data from `ARGUS_ROOT`, and
     `mcp-headers.ts` reads the repo-root `.env`.
-  - Verify: new tests in `scripts/argus/paths.test.ts` and `scripts/accio.test.ts`, and
+  - Verify: the 11 data-reading argus tests pass with `ARGUS_ROOT=~/git/argus`, new tests in
+    `scripts/argus/paths.test.ts` and `scripts/accio.test.ts` pass, and
     `ARGUS_ROOT=~/git/argus bun run accio stale` matches running it from the old checkout.
   - Files: `apps/argus/scripts/accio/manifest.ts`, `find.ts`, `mcp-headers.ts`, the tests.
 - [ ] **T7: Split code from data in Pensieve.** (M)

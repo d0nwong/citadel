@@ -174,8 +174,9 @@ The old repos keep running until the stack has proven itself. Only one sweep may
 
 ## Success criteria
 
-1. `git log --oneline -- apps/foundry apps/pensieve` in citadel shows their full histories
-   (136 and 102 commits), and `apps/argus` shows every argus commit that touched code.
+1. Each import merge's second parent carries the whole imported history:
+   `git rev-list --count <merge>^2` is 136 for Foundry, 102 for Pensieve and 223 for argus's
+   code-only history, and `git log --follow apps/foundry/bin/foundry` reaches its first commit.
 2. `bun install && bun run --filter '*' typecheck && bun run --filter '*' test` passes from a
    fresh clone.
 3. On a fresh clone, `just bootstrap` writes one `.env` and `just check` reports nothing

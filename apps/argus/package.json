@@ -10,6 +10,7 @@
     "sync-skills": "bun scripts/sync-skills.ts",
     "argus": "bun scripts/argus.ts",
     "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "evals": "bun evals/replay.ts"
   },
   "bin": {
@@ -17,6 +18,8 @@
     "accio": "./scripts/accio.ts"
   },
   "devDependencies": {
-    "typescript": "~5.9.3"
-  }
+    "typescript": "~5.9.3",
+    "@types/bun": "^1.4.0"
+  },
+  "packageManager": "bun@1.4.0"
 }
