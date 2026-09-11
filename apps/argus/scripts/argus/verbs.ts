@@ -5,6 +5,7 @@
  *
  *   close    an ask is done by the user's say-so
  *   drop     an ask was never one, or is not wanted; the reason stays on it
+ *   move     an ask belongs to another feature: dropped here, re-created there with its trail, thread re-pointed
  *   confirm  a requirement is confirmed or contradicted by the user, one or all
  *   place    an unplaced message belongs to a feature; the thread remembers it
  *   ticket   a proposal was filed; the key goes on the ask and the ticket list
@@ -12,6 +13,7 @@
  */
 
 import { isFeature } from "./paths.ts";
+import { emptyLedger as blankLedger } from "./schema.ts";
 import { type Ask, type Evidence, type Ledger, type Requirement, type RequirementStatus, emptyLedger } from "./schema.ts";
 import { readThreads, readUnplaced, writeThreads, writeUnplaced } from "./state.ts";
 import { readLedger, writeLedger, type WriteResult } from "./write.ts";
@@ -127,4 +129,34 @@ export async function recordTicketForAsk(feature: string, askId: string, key: st
   const blockers = (a.blockers ?? []).filter((b) => !b.cleared).map((b) => structuredClone(b));
   const tickets = [...l.tickets, { key, title, asks: [askId], blockers, ready: blockers.length === 0 }];
   return commit(feature, { ...l, tickets, asks: l.asks.map((x) => (x.id === askId ? { ...x, ticket: key } : x)) }, { ...o, now });
+}
+
+export type MoveResult = { from: WriteResult; to: WriteResult; id: string };
+
+/**
+ * An ask placed on the wrong feature. It is dropped where it is, with the move as the
+ * reason, and re-created on the destination with the same text, origin, history and
+ * blockers under a new id; the thread is re-pointed so every later reply lands right.
+ */
+export async function moveAsk(feature: string, askId: string, to: string, o: VerbOptions = {}): Promise<MoveResult> {
+  const now = o.now ?? new Date();
+  if (!(await isFeature(to, o.app))) throw new Error(`${to}: not a feature`);
+  const src = await mustRead(feature, o.app);
+  const a = src.asks.find((x) => x.id === askId);
+  if (!a) throw new Error(`${feature}: no ask ${askId}`);
+  const dst = (await readLedger(to, o.app)) ?? blankLedger(to, "", now.toISOString());
+  const reason = `moved to ${to}`;
+  const { id: _id, ready: _r, ...rest } = a;
+  const moved: Ask = { ...rest, id: "", history: [...a.history, { at: day(now), status: a.status, evidence: [userEvidence(`moved from ${feature} ${askId}`, now)] }] };
+  if (o.dryRun) return { from: await commit(feature, src, o), to: await commit(to, dst, o), id: "" };
+  const toResult = await writeLedger(to, { ...dst, asks: [...dst.asks, moved] }, { actor: "user", now, app: o.app });
+  const newId = toResult.ledger.asks.at(-1)!.id;
+  const dropped: Ask = { ...a, status: "dropped", history: [...a.history, { at: day(now), status: "dropped", evidence: [userEvidence(`${reason} as ${newId}`, now)] }] };
+  const fromResult = await writeLedger(feature, { ...src, asks: src.asks.map((x) => (x.id === askId ? dropped : x)) }, { actor: "user", now, app: o.app });
+  if (a.origin.kind !== "ticket") {
+    const threads = await readThreads();
+    threads[a.origin.thread] = { feature: to, by: "user", at: now.toISOString() };
+    await writeThreads(threads);
+  }
+  return { from: fromResult, to: toResult, id: newId };
 }

@@ -8,7 +8,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readThreads, readUnplaced, writeUnplaced, type Unplaced } from "./state.ts";
-import { closeAsk, confirmRequirement, dropAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./verbs.ts";
+import { closeAsk, confirmRequirement, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./verbs.ts";
 import { readLedger } from "./write.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
@@ -151,5 +151,20 @@ describe("drop and a ticket from an ask", () => {
     expect(after.asks[1]!.ticket).toBe("ALD-70");
     expect(after.tickets.at(-1)).toMatchObject({ key: "ALD-70", asks: ["A-2"], ready: false });
     expect((await recordTicketForAsk("admin/invoicing", "A-2", "ALD-70", "x")).wrote).toBe(false);
+  });
+});
+
+describe("move", () => {
+  test("drops the ask here, re-creates it there with its trail, and re-points the thread", async () => {
+    const r = await moveAsk("admin/invoicing", "A-2", "tasks", { now: T0 });
+    expect(r.id).toBe("A-1");
+    expect(r.from.diff).toEqual(["A-2 asked → dropped"]);
+    const src = (await readLedger("admin/invoicing"))!;
+    expect(src.asks[1]!.history.at(-1)!.evidence[0]).toMatchObject({ kind: "user", reason: "moved to tasks as A-1" });
+    const dst = (await readLedger("tasks"))!;
+    expect(dst.asks[0]).toMatchObject({ id: "A-1", status: "asked", text: expect.stringContaining("billing fields"), origin: { thread: "1788927279.211770" } });
+    expect(dst.asks[0]!.history.at(-1)!.evidence[0]).toMatchObject({ kind: "user", reason: "moved from admin/invoicing A-2" });
+    expect((await readThreads())["1788927279.211770"]).toMatchObject({ feature: "tasks", by: "user" });
+    await expect(moveAsk("admin/invoicing", "A-2", "nope")).rejects.toThrow("not a feature");
   });
 });

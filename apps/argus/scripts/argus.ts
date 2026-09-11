@@ -26,7 +26,7 @@ import { readUnplaced } from "./argus/state.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
 import { seedFeature } from "./argus/seed.ts";
-import { closeAsk, confirmRequirement, dropAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./argus/verbs.ts";
+import { closeAsk, confirmRequirement, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./argus/verbs.ts";
 import { readLedger, writeLedger } from "./argus/write.ts";
 
 export type Flags = { dryRun: boolean; json: boolean; actor: "model" | "user"; rest: string[]; opts: Record<string, string> };
@@ -64,6 +64,7 @@ const USAGE = `argus — the ledger CLI
 
   argus close <feature> <A-n> --reason "<why>"
   argus drop <feature> <A-n> --reason "<why>"       the ask was never one, or is not wanted
+  argus move <feature> <A-n> <to-feature>           the ask belongs to another feature; its thread follows
   argus confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]
   argus place <message-id> <feature>
   argus file <feature> <P-n>|<A-n>   the ticket a proposal, or an ask, would become: title, body, team, project
@@ -124,6 +125,15 @@ const verbs: Record<string, Verb> = {
     const [feature, askId] = f.rest;
     if (!feature || !askId || !f.opts.reason) throw new Usage('drop <feature> <A-n> --reason "<why>"');
     return report(f, feature, await dropAsk(feature, askId, f.opts.reason, { dryRun: f.dryRun }));
+  },
+
+  async move(f) {
+    const [feature, askId, to] = f.rest;
+    if (!feature || !askId || !to) throw new Usage("move <feature> <A-n> <to-feature>");
+    const r = await moveAsk(feature, askId, to, { dryRun: f.dryRun });
+    if (f.json) console.log(JSON.stringify({ ok: true, id: r.id, from: r.from.diff, to: r.to.diff }));
+    else console.log(`${askId} → ${to} as ${r.id || "(dry run)"}\n  ${[...r.from.diff, ...r.to.diff].join("\n  ")}`);
+    return 0;
   },
 
   async confirm(f) {
