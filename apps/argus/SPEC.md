@@ -105,7 +105,8 @@ version; code checks it and diffs it. Nested features (`admin/usage`) keep their
     }
   ],
 
-  // Who asked for what, when, and what happened to it. The trail.
+  // Who asked for what, when, and what happened to it. The trail. An ask may carry
+  // blockers like a ticket ("let me know when merged"); code clears them the same way.
   "asks": [
     {
       "id": "A-17",
@@ -219,6 +220,8 @@ ones that call a model, and only for what has new input.
    each feature's `summary`, and its open asks, and runs `argus place <id> <feature>` when
    it would bet on one. Otherwise the message stays unplaced for Pensieve. No vocabulary,
    no aliases beyond the manifest.
+   A landing on a base branch that is deployed and serves an ask nobody has picked up on
+   the other side is itself a trigger: the reader proposes an `[FE]` ticket for it.
 4. **Rewrite.** For each feature with input this run, one subagent (`model: "opus"`),
    prompt in `skills/sweep/reader.md`. It receives the ledger, the feature's batch, the
    arch doc, and the requirement rows; it returns the next ledger and calls
@@ -440,5 +443,9 @@ Phases 1 and 2 can run in parallel. 5 can start once 1 is done, on fixtures.
 - Initial requirement statuses: seed all as `assumed`, bulk-confirm per feature once.
 - Which `product.md` sections, if any, the user still reaches for and wants kept.
 - Whether `pensieve/features` and `foundry/features` get ledgers in a later phase.
-- The blocker `deployed` check: read the dev swagger's build sha, or a deploy hook? Spec
-  assumes the swagger.
+- Resolved 2026-09-11: the dev swagger carries no build marker. `deployed` for a backend
+  landing is Bitbucket's pipelines API saying the merge commit's pipeline on `dev`
+  completed SUCCESSFUL (every merge to `dev` deploys to App Engine). Credentials are the
+  ones `bb` keeps in `~/.bitbucket-rest-cli-config.json`, read by `scripts/argus/deploy.ts`
+  and nowhere else. The frontend's equivalent is decided when a frontend blocker is first
+  needed.
