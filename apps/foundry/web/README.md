@@ -59,9 +59,9 @@ Ignite ─► insert row (queued, with a per-job callback token)
 - The **container** holds a Claude credential (`foundry auth`), the workspace, and a
   token that authorises callbacks for its own job id. No `GH_TOKEN`, no Bitbucket app
   password, no `DATABASE_URL` — the agent runs with permissions skipped, so it gets
-  nothing it could misuse. If `foundry auth --linear` (or `--slack`) has been run it
+  nothing it could misuse. If `foundry auth --linear` (or `--slack`) has linked argus's MCP gateway it
   also gets `FOUNDRY_MCP_URL`/`FOUNDRY_MCP_TOKEN` plus `FOUNDRY_MCP_SERVERS`, so the
-  agent can reach Linear/Slack through the infra stack's MCP gateway
+  agent can reach Linear/Slack through that gateway
   (`host.docker.internal:9090`, override with the `FOUNDRY_MCP_URL` env of this
   server) — a gateway token, never the upstream keys.
 - **Repo notes** (`features/repos/`) are the target repo's standing instructions,
@@ -143,7 +143,7 @@ Ignite ─► insert row (queued, with a per-job callback token)
   of the PR body *and* the job's own task text — magic words (`Closes LIA-24`),
   a pasted `linear.app/…/issue/LIA-24` link, or (task text only) a bare id like
   `LIA-24: fix the thing` — and creates the attachment through Linear's API
-  with `LINEAR_API_KEY` from the repo's `.env` — host-side, like `bb` itself, so
+  with `LINEAR_API_KEY` from argus's `.env` — host-side, like `bb` itself, so
   the key never enters a forge. No key means no link and no complaint, no
   ticket id named anywhere means the same, and one id's failure is logged
   without sinking the others: the PR is already open by then. It is a
@@ -214,7 +214,7 @@ recorded as a `sys` line in the job's log; if the write fails the job stays queu
 failure is an `err` line, and the ticket's state is yours to fix by hand — never a status
 change on the job. The fetch happens *before* the insert, so an unknown `ticketId` (`400`)
 or an unreachable Linear (`502`) queues nothing. With no Linear key configured, a request
-that omits `instructions` is `503` naming `foundry auth --linear`; one that supplies them is
+that omits `instructions` is `503` naming argus's `bootstrap.sh env`; one that supplies them is
 `202` with an `err` line that the claim was skipped. Foundry only fetches and composes here
 — it never judges whether the ticket is ready (no Pending-section or blocked-by check on
 this path); the caller decided that by sending it.

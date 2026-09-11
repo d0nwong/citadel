@@ -14,8 +14,9 @@ flowchart LR
         cli["foundry CLI<br/>(bin/)"]
         web["Web UI<br/>(web/, bun · :3777)"]
         pg[("Postgres<br/>(infra/, :5432)")]
-        mcp["MCP gateway<br/>(infra/, mcp-proxy · :9090)"]
-        auth[".env (repo root)<br/>CLAUDE_CODE_OAUTH_TOKEN · FOUNDRY_MCP_TOKEN<br/>SLACK_TOKEN · LINEAR_API_KEY · FOUNDRY_API_TOKEN"]
+        mcp["MCP gateway<br/>(argus's infra/, mcp-proxy · :9090)"]
+        auth[".env (repo root)<br/>CLAUDE_CODE_OAUTH_TOKEN · FOUNDRY_MCP_TOKEN<br/>FOUNDRY_API_TOKEN"]
+        argusenv["argus .env<br/>SLACK_TOKEN · LINEAR_API_KEY"]
         jobs["~/.foundry/jobs/&lt;id&gt;/<br/>workspace clones"]
         joblogs["~/.foundry/logs/&lt;id&gt;.jsonl<br/>job session logs"]
     end
@@ -38,8 +39,9 @@ flowchart LR
     forge -- "--github (opt-in token)" --> remote
     forge -. "gateway token" .-> mcp
     jobforge -. "gateway token" .-> mcp
-    auth -- "upstream keys" --> mcp
-    auth -- "API token · LINEAR_API_KEY" --> web
+    argusenv -- "upstream keys" --> mcp
+    auth -- "API token" --> web
+    argusenv -- "LINEAR_API_KEY" --> web
     mcp -- "LINEAR_API_KEY (host only)" --> linear
     mcp -- "SLACK_TOKEN (host only)" --> slack
 
@@ -132,7 +134,7 @@ script, so nothing about setting a machine up depends on bun being there first:
 ### Auth
 
 `foundry auth` opens an interactive picker — the Claude credential plus every MCP
-upstream from `infra/mcp/config.json`, each with its auth status; arrow keys +
+upstream from argus's `infra/mcp/config.json`, each with its auth status; arrow keys +
 enter (re)authenticate one. Non-interactive: `--claude`, `--api-key`, `--linear`,
 `--slack`.
 
@@ -144,39 +146,38 @@ token in the checkout's `.env` (chmod 600), injected into every forge as
 #### One credential file
 
 Every credential `foundry auth` stores — the Claude credential, the gateway's
-`FOUNDRY_MCP_TOKEN`, `SLACK_TOKEN`, `LINEAR_API_KEY`, `FOUNDRY_API_TOKEN` — lives in the
+`FOUNDRY_MCP_TOKEN`, `FOUNDRY_API_TOKEN` — lives in the
 repo's own `.env` (gitignored; `.env.example` lists the keys): `KEY=value` lines, mode
 600, rewritten one key at a time, and read fresh by every reader here — the CLI,
-`infra.sh`, the web server — so a new value needs no restart. argus and Pensieve keep
-their own `.env`, so the keys they share with foundry are pasted rather than read:
-`foundry auth --slack`, `--linear` and `--api` print the `KEY=value` line once and say
-which tool's `.env` it goes in. On the first `foundry` command after upgrading, any key
+`infra.sh`, the web server — so a new value needs no restart. The upstream keys
+(`SLACK_TOKEN`, `LINEAR_API_KEY`) are argus's: they live in argus's `.env` beside the MCP
+gateway it runs, and foundry reads them from there (`ARGUS_ENV`, default
+`~/git/argus/.env`). `foundry auth --api` prints the `KEY=value` line Pensieve needs. On the first `foundry` command after upgrading, any key
 still sitting in the old `~/.foundry/env` or `~/.config/liamai/env` is copied in once,
 with an `ok` line saying so; neither old file is read again or deleted.
 
 ### MCP gateway (Linear, Slack)
 
-Forges never hold third-party credentials. Instead the infra stack runs an MCP
-gateway ([mcp-proxy](https://github.com/tbxark/mcp-proxy), `infra/mcp/config.json`)
-that holds your Linear and Slack keys on the host and re-exposes their MCP
-servers at `host.docker.internal:9090/{linear,slack}/mcp`, behind a per-install
-gateway token.
+Forges never hold third-party credentials. They reach Linear and Slack through the MCP
+gateway argus runs ([mcp-proxy](https://github.com/tbxark/mcp-proxy), `~/git/argus/infra/`),
+which holds the Linear and Slack keys on the host and re-exposes their MCP servers at
+`host.docker.internal:9090/{linear,slack}/mcp`, behind one gateway token. argus's own Claude
+sessions and Pensieve's Ask are its other clients.
 
 ```sh
-foundry auth --linear          # LINEAR_API_KEY -> .env, plus a generated FOUNDRY_MCP_TOKEN
-foundry auth --slack           # optional: SLACK_TOKEN, a Slack user token (xoxp-…), so tickets' Slack links resolve
-bun run infra:up               # now also starts foundry-mcp (mcp.foundry.local)
-foundry recreate <name>        # existing forges pick the gateway up on next start
+~/git/argus/scripts/bootstrap.sh env   # SLACK_TOKEN and LINEAR_API_KEY into argus's .env
+~/git/argus/scripts/bootstrap.sh mcp   # starts argus-mcp on :9090, minting MCP_GATEWAY_TOKEN
+foundry auth --linear                  # copies that token into FOUNDRY_MCP_TOKEN
+foundry recreate <name>                # existing forges pick the gateway up on next start
 ```
 
-Every forge — interactive, `foundry run`, or a web-UI job — then has the
-configured servers registered (`box-init` does it on each start, from
-`FOUNDRY_MCP_SERVERS`), so `/work LIA-12` can fetch the ticket itself — and read
-the Slack thread the ticket links to. The Slack token comes from a Slack app of
-your workspace with MCP access enabled (one manual OAuth exchange mints the
-`xoxp-…` token; see [Slack's MCP server docs](https://docs.slack.dev/ai/slack-mcp-server/)).
-Adding another upstream is one more `mcpServers` entry in
-`infra/mcp/config.json` plus its secret in one of the two env files; see `infra/README.md`.
+Every forge — interactive, `foundry run`, or a web-UI job — then has the servers registered
+(`box-init` does it on each start, from `FOUNDRY_MCP_SERVERS`, default `linear,slack`), so
+`/work LIA-12` can fetch the ticket itself — and read the Slack thread the ticket links to.
+The Slack token comes from a Slack app of your workspace with MCP access enabled (one manual
+OAuth exchange mints the `xoxp-…` token; see [Slack's MCP server
+docs](https://docs.slack.dev/ai/slack-mcp-server/)). Adding another upstream is an
+`mcpServers` entry in argus's `infra/mcp/config.json`; see argus's `infra/compose.yaml`.
 
 ## Daily use
 
@@ -243,7 +244,7 @@ So `foundry rm` then `foundry new` with the same name resumes where you left off
 - Your SSH keys are never mounted.
 - Forges talk to Linear only through the MCP gateway, presenting `FOUNDRY_MCP_TOKEN`;
   the Linear API key itself never enters a container. To cut every forge off,
-  change the token in `.env` and `bun run infra:up`. The gateway port
+  rotate `MCP_GATEWAY_TOKEN` in argus's `.env` and rerun `~/git/argus/scripts/bootstrap.sh mcp`. The gateway port
   (9090) listens on the Mac like the web UI does, which is what the token is for.
 
 ## Local infra

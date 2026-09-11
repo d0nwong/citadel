@@ -20,14 +20,18 @@ done
 ROOT="$(cd -P "$(dirname "$_src")/.." && pwd)"
 unset _src _dir
 # Every credential `foundry auth` stores — the Claude credential, the gateway
-# token, the upstream keys, the trigger-API bearer — lives in the checkout's
-# own .env (gitignored): KEY=value lines, no quotes, mode 600, rewritten one
-# key at a time. The CLI, infra.sh and the web server all read this one file.
-# Keys other liamai tools need (argus, Pensieve) are pasted into their .env —
-# `foundry auth --slack` / `--api` print the line to paste.
+# token, the trigger-API bearer — lives in the checkout's own .env (gitignored):
+# KEY=value lines, no quotes, mode 600, rewritten one key at a time. The CLI,
+# infra.sh and the web server all read this one file. The upstream keys
+# (LINEAR_API_KEY, SLACK_TOKEN) are argus's: they live in argus's .env, beside
+# the MCP gateway argus runs, and are read from there (ARGUS_ENV). Pensieve's
+# copy of the trigger-API token is pasted — `foundry auth --api` prints the line.
 ENVFILE="$ROOT/.env"
-# What `foundry auth` may write, in the order the migration copies them in.
-ENV_KEYS="CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FOUNDRY_MCP_TOKEN SLACK_TOKEN LINEAR_API_KEY FOUNDRY_API_TOKEN"
+ARGUS_ENV="${ARGUS_ENV:-$HOME/git/argus/.env}"
+ARGUS_ROOT="$(dirname "$ARGUS_ENV")"
+# What `foundry auth` may write, in the order the migration copies them in. The
+# upstream keys are argus's, so the migration never copies them back in here.
+ENV_KEYS="CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FOUNDRY_MCP_TOKEN FOUNDRY_API_TOKEN"
 
 c_dim=$'\033[2m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_yel=$'\033[33m'; c_bld=$'\033[1m'; c_0=$'\033[0m'
 say()  { printf '%s\n' "$*" >&2; }
@@ -58,27 +62,33 @@ load_env() {
     # shellcheck disable=SC1090
     set -a; . "$ENVFILE"; set +a
   fi
+  # argus owns the upstream keys; its value wins over a stale copy here.
+  local k v
+  for k in LINEAR_API_KEY SLACK_TOKEN; do
+    v=$(argus_key "$k")
+    if [ -n "$v" ]; then export "$k=$v"; fi
+  done
   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && CRED_ARGS+=(-e "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
   [ -n "${ANTHROPIC_API_KEY:-}"        ] && CRED_ARGS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
-  # The MCP gateway (infra/, `foundry auth --linear` / `--slack`): forges get
-  # its URL, a gateway token, and the list of upstreams actually configured —
-  # the Linear/Slack keys themselves never leave the host.
+  # The MCP gateway (argus's infra/; `foundry auth --linear` / `--slack` link it):
+  # forges get its URL, a gateway token, and the upstreams to register
+  # (FOUNDRY_MCP_SERVERS, default both) — the Linear/Slack keys never leave the host.
   if [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
     CRED_ARGS+=(-e "FOUNDRY_MCP_TOKEN=$FOUNDRY_MCP_TOKEN" -e "FOUNDRY_MCP_URL=http://host.docker.internal:$(mcp_port)")
-    servers=""
-    [ -n "${LINEAR_API_KEY:-}" ] && servers="linear"
-    [ -n "${SLACK_TOKEN:-}" ] && servers="${servers:+$servers,}slack"
-    [ -n "$servers" ] && CRED_ARGS+=(-e "FOUNDRY_MCP_SERVERS=$servers")
+    servers="${FOUNDRY_MCP_SERVERS:-linear,slack}"
+    CRED_ARGS+=(-e "FOUNDRY_MCP_SERVERS=$servers")
   fi
   return 0
 }
 
-# Host port of the gateway, from infra/.env (the compose default otherwise).
+# Host port of the gateway argus runs: MCP_PORT in argus's .env, else compose's default.
 mcp_port() {
-  local p=""
-  [ -f "$ROOT/infra/.env" ] && p=$(grep -E '^MCP_PORT=' "$ROOT/infra/.env" | tail -1 | cut -d= -f2- || true)
+  local p; p=$(argus_key MCP_PORT)
   printf '%s' "${p:-9090}"
 }
+
+# One key from argus's .env ("" when absent): the upstream keys and the gateway token live there.
+argus_key() { [ -f "$ARGUS_ENV" ] && grep -E "^$1=" "$ARGUS_ENV" | tail -1 | cut -d= -f2- || true; }
 
 # ---------------------------------------------------------------- commands
 
@@ -109,8 +119,8 @@ cmd_doctor() {
   for k in SLACK_TOKEN LINEAR_API_KEY FOUNDRY_API_TOKEN; do
     if [ -n "${!k:-}" ]; then have="${have:+$have, }$k"; else miss="${miss:+$miss, }$k"; fi
   done
-  if [ -n "$have" ]; then ok "keys: $have in $ENVFILE"
-  else warn "$ENVFILE has no upstream or API key yet — run: foundry auth --slack / --linear / --api"; fi
+  if [ -n "$have" ]; then ok "keys: $have ${c_dim}(upstream keys from ${ARGUS_ENV/#$HOME/~})${c_0}"
+  else warn "no upstream or API key yet — argus: $ARGUS_ROOT/scripts/bootstrap.sh env · foundry: foundry auth --api"; fi
   [ -z "$miss" ] || say "  ${c_dim}not set: $miss${c_0}"
   command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1 \
     && ok "gh authed (available to forges created with --github)" || warn "gh not authed on host"
@@ -120,14 +130,14 @@ cmd_doctor() {
   if [ -n "$upstreams" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
     if curl -fsS -m 3 "http://localhost:$(mcp_port)/_readyz" >/dev/null 2>&1; then
       ok "mcp gateway ready on :$(mcp_port) ($upstreams)"
-    else warn "$upstreams configured but the mcp gateway is not up — run: bun run infra:up"; fi
-  else warn "no MCP upstream key — forges cannot reach Linear or Slack (foundry auth --linear / --slack)"; fi
+    else warn "$upstreams configured but argus's mcp gateway is not up — run: $ARGUS_ROOT/scripts/bootstrap.sh mcp"; fi
+  else warn "no upstream key in argus's .env, or no FOUNDRY_MCP_TOKEN — forges cannot reach Linear or Slack (foundry auth --linear links the gateway)"; fi
   local n; n=$(docker ps -aq --filter "label=$LABEL" | wc -l | tr -d ' ')
   ok "$n forge(s) defined"
   return $fail
 }
 
-# "name<TAB>ENV_VAR" per upstream in infra/mcp/config.json — the auth menu,
+# "name<TAB>ENV_VAR" per upstream in argus's infra/mcp/config.json — the auth menu,
 # the --<name> flags, and the credential prompts all derive from this, so a
 # new upstream in the config shows up in `foundry auth` by itself.
 mcp_upstreams() {
@@ -146,7 +156,7 @@ mcp_upstreams() {
       if (depth == 1) name=""
       if (depth <= 0) on=0
     }
-  ' "$ROOT/infra/mcp/config.json"
+  ' "$ARGUS_ROOT/infra/mcp/config.json" 2>/dev/null || true
 }
 
 auth_claude() {
@@ -196,41 +206,28 @@ paste_hint() {
   local var="$1" val="$2" where=""
   case "$var" in
     FOUNDRY_API_TOKEN) where="Pensieve's .env — it sends points with it; other callers send it as  Authorization: Bearer <token>" ;;
-    LINEAR_API_KEY)    where="Pensieve's .env — it links tickets with it" ;;
-    SLACK_TOKEN)       where="argus's .env — it reads Slack with it" ;;
     *) return 0 ;;
   esac
   say "$var=$val"
   say "${c_dim}paste that line into $where${c_0}"
 }
 
+# The upstream keys are argus's (its .env feeds the MCP gateway argus runs), so
+# --linear / --slack take no key: they say whether argus has it, and link foundry
+# to the gateway by copying argus's MCP_GATEWAY_TOKEN into FOUNDRY_MCP_TOKEN —
+# the one value forges present.
 auth_upstream() {
-  local name="$1" var="" n v
+  local name="$1" var="" n v tok
   while IFS=$'\t' read -r n v; do [ "$n" = "$name" ] && var="$v"; done < <(mcp_upstreams)
-  [ -n "$var" ] || die "no upstream '$name' in infra/mcp/config.json"
-  case "$name" in
-    linear)
-      say "${c_dim}personal API key from https://linear.app/settings/account/security — it stays on the host, behind the MCP gateway${c_0}"
-      ;;
-    slack)
-      say "${c_dim}user OAuth token (xoxp-…) from a Slack app with MCP access enabled — see"
-      say "https://docs.slack.dev/ai/slack-mcp-server/ — it stays on the host, behind the MCP gateway${c_0}"
-      ;;
-    *)
-      say "${c_dim}the key lands in $ENVFILE and stays on the host, behind the MCP gateway${c_0}"
-      ;;
-  esac
-  local key; read -rsp "$var: " key; echo >&2
-  [ -n "$key" ] || die "empty key"
-  write_env "$var" "$key"; ok "stored $var in $ENVFILE"
-  paste_hint "$var" "$key"
+  [ -n "$var" ] || die "no upstream '$name' in $ARGUS_ROOT/infra/mcp/config.json"
+  if [ -n "$(argus_key "$var")" ]; then ok "$var set in ${ARGUS_ENV/#$HOME/~}"
+  else warn "$var is not in ${ARGUS_ENV/#$HOME/~} — run: $ARGUS_ROOT/scripts/bootstrap.sh env"; fi
+  tok=$(argus_key MCP_GATEWAY_TOKEN)
+  [ -n "$tok" ] || die "no MCP_GATEWAY_TOKEN in ${ARGUS_ENV/#$HOME/~} — run: $ARGUS_ROOT/scripts/bootstrap.sh mcp"
   load_env
-  if [ -z "${FOUNDRY_MCP_TOKEN:-}" ]; then
-    need openssl
-    write_env FOUNDRY_MCP_TOKEN "$(openssl rand -hex 24)"
-    ok "generated FOUNDRY_MCP_TOKEN (what forges present to the gateway)"
-  fi
-  say "${c_dim}next: 'bun run infra:up' (re)starts the gateway; existing forges need 'foundry recreate <name>'${c_0}"
+  if [ "${FOUNDRY_MCP_TOKEN:-}" = "$tok" ]; then ok "FOUNDRY_MCP_TOKEN already matches the gateway"
+  else write_env FOUNDRY_MCP_TOKEN "$tok"; ok "stored FOUNDRY_MCP_TOKEN in $ENVFILE (argus's gateway token)"; fi
+  say "${c_dim}the gateway is argus's ($ARGUS_ROOT/scripts/bootstrap.sh mcp); existing forges need 'foundry recreate <name>'${c_0}"
 }
 
 # Single-choice arrow-key menu, drawn on stderr over MENU_ROWS. Leaves the
@@ -282,7 +279,7 @@ auth_menu_rows() {
   else st="${c_red}✗${c_0} not configured"; fi
   MENU_ROWS+=("$(printf '%-8s %s' api "$st")"); MENU_ACTIONS+=(api)
   while IFS=$'\t' read -r name var; do
-    if [ -n "${!var:-}" ]; then st="${c_grn}✓${c_0} $var ${c_dim}$(env_where "$var")${c_0}"
+    if [ -n "${!var:-}" ]; then st="${c_grn}✓${c_0} $var ${c_dim}${ARGUS_ENV/#$HOME/~}${c_0}"
     else st="${c_red}✗${c_0} not configured"; fi
     MENU_ROWS+=("$(printf '%-8s %s' "$name" "$st")"); MENU_ACTIONS+=("upstream:$name")
   done < <(mcp_upstreams)
@@ -310,7 +307,7 @@ cmd_auth() {
     if curl -fsS -m 2 "http://localhost:$(mcp_port)/_readyz" >/dev/null 2>&1; then
       say "mcp gateway on :$(mcp_port): ${c_grn}ready${c_0}"
     else
-      say "mcp gateway on :$(mcp_port): ${c_dim}not running — bun run infra:up${c_0}"
+      say "mcp gateway on :$(mcp_port): ${c_dim}not running — $ARGUS_ROOT/scripts/bootstrap.sh mcp${c_0}"
     fi
     say "${c_dim}↑/↓ move · enter (re)auth · q quit${c_0}"
     menu_pick
@@ -656,11 +653,10 @@ foundry — Claude Code forges on OrbStack
     foundry doctor                    check OrbStack, image, credentials
     foundry auth                      interactive: credentials + status, pick one to (re)auth
     foundry auth --claude|--api-key   store a Claude credential for all forges
-    foundry auth --linear|--slack     store that upstream's key behind the MCP gateway
+    foundry auth --linear|--slack     link forges to argus's MCP gateway (the keys live in argus's .env)
     foundry auth --api [--rotate]     mint the bearer token for POST /api/jobs (web/README.md)
                                       every credential lands in the checkout's .env (gitignored);
-                                      --slack, --linear and --api print the line to paste into
-                                      argus's / Pensieve's .env
+                                      --api prints the line to paste into Pensieve's .env
     foundry build [--no-cache]        build the forge image
 
   forges

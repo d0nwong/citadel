@@ -92,13 +92,12 @@ async function preflight(
   if (cred.CLAUDE_CODE_OAUTH_TOKEN) credEnv.CLAUDE_CODE_OAUTH_TOKEN = cred.CLAUDE_CODE_OAUTH_TOKEN
   else if (cred.ANTHROPIC_API_KEY) credEnv.ANTHROPIC_API_KEY = cred.ANTHROPIC_API_KEY
   else throw new Error('no Claude credential for the forge — run: foundry auth')
-  // Gateway token only — the Linear/Slack keys stay on the host, behind the
-  // gateway. FOUNDRY_MCP_SERVERS tells box-init which upstreams to register.
+  // Gateway token only — the Linear/Slack keys stay on the host, behind argus's
+  // gateway, which serves both; FOUNDRY_MCP_SERVERS in .env narrows what box-init registers.
   if (cred.FOUNDRY_MCP_TOKEN) {
     credEnv.FOUNDRY_MCP_TOKEN = cred.FOUNDRY_MCP_TOKEN
     credEnv.FOUNDRY_MCP_URL = MCP_URL
-    const servers = [cred.LINEAR_API_KEY && 'linear', cred.SLACK_TOKEN && 'slack'].filter(Boolean)
-    if (servers.length > 0) credEnv.FOUNDRY_MCP_SERVERS = servers.join(',')
+    credEnv.FOUNDRY_MCP_SERVERS = cred.FOUNDRY_MCP_SERVERS || 'linear,slack'
   }
 
   try {
