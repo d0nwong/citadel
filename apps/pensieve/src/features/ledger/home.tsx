@@ -233,9 +233,9 @@ export function Ready({
             </span>
             <FeatureName dir={a.dir} feature={a.feature} />
           </span>
-          <span className="text-[15px] text-foreground leading-relaxed">
+          <p className="mt-1 text-[15px] text-foreground leading-relaxed">
             {a.text}
-          </span>
+          </p>
           {a.blockers?.map((b, i) => (
             <span className="text-muted-foreground text-xs" key={i.toString()}>
               {b.kind === "landing" &&
@@ -268,13 +268,17 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
   return (
     <li className="border-border border-b py-3 last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        {sent || job ? (
+          <Tag tone="implemented">sent</Tag>
+        ) : (
+          <Tag tone="documented">ready</Tag>
+        )}
         <TicketLink ticket={row.key} />
-        <span className="min-w-0 flex-1 text-foreground text-sm">
-          {row.title}
-        </span>
         <FeatureName dir={row.dir} feature={row.feature} />
-        {(sent || job) && <Tag tone="implemented">sent</Tag>}
       </div>
+      <p className="mt-1 text-[15px] text-foreground leading-relaxed">
+        {row.title}
+      </p>
       {job && <JobLine id={job.id} url={job.url} />}
       {!(sent || job || open) && (
         <div className="mt-2 flex flex-wrap gap-1">
