@@ -45,7 +45,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # the advanced cursor slack-pull writes, promoted only once the tick's commit succeeds
 queue/.state.json
 queue/.state.next.json
-# the lock every writing marauder verb holds while it runs (ARG-168) — never committed
 queue/.lock/
 # where that cursor lived while the digest owned it. slack-pull adopts it on its first run
 # and deletes it (ARG-161); the lines stay so an un-migrated checkout cannot commit one
@@ -60,7 +59,7 @@ tanstack-claude-*
 .tanstack-mcp-bridge-*
 tanstack-output-schema-*
 
-# argus run state: the cursor and the batches are local; threads.json and unplaced.json are committed
+# argus run state: the cursor and the batches are local; threads.json, unplaced.json and deploys.json are committed
 state/cursor.json
 state/cursor.next.json
 state/batches/
