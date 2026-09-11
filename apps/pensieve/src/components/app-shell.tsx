@@ -19,7 +19,6 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import {
-  Archive,
   BookOpenText,
   ChevronRight,
   FolderIcon,
@@ -225,7 +224,6 @@ function PullToRefresh({
  */
 const READING = [
   { icon: ScrollText, label: "Journal", to: "/journal" },
-  { icon: Archive, label: "Archive", to: "/archive" },
 ] as const;
 
 function Basin({ className }: { className?: string }) {

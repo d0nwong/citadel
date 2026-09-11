@@ -10,52 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ArchiveRouteImport } from './routes/archive'
-import { Route as BlocksRouteImport } from './routes/blocks'
-import { Route as UnsortedRouteImport } from './routes/unsorted'
-import { Route as ArcsIndexRouteImport } from './routes/arcs/index'
-import { Route as ArcsSlugRouteImport } from './routes/arcs/$slug'
 import { Route as AskIndexRouteImport } from './routes/ask/index'
 import { Route as AskIdRouteImport } from './routes/ask/$id'
-import { Route as DigestsIndexRouteImport } from './routes/digests/index'
-import { Route as DigestsDayRouteImport } from './routes/digests/$day'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as DocsSplatRouteImport } from './routes/docs/$'
 import { Route as FeaturesIndexRouteImport } from './routes/features/index'
 import { Route as FeaturesSplatRouteImport } from './routes/features/$'
 import { Route as JournalIndexRouteImport } from './routes/journal/index'
 import { Route as JournalSplatRouteImport } from './routes/journal/$'
-import { Route as ReportsIndexRouteImport } from './routes/reports/index'
-import { Route as ReportsDayRouteImport } from './routes/reports/$day'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ArchiveRoute = ArchiveRouteImport.update({
-  id: '/archive',
-  path: '/archive',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BlocksRoute = BlocksRouteImport.update({
-  id: '/blocks',
-  path: '/blocks',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const UnsortedRoute = UnsortedRouteImport.update({
-  id: '/unsorted',
-  path: '/unsorted',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ArcsIndexRoute = ArcsIndexRouteImport.update({
-  id: '/arcs/',
-  path: '/arcs/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ArcsSlugRoute = ArcsSlugRouteImport.update({
-  id: '/arcs/$slug',
-  path: '/arcs/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AskIndexRoute = AskIndexRouteImport.update({
@@ -66,16 +32,6 @@ const AskIndexRoute = AskIndexRouteImport.update({
 const AskIdRoute = AskIdRouteImport.update({
   id: '/ask/$id',
   path: '/ask/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DigestsIndexRoute = DigestsIndexRouteImport.update({
-  id: '/digests/',
-  path: '/digests/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DigestsDayRoute = DigestsDayRouteImport.update({
-  id: '/digests/$day',
-  path: '/digests/$day',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsIndexRoute = DocsIndexRouteImport.update({
@@ -108,160 +64,87 @@ const JournalSplatRoute = JournalSplatRouteImport.update({
   path: '/journal/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ReportsIndexRoute = ReportsIndexRouteImport.update({
-  id: '/reports/',
-  path: '/reports/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReportsDayRoute = ReportsDayRouteImport.update({
-  id: '/reports/$day',
-  path: '/reports/$day',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/archive': typeof ArchiveRoute
-  '/blocks': typeof BlocksRoute
-  '/unsorted': typeof UnsortedRoute
-  '/arcs/$slug': typeof ArcsSlugRoute
   '/ask/$id': typeof AskIdRoute
-  '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/features/$': typeof FeaturesSplatRoute
   '/journal/$': typeof JournalSplatRoute
-  '/reports/$day': typeof ReportsDayRoute
-  '/arcs/': typeof ArcsIndexRoute
   '/ask/': typeof AskIndexRoute
-  '/digests/': typeof DigestsIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/features/': typeof FeaturesIndexRoute
   '/journal/': typeof JournalIndexRoute
-  '/reports/': typeof ReportsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/archive': typeof ArchiveRoute
-  '/blocks': typeof BlocksRoute
-  '/unsorted': typeof UnsortedRoute
-  '/arcs/$slug': typeof ArcsSlugRoute
   '/ask/$id': typeof AskIdRoute
-  '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/features/$': typeof FeaturesSplatRoute
   '/journal/$': typeof JournalSplatRoute
-  '/reports/$day': typeof ReportsDayRoute
-  '/arcs': typeof ArcsIndexRoute
   '/ask': typeof AskIndexRoute
-  '/digests': typeof DigestsIndexRoute
   '/docs': typeof DocsIndexRoute
   '/features': typeof FeaturesIndexRoute
   '/journal': typeof JournalIndexRoute
-  '/reports': typeof ReportsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/archive': typeof ArchiveRoute
-  '/blocks': typeof BlocksRoute
-  '/unsorted': typeof UnsortedRoute
-  '/arcs/$slug': typeof ArcsSlugRoute
   '/ask/$id': typeof AskIdRoute
-  '/digests/$day': typeof DigestsDayRoute
   '/docs/$': typeof DocsSplatRoute
   '/features/$': typeof FeaturesSplatRoute
   '/journal/$': typeof JournalSplatRoute
-  '/reports/$day': typeof ReportsDayRoute
-  '/arcs/': typeof ArcsIndexRoute
   '/ask/': typeof AskIndexRoute
-  '/digests/': typeof DigestsIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/features/': typeof FeaturesIndexRoute
   '/journal/': typeof JournalIndexRoute
-  '/reports/': typeof ReportsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/archive'
-    | '/blocks'
-    | '/unsorted'
-    | '/arcs/$slug'
     | '/ask/$id'
-    | '/digests/$day'
     | '/docs/$'
     | '/features/$'
     | '/journal/$'
-    | '/reports/$day'
-    | '/arcs/'
     | '/ask/'
-    | '/digests/'
     | '/docs/'
     | '/features/'
     | '/journal/'
-    | '/reports/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/archive'
-    | '/blocks'
-    | '/unsorted'
-    | '/arcs/$slug'
     | '/ask/$id'
-    | '/digests/$day'
     | '/docs/$'
     | '/features/$'
     | '/journal/$'
-    | '/reports/$day'
-    | '/arcs'
     | '/ask'
-    | '/digests'
     | '/docs'
     | '/features'
     | '/journal'
-    | '/reports'
   id:
     | '__root__'
     | '/'
-    | '/archive'
-    | '/blocks'
-    | '/unsorted'
-    | '/arcs/$slug'
     | '/ask/$id'
-    | '/digests/$day'
     | '/docs/$'
     | '/features/$'
     | '/journal/$'
-    | '/reports/$day'
-    | '/arcs/'
     | '/ask/'
-    | '/digests/'
     | '/docs/'
     | '/features/'
     | '/journal/'
-    | '/reports/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ArchiveRoute: typeof ArchiveRoute
-  BlocksRoute: typeof BlocksRoute
-  UnsortedRoute: typeof UnsortedRoute
-  ArcsSlugRoute: typeof ArcsSlugRoute
   AskIdRoute: typeof AskIdRoute
-  DigestsDayRoute: typeof DigestsDayRoute
   DocsSplatRoute: typeof DocsSplatRoute
   FeaturesSplatRoute: typeof FeaturesSplatRoute
   JournalSplatRoute: typeof JournalSplatRoute
-  ReportsDayRoute: typeof ReportsDayRoute
-  ArcsIndexRoute: typeof ArcsIndexRoute
   AskIndexRoute: typeof AskIndexRoute
-  DigestsIndexRoute: typeof DigestsIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
   FeaturesIndexRoute: typeof FeaturesIndexRoute
   JournalIndexRoute: typeof JournalIndexRoute
-  ReportsIndexRoute: typeof ReportsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -271,41 +154,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/archive': {
-      id: '/archive'
-      path: '/archive'
-      fullPath: '/archive'
-      preLoaderRoute: typeof ArchiveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/blocks': {
-      id: '/blocks'
-      path: '/blocks'
-      fullPath: '/blocks'
-      preLoaderRoute: typeof BlocksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/unsorted': {
-      id: '/unsorted'
-      path: '/unsorted'
-      fullPath: '/unsorted'
-      preLoaderRoute: typeof UnsortedRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/arcs/': {
-      id: '/arcs/'
-      path: '/arcs'
-      fullPath: '/arcs/'
-      preLoaderRoute: typeof ArcsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/arcs/$slug': {
-      id: '/arcs/$slug'
-      path: '/arcs/$slug'
-      fullPath: '/arcs/$slug'
-      preLoaderRoute: typeof ArcsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ask/': {
@@ -320,20 +168,6 @@ declare module '@tanstack/react-router' {
       path: '/ask/$id'
       fullPath: '/ask/$id'
       preLoaderRoute: typeof AskIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/digests/': {
-      id: '/digests/'
-      path: '/digests'
-      fullPath: '/digests/'
-      preLoaderRoute: typeof DigestsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/digests/$day': {
-      id: '/digests/$day'
-      path: '/digests/$day'
-      fullPath: '/digests/$day'
-      preLoaderRoute: typeof DigestsDayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs/': {
@@ -378,43 +212,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JournalSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/reports/': {
-      id: '/reports/'
-      path: '/reports'
-      fullPath: '/reports/'
-      preLoaderRoute: typeof ReportsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reports/$day': {
-      id: '/reports/$day'
-      path: '/reports/$day'
-      fullPath: '/reports/$day'
-      preLoaderRoute: typeof ReportsDayRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ArchiveRoute: ArchiveRoute,
-  BlocksRoute: BlocksRoute,
-  UnsortedRoute: UnsortedRoute,
-  ArcsSlugRoute: ArcsSlugRoute,
   AskIdRoute: AskIdRoute,
-  DigestsDayRoute: DigestsDayRoute,
   DocsSplatRoute: DocsSplatRoute,
   FeaturesSplatRoute: FeaturesSplatRoute,
   JournalSplatRoute: JournalSplatRoute,
-  ReportsDayRoute: ReportsDayRoute,
-  ArcsIndexRoute: ArcsIndexRoute,
   AskIndexRoute: AskIndexRoute,
-  DigestsIndexRoute: DigestsIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
   FeaturesIndexRoute: FeaturesIndexRoute,
   JournalIndexRoute: JournalIndexRoute,
-  ReportsIndexRoute: ReportsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

@@ -5,7 +5,7 @@
  * (LIA-161), and the thing a person actually presses Send beside is a ticket on a
  * workstream page — so the key is the ticket, and the file is
  * `decisions/send/<ticket>.json` `{ ticket, action: "sent", job, at, by }`. Argus reads it
- * by content, not by name (`scripts/marauder.ts` `sentTickets` scans every group under
+ * by content, not by name (argus's `sent` records scan every group under
  * `decisions/` for a `sent` decision carrying a job), so the ticket travels inside the file
  * and the file name is the id folded the way every other decision file's name is.
  *

@@ -1,24 +1,9 @@
 /**
- * The blackboard reader. The argus loop owns every file under WORKSPACE_DIR except
- * `decisions/` (see ./decisions.ts, the one writer); this module only turns them into
- * typed, serialisable shapes.
- *
- * Layout it expects (see argus/README.md "Layout"):
- *   <app>/features/<dir>/journal/**\/*.md       one entry per landing
- *   <app>/features/<dir>/docs/{product,arch}.md
- *   reports/YYYY-MM-DD.md                       archive: a sweep report, one per day
- *   digests/YYYY-MM-DD.md                       archive: a Slack digest, one per day
- *
- * The map of the work itself — each feature's `work.json` and `board.md`, `queue/` and
- * `marauder/` — is ./marauder.ts's; the
- * reports and digests here are what the loop wrote before that replaced them (LIA-161),
- * and nothing writes them any more.
- *
- * `<app>` is discovered, not hardcoded: any directory one or two levels under
- * WORKSPACE_DIR holding a `features/` tree is an app — `foundry` and `pensieve` are one
- * deep, `alden/alden-portal` two. A feature is addressed as `<app>/<dir>`, and a bare
- * `<dir>` still resolves when it is unique across apps, so links written before the
- * workspace held more than one app keep working.
+ * The workspace reader: the argus checkout as Pensieve sees it. Apps are discovered, not
+ * hardcoded: any directory one or two levels under WORKSPACE_DIR holding a `features/`
+ * tree is an app, and a feature is addressed as `<app>/<dir>`. The ledgers are read by
+ * ./ledger.ts; this module reads the arch docs and Ask's markdown, and turns them into
+ * typed, serialisable shapes. Nothing here writes.
  */
 
 import type { Dirent } from "node:fs";
@@ -33,8 +18,6 @@ import { dropTitle, outline } from "./sections";
 export const WORKSPACE_DIR = resolve(
   process.env.WORKSPACE_DIR || join(homedir(), "git/argus")
 );
-const REPORTS_DIR = join(WORKSPACE_DIR, "reports");
-const DIGESTS_DIR = join(WORKSPACE_DIR, "digests");
 
 /** Workspace directories that are never an app, so the scan does not descend into them. */
 const NOT_APPS = new Set([
@@ -76,13 +59,6 @@ export interface Rendered {
   doc: MarkdownDocument;
   frontmatter: Frontmatter;
   /** Path relative to WORKSPACE_DIR, for "open in editor" affordances. */
-  path: string;
-}
-
-export interface DayFile {
-  day: string;
-  /** First non-heading line, for list previews. */
-  lede?: string;
   path: string;
 }
 
@@ -137,8 +113,6 @@ export interface DocMeta {
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
-
-const DAY_RE = /^(\d{4}-\d{2}-\d{2})\.md$/;
 
 async function exists(p: string) {
   try {
@@ -330,48 +304,9 @@ async function readFrontmatter(absPath: string): Promise<Frontmatter> {
   }
 }
 
-async function dayFiles(dir: string): Promise<DayFile[]> {
-  let names: string[];
-  try {
-    names = await readdir(dir);
-  } catch {
-    return [];
-  }
-  const out: DayFile[] = [];
-  for (const n of names) {
-    const m = n.match(DAY_RE);
-    if (!m) {
-      continue;
-    }
-    const abs = join(dir, n);
-    const raw = await readFile(abs, "utf8");
-    const lede = raw
-      .split("\n")
-      .map((l) => l.trim())
-      .find((l) => l && !l.startsWith("#"))
-      ?.replace(/^_|_$/g, "");
-    out.push({ day: m[1], lede, path: relative(WORKSPACE_DIR, abs) });
-  }
-  return out.sort((a, b) => (a.day < b.day ? 1 : -1));
-}
-
 // ── reports ────────────────────────────────────────────────────────────────────
 
-export const listReports = () => dayFiles(REPORTS_DIR);
-
-export async function readReport(day: string): Promise<Rendered | null> {
-  const p = join(REPORTS_DIR, `${day}.md`);
-  return (await exists(p)) ? render(p) : null;
-}
-
 // ── digests ────────────────────────────────────────────────────────────────────
-
-export const listDigests = () => dayFiles(DIGESTS_DIR);
-
-export async function readDigest(day: string): Promise<Rendered | null> {
-  const p = join(DIGESTS_DIR, `${day}.md`);
-  return (await exists(p)) ? render(p) : null;
-}
 
 // ── journal ────────────────────────────────────────────────────────────────────
 

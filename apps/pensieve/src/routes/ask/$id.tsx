@@ -31,7 +31,10 @@ import { Button } from "#/components/ui/button";
 import { AskStatusProvider, useAppChat } from "#/features/ask";
 import { FeatureLine } from "#/features/ask/components/feature-line";
 import { askStatus, deleteConversation, getConversation } from "#/lib/api";
-import { isFeature } from "#/lib/marauder";
+
+/** a feature is its directory under an app's features/, one level of nesting at most */
+const isFeature = (v: unknown): v is string =>
+  typeof v === "string" && /^[a-z0-9-]+(\/[a-z0-9-]+)?$/.test(v);
 
 export const Route = createFileRoute("/ask/$id")({
   staticData: { crumb: "Argus" },
