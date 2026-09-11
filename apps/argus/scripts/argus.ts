@@ -19,14 +19,14 @@ import { archDocPath, isFeature } from "./argus/paths.ts";
 import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
 import { commitRun } from "./argus/commit.ts";
-import { draftFor } from "./argus/file.ts";
+import { draftFor, draftForAsk } from "./argus/file.ts";
 import { applyPatch, parsePatch } from "./argus/patch.ts";
 import { attributePrompt, readerPrompt, sliceOf } from "./argus/reader.ts";
 import { readUnplaced } from "./argus/state.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
 import { seedFeature } from "./argus/seed.ts";
-import { closeAsk, confirmRequirement, placeMessage, recordSent, recordTicket } from "./argus/verbs.ts";
+import { closeAsk, confirmRequirement, dropAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./argus/verbs.ts";
 import { readLedger, writeLedger } from "./argus/write.ts";
 
 export type Flags = { dryRun: boolean; json: boolean; actor: "model" | "user"; rest: string[]; opts: Record<string, string> };
@@ -63,10 +63,11 @@ const USAGE = `argus — the ledger CLI
   argus commit [-m "<message>"]      stage ledgers, state and docs, commit, promote the cursor
 
   argus close <feature> <A-n> --reason "<why>"
+  argus drop <feature> <A-n> --reason "<why>"       the ask was never one, or is not wanted
   argus confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]
   argus place <message-id> <feature>
-  argus file <feature> <P-n>         the ticket a proposal would become: title, body, team, project
-  argus ticket <feature> <P-n> <ALD-key>
+  argus file <feature> <P-n>|<A-n>   the ticket a proposal, or an ask, would become: title, body, team, project
+  argus ticket <feature> <P-n>|<A-n> <ALD-key> [--title "<t>"]
   argus sent <feature> <ALD-key> --repo <name> [--job <id>]   record that Pensieve sent it to Foundry
   argus seed <feature>...|--all [--force]  requirement rows from the product doc's BR table
 
@@ -117,6 +118,12 @@ const verbs: Record<string, Verb> = {
     const [feature, askId] = f.rest;
     if (!feature || !askId || !f.opts.reason) throw new Usage('close <feature> <A-n> --reason "<why>"');
     return report(f, feature, await closeAsk(feature, askId, f.opts.reason, { dryRun: f.dryRun }));
+  },
+
+  async drop(f) {
+    const [feature, askId] = f.rest;
+    if (!feature || !askId || !f.opts.reason) throw new Usage('drop <feature> <A-n> --reason "<why>"');
+    return report(f, feature, await dropAsk(feature, askId, f.opts.reason, { dryRun: f.dryRun }));
   },
 
   async confirm(f) {
@@ -212,8 +219,8 @@ const verbs: Record<string, Verb> = {
 
   async file(f) {
     const [feature, proposalId] = f.rest;
-    if (!feature || !proposalId) throw new Usage("file <feature> <P-n>");
-    const d = await draftFor(feature, proposalId);
+    if (!feature || !proposalId) throw new Usage("file <feature> <P-n>|<A-n>");
+    const d = proposalId.startsWith("A-") ? await draftForAsk(feature, proposalId) : await draftFor(feature, proposalId);
     if (f.json) console.log(JSON.stringify({ ok: true, ...d }));
     else console.log(`${d.team} · ${d.project}\n# ${d.title}\n\n${d.body}`);
     return 0;
@@ -221,7 +228,8 @@ const verbs: Record<string, Verb> = {
 
   async ticket(f) {
     const [feature, proposalId, key] = f.rest;
-    if (!feature || !proposalId || !key) throw new Usage("ticket <feature> <P-n> <ALD-key>");
+    if (!feature || !proposalId || !key) throw new Usage("ticket <feature> <P-n>|<A-n> <ALD-key> [--title]");
+    if (proposalId.startsWith("A-")) return report(f, feature, await recordTicketForAsk(feature, proposalId, key, f.opts.title ?? key, { dryRun: f.dryRun }));
     return report(f, feature, await recordTicket(feature, proposalId, key, { dryRun: f.dryRun }));
   },
 

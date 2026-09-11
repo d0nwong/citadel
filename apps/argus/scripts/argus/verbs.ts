@@ -4,6 +4,7 @@
  * idempotent, so a double click or a retried request changes nothing the second time.
  *
  *   close    an ask is done by the user's say-so
+ *   drop     an ask was never one, or is not wanted; the reason stays on it
  *   confirm  a requirement is confirmed or contradicted by the user, one or all
  *   place    an unplaced message belongs to a feature; the thread remembers it
  *   ticket   a proposal was filed; the key goes on the ask and the ticket list
@@ -31,13 +32,21 @@ async function commit(feature: string, next: Ledger, o: VerbOptions): Promise<Wr
 }
 
 export async function closeAsk(feature: string, askId: string, reason: string, o: VerbOptions = {}): Promise<WriteResult> {
+  return settleAsk(feature, askId, "closed", reason, o);
+}
+
+export async function dropAsk(feature: string, askId: string, reason: string, o: VerbOptions = {}): Promise<WriteResult> {
+  return settleAsk(feature, askId, "dropped", reason, o);
+}
+
+async function settleAsk(feature: string, askId: string, status: "closed" | "dropped", reason: string, o: VerbOptions): Promise<WriteResult> {
   const now = o.now ?? new Date();
   const l = await mustRead(feature, o.app);
   const ask = l.asks.find((a) => a.id === askId);
   if (!ask) throw new Error(`${feature}: no ask ${askId}`);
-  if (ask.status === "closed") return commit(feature, l, o);
-  const closed: Ask = { ...ask, status: "closed", history: [...ask.history, { at: day(now), status: "closed", evidence: [userEvidence(reason, now)] }] };
-  return commit(feature, { ...l, asks: l.asks.map((a) => (a.id === askId ? closed : a)) }, { ...o, now });
+  if (ask.status === status) return commit(feature, l, o);
+  const settled: Ask = { ...ask, status, history: [...ask.history, { at: day(now), status, evidence: [userEvidence(reason, now)] }] };
+  return commit(feature, { ...l, asks: l.asks.map((a) => (a.id === askId ? settled : a)) }, { ...o, now });
 }
 
 export type ConfirmOptions = VerbOptions & { contradict?: boolean; all?: boolean; by?: string };
@@ -106,4 +115,16 @@ export async function recordSent(feature: string, key: string, repo: string, job
   const entry = { at: now.toISOString(), repo, ...(job ? { job } : {}) };
   const tickets = l.tickets.map((x) => (x.key === key ? { ...x, sent: [...(x.sent ?? []), entry] } : x));
   return commit(feature, { ...l, tickets }, { ...o, now });
+}
+
+/** a ticket filed straight from an ask: the ask's open blockers become the ticket's, the key goes on the ask */
+export async function recordTicketForAsk(feature: string, askId: string, key: string, title: string, o: VerbOptions = {}): Promise<WriteResult> {
+  const now = o.now ?? new Date();
+  const l = await mustRead(feature, o.app);
+  const a = l.asks.find((x) => x.id === askId);
+  if (!a) throw new Error(`${feature}: no ask ${askId}`);
+  if (l.tickets.some((t) => t.key === key)) return commit(feature, { ...l, asks: l.asks.map((x) => (x.id === askId ? { ...x, ticket: key } : x)) }, { ...o, now });
+  const blockers = (a.blockers ?? []).filter((b) => !b.cleared).map((b) => structuredClone(b));
+  const tickets = [...l.tickets, { key, title, asks: [askId], blockers, ready: blockers.length === 0 }];
+  return commit(feature, { ...l, tickets, asks: l.asks.map((x) => (x.id === askId ? { ...x, ticket: key } : x)) }, { ...o, now });
 }

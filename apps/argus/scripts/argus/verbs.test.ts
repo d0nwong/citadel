@@ -8,7 +8,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readThreads, readUnplaced, writeUnplaced, type Unplaced } from "./state.ts";
-import { closeAsk, confirmRequirement, placeMessage, recordSent, recordTicket } from "./verbs.ts";
+import { closeAsk, confirmRequirement, dropAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./verbs.ts";
 import { readLedger } from "./write.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
@@ -132,5 +132,24 @@ describe("sent", () => {
     expect((await readLedger("admin/invoicing"))!.tickets[0]!.sent).toEqual([{ at: T0.toISOString(), repo: "alden-portal-fe", job: "job-1" }]);
     expect((await recordSent("admin/invoicing", "ALD-41", "alden-portal-fe", "job-1")).wrote).toBe(false);
     await expect(recordSent("admin/invoicing", "ALD-99", "x", "j")).rejects.toThrow("no ticket ALD-99");
+  });
+});
+
+describe("drop and a ticket from an ask", () => {
+  test("drop settles an ask as dropped with the reason", async () => {
+    const r = await dropAsk("admin/invoicing", "A-2", "that was chat", { now: T0 });
+    expect(r.diff).toEqual(["A-2 asked → dropped"]);
+    expect((await readLedger("admin/invoicing"))!.asks[1]!.history.at(-1)).toMatchObject({ status: "dropped", evidence: [{ kind: "user", reason: "that was chat" }] });
+  });
+  test("a ticket filed from an ask carries the ask's open blockers and puts the key on the ask", async () => {
+    const l = (await readLedger("admin/invoicing"))!;
+    l.asks[1]!.blockers = [{ kind: "answer", from: "Foong Leung", question: "which fields?", cleared: null }];
+    await Bun.write(join(ws, "alden/alden-portal/features/admin/invoicing/ledger.json"), JSON.stringify(l));
+    const r = await recordTicketForAsk("admin/invoicing", "A-2", "ALD-70", "[FE] Billing fields", { now: T0 });
+    expect(r.diff).toEqual(["+ ALD-70 blocked"]);
+    const after = (await readLedger("admin/invoicing"))!;
+    expect(after.asks[1]!.ticket).toBe("ALD-70");
+    expect(after.tickets.at(-1)).toMatchObject({ key: "ALD-70", asks: ["A-2"], ready: false });
+    expect((await recordTicketForAsk("admin/invoicing", "A-2", "ALD-70", "x")).wrote).toBe(false);
   });
 });

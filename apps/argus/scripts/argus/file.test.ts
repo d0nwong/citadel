@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { draftFor, projectNameFor } from "./file.ts";
+import { draftFor, draftForAsk, projectNameFor } from "./file.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
 let ws: string;
@@ -30,5 +30,18 @@ describe("file", () => {
   });
   test("an unknown proposal is refused", async () => {
     await expect(draftFor("admin/invoicing", "P-9")).rejects.toThrow("no proposal P-9");
+  });
+});
+
+describe("a draft from an ask", () => {
+  test("title from the ask with a tag, body in the house format, refused when the ask already has a ticket", async () => {
+    const d = await draftForAsk("admin/invoicing", "A-2");
+    expect(d.title).toBe("[FE] Sam asked you and Carlos who takes the front end for his three new billing…");
+    expect(d.title.length).toBeLessThanOrEqual(80);
+    expect(d.body).toContain("## Summary");
+    expect(d.body).toContain("## Acceptance Criteria");
+    expect(d.body).toContain("Sam O asked on 2026-09-10");
+    expect(d.asks).toEqual(["A-2"]);
+    await expect(draftForAsk("admin/invoicing", "A-1")).rejects.toThrow("already has ALD-41");
   });
 });
