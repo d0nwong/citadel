@@ -40,10 +40,12 @@ export const TEAM_NAME = "Liamai";
  * path has no business pulling it in. Resolved per call, like the key itself, so the
  * value belongs to whoever set the variable rather than to whoever imported this first.
  */
-export const projectsCacheFile = () =>
+export const projectsCacheFile = (teamKey: string = TEAM_KEY) =>
   join(
     resolve(process.env.PENSIEVE_HOME || join(homedir(), ".pensieve")),
-    "linear-projects.json"
+    teamKey === TEAM_KEY
+      ? "linear-projects.json"
+      : `linear-projects-${teamKey}.json`
   );
 
 /** How long one request may take before it is a `LinearError(0)`. */
@@ -219,17 +221,22 @@ const parseCache = (text: string): CacheFile | null => {
   };
 };
 
-async function readCache(): Promise<CacheFile | null> {
+async function readCache(
+  teamKey: string = TEAM_KEY
+): Promise<CacheFile | null> {
   try {
-    return parseCache(await readFile(projectsCacheFile(), "utf8"));
+    return parseCache(await readFile(projectsCacheFile(teamKey), "utf8"));
   } catch {
     return null;
   }
 }
 
 /** Written whole through a temp file and a rename, as the conversation store is. */
-async function writeCache(file: CacheFile): Promise<void> {
-  const target = projectsCacheFile();
+async function writeCache(
+  file: CacheFile,
+  teamKey: string = TEAM_KEY
+): Promise<void> {
+  const target = projectsCacheFile(teamKey);
   await mkdir(dirname(target), { recursive: true });
   const tmp = join(
     dirname(target),
@@ -244,11 +251,11 @@ async function writeCache(file: CacheFile): Promise<void> {
   }
 }
 
-let memo: { at: number; lookup: ProjectLookup } | undefined;
+const memos = new Map<string, { at: number; lookup: ProjectLookup }>();
 
 /** Drops the in-process memo. Tests call it; nothing else needs to. */
 export const forgetProjects = () => {
-  memo = undefined;
+  memos.clear();
 };
 
 /**
@@ -257,8 +264,10 @@ export const forgetProjects = () => {
  * treats as "cannot verify this project" rather than as a refusal.
  */
 export async function knownProjects(
-  fetchImpl: Fetch = fetch
+  fetchImpl: Fetch = fetch,
+  teamKey: string = TEAM_KEY
 ): Promise<ProjectLookup> {
+  const memo = memos.get(teamKey);
   if (memo && Date.now() - memo.at < CACHE_TTL_MS) {
     return memo.lookup;
   }
@@ -266,7 +275,7 @@ export async function knownProjects(
     try {
       const data = await graphql<TeamProjectsData>(
         TEAM_PROJECTS_QUERY,
-        { key: TEAM_KEY },
+        { key: teamKey },
         fetchImpl
       );
       const [team] = data.teams.nodes;
@@ -280,13 +289,16 @@ export async function knownProjects(
           teamId: team.id,
           viewerId: data.viewer.id,
         };
-        await writeCache({
-          at: new Date().toISOString(),
-          projects: lookup.projects,
-          teamId: team.id,
-          viewerId: data.viewer.id,
-        });
-        memo = { at: Date.now(), lookup };
+        await writeCache(
+          {
+            at: new Date().toISOString(),
+            projects: lookup.projects,
+            teamId: team.id,
+            viewerId: data.viewer.id,
+          },
+          teamKey
+        );
+        memos.set(teamKey, { at: Date.now(), lookup });
         return lookup;
       }
     } catch (e) {
@@ -296,7 +308,7 @@ export async function knownProjects(
       );
     }
   }
-  const cached = await readCache();
+  const cached = await readCache(teamKey);
   const lookup: ProjectLookup = cached
     ? {
         projects: cached.projects,
@@ -305,7 +317,7 @@ export async function knownProjects(
         ...(cached.viewerId ? { viewerId: cached.viewerId } : {}),
       }
     : { projects: [], source: "none" };
-  memo = { at: Date.now(), lookup };
+  memos.set(teamKey, { at: Date.now(), lookup });
   return lookup;
 }
 

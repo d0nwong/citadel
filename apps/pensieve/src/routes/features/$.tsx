@@ -72,7 +72,7 @@ function FeaturePage() {
         <Requirements dir={dir} ledger={ledger} />
         <Asks dir={dir} ledger={ledger} />
         <Tickets tickets={ledger.tickets} />
-        <Proposals proposals={ledger.proposals} />
+        <Proposals dir={dir} proposals={ledger.proposals} />
         <Landings landings={ledger.landings} />
       </div>
     </DocLayout>

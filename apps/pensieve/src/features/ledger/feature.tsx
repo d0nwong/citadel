@@ -15,8 +15,13 @@ import {
   FIELD_CLASS,
   useCommit,
 } from "#/features/work/controls";
-import type { LedgerWrite } from "#/lib/api";
-import { closeAsk, confirmAll, confirmRequirement } from "#/lib/api";
+import type { FileProposalResult, LedgerWrite } from "#/lib/api";
+import {
+  closeAsk,
+  confirmAll,
+  confirmRequirement,
+  fileProposal,
+} from "#/lib/api";
 import {
   type Ask,
   isOpen,
@@ -482,7 +487,51 @@ export function Tickets({ tickets }: { tickets: Ticket[] }) {
   );
 }
 
-export function Proposals({ proposals }: { proposals: Proposal[] }) {
+function FileButton({ dir, proposal }: { dir: string; proposal: string }) {
+  const { busy, commit, error } = useCommit<FileProposalResult>();
+  const [filed, setFiled] = useState<{ key: string; url: string } | null>(null);
+  if (filed) {
+    return (
+      <a
+        className="mono ml-auto text-xs underline decoration-1 underline-offset-2"
+        href={filed.url}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {filed.key}
+      </a>
+    );
+  }
+  return (
+    <span className="ml-auto flex flex-col items-end gap-1">
+      <Button
+        disabled={busy}
+        onClick={() =>
+          commit(
+            () => fileProposal({ data: { dir, proposal } }),
+            (v) => setFiled({ key: v.key, url: v.url })
+          )
+        }
+        size="xs"
+        type="button"
+        variant="outline"
+      >
+        {busy ? "Filing" : "File"}
+      </Button>
+      <CommitError
+        v={error?.ok === false ? { error: error.error, ok: false } : null}
+      />
+    </span>
+  );
+}
+
+export function Proposals({
+  proposals,
+  dir,
+}: {
+  proposals: Proposal[];
+  dir: string;
+}) {
   if (proposals.length === 0) {
     return null;
   }
@@ -507,16 +556,7 @@ export function Proposals({ proposals }: { proposals: Proposal[] }) {
                 {p.at}
                 {p.asks.length ? ` · serves ${p.asks.join(", ")}` : ""}
               </span>
-              <Button
-                className="ml-auto"
-                disabled
-                size="xs"
-                title="File comes with the tickets phase"
-                type="button"
-                variant="outline"
-              >
-                File
-              </Button>
+              <FileButton dir={dir} proposal={p.id} />
             </div>
           </li>
         ))}

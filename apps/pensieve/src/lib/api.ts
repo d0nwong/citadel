@@ -951,3 +951,88 @@ export const placeUnplaced = createServerFn({ method: "POST" })
       ? { feature: r.feature, ok: true, thread: r.thread }
       : { error: a.argusNote(r) ?? "argus refused", ok: false };
   });
+
+export type FileProposalResult =
+  | { ok: true; key: string; url: string; project: string | null }
+  | { error: string; ok: false; status?: number };
+
+/**
+ * File a proposal from a feature's ledger: `argus file` says what the ticket is and where
+ * it goes (the Alden team, the project named after the feature), Linear creates it with
+ * the viewer as assignee, and `argus ticket` writes the key onto the ledger. The one
+ * place a ledger proposal reaches Linear.
+ */
+export const fileProposal = createServerFn({ method: "POST" })
+  .validator((input: { dir: string; proposal: string }) => ({
+    dir: trimmed(input.dir),
+    proposal: trimmed(input.proposal),
+  }))
+  .handler(async ({ data }): Promise<FileProposalResult> => {
+    const a = await import("#/server/argus");
+    const linear = await import("#/server/linear");
+    const draft = await a.argus<{
+      title: string;
+      body: string;
+      team: string;
+      project: string;
+    }>("file", [data.dir, data.proposal]);
+    if (!draft.ok) {
+      return { error: a.argusNote(draft) ?? "argus refused", ok: false };
+    }
+    const config = linear.linearConfig();
+    if (!config.configured) {
+      return {
+        error: config.reason ?? "LINEAR_API_KEY is not set",
+        ok: false,
+        status: 503,
+      };
+    }
+    const lookup = await linear.knownProjects(fetch, draft.team);
+    if (!lookup.teamId) {
+      return {
+        error: `team ${draft.team} could not be read from Linear`,
+        ok: false,
+        status: 503,
+      };
+    }
+    const norm = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+    const project = lookup.projects.find(
+      (p) => norm(p.name) === norm(draft.project)
+    );
+    let made: { identifier: string; url: string };
+    try {
+      made = await linear.createIssue({
+        description: draft.body,
+        teamId: lookup.teamId,
+        title: draft.title,
+        ...(project ? { projectId: project.id } : {}),
+        ...(lookup.viewerId ? { assigneeId: lookup.viewerId } : {}),
+      });
+    } catch (e) {
+      if (e instanceof linear.LinearError) {
+        return { error: e.message, ok: false, status: e.status };
+      }
+      throw e;
+    }
+    const recorded = await a.argus("ticket", [
+      data.dir,
+      data.proposal,
+      made.identifier,
+    ]);
+    if (!recorded.ok) {
+      return {
+        error: `${made.identifier} was filed, but the ledger did not take it: ${a.argusNote(recorded)}`,
+        ok: false,
+      };
+    }
+    return {
+      key: made.identifier,
+      ok: true,
+      project: project?.name ?? null,
+      url: made.url,
+    };
+  });
