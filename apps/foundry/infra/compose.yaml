@@ -1,10 +1,8 @@
-# Local development stack for foundry. Brought up by `bun run infra:up`.
-name: foundry
+# Foundry's postgres, included by citadel's root compose.yaml (`just up`).
 
 services:
   postgres:
     image: postgres:18-alpine
-    container_name: foundry-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-foundry}
@@ -28,4 +26,7 @@ services:
 
 volumes:
   pgdata:
-    name: foundry-pgdata
+    # The volume Foundry has always used, so its jobs and repos survive the move. A trial
+    # stack points POSTGRES_VOLUME at a throwaway one; `just up` refuses a volume that a
+    # container from another project is using.
+    name: ${POSTGRES_VOLUME:-foundry-pgdata}

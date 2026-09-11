@@ -112,20 +112,33 @@ See `tasks/plan.md` for the order and the checkpoints.
     Checked on a scratch copy: `check` creates nothing; a run without a terminal creates a
     mode-600 .env and mints the two tokens; a second run leaves it byte-identical; no secret in
     any output. No global `set dotenv-load` (it would hand the Slack token to every recipe).
-- [ ] **T10: Add the just stack and database recipes.** (S–M)
+- [x] **T10: Add the just stack and database recipes.** (S–M)
   - Acceptance: `up`, `down`, `logs`, `ps`, `migrate`, `psql`, `sweep-once` and `release-dry`
     replace `infra.sh`, `db.sh` and the delegating `package.json` scripts.
   - Verify: `just --list` shows each with a doc line, and
     `grep -rn "infra.sh\|db.sh" apps` is empty.
   - Files: `justfile`, `apps/foundry/package.json`, deleted scripts.
+  - Done: `up`, `down`, `ps`, `logs`, `migrate`, `db-generate`, `db-studio`, `db-url`, `psql`,
+    `serve foundry|pensieve`, `setup-bb`; `scripts/stack.ts` holds the preflight, the URL and
+    psql. `infra.sh`, `db.sh` and Foundry's delegating scripts are gone; `foundry setup` calls
+    `just up postgres mcp` and `just migrate`. `set positional-arguments`: a quoted argument
+    (SQL, a path) reaches the script whole. `sweep-once` lands with T14 and `release-dry` with
+    T16, where they have something to act on.
 
 ## Phase 5: Stack
 
-- [ ] **T11: Bring up the gateway and Postgres from the root compose.** (S)
+- [x] **T11: Bring up the gateway and Postgres from the root compose.** (S)
   - Acceptance: the root `compose.yaml` `include:`s `apps/argus/infra/compose.yaml` (mcp) and
     `apps/foundry/infra/compose.yaml` (postgres).
   - Verify: `just up && just ps` shows both healthy, and `curl :9090/_readyz` returns 200.
   - Files: `compose.yaml`, both infra compose files.
+  - Done: root `compose.yaml` (`name: citadel`) includes both files, each given the root .env.
+    The fixed container names are gone (they clashed with the live `argus-mcp` and
+    `foundry-postgres`). Postgres keeps the `foundry-pgdata` volume by default so Foundry's
+    history survives cutover; `POSTGRES_VOLUME` moves a trial stack, and `just up` refuses a
+    volume a container from another project holds. Trial on project `citadel-t11`, ports
+    19090/15432 and a throwaway volume: both healthy, `/_readyz` 200, migrations applied, the
+    guard refused `foundry-pgdata`; the live stack was untouched.
 - [ ] **T12: Add the foundry-web service.** (M, needs T2)
   - Acceptance: an image built from the workspace, with `docker.sock` and a `foundry-home`
     volume mounted, and the host's `~/git` mounted at the same absolute path. Migrations run

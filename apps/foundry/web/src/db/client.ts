@@ -3,7 +3,7 @@
  * from a module a client component pulls in.
  *
  * DATABASE_URL comes from web/.env, which bun loads for us. The fallback is the
- * stack `bun run infra:up` brings up, so a fresh clone needs no configuration.
+ * stack `just up postgres` brings up, so a fresh clone needs no configuration.
  */
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'

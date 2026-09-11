@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # serve — share the web dev server with the rest of your tailnet.
-# Driven from the repo root: `bun run web:serve`, `web:unserve`, …
+# Driven from citadel's root: `just serve foundry up|down|status|url`.
 set -euo pipefail
 
 PORT="${FOUNDRY_WEB_PORT:-3777}"   # matches `vite dev --port 3777`

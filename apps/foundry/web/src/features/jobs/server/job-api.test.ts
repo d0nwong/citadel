@@ -2,7 +2,7 @@
  * The trigger API against the real store and database, with the three edges
  * that would touch the world stubbed: the token (no env file), Linear (no
  * key, no network) and ignition (no docker). Needs the local Postgres from
- * `bun run infra:up`. Rows are keyed TEST-… / a TEST repo path and swept below.
+ * `just up postgres`. Rows are keyed TEST-… / a TEST repo path and swept below.
  */
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'

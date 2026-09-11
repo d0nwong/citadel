@@ -1,6 +1,6 @@
 /**
  * The completion webhook against a real receiver (Bun.serve on an ephemeral
- * port) and the real store. Needs the local Postgres from `bun run infra:up`.
+ * port) and the real store. Needs the stack's Postgres: `just up postgres`.
  */
 import { afterAll, expect, test } from 'bun:test'
 import { createHmac, randomUUID } from 'node:crypto'

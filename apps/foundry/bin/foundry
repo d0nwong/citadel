@@ -21,8 +21,8 @@ ROOT="$(cd -P "$(dirname "$_src")/.." && pwd)"
 unset _src _dir
 # Every credential `foundry auth` stores — the Claude credential, the gateway
 # token, the trigger-API bearer — lives in citadel's one .env at the repo root (gitignored):
-# KEY=value lines, no quotes, mode 600, rewritten one key at a time. The CLI,
-# infra.sh and the web server all read this one file, as do argus and Pensieve:
+# KEY=value lines, no quotes, mode 600, rewritten one key at a time. The CLI
+# and the web server both read this one file, as do argus and Pensieve:
 # the upstream keys (LINEAR_API_KEY, SLACK_TOKEN) and MCP_GATEWAY_TOKEN, which a
 # forge knows as FOUNDRY_MCP_TOKEN. CITADEL_ENV points elsewhere.
 ENVFILE="${CITADEL_ENV:-$(cd "$ROOT/../.." && pwd)/.env}"
@@ -379,14 +379,14 @@ cmd_setup() {
   fi
 
   info "5/8 web dependencies"
-  (cd "$ROOT/web" && bun install)
-  ok "web deps installed"
+  (cd "$ROOT/../.." && bun install)
+  ok "workspace deps installed"
 
-  info "6/8 local infra (postgres + mcp gateway)"
-  "$ROOT/infra/infra.sh" up
+  info "6/8 the stack's postgres and mcp gateway"
+  (cd "$ROOT/../.." && just up postgres mcp)
 
   info "7/8 database schema"
-  (cd "$ROOT/web" && bun run db:migrate)
+  (cd "$ROOT/../.." && just migrate)
   ok "schema migrated"
 
   info "8/8 summary"
@@ -400,7 +400,7 @@ cmd_setup() {
   esac
   say ""
   ok "setup complete"
-  say "  bun run web:dev                        ${c_dim}# http://localhost:3777${c_0}"
+  say "  bun run --filter foundry-web dev       ${c_dim}# http://localhost:3777${c_0}"
   say "  foundry new <name> --repo <url>        ${c_dim}# create a forge${c_0}"
   say "  foundry claude <name>                  ${c_dim}# interactive Claude Code in it${c_0}"
 }

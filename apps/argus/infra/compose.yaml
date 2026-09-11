@@ -2,16 +2,13 @@
 # and serving Slack's and Linear's hosted MCP servers at :9090/{slack,linear}/mcp behind
 # MCP_GATEWAY_TOKEN. Every Claude session is a client: argus's .mcp.json (the sweep's
 # model steps, Pensieve's Ask) and Foundry's forges (host.docker.internal:9090).
-# Started by `./scripts/bootstrap.sh mcp`, which passes argus's .env as compose's
-# --env-file, so no key is exported into a shell. The config is committed and secret-free;
+# Included by citadel's root compose.yaml (`just up`), which hands this file the root .env
+# for interpolation, so no key is exported into a shell. The config is committed and secret-free;
 # mcp-proxy expands the ${VARS} in it from this environment.
-name: argus
-
 services:
   mcp:
     # Pinned to the digest Foundry's foundry-mcp ran (latest on 2026-09-11).
     image: ghcr.io/tbxark/mcp-proxy@sha256:8f795699e24a4d86f2808efc6c8292e3cf4d5ee8f6baf06854c61d451ad497b0
-    container_name: argus-mcp
     restart: unless-stopped
     environment:
       LINEAR_API_KEY: ${LINEAR_API_KEY:-}

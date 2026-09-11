@@ -1,0 +1,11 @@
+# citadel's stack: `just up` starts it, `just down` stops it. Each app keeps its compose file
+# beside its code; this one only includes them and hands each the root .env for
+# interpolation. A variable set in the shell still wins, which is how a trial stack moves
+# its ports and volume.
+name: citadel
+
+include:
+  - path: apps/argus/infra/compose.yaml
+    env_file: .env
+  - path: apps/foundry/infra/compose.yaml
+    env_file: .env
