@@ -1,0 +1,1 @@
+ALTER TABLE "foundry"."jobs" ADD COLUMN "callback_url" text;

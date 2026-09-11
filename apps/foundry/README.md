@@ -1,0 +1,423 @@
+# foundry
+
+Orchestration layer for disposable **Claude Code forges** running on OrbStack.
+
+Each forge is a Linux container with `claude`, `git`, `gh`, `node`, `bun`, `pnpm`, `python3`, and the
+usual CLI tooling. Forges are cheap (<1s to start), isolated from your Mac, and
+addressable at `<name>.foundry.local`.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph host["macOS host"]
+        cli["foundry CLI<br/>(bin/)"]
+        web["Web UI<br/>(web/, bun · :3777)"]
+        pg[("Postgres<br/>(infra/, :5432)")]
+        mcp["MCP gateway<br/>(argus's infra/, mcp-proxy · :9090)"]
+        auth[".env (repo root)<br/>CLAUDE_CODE_OAUTH_TOKEN · FOUNDRY_MCP_TOKEN<br/>FOUNDRY_API_TOKEN"]
+        argusenv["argus .env<br/>SLACK_TOKEN · LINEAR_API_KEY"]
+        jobs["~/.foundry/jobs/&lt;id&gt;/<br/>workspace clones"]
+        joblogs["~/.foundry/logs/&lt;id&gt;.jsonl<br/>job session logs"]
+    end
+
+    subgraph orb["OrbStack containers"]
+        forge["forge<br/>&lt;name&gt;.foundry.local<br/>claude · git · gh · node · bun · pnpm · python3"]
+        vols[("named volumes<br/>/work · ~/.claude · ~/.config")]
+        jobforge["ephemeral job forge<br/>(no git creds, no DB)"]
+    end
+
+    caller["API caller<br/>CI · bot · agent · curl"]
+    remote["GitHub / Bitbucket"]
+    linear["Linear<br/>api.linear.app · MCP"]
+    slack["Slack MCP<br/>mcp.slack.com"]
+
+    cli -- "new · claude · shell · exec · run" --> forge
+    auth -- "injected" --> forge
+    auth -- "injected" --> jobforge
+    forge --- vols
+    forge -- "--github (opt-in token)" --> remote
+    forge -. "gateway token" .-> mcp
+    jobforge -. "gateway token" .-> mcp
+    argusenv -- "upstream keys" --> mcp
+    auth -- "API token" --> web
+    argusenv -- "LINEAR_API_KEY" --> web
+    mcp -- "LINEAR_API_KEY (host only)" --> linear
+    mcp -- "SLACK_TOKEN (host only)" --> slack
+
+    caller -- "POST /api/jobs<br/>FOUNDRY_API_TOKEN" --> web
+    web -. "job.settled webhook<br/>HMAC-signed" .-> caller
+    web -- "job ledger" --> pg
+    web -- "clone repo" --> jobs
+    web -- "append log lines" --> joblogs
+    web -- "ignite job" --> jobforge
+    jobforge -- "edits" --> jobs
+    jobforge -. "progress callback<br/>host.docker.internal + per-job token" .-> web
+    web -- "commit · push · PR<br/>(gh / bb, host creds)" --> remote
+```
+
+## Why containers, not `orb` machines
+
+OrbStack Linux machines share your host `$HOME` — that's convenient but defeats the
+point of a sandbox, and they boot far slower. Containers are reproducible from
+`image/Dockerfile`, disposable, and still visible in the OrbStack UI.
+
+## Setup
+
+From a **brand-new Mac**, one script:
+
+```sh
+git clone <this repo> ~/git/foundry && cd ~/git/foundry
+./scripts/bootstrap.sh         # host tooling, git identity, PATH, config files, then foundry setup
+./scripts/bootstrap.sh --check # or: report what's missing and change nothing
+```
+
+`bootstrap.sh` is the step *before* `foundry setup`, which checks for docker, bun and
+gh and dies when they are missing. It installs them instead — OrbStack, bun, the
+`claude` CLI, `gh`, `php` + the `bb` phar, `tailscale` — prompting before each one,
+settles `git config --global user.name/user.email` (every forge inherits it), symlinks
+`bin/foundry` onto your PATH, creates `infra/.env` and `web/.env` from their examples,
+then hands over to `foundry setup` and mints the trigger-API token. Every phase is a
+no-op when it's already done, and each runs on its own
+(`./scripts/bootstrap.sh prereqs|identity|link|envfiles|foundry`).
+
+It never writes a credential — those stay with `foundry auth`, below — and three things
+stay yours to do: `gh auth login`, `./scripts/setup-bb.sh` for Bitbucket, and cloning
+the repos you want jobs to target under `~/git`, which is the only directory the
+Repos page scans.
+
+`setup-bb.sh` installs the `bb` phar and walks you through an Atlassian API token.
+It exists because `bb auth` stores whatever you type without checking it — including
+nothing at all, which is how an empty config gets written over a working one. This
+takes the token without echoing it and verifies it against a real Bitbucket repo
+before writing anything, then reports which of the four scopes `bb` needs are
+missing. `--verify` checks the setup and changes nothing; `--reauth` replaces the
+stored credentials.
+
+```sh
+./bin/foundry setup            # one-time: credential, forge image, web deps, local infra, db
+```
+
+`foundry setup` chains everything below — `foundry auth`, `foundry auth --linear`
+(prompted), `foundry build`, `bun install` in `web/`, `bun run infra:up`, and
+`bun run db:migrate` — skipping any step that's already done, so it's safe to rerun.
+Pass `--linear`/`--no-linear` to preselect the Linear/MCP prompt non-interactively.
+The steps below are the same thing run by hand, for when you want more control:
+
+```sh
+./bin/foundry doctor           # check OrbStack + prerequisites
+./bin/foundry auth             # one-time credential (see below)
+./bin/foundry auth --linear    # optional: let forges read/write Linear via the MCP gateway
+./bin/foundry build            # build the forge image (~5 min first time)
+```
+
+Everything below writes a bare `foundry` for brevity. To get that, symlink it onto
+your PATH — `ln -s "$PWD/bin/foundry" ~/.local/bin/foundry` (no sudo, unlike
+`/usr/local/bin`); `bootstrap.sh link` does exactly that. Otherwise run
+`./bin/foundry` from the repo root.
+
+### Shell entry points
+
+Every `bun run` script in the root `package.json` is a one-line forward to a shell
+script, so nothing about setting a machine up depends on bun being there first:
+
+| script | `bun run` alias |
+|---|---|
+| `./scripts/bootstrap.sh` | `setup`, `setup:check` |
+| `./scripts/setup-bb.sh [--verify\|--reauth]` | `setup:bb` |
+| `./scripts/db.sh migrate\|generate\|studio\|url` | `db:migrate`, `db:generate`, `db:studio` |
+| `./infra/infra.sh up\|down\|reset\|status\|logs\|psql\|url` | `infra:*` |
+| `./web/serve.sh up\|down\|status\|url` | `web:serve*` |
+
+`bin/foundry` is the odd one out: it is the CLI, not a wrapper, and has no alias.
+
+### Auth
+
+`foundry auth` opens an interactive picker — the Claude credential plus every MCP
+upstream from argus's `infra/mcp/config.json`, each with its auth status; arrow keys +
+enter (re)authenticate one. Non-interactive: `--claude`, `--api-key`, `--linear`,
+`--slack`.
+
+Claude Code on macOS keeps its credential in the **Keychain**, which Linux containers
+can't read. So the `claude` row runs `claude setup-token` and stores the long-lived
+token in the checkout's `.env` (chmod 600), injected into every forge as
+`CLAUDE_CODE_OAUTH_TOKEN`. Use `foundry auth --api-key` for a plain API key instead.
+
+#### One credential file
+
+Every credential `foundry auth` stores — the Claude credential, the gateway's
+`FOUNDRY_MCP_TOKEN`, `FOUNDRY_API_TOKEN` — lives in the
+repo's own `.env` (gitignored; `.env.example` lists the keys): `KEY=value` lines, mode
+600, rewritten one key at a time, and read fresh by every reader here — the CLI,
+`infra.sh`, the web server — so a new value needs no restart. The upstream keys
+(`SLACK_TOKEN`, `LINEAR_API_KEY`) are argus's: they live in argus's `.env` beside the MCP
+gateway it runs, and foundry reads them from there (`ARGUS_ENV`, default
+`~/git/argus/.env`). `foundry auth --api` prints the `KEY=value` line Pensieve needs. On the first `foundry` command after upgrading, any key
+still sitting in the old `~/.foundry/env` or `~/.config/liamai/env` is copied in once,
+with an `ok` line saying so; neither old file is read again or deleted.
+
+### MCP gateway (Linear, Slack)
+
+Forges never hold third-party credentials. They reach Linear and Slack through the MCP
+gateway argus runs ([mcp-proxy](https://github.com/tbxark/mcp-proxy), `~/git/argus/infra/`),
+which holds the Linear and Slack keys on the host and re-exposes their MCP servers at
+`host.docker.internal:9090/{linear,slack}/mcp`, behind one gateway token. argus's own Claude
+sessions and Pensieve's Ask are its other clients.
+
+```sh
+~/git/argus/scripts/bootstrap.sh env   # SLACK_TOKEN and LINEAR_API_KEY into argus's .env
+~/git/argus/scripts/bootstrap.sh mcp   # starts argus-mcp on :9090, minting MCP_GATEWAY_TOKEN
+foundry auth --linear                  # copies that token into FOUNDRY_MCP_TOKEN
+foundry recreate <name>                # existing forges pick the gateway up on next start
+```
+
+Every forge — interactive, `foundry run`, or a web-UI job — then has the servers registered
+(`box-init` does it on each start, from `FOUNDRY_MCP_SERVERS`, default `linear,slack`), so
+`/work LIA-12` can fetch the ticket itself — and read the Slack thread the ticket links to.
+The Slack token comes from a Slack app of your workspace with MCP access enabled (one manual
+OAuth exchange mints the `xoxp-…` token; see [Slack's MCP server
+docs](https://docs.slack.dev/ai/slack-mcp-server/)). Adding another upstream is an
+`mcpServers` entry in argus's `infra/mcp/config.json`; see argus's `infra/compose.yaml`.
+
+## Daily use
+
+```sh
+# a forge working on a repo that lives on your Mac — edits land on the host
+foundry new api --mount ~/git/my-api --github
+
+# a fully isolated forge that clones the repo itself
+foundry new spike --repo https://github.com/you/thing.git --github
+
+foundry claude api            # interactive Claude Code inside the forge
+foundry shell api             # bash
+foundry exec api -- npm test  # one-off command
+foundry ls
+```
+
+Inside a forge, `foundry claude` passes `--dangerously-skip-permissions` by default —
+that's the whole point of a sandbox. Pass `--safe` to get normal prompting back.
+
+Forges ship a `/work` skill (`image/skills/work/SKILL.md`): give it a Linear ticket
+and it reads the requirement, plans first, branches from main, verifies against the
+existing code, and finishes with a PR. Skills are re-synced into `~/.claude/skills`
+on every container start, so `foundry recreate` picks up new versions.
+
+## Fan-out
+
+Run one prompt across many forges in parallel, headless:
+
+```sh
+foundry new a --repo …; foundry new b --repo …
+foundry run a b -- "upgrade to node 22 and make the tests pass"
+foundry run --all -- "audit dependencies for CVEs"
+```
+
+Each run writes `~/.foundry/runs/<timestamp>/<forge>.log` plus the prompt and exit codes.
+
+## Lifecycle
+
+| | |
+|---|---|
+| `foundry stop/start <name>` | pause / resume |
+| `foundry recreate <name>` | rebuild the container on a new image, keeping `/work` and `~/.claude` |
+| `foundry rm <name>` | delete the container, keep volumes |
+| `foundry rm <name> --purge` | delete volumes too |
+| `foundry rm --all` | every forge |
+| `foundry version` | print the CLI version |
+
+## What persists
+
+Per forge, on named volumes:
+
+- `foundry-<name>-work` — `/work`, unless you bind-mounted a host dir
+- `foundry-<name>-claude` — `~/.claude`: session history, settings, resumable conversations
+- `foundry-<name>-cfg` — `~/.config`
+
+So `foundry rm` then `foundry new` with the same name resumes where you left off.
+
+## Security notes
+
+- `--github` injects a real GitHub token into a forge running an agent with permissions
+  disabled. It can push anywhere you can. Opt-in per forge, deliberately.
+- Forges get full outbound network access. If you want egress rules, add a docker
+  network with restricted DNS and pass `--network` through `foundry new`.
+- Your SSH keys are never mounted.
+- Forges talk to Linear only through the MCP gateway, presenting `FOUNDRY_MCP_TOKEN`;
+  the Linear API key itself never enters a container. To cut every forge off,
+  rotate `MCP_GATEWAY_TOKEN` in argus's `.env` and rerun `~/git/argus/scripts/bootstrap.sh mcp`. The gateway port
+  (9090) listens on the Mac like the web UI does, which is what the token is for.
+
+## Local infra
+
+Postgres for the web UI's job ledger, in a container, from the repo root:
+
+```sh
+bun run infra:up       # postgres on localhost:5432, waits until it's healthy
+bun run infra:psql     # a psql shell in it
+bun run infra:down     # stop (data survives; --purge to wipe)
+
+bun run db:migrate     # apply the app schema (web/src/db/migrations)
+```
+
+Connection string: `postgresql://foundry:foundry@localhost:5432/foundry` — also
+printed by `bun run infra:url`. The app's tables live in the `foundry` schema, not
+`public`. See `infra/README.md` and `web/README.md` for the rest.
+
+## Web UI
+
+`web/` holds a TanStack Start + shadcn frontend — a job ledger and an "ignite a job"
+flow, running on bun. **Igniting a job actually runs it**: the web server clones the
+repo to `~/.foundry/jobs/<id>/`, runs Claude Code in an ephemeral forge container
+against that clone, then commits, pushes and opens a PR (`gh` for GitHub origins,
+`bb` for Bitbucket) with your host credentials. Logs stream into the job detail
+sheet as the agent works.
+
+```sh
+foundry setup           # once — credential, web deps, infra, schema (see Setup above)
+bun run web:dev         # http://localhost:3777
+```
+
+Two things worth knowing:
+
+- The dev server listens on `0.0.0.0` (not just loopback) so job containers can call
+  back via `host.docker.internal`. That makes it reachable from your LAN; the
+  callback endpoint is authenticated with a per-job token.
+- The forge container gets **no** GitHub/Bitbucket credentials and no database access
+  — it can only edit its own workspace and report progress. Push and PR happen on
+  the host afterwards. This is a narrower grant than `foundry new --github`.
+
+Job workspaces accumulate under `~/.foundry/jobs/`; `foundry jobs prune [--days 7]`
+clears old ones. See `web/README.md` for the full pipeline.
+
+A job's log is a JSONL file — `~/.foundry/logs/<id>.jsonl`, one `{t, stream, text}`
+record per line, the way Claude Code keeps a session under `~/.claude/projects/`. So
+the sheet's output is also `tail -f`-able, `grep`-able and `jq`-able from a terminal:
+
+```sh
+jq -r 'select(.stream == "err") | .text' ~/.foundry/logs/<id>.jsonl
+```
+
+The logs live outside `~/.foundry/jobs/` on purpose — `foundry jobs prune` clears
+workspace clones, which are large and reproducible, and leaves the history that
+describes them. Purging a job from the ledger deletes its file with the row.
+
+### Trigger a job over HTTP
+
+Anything that can make a request — CI, a Slack bot, another agent, a shell script — can
+queue a job with the instructions in the body. `foundry auth --api` mints the bearer token
+(it lands in `.env`, read per request, so rotation needs no restart here — Pensieve
+gets the printed line pasted into its own `.env`):
+
+```sh
+curl -s -X POST http://localhost:3777/api/jobs \
+  -H "Authorization: Bearer $FOUNDRY_API_TOKEN" -H 'content-type: application/json' \
+  -d '{"repo": "my-api", "instructions": "Add a CI status badge to the README"}'
+```
+
+`202` comes back with the job the moment its row exists; `GET /api/jobs/<id>` follows it
+to a PR URL, or pass a `callbackUrl` and the host POSTs you a signed `job.settled` event
+instead. A Linear `ticketId` with no `instructions` is enough too: the host composes the
+brief from the issue and, once the row exists, assigns the ticket to you and moves it to
+In Progress. The full contract is the OpenAPI document at `/api/openapi.json`, rendered at
+`/api/reference`; `web/README.md` has the prose around it.
+
+### Repo notes
+
+Each repo on the **Repos** page carries free-text **notes** — standing instructions
+every job against it inherits: the package manager, what to verify with, which base
+branch to prefer, which shared components to reuse. They ride in as system prompt
+(`FOUNDRY_REPO_NOTES` -> `--append-system-prompt`), so they hold for every step of a
+blueprint, planning included, and are read fresh when the forge lights rather than
+when the job was queued.
+
+The Repos page shows the first lines of each repo's notes inline, and the ignite
+dialog says which notes are about to apply. The **base branch** field starts from the
+base of that repo's most recent job — read straight from the ledger, so it is the
+same answer on every device — falling back to origin's default for a repo with no
+jobs yet.
+
+They live in foundry's database, never in the checkout: this is where preferences go
+that don't belong in a repo's committed `CLAUDE.md` — which the agent still reads
+from the workspace as usual.
+
+### Blueprints
+
+A **blueprint** is a reusable sequence of agent steps, each on a model of its own —
+*plan with Fable, execute with Sonnet*. Pick one in the "Ignite a job" dialog and the
+job's forge runs `claude -p` once per step, all in one session (`--session-id` then
+`--resume`), so the executor sees the planner's exploration. Define them on the
+**Blueprints** page. A job snapshots the steps it ran, so editing or deleting a
+blueprint never rewrites history.
+
+`db:migrate` seeds two, and both are yours to edit:
+
+| blueprint | steps | for |
+|---|---|---|
+| **Plan → Execute** | plan · fable · high → execute · sonnet | anything. Read and plan first, implement second — what the ignite dialog starts on |
+| **Backfill Tests** | survey · fable · high → write-tests · sonnet → verify · sonnet | tests over logic that already exists: characterise the behaviour, cover it, then check the tests would actually fail on a regression. Production code is off limits, so a bug it turns up is reported rather than fixed |
+
+The ignite dialog preselects **Plan → Execute** — planning first is the right default
+for a run nobody is watching. It matches on the seeded row's id, not its name, so
+renaming or rewriting that blueprint keeps it the default; deleting it drops the
+dialog back to *none — one step, default model*.
+
+#### Versions
+
+Prompts get better by being rewritten, so every save bumps a version and keeps the
+old one. The editor's **History** section lists them — what changed, when, and whether
+the text was shipped with foundry or written by you — and restores any of them with a
+click. Restoring writes a *new* version rather than reopening the old one, because a
+job that ran v3 has to keep meaning what it meant.
+
+The version rides along on each job, so the ledger reads `Plan → Execute v4` and you
+can ask whether v4 actually beat v3 instead of guessing. Jobs from before versioning
+show a bare name.
+
+Versions are also how foundry ships improvements to the blueprints it seeds: a
+migration may rewrite one *only* while you have never saved over it. Your first edit
+takes ownership of that blueprint permanently, and later releases leave it alone.
+
+### From a Linear ticket
+
+A ticket becomes a job through the same `POST /api/jobs` above — send a `ticketId`
+and no `instructions` and foundry fetches the issue with the host's `LINEAR_API_KEY`,
+composes the brief from its body (key, title, URL, every section), claims the ticket
+in Linear by assigning it to you and moving it to In Progress, then ignites the
+pipeline the UI uses.
+
+**The deciding happens elsewhere.** Foundry never scans Linear and never judges
+whether a ticket is ready — it has no opinion about labels, status or assignee. A
+human decides in the Pensieve cockpit, which is what sends the ticket id here; this
+side only executes. (Foundry used to poll for an `agent-ready` label and ignite by
+itself; that made two deciders out of one, and the polling is gone. The label no
+longer does anything here.)
+
+Claiming is race-safe the same way it always was: the job row is inserted under a
+unique index on the ticket id *before* any Linear write, so the same ticket sent twice
+queues one job and the second request gets a `409`. A ticket that has already run
+stays claimed after the job settles — re-running it is the UI's rerun button, or purge
+the job first.
+
+The full request and response contract is the OpenAPI document at
+`/api/openapi.json`, rendered at [`/api/reference`](http://localhost:3777/api/reference);
+`web/README.md` has the prose around it.
+
+### Reaching it from your other devices
+
+```sh
+bun run web:serve          # https://<this-node>.ts.net -> localhost:3777
+bun run web:serve:status
+bun run web:unserve
+```
+
+Tailnet only, over `tailscale serve` — the dev server never becomes public. Exposing
+it to the internet is `tailscale funnel`, deliberately by hand.
+
+### Addressing PR comments
+
+Review feedback flows back into a forge. A settled job with a PR carries an
+**Address PR comments** action in its detail sheet: it queues a follow-up job on the
+*same branch*, the host fetches the PR's unresolved review threads and general
+comments with your own `gh`/`bb` credentials, and a fresh forge gets them as its
+task. Its push updates the existing PR — no new PR, no credentials in the container,
+and the comments are read fresh when the forge lights, like repo notes.

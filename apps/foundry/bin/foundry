@@ -1,0 +1,708 @@
+#!/usr/bin/env bash
+# foundry — orchestration layer for Claude Code forges on OrbStack.
+set -euo pipefail
+
+IMAGE="${FOUNDRY_IMAGE:-foundry/forge:latest}"
+STATE="${FOUNDRY_HOME:-$HOME/.foundry}"
+RUNS="$STATE/runs"
+LABEL="foundry.forge"
+# Resolve symlinks before deriving the repo root. $BASH_SOURCE is the path used
+# to invoke this script, so when it is reached through a symlink on PATH — the
+# README suggests exactly that — plain dirname puts ROOT at the *link's* parent
+# (/usr/local, ~/.local) instead of the checkout, and `foundry build` then tries
+# to build /usr/local/image. macOS ships BSD readlink with no -f, hence the loop.
+_src="${BASH_SOURCE[0]}"
+while [ -L "$_src" ]; do
+  _dir="$(cd -P "$(dirname "$_src")" && pwd)"
+  _src="$(readlink "$_src")"
+  [ "${_src#/}" = "$_src" ] && _src="$_dir/$_src"
+done
+ROOT="$(cd -P "$(dirname "$_src")/.." && pwd)"
+unset _src _dir
+# Every credential `foundry auth` stores — the Claude credential, the gateway
+# token, the trigger-API bearer — lives in the checkout's own .env (gitignored):
+# KEY=value lines, no quotes, mode 600, rewritten one key at a time. The CLI,
+# infra.sh and the web server all read this one file. The upstream keys
+# (LINEAR_API_KEY, SLACK_TOKEN) are argus's: they live in argus's .env, beside
+# the MCP gateway argus runs, and are read from there (ARGUS_ENV). Pensieve's
+# copy of the trigger-API token is pasted — `foundry auth --api` prints the line.
+ENVFILE="$ROOT/.env"
+ARGUS_ENV="${ARGUS_ENV:-$HOME/git/argus/.env}"
+ARGUS_ROOT="$(dirname "$ARGUS_ENV")"
+# What `foundry auth` may write, in the order the migration copies them in. The
+# upstream keys are argus's, so the migration never copies them back in here.
+ENV_KEYS="CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FOUNDRY_MCP_TOKEN FOUNDRY_API_TOKEN"
+
+c_dim=$'\033[2m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_yel=$'\033[33m'; c_bld=$'\033[1m'; c_0=$'\033[0m'
+say()  { printf '%s\n' "$*" >&2; }
+info() { printf '%s==>%s %s\n' "$c_bld" "$c_0" "$*" >&2; }
+ok()   { printf '%s ok %s %s\n' "$c_grn" "$c_0" "$*" >&2; }
+warn() { printf '%s warn%s %s\n' "$c_yel" "$c_0" "$*" >&2; }
+die()  { printf '%sfoundry:%s %s\n' "$c_red" "$c_0" "$*" >&2; exit 1; }
+
+need() { command -v "$1" >/dev/null 2>&1 || die "'$1' not found on PATH"; }
+cname() { echo "foundry-$1"; }
+
+require_orbstack() {
+  need docker
+  docker info >/dev/null 2>&1 || die "docker daemon unreachable — is OrbStack running?"
+  docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi orbstack \
+    || warn "active docker context is not OrbStack (\`docker context use orbstack\`)"
+}
+
+exists() { docker container inspect "$(cname "$1")" >/dev/null 2>&1; }
+running() { [ "$(docker container inspect -f '{{.State.Running}}' "$(cname "$1")" 2>/dev/null || echo false)" = true ]; }
+require_forge() { exists "$1" || die "no forge named '$1' (see: foundry ls)"; }
+ensure_up() { running "$1" || { info "starting $1"; docker start "$(cname "$1")" >/dev/null; }; }
+
+load_env() {
+  local servers
+  CRED_ARGS=()
+  if [ -f "$ENVFILE" ]; then
+    # shellcheck disable=SC1090
+    set -a; . "$ENVFILE"; set +a
+  fi
+  # argus owns the upstream keys; its value wins over a stale copy here.
+  local k v
+  for k in LINEAR_API_KEY SLACK_TOKEN; do
+    v=$(argus_key "$k")
+    if [ -n "$v" ]; then export "$k=$v"; fi
+  done
+  [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && CRED_ARGS+=(-e "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
+  [ -n "${ANTHROPIC_API_KEY:-}"        ] && CRED_ARGS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
+  # The MCP gateway (argus's infra/; `foundry auth --linear` / `--slack` link it):
+  # forges get its URL, a gateway token, and the upstreams to register
+  # (FOUNDRY_MCP_SERVERS, default both) — the Linear/Slack keys never leave the host.
+  if [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
+    CRED_ARGS+=(-e "FOUNDRY_MCP_TOKEN=$FOUNDRY_MCP_TOKEN" -e "FOUNDRY_MCP_URL=http://host.docker.internal:$(mcp_port)")
+    servers="${FOUNDRY_MCP_SERVERS:-linear,slack}"
+    CRED_ARGS+=(-e "FOUNDRY_MCP_SERVERS=$servers")
+  fi
+  return 0
+}
+
+# Host port of the gateway argus runs: MCP_PORT in argus's .env, else compose's default.
+mcp_port() {
+  local p; p=$(argus_key MCP_PORT)
+  printf '%s' "${p:-9090}"
+}
+
+# One key from argus's .env ("" when absent): the upstream keys and the gateway token live there.
+argus_key() { [ -f "$ARGUS_ENV" ] && grep -E "^$1=" "$ARGUS_ENV" | tail -1 | cut -d= -f2- || true; }
+
+# ---------------------------------------------------------------- commands
+
+cmd_version() {
+  local v
+  v=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/package.json" | head -1)
+  [ -n "$v" ] || die "could not read version from $ROOT/package.json"
+  printf 'foundry %s\n' "$v"
+}
+
+cmd_doctor() {
+  local fail=0
+  command -v docker >/dev/null 2>&1 && ok "docker cli: $(command -v docker)" || { say "  no docker cli"; fail=1; }
+  if docker info >/dev/null 2>&1; then
+    ok "docker daemon: $(docker info --format '{{.OperatingSystem}} {{.ServerVersion}} {{.Architecture}}')"
+  else say "  docker daemon unreachable — start OrbStack"; fail=1; fi
+  command -v orb >/dev/null 2>&1 && ok "orbstack: $(orb version 2>/dev/null | head -1)" || warn "orb cli not found"
+  if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    ok "image $IMAGE ($(docker image inspect -f '{{.Size}}' "$IMAGE" | awk '{printf "%.1f GB", $1/1e9}'))"
+  else warn "image $IMAGE not built yet — run: foundry build"; fi
+  load_env
+  if   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then ok "auth: CLAUDE_CODE_OAUTH_TOKEN in $ENVFILE"
+  elif [ -n "${ANTHROPIC_API_KEY:-}" ];        then ok "auth: ANTHROPIC_API_KEY in $ENVFILE"
+  elif [ -f "$ENVFILE" ]; then warn "$ENVFILE has no credential — run: foundry auth"
+  else warn "no $ENVFILE — run: foundry auth"; fi
+  # The other keys: names only, never a value.
+  local have="" miss="" k
+  for k in SLACK_TOKEN LINEAR_API_KEY FOUNDRY_API_TOKEN; do
+    if [ -n "${!k:-}" ]; then have="${have:+$have, }$k"; else miss="${miss:+$miss, }$k"; fi
+  done
+  if [ -n "$have" ]; then ok "keys: $have ${c_dim}(upstream keys from ${ARGUS_ENV/#$HOME/~})${c_0}"
+  else warn "no upstream or API key yet — argus: $ARGUS_ROOT/scripts/bootstrap.sh env · foundry: foundry auth --api"; fi
+  [ -z "$miss" ] || say "  ${c_dim}not set: $miss${c_0}"
+  command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1 \
+    && ok "gh authed (available to forges created with --github)" || warn "gh not authed on host"
+  local upstreams=""
+  [ -n "${LINEAR_API_KEY:-}" ] && upstreams="linear"
+  [ -n "${SLACK_TOKEN:-}" ] && upstreams="${upstreams:+$upstreams, }slack"
+  if [ -n "$upstreams" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
+    if curl -fsS -m 3 "http://localhost:$(mcp_port)/_readyz" >/dev/null 2>&1; then
+      ok "mcp gateway ready on :$(mcp_port) ($upstreams)"
+    else warn "$upstreams configured but argus's mcp gateway is not up — run: $ARGUS_ROOT/scripts/bootstrap.sh mcp"; fi
+  else warn "no upstream key in argus's .env, or no FOUNDRY_MCP_TOKEN — forges cannot reach Linear or Slack (foundry auth --linear links the gateway)"; fi
+  local n; n=$(docker ps -aq --filter "label=$LABEL" | wc -l | tr -d ' ')
+  ok "$n forge(s) defined"
+  return $fail
+}
+
+# "name<TAB>ENV_VAR" per upstream in argus's infra/mcp/config.json — the auth menu,
+# the --<name> flags, and the credential prompts all derive from this, so a
+# new upstream in the config shows up in `foundry auth` by itself.
+mcp_upstreams() {
+  awk '
+    /"mcpServers"[[:space:]]*:[[:space:]]*\{/ { on=1; depth=1; next }
+    on {
+      # A key opening an object at depth 1 is a server name; deeper ones
+      # (headers, options) are its innards.
+      if (depth == 1 && match($0, /^[[:space:]]*"[A-Za-z0-9_-]+"[[:space:]]*:[[:space:]]*\{/)) {
+        name=$0; sub(/^[[:space:]]*"/,"",name); sub(/".*/,"",name); found=0
+      }
+      if (name != "" && !found && match($0, /\$\{[A-Z0-9_]+\}/)) {
+        print name "\t" substr($0, RSTART+2, RLENGTH-3); found=1
+      }
+      depth += gsub(/\{/,"{") - gsub(/\}/,"}")
+      if (depth == 1) name=""
+      if (depth <= 0) on=0
+    }
+  ' "$ARGUS_ROOT/infra/mcp/config.json" 2>/dev/null || true
+}
+
+auth_claude() {
+  need claude
+  info "running 'claude setup-token' — approve in the browser, then paste the token back here"
+  say "${c_dim}(your Mac keychain credential can't be read from Linux, so forges need a long-lived token)${c_0}"
+  local tok
+  if tok=$(claude setup-token 2>/dev/null | grep -oE 'sk-ant-oat[0-9A-Za-z_-]+' | tail -1) && [ -n "$tok" ]; then
+    :
+  else
+    read -rsp "paste token (sk-ant-oat...): " tok; echo >&2
+  fi
+  [ -n "$tok" ] || die "no token captured"
+  write_env CLAUDE_CODE_OAUTH_TOKEN "$tok"
+  ok "stored CLAUDE_CODE_OAUTH_TOKEN in $ENVFILE (chmod 600)"
+  say "${c_dim}existing forges need 'foundry recreate <name>' to pick it up${c_0}"
+}
+
+auth_api_key() {
+  local key; read -rsp "ANTHROPIC_API_KEY: " key; echo >&2
+  [ -n "$key" ] || die "empty key"
+  write_env ANTHROPIC_API_KEY "$key"; ok "stored ANTHROPIC_API_KEY in $ENVFILE"
+}
+
+# The trigger API's bearer token (web/README.md, "Trigger a job over HTTP").
+# Minted once, like FOUNDRY_MCP_TOKEN; --rotate replaces it. Pensieve sends
+# points with it and keeps its own copy in its .env, so the mint prints the
+# line to paste there — a rotation reaches Pensieve by being pasted again.
+auth_api() {
+  load_env
+  if [ -n "${FOUNDRY_API_TOKEN:-}" ] && [ "${1:-}" != "--rotate" ]; then
+    ok "FOUNDRY_API_TOKEN already set in $ENVFILE"
+    say "${c_dim}foundry auth --api --rotate replaces it — then paste the new line into Pensieve's .env${c_0}"
+    return
+  fi
+  need openssl
+  local tok; tok=$(openssl rand -hex 24)
+  write_env FOUNDRY_API_TOKEN "$tok"
+  ok "stored FOUNDRY_API_TOKEN in $ENVFILE — the web server reads it on every request, no restart needed"
+  paste_hint FOUNDRY_API_TOKEN "$tok"
+}
+
+# The value, once, as the line another tool's .env wants, then where it goes.
+# Only the keys another liamai tool reads have a destination; the rest print
+# nothing — they are foundry's alone.
+paste_hint() {
+  local var="$1" val="$2" where=""
+  case "$var" in
+    FOUNDRY_API_TOKEN) where="Pensieve's .env — it sends points with it; other callers send it as  Authorization: Bearer <token>" ;;
+    *) return 0 ;;
+  esac
+  say "$var=$val"
+  say "${c_dim}paste that line into $where${c_0}"
+}
+
+# The upstream keys are argus's (its .env feeds the MCP gateway argus runs), so
+# --linear / --slack take no key: they say whether argus has it, and link foundry
+# to the gateway by copying argus's MCP_GATEWAY_TOKEN into FOUNDRY_MCP_TOKEN —
+# the one value forges present.
+auth_upstream() {
+  local name="$1" var="" n v tok
+  while IFS=$'\t' read -r n v; do [ "$n" = "$name" ] && var="$v"; done < <(mcp_upstreams)
+  [ -n "$var" ] || die "no upstream '$name' in $ARGUS_ROOT/infra/mcp/config.json"
+  if [ -n "$(argus_key "$var")" ]; then ok "$var set in ${ARGUS_ENV/#$HOME/~}"
+  else warn "$var is not in ${ARGUS_ENV/#$HOME/~} — run: $ARGUS_ROOT/scripts/bootstrap.sh env"; fi
+  tok=$(argus_key MCP_GATEWAY_TOKEN)
+  [ -n "$tok" ] || die "no MCP_GATEWAY_TOKEN in ${ARGUS_ENV/#$HOME/~} — run: $ARGUS_ROOT/scripts/bootstrap.sh mcp"
+  load_env
+  if [ "${FOUNDRY_MCP_TOKEN:-}" = "$tok" ]; then ok "FOUNDRY_MCP_TOKEN already matches the gateway"
+  else write_env FOUNDRY_MCP_TOKEN "$tok"; ok "stored FOUNDRY_MCP_TOKEN in $ENVFILE (argus's gateway token)"; fi
+  say "${c_dim}the gateway is argus's ($ARGUS_ROOT/scripts/bootstrap.sh mcp); existing forges need 'foundry recreate <name>'${c_0}"
+}
+
+# Single-choice arrow-key menu, drawn on stderr over MENU_ROWS. Leaves the
+# selected index in MENU_CHOICE ("" when dismissed with q or Esc).
+menu_pick() {
+  local n=${#MENU_ROWS[@]} sel=0 i key seq drawn=0 out=""
+  tput civis 2>/dev/null || true
+  while :; do
+    [ "$drawn" = 1 ] && printf '\033[%dA' "$n" >&2
+    for i in "${!MENU_ROWS[@]}"; do
+      if [ "$i" -eq "$sel" ]; then printf '\033[2K %s❯ %s%s\n' "$c_bld" "${MENU_ROWS[i]}" "$c_0" >&2
+      else printf '\033[2K   %s\n' "${MENU_ROWS[i]}" >&2; fi
+    done
+    drawn=1
+    IFS= read -rsn1 key
+    if [ "$key" = $'\033' ]; then
+      # macOS ships bash 3.2, whose read -t is integer-only; a whole second
+      # is fine here — arrow keys deliver "[A"/"[B" instantly, so the wait
+      # only happens on a bare Esc.
+      read -rsn2 -t 1 seq || seq=""
+      case "$seq" in
+        *A) sel=$(( (sel + n - 1) % n )) ;;
+        *B) sel=$(( (sel + 1) % n )) ;;
+        "") break ;;
+      esac
+    else
+      case "$key" in
+        k) sel=$(( (sel + n - 1) % n )) ;;
+        j) sel=$(( (sel + 1) % n )) ;;
+        q) break ;;
+        "") out=$sel; break ;;
+      esac
+    fi
+  done
+  tput cnorm 2>/dev/null || true
+  MENU_CHOICE=$out
+}
+
+# Rebuild MENU_ROWS/MENU_ACTIONS from the current env: the Claude credential
+# first, then every gateway upstream with whether its key is stored.
+auth_menu_rows() {
+  MENU_ROWS=(); MENU_ACTIONS=()
+  local st name var
+  if   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then st="${c_grn}✓${c_0} CLAUDE_CODE_OAUTH_TOKEN ${c_dim}$(env_where CLAUDE_CODE_OAUTH_TOKEN)${c_0}"
+  elif [ -n "${ANTHROPIC_API_KEY:-}" ];        then st="${c_grn}✓${c_0} ANTHROPIC_API_KEY ${c_dim}$(env_where ANTHROPIC_API_KEY)${c_0}"
+  else st="${c_red}✗${c_0} not configured"; fi
+  MENU_ROWS+=("$(printf '%-8s %s' claude "$st")"); MENU_ACTIONS+=(claude)
+  if [ -n "${FOUNDRY_API_TOKEN:-}" ]; then st="${c_grn}✓${c_0} FOUNDRY_API_TOKEN ${c_dim}$(env_where FOUNDRY_API_TOKEN)${c_0}"
+  else st="${c_red}✗${c_0} not configured"; fi
+  MENU_ROWS+=("$(printf '%-8s %s' api "$st")"); MENU_ACTIONS+=(api)
+  while IFS=$'\t' read -r name var; do
+    if [ -n "${!var:-}" ]; then st="${c_grn}✓${c_0} $var ${c_dim}${ARGUS_ENV/#$HOME/~}${c_0}"
+    else st="${c_red}✗${c_0} not configured"; fi
+    MENU_ROWS+=("$(printf '%-8s %s' "$name" "$st")"); MENU_ACTIONS+=("upstream:$name")
+  done < <(mcp_upstreams)
+}
+
+cmd_auth() {
+  touch "$ENVFILE"; chmod 600 "$ENVFILE"
+  case "${1:-}" in
+    --claude)  auth_claude; return ;;
+    --api-key) auth_api_key; return ;;
+    --api)     auth_api "${2:-}"; return ;;
+    --*)       auth_upstream "${1#--}"; return ;;
+    "")        ;;
+    *) die "usage: foundry auth [--claude|--api-key|--api [--rotate]|--linear|--slack]" ;;
+  esac
+  if ! { [ -t 0 ] && [ -t 2 ]; }; then
+    die "no TTY for the picker — use foundry auth --claude|--api-key|--api|--linear|--slack"
+  fi
+  trap 'tput cnorm 2>/dev/null || true' EXIT
+  local -a MENU_ROWS MENU_ACTIONS
+  local MENU_CHOICE
+  while :; do
+    load_env
+    auth_menu_rows
+    if curl -fsS -m 2 "http://localhost:$(mcp_port)/_readyz" >/dev/null 2>&1; then
+      say "mcp gateway on :$(mcp_port): ${c_grn}ready${c_0}"
+    else
+      say "mcp gateway on :$(mcp_port): ${c_dim}not running — $ARGUS_ROOT/scripts/bootstrap.sh mcp${c_0}"
+    fi
+    say "${c_dim}↑/↓ move · enter (re)auth · q quit${c_0}"
+    menu_pick
+    [ -n "$MENU_CHOICE" ] || return 0
+    say ""
+    case "${MENU_ACTIONS[MENU_CHOICE]}" in
+      claude)     auth_claude ;;
+      api)        auth_api --rotate ;;
+      upstream:*) auth_upstream "${MENU_ACTIONS[MENU_CHOICE]#upstream:}" ;;
+    esac
+    say ""
+  done
+}
+
+# The env file with $HOME shortened — for the auth menu's status column.
+# Takes the key for symmetry with write_env; every key is in the one file.
+env_where() { printf '%s' "${ENVFILE/#$HOME/~}"; }
+
+# Rewrite one key in the env file and leave every other line alone.
+write_env() {
+  local k="$1" v="$2" tmp; tmp=$(mktemp)
+  [ -f "$ENVFILE" ] && grep -v "^$k=" "$ENVFILE" > "$tmp" || true
+  printf '%s=%s\n' "$k" "$v" >> "$tmp"
+  mv "$tmp" "$ENVFILE"; chmod 600 "$ENVFILE"
+}
+
+# One-time hand-over after upgrading: credentials used to live under $HOME —
+# foundry's own in ~/.foundry/env, and the keys shared with argus and Pensieve
+# in ~/.config/liamai/env. Any key .env still lacks is copied in from there
+# (the shared file first, since that is the value the other tools were using),
+# once, and both old files are left as they are: nothing here reads them
+# again, and deleting them is the user's call once argus and Pensieve have
+# their own copies. Runs before every command; a no-op once .env is filled.
+migrate_env() {
+  local old_own="${FOUNDRY_HOME:-$HOME/.foundry}/env" old_shared="$HOME/.config/liamai/env"
+  [ -f "$old_own" ] || [ -f "$old_shared" ] || return 0
+  local k v f copied=""
+  for k in $ENV_KEYS; do
+    grep -q "^$k=." "$ENVFILE" 2>/dev/null && continue
+    v=""
+    for f in "$old_shared" "$old_own"; do
+      [ -f "$f" ] && v=$(grep "^$k=" "$f" | tail -1 | cut -d= -f2- || true)
+      [ -n "$v" ] && break
+    done
+    [ -n "$v" ] || continue
+    write_env "$k" "$v"
+    copied="${copied:+$copied, }$k"
+  done
+  [ -z "$copied" ] || ok "copied $copied into $ENVFILE ${c_dim}(one-time; ~/.foundry/env and ~/.config/liamai/env are no longer read)${c_0}"
+  return 0
+}
+
+cmd_build() {
+  require_orbstack
+  info "building $IMAGE"
+  docker build "$@" -t "$IMAGE" "$ROOT/image"
+  ok "built $IMAGE"
+}
+
+# One-time bootstrap: prerequisites, Claude credential, optional Linear/MCP,
+# forge image, web deps, local infra, schema — each phase is a no-op on rerun.
+cmd_setup() {
+  local linear=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --linear)    linear=1; shift ;;
+      --no-linear) linear=0; shift ;;
+      *) die "unknown flag: $1 (usage: foundry setup [--linear|--no-linear])" ;;
+    esac
+  done
+
+  info "1/8 prerequisites"
+  require_orbstack
+  ok "docker + OrbStack"
+  need bun; ok "bun: $(command -v bun)"
+  if command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
+    ok "gh authed"
+  else warn "gh not authed — only needed for 'foundry new --github' and job PRs"; fi
+
+  info "2/8 claude credential"
+  load_env
+  if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then
+    ok "credential already in $ENVFILE"
+  else
+    cmd_auth --claude
+  fi
+
+  info "3/8 linear / mcp gateway"
+  load_env
+  if [ -n "${LINEAR_API_KEY:-}" ] && [ -n "${FOUNDRY_MCP_TOKEN:-}" ]; then
+    ok "Linear already configured"
+  elif [ "$linear" = 0 ]; then
+    say "  ${c_dim}skipped (--no-linear)${c_0}"
+  elif [ "$linear" = 1 ]; then
+    cmd_auth --linear
+  elif [ -t 0 ]; then
+    local ans; read -rp "  set up Linear MCP access? [y/N] " ans
+    case "$ans" in [yY]*) cmd_auth --linear ;; *) say "  ${c_dim}skipped${c_0}" ;; esac
+  else
+    say "  ${c_dim}skipped (non-interactive; rerun with --linear to enable)${c_0}"
+  fi
+
+  info "4/8 forge image"
+  require_orbstack
+  if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    ok "$IMAGE already built"
+  else
+    cmd_build
+  fi
+
+  info "5/8 web dependencies"
+  (cd "$ROOT/web" && bun install)
+  ok "web deps installed"
+
+  info "6/8 local infra (postgres + mcp gateway)"
+  "$ROOT/infra/infra.sh" up
+
+  info "7/8 database schema"
+  (cd "$ROOT/web" && bun run db:migrate)
+  ok "schema migrated"
+
+  info "8/8 summary"
+  cmd_doctor || true
+  # Either way of getting `foundry` onto PATH counts — the directory itself, or
+  # the symlink the README (and scripts/bootstrap.sh) suggest instead.
+  case ":$PATH:" in
+    *":$ROOT/bin:"*) ;;
+    *) command -v foundry >/dev/null 2>&1 \
+         || warn "bin/ is not on PATH — export PATH=\"$ROOT/bin:\$PATH\" (or symlink bin/foundry)" ;;
+  esac
+  say ""
+  ok "setup complete"
+  say "  bun run web:dev                        ${c_dim}# http://localhost:3777${c_0}"
+  say "  foundry new <name> --repo <url>        ${c_dim}# create a forge${c_0}"
+  say "  foundry claude <name>                  ${c_dim}# interactive Claude Code in it${c_0}"
+}
+
+cmd_new() {
+  require_orbstack
+  local name="" mount="" repo="" cpus="" mem="" image="$IMAGE" github=0
+  local -a extra_env=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --mount)  mount="$2"; shift 2 ;;
+      --repo)   repo="$2";  shift 2 ;;
+      --cpus)   cpus="$2";  shift 2 ;;
+      --memory) mem="$2";   shift 2 ;;
+      --image)  image="$2"; shift 2 ;;
+      --github) github=1;   shift ;;
+      -e)       extra_env+=(-e "$2"); shift 2 ;;
+      -*)       die "unknown flag: $1" ;;
+      *)        [ -z "$name" ] && name="$1" || die "unexpected arg: $1"; shift ;;
+    esac
+  done
+  [ -n "$name" ] || die "usage: foundry new <name> [--mount DIR | --repo URL] [--github]"
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "name must be lowercase alphanumeric/dashes"
+  exists "$name" && die "forge '$name' already exists"
+  docker image inspect "$image" >/dev/null 2>&1 || die "image $image missing — run: foundry build"
+
+  load_env
+  [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ] || warn "no credential configured — claude cannot log in (foundry auth)"
+
+  local -a args=(
+    -d --name "$(cname "$name")"
+    --label "$LABEL=1" --label "foundry.name=$name"
+    --label "dev.orbstack.domains=$name.foundry.local"
+    --hostname "$name"
+    -v "foundry-$name-claude:/home/dev/.claude"
+    -v "foundry-$name-cfg:/home/dev/.config"
+    -e "FOUNDRY_FORGE=$name"
+    -e "GIT_AUTHOR_NAME=$(git config --global user.name || echo dev)"
+    -e "GIT_AUTHOR_EMAIL=$(git config --global user.email || echo dev@localhost)"
+  )
+  [ -n "$cpus" ] && args+=(--cpus "$cpus")
+  [ -n "$mem" ]  && args+=(--memory "$mem")
+  [ ${#CRED_ARGS[@]} -gt 0 ] && args+=("${CRED_ARGS[@]}")
+  [ ${#extra_env[@]} -gt 0 ] && args+=("${extra_env[@]}")
+
+  if [ "$github" = 1 ]; then
+    command -v gh >/dev/null 2>&1 || die "--github needs the gh cli on the host"
+    local ghtok; ghtok=$(gh auth token 2>/dev/null) || die "gh not authed — run: gh auth login"
+    args+=(-e "GH_TOKEN=$ghtok")
+    warn "injecting your GitHub token into forge '$name' — it can push anywhere you can"
+  fi
+
+  if [ -n "$mount" ]; then
+    mount="$(cd "$mount" && pwd)" || die "no such directory: $mount"
+    args+=(-v "$mount:/work")
+    info "bind-mounting $mount -> /work (edits land on your Mac)"
+  else
+    args+=(-v "foundry-$name-work:/work")
+  fi
+
+  docker run "${args[@]}" "$image" sleep infinity >/dev/null
+  ok "created forge $c_bld$name$c_0  ($name.foundry.local)"
+
+  if [ -n "$repo" ]; then
+    info "cloning $repo"
+    docker exec -u dev "$(cname "$name")" bash -lc \
+      "cd /work && git clone --depth=50 '$repo' . 2>&1 | tail -2" || die "clone failed"
+  fi
+  say ""
+  say "  foundry claude $name        ${c_dim}# start Claude Code in it${c_0}"
+  say "  foundry shell $name         ${c_dim}# drop into a shell${c_0}"
+}
+
+cmd_ls() {
+  require_orbstack
+  local ids; ids=$(docker ps -aq --filter "label=$LABEL")
+  [ -n "$ids" ] || { say "no forges yet — foundry new <name>"; return 0; }
+  printf "%-16s %-10s %-24s %s\n" NAME STATE WORKSPACE UPTIME
+  # shellcheck disable=SC2086
+  docker inspect $ids --format \
+    '{{index .Config.Labels "foundry.name"}}	{{.State.Status}}	{{range .Mounts}}{{if eq .Destination "/work"}}{{.Source}}{{end}}{{end}}	{{.State.StartedAt}}' \
+  | while IFS=$'\t' read -r n st src started; do
+      case "$src" in /Users/*) ws="${src/#$HOME/~}" ;; *) ws="(volume)" ;; esac
+      [ ${#ws} -gt 24 ] && ws="…${ws: -23}"
+      [ "$st" = running ] && up="since ${started:0:16}Z" || up="-"
+      printf "%-16s %-10s %-24s %s\n" "$n" "$st" "$ws" "$up"
+    done
+}
+
+cmd_shell() {
+  local name="${1:?usage: foundry shell <name>}"; shift || true
+  require_forge "$name"; ensure_up "$name"
+  docker exec -it -u dev -w /work "$(cname "$name")" bash -l "$@"
+}
+
+cmd_exec() {
+  local name="${1:?usage: foundry exec <name> -- <cmd...>}"; shift
+  [ "${1:-}" = "--" ] && shift
+  require_forge "$name"; ensure_up "$name"
+  docker exec -u dev -w /work "$(cname "$name")" bash -lc "$*"
+}
+
+cmd_claude() {
+  local name="${1:?usage: foundry claude <name> [-- claude args]}"; shift || true
+  [ "${1:-}" = "--" ] && shift
+  require_forge "$name"; ensure_up "$name"
+  local -a flags=(--dangerously-skip-permissions)
+  if [ "${1:-}" = "--safe" ]; then flags=(); shift; fi
+  docker exec -it -u dev -w /work "$(cname "$name")" claude "${flags[@]}" "$@"
+}
+
+# Fan a single prompt across one or many forges, in parallel, logging each run.
+cmd_run() {
+  local prompt="" all=0; local -a forges=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --all) all=1; shift ;;
+      -p|--prompt) prompt="$2"; shift 2 ;;
+      --) shift; prompt="$*"; break ;;
+      -*) die "unknown flag: $1" ;;
+      *) forges+=("$1"); shift ;;
+    esac
+  done
+  [ "$all" = 1 ] && mapfile -t forges < <(docker ps -aq --filter "label=$LABEL" \
+      | xargs -r docker inspect --format '{{index .Config.Labels "foundry.name"}}')
+  [ ${#forges[@]} -gt 0 ] || die "no target forges"
+  [ -n "$prompt" ] || die "usage: foundry run <forge...> -- <prompt>"
+
+  local stamp; stamp=$(date +%Y%m%d-%H%M%S); local dir="$RUNS/$stamp"
+  mkdir -p "$dir"; printf '%s\n' "$prompt" > "$dir/prompt.txt"
+  info "dispatching to ${#forges[@]} forge(s) -> $dir"
+  local pids=()
+  for b in "${forges[@]}"; do
+    require_forge "$b"; ensure_up "$b"
+    ( docker exec -u dev -w /work "$(cname "$b")" \
+        claude --dangerously-skip-permissions -p "$prompt" > "$dir/$b.log" 2>&1
+      echo "$?" > "$dir/$b.exit" ) &
+    pids+=($!)
+    say "  ${c_dim}-> $b${c_0}"
+  done
+  wait "${pids[@]}" 2>/dev/null || true
+  say ""
+  for b in "${forges[@]}"; do
+    local code; code=$(cat "$dir/$b.exit" 2>/dev/null || echo '?')
+    [ "$code" = 0 ] && ok "$b ($(wc -l < "$dir/$b.log" | tr -d ' ') lines)" || warn "$b exit=$code"
+  done
+  say "${c_dim}logs: $dir${c_0}"
+}
+
+cmd_logs() { require_forge "${1:?usage: foundry logs <name>}"; docker logs -f "$(cname "$1")"; }
+cmd_start(){ require_forge "${1:?name}"; docker start "$(cname "$1")" >/dev/null && ok "started $1"; }
+cmd_stop() { require_forge "${1:?name}"; docker stop "$(cname "$1")" >/dev/null && ok "stopped $1"; }
+
+cmd_rm() {
+  local purge=0; local -a names=()
+  for a in "$@"; do case "$a" in --purge) purge=1 ;; --all) mapfile -t names < <(docker ps -aq --filter "label=$LABEL" | xargs -r docker inspect --format '{{index .Config.Labels "foundry.name"}}') ;; *) names+=("$a") ;; esac; done
+  [ ${#names[@]} -gt 0 ] || die "usage: foundry rm <name...> [--purge] | foundry rm --all"
+  for n in "${names[@]}"; do
+    require_forge "$n"
+    docker rm -f "$(cname "$n")" >/dev/null
+    if [ "$purge" = 1 ]; then
+      docker volume rm "foundry-$n-claude" "foundry-$n-cfg" "foundry-$n-work" >/dev/null 2>&1 || true
+      ok "removed $n (+ volumes)"
+    else
+      ok "removed $n ${c_dim}(volumes kept; --purge to delete)${c_0}"
+    fi
+  done
+}
+
+# Web-UI jobs leave their workspaces under ~/.foundry/jobs/<id>/ so a finished
+# job stays inspectable. This is the corresponding broom. It does not touch
+# ~/.foundry/logs/<id>.jsonl: the clone is large and reproducible, the log is
+# neither — purging the job in the web UI is what deletes that.
+cmd_jobs() {
+  case "${1:-}" in
+    prune)
+      shift
+      local days=7
+      [ "${1:-}" = "--days" ] && days="${2:?--days needs a number}"
+      local dir="$STATE/jobs"
+      [ -d "$dir" ] || { say "no job workspaces at $dir"; return 0; }
+      local n=0
+      while IFS= read -r d; do
+        rm -rf "$d"; n=$((n+1)); say "  ${c_dim}pruned ${d##*/}${c_0}"
+      done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d -mtime "+$days")
+      ok "$n workspace(s) older than ${days}d removed"
+      ;;
+    *) die "usage: foundry jobs prune [--days N]" ;;
+  esac
+}
+
+cmd_recreate() {
+  local name="${1:?usage: foundry recreate <name>}"
+  require_forge "$name"
+  local src; src=$(docker inspect "$(cname "$name")" --format '{{range .Mounts}}{{if eq .Destination "/work"}}{{if eq .Type "bind"}}{{.Source}}{{end}}{{end}}{{end}}')
+  local gh=""; docker inspect "$(cname "$name")" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^GH_TOKEN=' && gh="--github"
+  docker rm -f "$(cname "$name")" >/dev/null
+  # shellcheck disable=SC2086
+  if [ -n "$src" ]; then cmd_new "$name" --mount "$src" $gh; else cmd_new "$name" $gh; fi
+}
+
+usage() {
+cat >&2 <<'USAGE'
+foundry — Claude Code forges on OrbStack
+
+  setup
+    foundry setup [--linear|--no-linear]
+                                       one-time bootstrap: auth, image, web deps, infra, db
+    foundry version                   print the foundry version
+    foundry doctor                    check OrbStack, image, credentials
+    foundry auth                      interactive: credentials + status, pick one to (re)auth
+    foundry auth --claude|--api-key   store a Claude credential for all forges
+    foundry auth --linear|--slack     link forges to argus's MCP gateway (the keys live in argus's .env)
+    foundry auth --api [--rotate]     mint the bearer token for POST /api/jobs (web/README.md)
+                                      every credential lands in the checkout's .env (gitignored);
+                                      --api prints the line to paste into Pensieve's .env
+    foundry build [--no-cache]        build the forge image
+
+  forges
+    foundry new <name> [opts]         create a forge
+        --mount DIR    bind-mount a host dir at /work (edits land on your Mac)
+        --repo URL     git clone into a private volume at /work
+        --github       inject your gh token (can push wherever you can)
+        --cpus N  --memory 4g  --image IMG  -e KEY=VAL
+    foundry ls                        list forges
+    foundry recreate <name>           rebuild container, keep workspace + ~/.claude
+    foundry start|stop <name>
+    foundry rm <name...> [--purge]    --purge also deletes volumes; --all for every forge
+
+  work
+    foundry claude <name> [--safe]    interactive Claude Code (skips permissions unless --safe)
+    foundry shell <name>              bash in the forge
+    foundry exec <name> -- <cmd>      one-off command
+    foundry run <name...|--all> -- <prompt>
+                                      headless claude -p, parallel, logs to ~/.foundry/runs
+    foundry logs <name>
+
+  web jobs
+    foundry jobs prune [--days N]     delete job workspaces older than N days (default 7)
+                                      job logs (~/.foundry/logs/<id>.jsonl) are kept
+USAGE
+}
+
+migrate_env
+case "${1:-}" in
+  version|--version|-v) shift; cmd_version "$@" ;;
+  setup)    shift; cmd_setup "$@" ;;
+  doctor)   shift; cmd_doctor "$@" ;;
+  auth)     shift; cmd_auth "$@" ;;
+  build)    shift; cmd_build "$@" ;;
+  new|create) shift; cmd_new "$@" ;;
+  ls|list)  shift; cmd_ls "$@" ;;
+  shell|sh) shift; cmd_shell "$@" ;;
+  exec)     shift; cmd_exec "$@" ;;
+  claude|cc) shift; cmd_claude "$@" ;;
+  run)      shift; cmd_run "$@" ;;
+  logs)     shift; cmd_logs "$@" ;;
+  start)    shift; cmd_start "$@" ;;
+  stop)     shift; cmd_stop "$@" ;;
+  rm|destroy) shift; cmd_rm "$@" ;;
+  recreate) shift; cmd_recreate "$@" ;;
+  jobs)     shift; cmd_jobs "$@" ;;
+  ""|-h|--help|help) usage ;;
+  *) die "unknown command '$1' (foundry --help)" ;;
+esac

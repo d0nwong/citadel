@@ -1,0 +1,8 @@
+.DS_Store
+*.log
+
+# local infra settings, copied from infra/.env.example
+infra/.env
+
+# foundry credentials, written by `foundry auth` (see .env.example)
+.env

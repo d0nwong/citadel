@@ -1,0 +1,31 @@
+{
+  "name": "foundry",
+  "version": "1.4.0",
+  "private": true,
+  "bin": {
+    "foundry": "./bin/foundry"
+  },
+  "scripts": {
+    "setup": "./scripts/bootstrap.sh",
+    "setup:check": "./scripts/bootstrap.sh --check",
+    "setup:bb": "./scripts/setup-bb.sh",
+    "infra:up": "./infra/infra.sh up",
+    "infra:down": "./infra/infra.sh down",
+    "infra:reset": "./infra/infra.sh reset",
+    "infra:status": "./infra/infra.sh status",
+    "infra:logs": "./infra/infra.sh logs",
+    "infra:psql": "./infra/infra.sh psql",
+    "infra:url": "./infra/infra.sh url",
+    "db:generate": "./scripts/db.sh generate",
+    "db:migrate": "./scripts/db.sh migrate",
+    "db:studio": "./scripts/db.sh studio",
+    "web:dev": "cd web && bun run dev",
+    "web:serve": "./web/serve.sh up",
+    "web:unserve": "./web/serve.sh down",
+    "web:serve:status": "./web/serve.sh status",
+    "web:serve:url": "./web/serve.sh url",
+    "web:check": "cd web && bun run check",
+    "web:fix": "cd web && bun run fix"
+  },
+  "packageManager": "bun@1.4.0"
+}
