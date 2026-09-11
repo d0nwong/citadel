@@ -115,15 +115,6 @@ function DocPage() {
                   </span>
                 )}
               </Fact>
-              <Fact label="Journal">
-                <Link
-                  className="text-primary hover:underline"
-                  search={{ feature: meta.feature }}
-                  to="/journal"
-                >
-                  landings for {short}
-                </Link>
-              </Fact>
               <Fact label="File">
                 <span className="mono break-all text-subtle">{path}</span>
               </Fact>

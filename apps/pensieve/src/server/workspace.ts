@@ -9,7 +9,7 @@
 import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join, relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import type { MarkdownDocument } from "@tanstack/markdown";
 import { parseMarkdown } from "@tanstack/markdown/parser";
 import { parse as parseYaml } from "yaml";
@@ -60,38 +60,6 @@ export interface Rendered {
   frontmatter: Frontmatter;
   /** Path relative to WORKSPACE_DIR, for "open in editor" affordances. */
   path: string;
-}
-
-export type JournalStatus =
-  | "decided"
-  | "implemented"
-  | "documented"
-  | "superseded";
-
-export interface JournalEntry {
-  /** Documented rules this change rewrites — `BR-22h`, `MM-16`. An arc seeds on these. */
-  affects: string[];
-  /** Which app's features tree this entry lives in, e.g. `foundry`. */
-  app: string;
-  date: string;
-  /** `<app>/<dir>` — the routing key. */
-  feature: string;
-  features: string[];
-  hold?: string;
-  /** `<feature>/<slug>` — slugs alone are not unique (older day-level entries share `YYYY-MM-DD`). */
-  id: string;
-  merge?: string;
-  path: string;
-  pr?: string;
-  scope?: string;
-  slug: string;
-  source?: string;
-  status?: JournalStatus;
-  summary?: string;
-  ticket?: string;
-  /** `ticket:` as a list — the field carries one key or several, and a seed matches any. */
-  tickets: string[];
-  url?: string;
 }
 
 export interface DocMeta {
@@ -229,22 +197,13 @@ function list(v: unknown): string[] {
 }
 
 /**
- * Wikilinks are the journal's own cross-reference syntax: `[[slug]]` points at a sibling
- * entry, `[[YYYY-MM-DD]]` at a day. Resolve them to app routes before parsing so the
- * renderer only ever sees ordinary links.
+ * `[[slug]]` was the journal's cross-reference syntax. The journal is gone, so a wikilink
+ * in a doc renders as its text, never as a link to nowhere.
  */
-export function resolveWikilinks(src: string, feature?: string): string {
+export function resolveWikilinks(src: string, _feature?: string): string {
   return src.replace(
     /\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g,
-    (_m, target: string, label?: string) => {
-      const t = target.trim();
-      const text = (label ?? t).trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(t)) {
-        return `[${text}](/journal?day=${t})`;
-      }
-      const id = feature ? `${feature}/${t}` : t;
-      return `[${text}](/journal/${id.split("/").map(encodeURIComponent).join("/")})`;
-    }
+    (_m, target: string, label?: string) => (label ?? target).trim()
   );
 }
 
@@ -258,7 +217,7 @@ function featureOf(abs: string, roots: AppRoot[]): string | undefined {
   if (!root) {
     return undefined;
   }
-  const m = relative(root.dir, abs).match(/^(.*?)\/(journal|docs)\//);
+  const m = relative(root.dir, abs).match(/^(.*?)\/docs\//);
   return m ? `${root.app}/${m[1]}` : undefined;
 }
 
@@ -302,116 +261,6 @@ async function readFrontmatter(absPath: string): Promise<Frontmatter> {
   } catch {
     return {};
   }
-}
-
-// ── reports ────────────────────────────────────────────────────────────────────
-
-// ── digests ────────────────────────────────────────────────────────────────────
-
-// ── journal ────────────────────────────────────────────────────────────────────
-
-function journalMeta(
-  abs: string,
-  fm: Frontmatter,
-  roots: AppRoot[]
-): JournalEntry | null {
-  const root = rootOf(abs, roots);
-  if (!root) {
-    return null;
-  }
-  const rel = relative(root.dir, abs);
-  const idx = rel.indexOf("/journal/");
-  if (idx < 0) {
-    return null;
-  }
-  const date = str(fm.date)?.slice(0, 10);
-  if (!date) {
-    return null;
-  }
-  const status = str(fm.status) as JournalStatus | undefined;
-  const feature = `${root.app}/${rel.slice(0, idx)}`;
-  const slug = basename(abs, ".md");
-  return {
-    affects: list(fm.affects),
-    app: root.app,
-    date,
-    feature,
-    features: list(fm.features),
-    hold: str(fm.hold),
-    id: `${feature}/${slug}`,
-    merge: str(fm.merge),
-    path: relative(WORKSPACE_DIR, abs),
-    pr: str(fm.pr),
-    scope: str(fm.scope),
-    slug,
-    source: str(fm.source),
-    status,
-    summary: str(fm.summary),
-    ticket: str(fm.ticket),
-    tickets: list(fm.ticket),
-    url: str(fm.url),
-  };
-}
-
-export async function listJournal(): Promise<JournalEntry[]> {
-  const out: JournalEntry[] = [];
-  const roots = await listApps();
-  for (const root of roots) {
-    for await (const p of walk(root.dir)) {
-      if (!p.includes("/journal/")) {
-        continue;
-      }
-      const meta = journalMeta(p, await readFrontmatter(p), roots);
-      if (meta) {
-        out.push(meta);
-      }
-    }
-  }
-  return out.sort((a, b) =>
-    a.date === b.date ? (a.slug < b.slug ? 1 : -1) : a.date < b.date ? 1 : -1
-  );
-}
-
-/**
- * `id` is `<feature>/<slug>`. A wikilink that crosses features resolves against the wrong
- * feature, so fall back to the slug alone when it is unique across the tree.
- */
-export async function readJournalEntry(
-  id: string
-): Promise<(Rendered & { meta: JournalEntry }) | null> {
-  if (id.includes("..")) {
-    return null;
-  }
-  const cut = id.lastIndexOf("/");
-  const feature = cut > 0 ? id.slice(0, cut) : "";
-  const slug = id.slice(cut + 1);
-  const roots = await listApps();
-  const candidates: string[] = [];
-  outer: for (const root of roots) {
-    for await (const p of walk(root.dir)) {
-      if (!p.includes("/journal/") || basename(p, ".md") !== slug) {
-        continue;
-      }
-      const key = featureOf(p, roots);
-      // An exact `<app>/<dir>` match ends the search. A bare `<dir>` — what a wikilink
-      // written before the workspace held several apps says — is kept as a candidate and
-      // accepted only if it turns out to be unique, as an unqualified slug already is.
-      if (key === feature) {
-        candidates.length = 0;
-        candidates.push(p);
-        break outer;
-      }
-      if (feature === "" || key?.endsWith(`/${feature}`)) {
-        candidates.push(p);
-      }
-    }
-  }
-  if (candidates.length !== 1) {
-    return null;
-  }
-  const r = await render(candidates[0], featureOf(candidates[0], roots));
-  const meta = journalMeta(candidates[0], r.frontmatter, roots);
-  return meta ? { ...r, meta } : null;
 }
 
 // ── docs ───────────────────────────────────────────────────────────────────────

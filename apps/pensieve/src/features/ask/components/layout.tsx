@@ -33,7 +33,7 @@ export function AskLayout({
         <ConversationContent className="px-0">
           {empty ? (
             <ConversationEmptyState
-              description="Claude Code with the argus checkout open, read-only. Ask what the sweep found, what a journal entry decided, where a feature lives."
+              description="Claude Code with the argus checkout open, read-only. Ask what is on you, what a rule says and who settled it, where a feature lives."
               title="🐶 Ask argus"
             />
           ) : (

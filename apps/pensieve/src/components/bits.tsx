@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { cn, LINEAR_ISSUE } from "#/lib/utils";
-import type { JournalStatus } from "#/server/workspace";
 
 /**
  * The top of every page: an optional row of actions (a tier switch, a button, a count) at
@@ -103,24 +102,6 @@ export function Tag({
       )}
       {children}
     </span>
-  );
-}
-
-export function StatusPill({
-  status,
-  hold,
-}: {
-  status?: JournalStatus;
-  hold?: string;
-}) {
-  const key = hold ? "hold" : status;
-  if (!key) {
-    return null;
-  }
-  return (
-    <Tag title={hold ? `hold: ${hold}` : undefined} tone={key}>
-      {key}
-    </Tag>
   );
 }
 

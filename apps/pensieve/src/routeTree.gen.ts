@@ -16,8 +16,6 @@ import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as DocsSplatRouteImport } from './routes/docs/$'
 import { Route as FeaturesIndexRouteImport } from './routes/features/index'
 import { Route as FeaturesSplatRouteImport } from './routes/features/$'
-import { Route as JournalIndexRouteImport } from './routes/journal/index'
-import { Route as JournalSplatRouteImport } from './routes/journal/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -54,38 +52,24 @@ const FeaturesSplatRoute = FeaturesSplatRouteImport.update({
   path: '/features/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const JournalIndexRoute = JournalIndexRouteImport.update({
-  id: '/journal/',
-  path: '/journal/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const JournalSplatRoute = JournalSplatRouteImport.update({
-  id: '/journal/$',
-  path: '/journal/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ask/$id': typeof AskIdRoute
   '/docs/$': typeof DocsSplatRoute
   '/features/$': typeof FeaturesSplatRoute
-  '/journal/$': typeof JournalSplatRoute
   '/ask/': typeof AskIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/features/': typeof FeaturesIndexRoute
-  '/journal/': typeof JournalIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ask/$id': typeof AskIdRoute
   '/docs/$': typeof DocsSplatRoute
   '/features/$': typeof FeaturesSplatRoute
-  '/journal/$': typeof JournalSplatRoute
   '/ask': typeof AskIndexRoute
   '/docs': typeof DocsIndexRoute
   '/features': typeof FeaturesIndexRoute
-  '/journal': typeof JournalIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -93,11 +77,9 @@ export interface FileRoutesById {
   '/ask/$id': typeof AskIdRoute
   '/docs/$': typeof DocsSplatRoute
   '/features/$': typeof FeaturesSplatRoute
-  '/journal/$': typeof JournalSplatRoute
   '/ask/': typeof AskIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/features/': typeof FeaturesIndexRoute
-  '/journal/': typeof JournalIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -106,33 +88,27 @@ export interface FileRouteTypes {
     | '/ask/$id'
     | '/docs/$'
     | '/features/$'
-    | '/journal/$'
     | '/ask/'
     | '/docs/'
     | '/features/'
-    | '/journal/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/ask/$id'
     | '/docs/$'
     | '/features/$'
-    | '/journal/$'
     | '/ask'
     | '/docs'
     | '/features'
-    | '/journal'
   id:
     | '__root__'
     | '/'
     | '/ask/$id'
     | '/docs/$'
     | '/features/$'
-    | '/journal/$'
     | '/ask/'
     | '/docs/'
     | '/features/'
-    | '/journal/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -140,11 +116,9 @@ export interface RootRouteChildren {
   AskIdRoute: typeof AskIdRoute
   DocsSplatRoute: typeof DocsSplatRoute
   FeaturesSplatRoute: typeof FeaturesSplatRoute
-  JournalSplatRoute: typeof JournalSplatRoute
   AskIndexRoute: typeof AskIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
   FeaturesIndexRoute: typeof FeaturesIndexRoute
-  JournalIndexRoute: typeof JournalIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -198,20 +172,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FeaturesSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/journal/': {
-      id: '/journal/'
-      path: '/journal'
-      fullPath: '/journal/'
-      preLoaderRoute: typeof JournalIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/journal/$': {
-      id: '/journal/$'
-      path: '/journal/$'
-      fullPath: '/journal/$'
-      preLoaderRoute: typeof JournalSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -220,11 +180,9 @@ const rootRouteChildren: RootRouteChildren = {
   AskIdRoute: AskIdRoute,
   DocsSplatRoute: DocsSplatRoute,
   FeaturesSplatRoute: FeaturesSplatRoute,
-  JournalSplatRoute: JournalSplatRoute,
   AskIndexRoute: AskIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
   FeaturesIndexRoute: FeaturesIndexRoute,
-  JournalIndexRoute: JournalIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -74,20 +74,6 @@ export const getNavigation = createServerFn({ method: "GET" }).handler(
   }
 );
 
-export const listJournal = createServerFn({ method: "GET" }).handler(
-  async () => {
-    const ws = await import("#/server/workspace");
-    return ws.listJournal();
-  }
-);
-
-export const getJournalEntry = createServerFn({ method: "GET" })
-  .validator((id: string) => id)
-  .handler(async ({ data }) => {
-    const ws = await import("#/server/workspace");
-    return ws.readJournalEntry(data);
-  });
-
 export const listDocs = createServerFn({ method: "GET" }).handler(async () => {
   const ws = await import("#/server/workspace");
   return ws.listDocs();

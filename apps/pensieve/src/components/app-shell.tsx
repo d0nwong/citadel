@@ -24,7 +24,6 @@ import {
   FolderIcon,
   Map as MapIcon,
   MessageCircleQuestion,
-  ScrollText,
   Waypoints,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -222,9 +221,6 @@ function PullToRefresh({
  * decision, still written every tick; the archive is what the loop wrote before the board
  * replaced it (LIA-161), kept readable and written by nothing (LIA-162).
  */
-const READING = [
-  { icon: ScrollText, label: "Journal", to: "/journal" },
-] as const;
 
 function Basin({ className }: { className?: string }) {
   return (
@@ -306,22 +302,6 @@ function AppSidebar() {
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Reading</SidebarGroupLabel>
-          <SidebarMenu>
-            {READING.map(({ to, label, icon: Icon }) => (
-              <SidebarMenuItem key={to}>
-                <SidebarMenuButton asChild isActive={isActive(pathname, to)}>
-                  <Link to={to}>
-                    <Icon />
-                    <span>{label}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
           </SidebarMenu>
         </SidebarGroup>
 
