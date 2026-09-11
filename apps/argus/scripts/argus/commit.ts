@@ -13,7 +13,8 @@ const exists = (p: string) => stat(p).then(() => true, () => false);
 async function git(args: string[], cwd = root()): Promise<{ code: number; out: string; err: string }> {
   const p = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
   const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-  return { code: await p.exited, out: out.trim(), err: err.trim() };
+  // trimEnd only: a porcelain status line starts with a space for a file modified in the tree
+  return { code: await p.exited, out: out.trimEnd(), err: err.trim() };
 }
 
 /** what a run may commit: ledgers, arch docs, the committed state files, the manifest */
@@ -38,12 +39,12 @@ export async function commitRun(message: string, opts: { dryRun?: boolean; cwd?:
     const add = await git(["add", "-A", "--", ...files], cwd);
     if (add.code !== 0) throw new Error(`git add: ${add.err}`);
   }
-  const staged = (await git(["diff", "--cached", "--name-only"], cwd)).out.split("\n").filter(Boolean);
+  const staged = (await git(["diff", "--cached", "--name-only"], cwd)).out.split("\n").map((l) => l.trim()).filter(Boolean);
   let sha: string | undefined;
   if (staged.length && !opts.dryRun) {
     const c = await git(["commit", "-q", "-m", message], cwd);
     if (c.code !== 0) throw new Error(`git commit: ${c.err}`);
-    sha = (await git(["rev-parse", "--short", "HEAD"], cwd)).out;
+    sha = (await git(["rev-parse", "--short", "HEAD"], cwd)).out.trim();
   }
   let cursor: CommitResult["cursor"] = "none";
   if (await exists(cursorNextPath())) {

@@ -36,6 +36,17 @@ describe("commitRun", () => {
     const again = await commitRun("sweep: nothing", { cwd: ws });
     expect(again).toMatchObject({ committed: false, files: 0, cursor: "unchanged" });
   });
+  test("a modified tracked ledger, whose status line starts with a space, is staged whole", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    Bun.spawnSync(["git", "add", "-A"], { cwd: ws });
+    Bun.spawnSync(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed"], { cwd: ws });
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), '{"changed":true}\n');
+    Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "t"], { cwd: ws });
+    const r = await commitRun("sweep: modified", { cwd: ws });
+    expect(r).toMatchObject({ committed: true, files: 1 });
+    expect(sh(["git", "show", "--stat", "--format=", "HEAD"])).toContain("tasks/ledger.json");
+  });
   test("dry run stages nothing for keeps and leaves the cursor", async () => {
     writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
     writeFileSync(join(ws, "state/cursor.next.json"), "{}\n");
