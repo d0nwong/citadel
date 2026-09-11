@@ -151,7 +151,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
             '422': jsonResponse(`\`${IDEMPOTENCY_HEADER}\` was already used with a different body. Nothing was queued.`, 'Error'),
             '502': jsonResponse('Linear could not be reached to fetch the `ticketId` before the insert. Nothing was queued; retry with the same idempotency key.', 'Error'),
             '503': jsonResponse(
-              'Not configured on the host: no trigger API token (`foundry auth --api`), or — for a `ticketId` without `instructions` — no Linear key to compose the brief with (`foundry auth --linear`). With `instructions` present, a missing Linear key only costs the claim, logged as an `err` line on the job.',
+              'Not configured on the host: no trigger API token (`foundry auth --api`), or — for a `ticketId` without `instructions` — no Linear key to compose the brief with (`LINEAR_API_KEY` in the argus `.env`). With `instructions` present, a missing Linear key only costs the claim, logged as an `err` line on the job.',
               'Error',
             ),
           },

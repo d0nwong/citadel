@@ -373,7 +373,7 @@ export async function handleTriggerJob(request: Request, deps: ApiDeps = realDep
     const key = await deps.linearKey()
     if (!key) {
       if (payload.instructions === undefined) {
-        return json(503, { error: 'Linear not configured — run: foundry auth --linear (or send instructions)' })
+        return json(503, { error: 'Linear not configured — no LINEAR_API_KEY in the argus .env (run: ~/git/argus/scripts/bootstrap.sh env), or send instructions' })
       }
       // Instructions in hand, the job can run; the claim is logged as skipped below.
     } else {
@@ -432,7 +432,7 @@ async function mirrorClaim(
 ): Promise<void> {
   if (!ticket) {
     await appendLogs(jobId, [
-      { stream: 'err', text: `Linear claim for ${ticketId} skipped — no LINEAR_API_KEY (run: foundry auth --linear)` },
+      { stream: 'err', text: `Linear claim for ${ticketId} skipped — no LINEAR_API_KEY in the argus .env (run: ~/git/argus/scripts/bootstrap.sh env)` },
     ])
     return
   }

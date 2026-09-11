@@ -6,7 +6,7 @@
  *
  * Runs on the HOST for the same reason `bb` does: LINEAR_API_KEY never enters
  * a forge. Containers reach Linear through the MCP gateway and nowhere else.
- * The key is read fresh per use (`linearApiKey`), so `foundry auth --linear`
+ * The key is read fresh per use (`linearApiKey`), so a new key in argus's `.env`
  * takes effect without a restart.
  *
  * On PR links: GitHub PRs need none of this — Linear's own GitHub integration
@@ -27,7 +27,7 @@ import { readFoundryEnv } from './foundry-env'
 const API = 'https://api.linear.app/graphql'
 
 /**
- * The host's personal API key, from `foundry auth --linear`. `process.env` is
+ * The host's personal API key, from argus's `.env` (`readFoundryEnv`). `process.env` is
  * the fallback for headless setups and tests. Undefined means Linear was never
  * configured — every caller degrades from there rather than failing a job.
  */
@@ -92,7 +92,7 @@ interface GqlResponse<T> {
 }
 
 /**
- * A personal API key (`lin_api_…`, what `foundry auth --linear` stores) goes in
+ * A personal API key (`lin_api_…`, what argus's `.env` holds) goes in
  * Authorization raw — no `Bearer`, which is the OAuth form. GraphQL errors
  * arrive with HTTP 200, so the body is checked whatever the status says.
  */
