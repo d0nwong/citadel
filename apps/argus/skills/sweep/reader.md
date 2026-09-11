@@ -11,15 +11,13 @@ the story reads now. Write the fact and its evidence, and let the validator chec
 
 ## When to Use
 
-Spawned by the sweep once per feature that has a slice in this run's placed batch. Never
-for a feature with nothing new.
+Spawned by the sweep once per feature with a slice in this run's batch; never otherwise.
 
 ## Inputs
 
 - `ledger.json` as it stands, without its code pointers. Every id in it stays.
-- The slice: messages in order, each with its author, time, permalink and thread; huddle
-  canvases as text; landings with their files, PR link and ticket keys.
-- The arch doc's mismatch and gap sections, for where the two codebases disagree.
+- The slice: messages with author, time, permalink and thread; huddle canvases as text;
+  landings with files, PR link and ticket keys. The arch doc's mismatch and gap sections.
 - `shapes.md`, the exact JSON of what you return.
 
 ## Process
@@ -67,7 +65,6 @@ notice is how work went missing.
 
 ### Ids are permanent
 Never renumber, delete or reuse an id. Retire a requirement; drop an ask.
-
 ### One ask, one wish
 Two messages asking for the same thing are one ask with two history entries. Two
 different wishes in one message are two asks.
@@ -75,7 +72,6 @@ different wishes in one message are two asks.
 ### Chat is not recorded
 Jokes, thanks with no ask behind them, logistics naming nobody on the record: leave them
 out. A thank-you that acknowledges a result is evidence on that ask, not an ask.
-
 ### Write for a reader
 A person does something in every sentence. Aim for fifteen words; twenty-five is the
 hard ceiling and a sentence over it is refused. An id (ALD-41,
