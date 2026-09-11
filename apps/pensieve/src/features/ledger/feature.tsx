@@ -466,12 +466,16 @@ function AskRow({
           {ask.by}
           {ask.to ? ` → ${ask.to}` : ""} · {ask.at}
         </span>
-        {key && <TicketLink ticket={key} />}
         {ask.blockers?.length ? (
           <Tag tone={ask.ready ? "documented" : "decided"}>
             {ask.ready ? "unblocked" : "waiting"}
           </Tag>
         ) : null}
+        {key && (
+          <span className="ml-auto">
+            <TicketLink ticket={key} />
+          </span>
+        )}
       </div>
       <p className="mt-0.5 text-[15px] text-foreground leading-relaxed">
         {ask.text}

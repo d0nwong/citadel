@@ -67,7 +67,11 @@ function AskRow({ ask, features }: { ask: HomeAsk; features: string[] }) {
           {ask.by}, {ask.at}
         </span>
         <FeatureName dir={ask.dir} feature={ask.feature} />
-        {key && <TicketLink ticket={key} />}
+        {key && (
+          <span className="ml-auto">
+            <TicketLink ticket={key} />
+          </span>
+        )}
       </div>
       <p className="mt-1 text-[15px] text-foreground leading-relaxed">
         {ask.text}
@@ -273,8 +277,10 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
         ) : (
           <Tag tone="documented">ready</Tag>
         )}
-        <TicketLink ticket={row.key} />
         <FeatureName dir={row.dir} feature={row.feature} />
+        <span className="ml-auto">
+          <TicketLink ticket={row.key} />
+        </span>
       </div>
       <p className="mt-1 text-[15px] text-foreground leading-relaxed">
         {row.title}
