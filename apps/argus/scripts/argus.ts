@@ -17,10 +17,11 @@ import { listFeatures, ledgerPath, root } from "./argus/paths.ts";
 import { validateDoc, validateLedger, ValidationError } from "./argus/validate.ts";
 import { archDocPath, isFeature } from "./argus/paths.ts";
 import { reconcileAll } from "./argus/blockers.ts";
+import { draftFor } from "./argus/file.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
 import { seedFeature } from "./argus/seed.ts";
-import { closeAsk, confirmRequirement, placeMessage, recordTicket } from "./argus/verbs.ts";
+import { closeAsk, confirmRequirement, placeMessage, recordSent, recordTicket } from "./argus/verbs.ts";
 import { readLedger, writeLedger } from "./argus/write.ts";
 
 export type Flags = { dryRun: boolean; json: boolean; actor: "model" | "user"; rest: string[]; opts: Record<string, string> };
@@ -54,7 +55,9 @@ const USAGE = `argus — the ledger CLI
   argus close <feature> <A-n> --reason "<why>"
   argus confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]
   argus place <message-id> <feature>
+  argus file <feature> <P-n>         the ticket a proposal would become: title, body, team, project
   argus ticket <feature> <P-n> <ALD-key>
+  argus sent <feature> <ALD-key> --repo <name> [--job <id>]   record that Pensieve sent it to Foundry
   argus seed <feature>...|--all [--force]  requirement rows from the product doc's BR table
 
 flags: --dry-run  --json  --user (the write is a person's, not the model's)
@@ -156,10 +159,25 @@ const verbs: Record<string, Verb> = {
     return 0;
   },
 
+  async file(f) {
+    const [feature, proposalId] = f.rest;
+    if (!feature || !proposalId) throw new Usage("file <feature> <P-n>");
+    const d = await draftFor(feature, proposalId);
+    if (f.json) console.log(JSON.stringify({ ok: true, ...d }));
+    else console.log(`${d.team} · ${d.project}\n# ${d.title}\n\n${d.body}`);
+    return 0;
+  },
+
   async ticket(f) {
     const [feature, proposalId, key] = f.rest;
     if (!feature || !proposalId || !key) throw new Usage("ticket <feature> <P-n> <ALD-key>");
     return report(f, feature, await recordTicket(feature, proposalId, key, { dryRun: f.dryRun }));
+  },
+
+  async sent(f) {
+    const [feature, key] = f.rest;
+    if (!feature || !key || !f.opts.repo) throw new Usage("sent <feature> <ALD-key> --repo <name> [--job <id>]");
+    return report(f, feature, await recordSent(feature, key, f.opts.repo, f.opts.job, { dryRun: f.dryRun }));
   },
 
   async seed(f) {

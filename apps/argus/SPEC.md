@@ -186,7 +186,7 @@ argus close     <feature> <ask-id> --reason "<why>"
 argus confirm   <feature> <req-id> [--contradict --reason "<why>"]
 argus file      <feature> <proposal-id>   # prints the ticket body; Pensieve files it via Linear and calls `ticket`
 argus ticket    <feature> <proposal-id> <ALD-key>   # records the key on the ask and the ticket list
-argus send      <feature> <ALD-key> --repo <name>   # POST /api/jobs with Idempotency-Key = key
+argus sent      <feature> <ALD-key> --repo <name> --job <id>   # Pensieve posted the job (it holds the Foundry token); this records it
 
 # what is where in the code and docs
 accio find "<words>"                      # feature, files, endpoints for a screen, field or route
@@ -439,7 +439,9 @@ Phases 1 and 2 can run in parallel. 5 can start once 1 is done, on fixtures.
 
 ## Open Questions
 
-- Send: direct with a confirm, or a proposal card like tickets? Spec says direct.
+- Resolved 2026-09-11: Send is a button on Ready with a repo picker and a confirm. Pensieve
+  posts to Foundry, because it already holds the token and the client; `argus sent`
+  records the job on the ticket.
 - Initial requirement statuses: seed all as `assumed`, bulk-confirm per feature once.
 - Which `product.md` sections, if any, the user still reaches for and wants kept.
 - Whether `pensieve/features` and `foundry/features` get ledgers in a later phase.

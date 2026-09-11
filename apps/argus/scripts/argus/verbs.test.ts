@@ -8,7 +8,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readThreads, readUnplaced, writeUnplaced, type Unplaced } from "./state.ts";
-import { closeAsk, confirmRequirement, placeMessage, recordTicket } from "./verbs.ts";
+import { closeAsk, confirmRequirement, placeMessage, recordSent, recordTicket } from "./verbs.ts";
 import { readLedger } from "./write.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
@@ -122,5 +122,15 @@ describe("ticket", () => {
   });
   test("refuses an unknown proposal", async () => {
     await expect(recordTicket("admin/invoicing", "P-7", "ALD-1")).rejects.toThrow("no proposal P-7");
+  });
+});
+
+describe("sent", () => {
+  test("records the job once; a replay of the same job is a no-op; an unknown ticket is refused", async () => {
+    const r = await recordSent("admin/invoicing", "ALD-41", "alden-portal-fe", "job-1", { now: T0 });
+    expect(r.wrote).toBe(true);
+    expect((await readLedger("admin/invoicing"))!.tickets[0]!.sent).toEqual([{ at: T0.toISOString(), repo: "alden-portal-fe", job: "job-1" }]);
+    expect((await recordSent("admin/invoicing", "ALD-41", "alden-portal-fe", "job-1")).wrote).toBe(false);
+    await expect(recordSent("admin/invoicing", "ALD-99", "x", "j")).rejects.toThrow("no ticket ALD-99");
   });
 });

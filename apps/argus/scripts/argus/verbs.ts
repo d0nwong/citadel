@@ -7,6 +7,7 @@
  *   confirm  a requirement is confirmed or contradicted by the user, one or all
  *   place    an unplaced message belongs to a feature; the thread remembers it
  *   ticket   a proposal was filed; the key goes on the ask and the ticket list
+ *   sent     a ticket went to Foundry; the job is recorded on it
  */
 
 import { isFeature } from "./paths.ts";
@@ -93,4 +94,16 @@ export async function recordTicket(feature: string, proposalId: string, key: str
   const tickets = [...l.tickets, { key, title: p.title, asks: p.asks, blockers: [], ready: true }];
   const asks = l.asks.map((a) => (p.asks.includes(a.id) ? { ...a, ticket: key } : a));
   return commit(feature, { ...l, tickets, asks, proposals: l.proposals.filter((x) => x.id !== proposalId) }, { ...o, now });
+}
+
+/** a ticket was sent to Foundry; the job is recorded once, however many times the click replays */
+export async function recordSent(feature: string, key: string, repo: string, job: string | undefined, o: VerbOptions = {}): Promise<WriteResult> {
+  const now = o.now ?? new Date();
+  const l = await mustRead(feature, o.app);
+  const t = l.tickets.find((x) => x.key === key);
+  if (!t) throw new Error(`${feature}: no ticket ${key}`);
+  if (job && (t.sent ?? []).some((s) => s.job === job)) return commit(feature, l, o);
+  const entry = { at: now.toISOString(), repo, ...(job ? { job } : {}) };
+  const tickets = l.tickets.map((x) => (x.key === key ? { ...x, sent: [...(x.sent ?? []), entry] } : x));
+  return commit(feature, { ...l, tickets }, { ...o, now });
 }
