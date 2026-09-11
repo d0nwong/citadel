@@ -108,6 +108,8 @@ export type Landing = {
   url: string | null;
   asks: string[];
   files: string[];
+  /** ticket keys the branch or title named, so a landing can close the ask its ticket serves */
+  tickets?: string[];
 };
 
 export type Proposal = {
@@ -360,6 +362,7 @@ function landing(v: unknown, path: string): Landing {
     url: o.url as string | null,
     asks: strs(o, "asks", path),
     files: strs(o, "files", path),
+    ...(o.tickets !== undefined ? { tickets: strs(o, "tickets", path) } : {}),
   };
 }
 

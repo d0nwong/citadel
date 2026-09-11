@@ -160,7 +160,7 @@ export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<
       if (!l || !s.landings.length) continue;
       const fresh = s.landings
         .filter((ld) => !l.landings.some((x) => x.ref === ld.ref))
-        .map((ld) => ({ at: ld.at, repo: ld.repo, ref: ld.ref, number: ld.number, sha: ld.sha, title: ld.title, by: ld.by, url: ld.url, asks: [], files: ld.files }));
+        .map((ld) => ({ at: ld.at, repo: ld.repo, ref: ld.ref, number: ld.number, sha: ld.sha, title: ld.title, by: ld.by, url: ld.url, asks: [], files: ld.files, tickets: ld.ticketKeys }));
       if (fresh.length) await writeLedger(s.feature, applyPatch(l, { landings: { add: fresh } }), { actor: "model", now });
     }
     await Bun.write(placedPath(batch.id, opts.outDir ?? (idOrPath.endsWith(".json") ? idOrPath.replace(/[^/]+$/, "").replace(/\/$/, "") : undefined)), JSON.stringify(placed, null, 2) + "\n");

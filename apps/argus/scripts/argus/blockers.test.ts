@@ -42,6 +42,32 @@ describe("reconcileLedger", () => {
   });
 });
 
+describe("a ticket that landed closes its ask", () => {
+  test("a frontend merge carrying the key moves the ask to built and closed; a backend one waits for the deploy", async () => {
+    const l = await valid();
+    l.asks[1]!.ticket = "ALD-52";
+    l.tickets.push({ key: "ALD-52", title: "[FE] billing fields", asks: ["A-2"], blockers: [], ready: true });
+    l.landings.push({ at: "2026-09-12T09:00:00Z", repo: "fe", ref: "fe#440", number: 440, sha: "f".repeat(40), title: "Foundry/ald-52 billing fields", by: "you", url: "https://bitbucket.org/x/pull-requests/440", asks: [], files: ["src/a.ts"], tickets: ["ALD-52"] });
+    const r = await reconcileLedger(l, async () => null);
+    expect(r.cleared).toEqual(["A-2: ALD-52 landed as fe#440", "A-2: ALD-52 is live, closed"]);
+    const a = r.ledger.asks[1]!;
+    expect(a.status).toBe("closed");
+    expect(a.history.map((h) => h.status)).toEqual(["built", "closed"]);
+    expect(a.history[0]!.evidence).toEqual([{ kind: "pr", repo: "fe", number: 440, url: expect.stringContaining("440") }]);
+    expect(r.ledger.landings.at(-1)!.asks).toEqual(["A-2"]);
+    expect(validateLedger(r.ledger, { prev: l, actor: "model" })).toEqual([]);
+    // backend: built now, closed only once the pipeline says deployed
+    const b = await valid();
+    b.asks[1]!.ticket = "ALD-53";
+    b.landings.push({ at: "2026-09-12T09:00:00Z", repo: "be", ref: "be#800", number: 800, sha: "e".repeat(40), title: "ALD-53 endpoint", by: "Sam O", url: "u", asks: [], files: ["src/x.ts"] });
+    const r1 = await reconcileLedger(b, async () => null);
+    expect(r1.ledger.asks[1]!.status).toBe("built");
+    const r2 = await reconcileLedger(r1.ledger, async () => live);
+    expect(r2.ledger.asks[1]!.status).toBe("closed");
+    expect(r2.cleared).toEqual(["A-2: ALD-53 is live, closed"]);
+  });
+});
+
 describe("reconcileAll", () => {
   let ws: string;
   beforeEach(() => {
