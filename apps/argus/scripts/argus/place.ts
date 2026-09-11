@@ -15,7 +15,8 @@ import type { Landing } from "./pr-facts.ts";
 import type { Ledger } from "./schema.ts";
 import { flatten, type Msg } from "./slack-pull.ts";
 import { readThreads, readUnplaced, type ThreadMap, type Unplaced, writeThreads, writeUnplaced } from "./state.ts";
-import { readLedger } from "./write.ts";
+import { applyPatch } from "./patch.ts";
+import { readLedger, writeLedger } from "./write.ts";
 
 export type PlaceOptions = { now?: Date; dryRun?: boolean; outDir?: string; ledgers?: Map<string, Ledger>; threads?: ThreadMap };
 
@@ -149,6 +150,16 @@ export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<
   const p = placeBatch(batch, ledgers, threads, features, now);
   const placed: Placed = { batch: batch.id, placed_at: now.toISOString(), slices: [...p.slices.values()], unplaced: p.unplaced.map((u) => u.id) };
   if (!opts.dryRun) {
+    // code owns the landings: every slice's new landings go onto its ledger now, so the
+    // reader only ever links them to asks
+    for (const s of p.slices.values()) {
+      const l = ledgers.get(s.feature) ?? (await readLedger(s.feature));
+      if (!l || !s.landings.length) continue;
+      const fresh = s.landings
+        .filter((ld) => !l.landings.some((x) => x.ref === ld.ref))
+        .map((ld) => ({ at: ld.at, repo: ld.repo, ref: ld.ref, number: ld.number, sha: ld.sha, title: ld.title, by: ld.by, url: ld.url, asks: [], files: ld.files }));
+      if (fresh.length) await writeLedger(s.feature, applyPatch(l, { landings: { add: fresh } }), { actor: "model", now });
+    }
     await Bun.write(placedPath(batch.id, opts.outDir ?? (idOrPath.endsWith(".json") ? idOrPath.replace(/[^/]+$/, "").replace(/\/$/, "") : undefined)), JSON.stringify(placed, null, 2) + "\n");
     if (Object.keys(p.threads).length) await writeThreads({ ...threads, ...p.threads });
     const existing = await readUnplaced();

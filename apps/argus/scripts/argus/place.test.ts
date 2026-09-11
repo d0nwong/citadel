@@ -15,6 +15,7 @@ import type { Landing } from "./pr-facts.ts";
 import { type Ledger, parseLedger } from "./schema.ts";
 import type { Msg } from "./slack-pull.ts";
 import { readThreads, readUnplaced, writeUnplaced } from "./state.ts";
+import { readLedger } from "./write.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
 const NOW = new Date("2026-09-11T10:00:00Z");
@@ -123,5 +124,15 @@ describe("place (on disk)", () => {
     const again = await place(b.id, { now: NOW });
     expect(again).toEqual(placed);
     expect((await readUnplaced()).map((u) => u.id)).toEqual(["1"]);
+  });
+  test("a slice's landings go onto the ledger, once", async () => {
+    const b = flat([], [landing("fe", 431, ["admin/invoicing"])]);
+    const path = join(ws, "state/batches", `${b.id}.json`);
+    await Bun.write(path, JSON.stringify(b));
+    await place(b.id, { now: NOW });
+    const l = (await readLedger("admin/invoicing"))!;
+    expect(l.landings.map((x) => x.ref)).toEqual(["be#771", "fe#431"]);
+    await place(b.id, { now: NOW });
+    expect((await readLedger("admin/invoicing"))!.landings).toHaveLength(2);
   });
 });
