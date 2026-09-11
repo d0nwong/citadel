@@ -6,8 +6,6 @@
     "foundry": "./bin/foundry"
   },
   "scripts": {
-    "setup": "./scripts/bootstrap.sh",
-    "setup:check": "./scripts/bootstrap.sh --check",
     "setup:bb": "./scripts/setup-bb.sh",
     "infra:up": "./infra/infra.sh up",
     "infra:down": "./infra/infra.sh down",

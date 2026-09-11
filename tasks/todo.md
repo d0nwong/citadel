@@ -99,13 +99,19 @@ See `tasks/plan.md` for the order and the checkpoints.
 
 ## Phase 4: Ops
 
-- [ ] **T9: Add the just environment recipes.** (M)
+- [x] **T9: Add the just environment recipes.** (M)
   - Acceptance: `bootstrap`, `check`, and `auth linear|slack|claude|foundry-api` port the three
     `bootstrap.sh` scripts and `foundry auth`. They're safe to run twice and write `.env` with
     mode 600.
   - Verify: on a scratch clone, `just bootstrap` then `just check` reports nothing missing, and
     running `just bootstrap` again changes nothing.
   - Files: `justfile`, `scripts/*.ts` for anything longer than a few lines; old bootstraps deleted.
+  - Done: `justfile` (`bootstrap`, `check`, `auth`) over `scripts/bootstrap.ts`: phases prereqs,
+    identity, deps, env, trust, data, home, links, forge, plus `import <file>...` (copies only
+    keys the .env lacks and .env.example names) and `auth linear|slack|claude|foundry-api|gateway`.
+    Checked on a scratch copy: `check` creates nothing; a run without a terminal creates a
+    mode-600 .env and mints the two tokens; a second run leaves it byte-identical; no secret in
+    any output. No global `set dotenv-load` (it would hand the Slack token to every recipe).
 - [ ] **T10: Add the just stack and database recipes.** (S–M)
   - Acceptance: `up`, `down`, `logs`, `ps`, `migrate`, `psql`, `sweep-once` and `release-dry`
     replace `infra.sh`, `db.sh` and the delegating `package.json` scripts.
@@ -170,7 +176,10 @@ See `tasks/plan.md` for the order and the checkpoints.
 
 ## Phase 7: Cutover (ask before each step)
 
-- [ ] **T18: Cut the sweep over.** Stop the host `bun run sweep`, push `d0nwong/argus`, then
+- [ ] **T18: Cut the sweep over.** Add `just link` first: it repoints what bootstrap only
+  reports: the Bun global link behind `argus`/`accio` (`~/.bun/install/global/node_modules/argus`),
+  `~/.local/bin/foundry`, and the global skills (`bun scripts/sync-skills.ts` from apps/argus).
+  Then Stop the host `bun run sweep`, push `d0nwong/argus`, then
   `docker compose --profile sweep up -d sweep`.
   - Verify: after 24 hours, ticks are visible in `d0nwong/argus`, `~/git/argus` has no new
     commits, and Pensieve is current (success criterion 5).

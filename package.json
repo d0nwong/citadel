@@ -13,6 +13,6 @@
     "argus": "bun apps/argus/scripts/argus.ts",
     "accio": "bun apps/argus/scripts/accio.ts",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun run --filter '*' test"
+    "test": "bun test ./scripts/ && bun run --filter '*' test"
   }
 }

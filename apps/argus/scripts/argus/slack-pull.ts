@@ -252,7 +252,7 @@ export type SlackApi = {
 };
 
 export function slackApi(token = process.env.SLACK_TOKEN): SlackApi {
-  if (!token) throw new Error("SLACK_TOKEN is not set — put it in the argus checkout's .env (./scripts/bootstrap.sh env prompts for it)");
+  if (!token) throw new Error("SLACK_TOKEN is not set — put it in the argus checkout's .env (just auth slack prompts for it)");
   return {
     async call<T>(method: string, params: Record<string, string | number | undefined>): Promise<T> {
       const qs = new URLSearchParams();

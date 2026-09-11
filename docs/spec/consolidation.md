@@ -85,7 +85,7 @@ reaching the gateway through the published host port.
 ## Commands
 
 ```sh
-# ops (just, from the repo root; recipes load .env with `set dotenv-load`)
+# ops (just, from the repo root; a recipe loads .env only where it needs it)
 just                      # list recipes with their docs
 just bootstrap            # prereqs, .env from .env.example (prompts, mode 600), deps, data clone
 just check                # what bootstrap would do, changing nothing
@@ -110,11 +110,11 @@ just recipes may call bun. Nothing in `package.json` calls just.
 
 Match each app as it is today. Ops code moves out of the bash dispatchers (`infra.sh`, `db.sh`,
 `serve.sh`, the three `bootstrap.sh`) and into small recipes. A recipe that grows past a few
-lines becomes a Bun script that the recipe calls:
+lines becomes a Bun script that the recipe calls. There is no global `set dotenv-load`: it
+would hand every key, the Slack token included, to every process a recipe starts, which is
+what Pensieve's `root-env.sh` exists to prevent. Compose gets the file with `--env-file`.
 
 ```just
-set dotenv-load
-
 # Apply Foundry's database migrations.
 migrate: (wait "postgres")
     bun run --filter foundry-web db:migrate
