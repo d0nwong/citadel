@@ -38,7 +38,7 @@ function HomePage() {
           <h2 className="mb-1 border-border border-b pb-1 font-semibold text-[15px]">
             On you
           </h2>
-          <NeedsMe asks={h.onYou} />
+          <NeedsMe asks={h.onYou} features={features} />
         </section>
         <section>
           <h2 className="mb-1 border-border border-b pb-1 font-semibold text-[15px]">

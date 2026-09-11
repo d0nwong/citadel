@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { Tag } from "#/components/bits";
+import { Tag, TicketLink } from "#/components/bits";
 import { Button } from "#/components/ui/button";
 import {
   CommitError,
@@ -307,7 +307,7 @@ export function Requirements({ ledger, dir }: { ledger: Ledger; dir: string }) {
   );
 }
 
-function MoveForm({
+export function MoveForm({
   ask,
   dir,
   features,
@@ -466,19 +466,7 @@ function AskRow({
           {ask.by}
           {ask.to ? ` → ${ask.to}` : ""} · {ask.at}
         </span>
-        {key &&
-          (filed?.url ? (
-            <a
-              className="mono text-xs underline decoration-1 underline-offset-2"
-              href={filed.url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              {key}
-            </a>
-          ) : (
-            <span className="mono text-xs">{key}</span>
-          ))}
+        {key && <TicketLink ticket={key} />}
         {ask.blockers?.length ? (
           <Tag tone={ask.ready ? "documented" : "decided"}>
             {ask.ready ? "unblocked" : "waiting"}
@@ -666,7 +654,7 @@ export function Tickets({
             key={t.key}
           >
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="mono text-sm">{t.key}</span>
+              <TicketLink ticket={t.key} />
               <span className="text-foreground text-sm">{t.title}</span>
               <TicketState ledger={ledger} ticket={t} />
             </div>

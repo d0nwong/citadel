@@ -5,9 +5,15 @@
  * because the record changed, not because the page pretended.
  */
 
-import { Check, FilePlus2, Send as SendIcon, X } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Check,
+  FilePlus2,
+  Send as SendIcon,
+  X,
+} from "lucide-react";
 import { useState } from "react";
-import { Empty, Tag } from "#/components/bits";
+import { Empty, Tag, TicketLink } from "#/components/bits";
 import { Button } from "#/components/ui/button";
 import {
   CommitError,
@@ -36,9 +42,10 @@ import type { Unplaced } from "#/lib/ledger";
 import type { FoundryRepo } from "#/server/foundry";
 import type { HomeAsk, HomeTicket } from "#/server/ledger";
 import { FeatureName, Status } from "./bits";
+import { MoveForm } from "./feature";
 
-function AskRow({ ask }: { ask: HomeAsk }) {
-  const [mode, setMode] = useState<"close" | "drop" | null>(null);
+function AskRow({ ask, features }: { ask: HomeAsk; features: string[] }) {
+  const [mode, setMode] = useState<"close" | "drop" | "move" | null>(null);
   const [reason, setReason] = useState("");
   const { busy, commit, error } = useCommit<LedgerWrite>();
   const ticket = useCommit<FileProposalResult>();
@@ -60,19 +67,7 @@ function AskRow({ ask }: { ask: HomeAsk }) {
           {ask.by}, {ask.at}
         </span>
         <FeatureName dir={ask.dir} feature={ask.feature} />
-        {key &&
-          (filed?.url ? (
-            <a
-              className="mono text-xs underline decoration-1 underline-offset-2"
-              href={filed.url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              {key}
-            </a>
-          ) : (
-            <span className="mono text-xs">{key}</span>
-          ))}
+        {key && <TicketLink ticket={key} />}
         {!mode && (
           <span className="ml-auto flex gap-1">
             {!key && (
@@ -110,12 +105,29 @@ function AskRow({ ask }: { ask: HomeAsk }) {
               <X />
               Ignore
             </Button>
+            <Button
+              onClick={() => setMode("move")}
+              size="xs"
+              type="button"
+              variant="ghost"
+            >
+              <ArrowRightLeft />
+              Move
+            </Button>
           </span>
         )}
       </div>
       <p className="mt-1 text-[15px] text-foreground leading-relaxed">
         {ask.text}
       </p>
+      {mode === "move" && (
+        <MoveForm
+          ask={ask}
+          dir={ask.dir}
+          features={features}
+          onDone={() => setMode(null)}
+        />
+      )}
       {ask.origin.kind !== "ticket" && (
         <a
           className="text-muted-foreground text-xs underline decoration-1 underline-offset-2 hover:text-foreground"
@@ -133,7 +145,7 @@ function AskRow({ ask }: { ask: HomeAsk }) {
             : null
         }
       />
-      {mode && (
+      {(mode === "close" || mode === "drop") && (
         <form
           className="mt-2 flex flex-col gap-2"
           onSubmit={(e) => {
@@ -167,7 +179,13 @@ function AskRow({ ask }: { ask: HomeAsk }) {
   );
 }
 
-export function NeedsMe({ asks }: { asks: HomeAsk[] }) {
+export function NeedsMe({
+  asks,
+  features,
+}: {
+  asks: HomeAsk[];
+  features: string[];
+}) {
   if (asks.length === 0) {
     return (
       <Empty title="Nothing on you">
@@ -179,7 +197,7 @@ export function NeedsMe({ asks }: { asks: HomeAsk[] }) {
   return (
     <ul>
       {asks.map((a) => (
-        <AskRow ask={a} key={`${a.feature}/${a.id}`} />
+        <AskRow ask={a} features={features} key={`${a.feature}/${a.id}`} />
       ))}
     </ul>
   );
@@ -250,7 +268,7 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
   return (
     <li className="border-border border-b py-3 last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="mono text-sm">{row.key}</span>
+        <TicketLink ticket={row.key} />
         <span className="min-w-0 flex-1 text-foreground text-sm">
           {row.title}
         </span>
