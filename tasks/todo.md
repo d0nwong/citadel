@@ -171,7 +171,7 @@ See `tasks/plan.md` for the order and the checkpoints.
 
 **Checkpoint B:** the stack runs without the sweep. Review before T14. (passed 2026-09-11)
 
-- [ ] **T14: Add the sweep image and service, behind a profile.** (M–L, needs T1)
+- [x] **T14: Add the sweep image and service, behind a profile.** (M–L, needs T1)
   - Acceptance: the image has bun, the claude CLI, git and the argus code. On first start,
     `loop.sh` clones `d0nwong/argus` into `argus-data` and FE/BE into `product` (with
     `BITBUCKET_TOKEN`), then loops `flock … claude -p "/sweep"` every 900 seconds and pushes with
@@ -179,6 +179,13 @@ See `tasks/plan.md` for the order and the checkpoints.
   - Verify: `just sweep-once` with `argus pull --dry-run` prints a batch, `just up` doesn't
     start the sweep, and a second `sweep-once` while one is running exits on the lock.
   - Files: `apps/argus/Dockerfile`, `apps/argus/infra/compose.yaml`, `apps/argus/infra/sweep/loop.sh`.
+  - Done: `citadel/sweep` runs as `bun` (uid 1000; root is refused). `loop.sh` clones what is
+    missing, runs `/sweep` under `.git/sweep.lock`, and pushes only when a `gh_token` secret exists.
+    Recipes `sweep-once [--dry-run]`, `sweep-on`, `sweep-off`; the preflight refuses a real tick
+    while the host's `/loop 15m /sweep` runs. Trial on a copy of the data: FE/BE cloned with the
+    API-token git username, `argus pull --dry-run` printed a batch and wrote nothing, the lock and
+    the refusal held, both MCP servers connect, Bitbucket REST 200. `GH_TOKEN` is still unset:
+    create a fine-grained token (contents: write on d0nwong/argus) before cutover.
 
 ## Phase 6: Release, CI, docs
 

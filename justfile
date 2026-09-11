@@ -64,7 +64,22 @@ serve app *args:
 setup-bb:
     apps/foundry/scripts/setup-bb.sh
 
-# Foundry web on this Mac, which pushes and opens PRs with your own git, gh and bb credentials.
-# Needs the stack's postgres (just up postgres mcp).
+# It pushes and opens PRs with your own git, gh and bb credentials, so it stays on the host.
+
+# Foundry web on this Mac (needs just up postgres mcp).
 foundry *args:
     DATABASE_URL="$(bun scripts/stack.ts url)" bun run --filter foundry-web dev "$@"
+
+# One sweep tick in the stack, the way the loop runs it; --dry-run only pulls and changes nothing.
+sweep-once *args:
+    bun scripts/stack.ts preflight-sweep "$@"
+    docker compose --env-file .env --profile sweep run --rm sweep once "$@"
+
+# Start the sweep loop in the stack (cutover: the host's loop has to be stopped first).
+sweep-on:
+    bun scripts/stack.ts preflight-sweep
+    docker compose --env-file .env --profile sweep up -d --wait sweep
+
+# Stop the sweep loop in the stack.
+sweep-off:
+    docker compose --env-file .env --profile sweep stop sweep

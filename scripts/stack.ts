@@ -6,6 +6,9 @@
  *                                    from another project holds the postgres volume
  *   bun scripts/stack.ts url         the DATABASE_URL for the stack's postgres
  *   bun scripts/stack.ts psql ...    a psql shell in it
+ *   bun scripts/stack.ts preflight-sweep [--dry-run]
+ *                                    before a sweep in the stack: refuses while the host's
+ *                                    /loop 15m /sweep runs (two writers), unless it is a dry run
  *
  * The recipes run from the repo root, so Bun has loaded the root .env into the environment
  * by the time this runs, and a variable set in the shell wins over it.
@@ -57,9 +60,25 @@ function preflight(e: Env = process.env): number {
   return 0;
 }
 
+/** A sweep in the stack while the host's loop runs is two writers on one data repo. */
+function preflightSweep(args: string[]): number {
+  if (!existsSync(join(ROOT, ".env"))) {
+    console.error("no .env at the repo root — just bootstrap creates it");
+    return 1;
+  }
+  if (args.includes("--dry-run")) return 0;
+  const host = Bun.spawnSync(["pgrep", "-f", "loop 15m /sweep"], { stdout: "pipe" }).stdout.toString().trim();
+  if (host) {
+    console.error(`the host's sweep loop is running (pid ${host.split("\n").join(", ")}); stop it first: two sweeps on one data repo write over each other`);
+    return 1;
+  }
+  return 0;
+}
+
 if (import.meta.main) {
   const [cmd, ...rest] = process.argv.slice(2);
   if (cmd === "preflight") process.exit(preflight());
+  if (cmd === "preflight-sweep") process.exit(preflightSweep(rest));
   if (cmd === "url") {
     console.log(databaseUrl());
     process.exit(0);
@@ -74,6 +93,6 @@ if (import.meta.main) {
     });
     process.exit(r.exitCode ?? 1);
   }
-  console.error("bun scripts/stack.ts preflight|url|psql");
+  console.error("bun scripts/stack.ts preflight|preflight-sweep|url|psql");
   process.exit(1);
 }

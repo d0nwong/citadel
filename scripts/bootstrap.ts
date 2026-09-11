@@ -224,6 +224,7 @@ const MINTED = [
   ["FOUNDRY_API_TOKEN", "the bearer Pensieve sends to Foundry's job API"],
 ] as const;
 const LATER = [
+  ["BITBUCKET_USERNAME", "the account behind BITBUCKET_TOKEN; the sweep reads pipelines with the pair"],
   ["BITBUCKET_TOKEN", "the sweep container fetches the product repos with it"],
   ["GH_TOKEN", "the sweep container pushes the data repo with it"],
 ] as const;

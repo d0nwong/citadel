@@ -39,3 +39,48 @@ services:
       timeout: 5s
       retries: 40
       start_period: 5s
+
+  sweep:
+    # argus's /sweep every SWEEP_INTERVAL seconds (infra/sweep/loop.sh). Behind a profile, so
+    # `just up` never starts a second writer; `just sweep-on` starts it, at cutover.
+    profiles: [sweep]
+    build:
+      context: ../../..
+      dockerfile: apps/argus/Dockerfile
+    image: citadel/sweep:local
+    environment:
+      ARGUS_ROOT: /argus-data
+      MCP_GATEWAY_URL: http://mcp:9090
+      FE_REPO: /home/bun/git/alden-portal-fe
+      BE_REPO: /home/bun/git/alden-connect-portal-be
+      # The model reads Slack and can see every variable here, so it is only what the sweep
+      # needs: Claude, Slack, and a read-only Bitbucket pair. The push token is a secret file.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      SLACK_TOKEN: ${SLACK_TOKEN:-}
+      BITBUCKET_USERNAME: ${BITBUCKET_USERNAME:-}
+      BITBUCKET_TOKEN: ${BITBUCKET_TOKEN:-}
+      BITBUCKET_GIT_USERNAME: ${BITBUCKET_GIT_USERNAME:-x-bitbucket-api-token-auth}
+      ARGUS_DATA_REPO: ${ARGUS_DATA_REPO:-https://github.com/d0nwong/argus.git}
+      SWEEP_INTERVAL: ${SWEEP_INTERVAL:-900}
+      SWEEP_MODEL: ${SWEEP_MODEL:-claude-sonnet-5}
+    secrets:
+      - mcp_gateway_token
+      - gh_token
+    volumes:
+      - ${ARGUS_DATA_DIR:-~/git/argus}:/argus-data
+      - sweep-product:/home/bun/git
+      - sweep-claude:/home/bun/.claude
+    depends_on:
+      mcp:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  sweep-product:
+  sweep-claude:
+
+secrets:
+  mcp_gateway_token:
+    environment: MCP_GATEWAY_TOKEN
+  gh_token:
+    environment: GH_TOKEN

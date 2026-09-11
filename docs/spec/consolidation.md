@@ -195,8 +195,10 @@ The old repos keep running until the stack has proven itself. Only one sweep may
 - **Arch docs, step 2:** they move into citadel next to the code they describe. When the sweep
   refreshes one, it opens a PR in citadel rather than pushing. In step 1 they stay in the data
   repo with the ledgers.
-- **Bitbucket from the container:** one read-only Bitbucket API token in `.env`
-  (`BITBUCKET_TOKEN`), used both to fetch the FE/BE repos over HTTPS and to read pipelines.
+- **Bitbucket from the container:** one read-only Atlassian API token and its account in `.env`
+  (`BITBUCKET_TOKEN`, `BITBUCKET_USERNAME`, the email), used both to fetch the FE/BE repos and to
+  read pipelines. REST authenticates as email:token, git as `x-bitbucket-api-token-auth`:token
+  (checked in T14).
 - **MCP in a container (checked 2026-09-11, T1):** in a fresh container `claude -p` refuses to
   run `.mcp.json`'s headersHelper ("this workspace has no persisted trust") and gets no Slack
   or Linear tools. Every image that runs Claude over the argus directory ships a
@@ -217,6 +219,13 @@ The old repos keep running until the stack has proven itself. Only one sweep may
 - **Foundry web stays on the host in step 1 (checkpoint B, 2026-09-11):** it runs `git push`
   and opens PRs with `gh` and `bb`, and its credentials are keychain-backed. `just foundry`
   runs it; containerizing it moves to the deploy work.
+
+- **The sweep in the stack (checked 2026-09-11, T14):** it runs as the image's `bun` user, since
+  Claude refuses `--dangerously-skip-permissions` as root. Its Bash commands see every variable in
+  its environment, and its model reads Slack, so it gets only Claude's token, the Slack token and
+  the read-only Bitbucket pair; the gateway and push tokens are secret files, and the push token
+  should be fine-grained to the data repo. The lock is `.git/sweep.lock` in the data repo, shared
+  by every container on it; `just sweep-once` and `just sweep-on` refuse while the host's loop runs.
 
 ## Open questions
 
