@@ -273,10 +273,12 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
           {row.title}
         </span>
         <FeatureName dir={row.dir} feature={row.feature} />
-        {sent || job ? (
-          <Tag tone="implemented">sent</Tag>
-        ) : send.configured ? (
-          !open && (
+        {(sent || job) && <Tag tone="implemented">sent</Tag>}
+      </div>
+      {job && <JobLine id={job.id} url={job.url} />}
+      {!(sent || job || open) && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {send.configured ? (
             <Button
               onClick={() => setOpen(true)}
               size="xs"
@@ -286,14 +288,13 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
               <SendIcon />
               Send
             </Button>
-          )
-        ) : (
-          <span className="text-muted-foreground text-xs" title={send.reason}>
-            Foundry is off
-          </span>
-        )}
-      </div>
-      {job && <JobLine id={job.id} url={job.url} />}
+          ) : (
+            <span className="text-muted-foreground text-xs" title={send.reason}>
+              Foundry is off
+            </span>
+          )}
+        </div>
+      )}
       {open && !job && (
         <form
           className="mt-2 flex flex-col gap-2"
