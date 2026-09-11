@@ -128,3 +128,21 @@ describe("click verbs through the CLI", () => {
     expect(r.err).toContain("not in the unplaced list");
   });
 });
+
+describe("patch and prompt", () => {
+  test("patch applies a fenced reader reply and reports the diff; a bad field is refused by path", async () => {
+    const f = join(ws, "patch.md");
+    writeFileSync(f, 'Here you go:\n```json\n{ "asks": { "update": [ { "id": "A-2", "status": "answered", "at": "2026-09-11", "evidence": [ { "kind": "slack", "url": "https://alden-studios.slack.com/archives/C07KG06L601/p1789300000000000" } ] } ] }, "notes": ["x"] }\n```\n');
+    const r = await argus("patch", "admin/invoicing", f, "--json");
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out).diff).toEqual(["A-2 asked → answered"]);
+    writeFileSync(f, '{ "asks": { "remove": ["A-2"] } }');
+    const bad = await argus("patch", "admin/invoicing", f);
+    expect(bad.code).toBe(1);
+    expect(bad.err).toContain("patch.asks.remove");
+  });
+  test("prompt attribute says when nothing is unplaced", async () => {
+    const r = await argus("prompt", "attribute");
+    expect(r.out.trim()).toBe("nothing unplaced");
+  });
+});

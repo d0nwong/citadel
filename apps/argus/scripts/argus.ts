@@ -16,8 +16,13 @@
 import { listFeatures, ledgerPath, root } from "./argus/paths.ts";
 import { validateDoc, validateLedger, ValidationError } from "./argus/validate.ts";
 import { archDocPath, isFeature } from "./argus/paths.ts";
+import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
+import { commitRun } from "./argus/commit.ts";
 import { draftFor } from "./argus/file.ts";
+import { applyPatch, parsePatch } from "./argus/patch.ts";
+import { attributePrompt, readerPrompt, sliceOf } from "./argus/reader.ts";
+import { readUnplaced } from "./argus/state.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
 import { seedFeature } from "./argus/seed.ts";
@@ -51,6 +56,10 @@ const USAGE = `argus — the ledger CLI
   argus pull [--since <date>] [--no-slack] [--no-landings] [--no-fetch] [--out <dir>]
   argus place <batch-id|path>        the deterministic joins → <batch>.placed.json + state/unplaced.json
   argus reconcile [<feature>...]     clear the landing and ticket blockers the facts allow (asks Bitbucket whether a landing deployed)
+  argus prompt attribute [<batch>]   the attribution step's prompt over state/unplaced.json
+  argus prompt reader <feature> <batch>   the reader's prompt for one feature's slice
+  argus patch <feature> <file>|-     apply a reader's patch to the ledger (validated whole)
+  argus commit [-m "<message>"]      stage ledgers, state and docs, commit, promote the cursor
 
   argus close <feature> <A-n> --reason "<why>"
   argus confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]
@@ -142,6 +151,46 @@ const verbs: Record<string, Verb> = {
     if (f.json) console.log(JSON.stringify({ ok: true, results: r.map((x) => ({ feature: x.feature, cleared: x.cleared, wrote: x.write?.wrote ?? false })) }));
     else if (!r.length) console.log("nothing to clear");
     else for (const x of r) console.log(`${x.feature}${f.dryRun ? " (dry run)" : ""}\n  ${x.cleared.join("\n  ")}`);
+    return 0;
+  },
+
+  async prompt(f) {
+    const [what, a, b] = f.rest;
+    if (what === "attribute") {
+      const batch = a ? await readBatch(a) : null;
+      const unplaced = await readUnplaced();
+      if (!unplaced.length) { console.log("nothing unplaced"); return 0; }
+      console.log(await attributePrompt(unplaced, await listFeatures(), batch));
+      return 0;
+    }
+    if (what === "reader" && a && b) {
+      const batch = await readBatch(b);
+      const placed = await Bun.file(placedPath(batch.id, b.endsWith(".json") ? b.replace(/[^/]+$/, "").replace(/\/$/, "") || undefined : undefined)).json();
+      const slice = sliceOf(placed, a);
+      if (!slice) { console.error(`${a}: nothing in ${batch.id}`); return 1; }
+      console.log(await readerPrompt(a, slice, batch.pulled_at.slice(0, 10)));
+      return 0;
+    }
+    throw new Usage("prompt attribute [<batch>] | prompt reader <feature> <batch>");
+  },
+
+  async patch(f) {
+    const [feature, src] = f.rest;
+    if (!feature || !src) throw new Usage("patch <feature> <file>|-");
+    const text = src === "-" ? await Bun.stdin.text() : await Bun.file(src).text();
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const patch = parsePatch(JSON.parse((fenced ? fenced[1] : text)!.trim()));
+    const current = await readLedger(feature);
+    if (!current) throw new Error(`${feature}: no ledger`);
+    const r = await writeLedger(feature, applyPatch(current, patch), { actor: f.actor, dryRun: f.dryRun });
+    if (patch.notes?.length && !f.json) console.log(`notes:\n  ${patch.notes.join("\n  ")}`);
+    return report(f, feature, r);
+  },
+
+  async commit(f) {
+    const r = await commitRun(f.opts.m ?? f.opts.message ?? "sweep", { dryRun: f.dryRun });
+    if (f.json) console.log(JSON.stringify({ ok: true, ...r }));
+    else console.log(r.committed ? `committed ${r.sha} (${r.files} files); cursor ${r.cursor}` : `nothing to commit (${r.files} staged); cursor ${r.cursor}`);
     return 0;
   },
 

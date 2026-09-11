@@ -14,6 +14,8 @@ import type { Batch, Slice } from "../scripts/argus/batch.ts";
 import { applyPatch, parsePatch } from "../scripts/argus/patch.ts";
 import { featureDirOf, loadManifest } from "../scripts/argus/manifest.ts";
 import { placeBatch } from "../scripts/argus/place.ts";
+import { archExcerpt, attributePrompt, ledgerForReader, readerPrompt, renderMessages, renderSlice } from "../scripts/argus/reader.ts";
+export { archExcerpt, ledgerForReader, renderMessages, renderSlice };
 import { listFeatures, ledgerPath, root } from "../scripts/argus/paths.ts";
 import type { Ledger } from "../scripts/argus/schema.ts";
 import { flatten, type Msg } from "../scripts/argus/slack-pull.ts";
@@ -58,23 +60,7 @@ export function extractJson(text: string): unknown {
 
 // ---------------------------------------------------------------- rendering
 
-export function renderMessages(messages: Msg[]): string {
-  return messages
-    .map((m) => {
-      const flags = [m.mentionsMe ? "→you" : "", m.bot ? "[bot]" : ""].filter(Boolean).join(" ");
-      const where = m.thread === m.ts ? "root" : `reply in ${m.thread}`;
-      const tail = [m.reactions && `reactions: ${m.reactions}`, ...m.files.map((f) => `file: ${f}`)].filter(Boolean).join("; ");
-      return `[${m.ts}] ${m.date} ${m.time} ${m.author}${flags ? ` ${flags}` : ""} (${where}) ${m.permalink}\n${m.text}${m.canvas ? `\n--- huddle notes ---\n${m.canvas}\n--- end ---` : ""}${tail ? `\n(${tail})` : ""}`;
-    })
-    .join("\n\n");
-}
 
-export function renderSlice(s: Slice): string {
-  const landings = s.landings
-    .map((l) => `[${l.ref}] ${l.date} ${l.by} ${l.url ?? ""}\n${l.title}${l.ticketKeys.length ? `\ntickets: ${l.ticketKeys.join(", ")}` : ""}\nsha ${l.sha}\nfiles: ${l.files.slice(0, 40).join(", ")}${l.files.length > 40 ? ` (+${l.files.length - 40})` : ""}${l.routes.length ? `\nroutes: ${l.routes.join(", ")}` : ""}`)
-    .join("\n\n");
-  return `## Messages (${s.messages.length})\n\n${renderMessages(s.messages) || "none"}\n\n## Landings (${s.landings.length})\n\n${landings || "none"}`;
-}
 
 // ---------------------------------------------------------------- days
 
@@ -91,33 +77,11 @@ export function splitByDay(b: Batch): Batch[] {
 
 // ---------------------------------------------------------------- the two steps
 
-async function summaries(features: string[]): Promise<string> {
-  const manifest = await loadManifest();
-  const byDir = new Map(manifest.features.map((f) => [featureDirOf(f), f]));
-  const out: string[] = [];
-  for (const f of features) {
-    const m = byDir.get(f);
-    const l = await readLedger(f);
-    const head = [m?.name, m?.entry_routes.length ? `routes ${m.entry_routes.slice(0, 3).join(" ")}` : "", m?.aliases.length ? `also called: ${m.aliases.slice(0, 8).join(", ")}` : ""].filter(Boolean).join("; ");
-    const asks = (l?.asks ?? []).filter((a) => a.status !== "closed" && a.status !== "dropped").map((a) => `    - open: ${a.text}`);
-    out.push(`- ${f}${head ? ` — ${head}` : ""}${l?.summary ? `\n    ${l.summary}` : ""}${asks.length ? `\n${asks.join("\n")}` : ""}`);
-  }
-  return out.join("\n");
-}
 
 export async function attribute(unplaced: Unplaced[], features: string[], day: string, calls: Call[], allMessages: Msg[]): Promise<Record<string, string[]>> {
   if (!unplaced.length) return {};
-  const skill = await Bun.file(join(REPO, "skills/sweep/attribute.md")).text();
-  const byId = new Map(allMessages.map((m) => [m.ts, m]));
-  const groups = new Map<string, string[]>();
-  for (const u of unplaced) {
-    const m = byId.get(u.id);
-    const key = m ? m.thread : u.id;
-    const text = m ? renderMessages([m]) : `[${u.id}] ${u.at} ${u.by} (landing)\n${u.text}`;
-    groups.set(key, [...(groups.get(key) ?? []), text]);
-  }
-  const items = [...groups.entries()].map(([root, texts]) => `### thread ${root}\n\n${texts.join("\n\n")}`);
-  const prompt = `${skill}\n\n# Features\n\n${await summaries(features)}\n\n# Unplaced (${unplaced.length} messages in ${groups.size} threads)\n\n${items.join("\n\n")}\n\nAnswer with the JSON object only, one entry per message id.`;
+  const batch: Batch = { id: day, pulled_at: `${day}T00:00:00Z`, since: { slack: null, fe: null, be: null }, slack: { since: "0", now: "", newTopLevel: allMessages, threads: [], noiseDropped: 0, expiredThreads: [], next: { last_ts: "0", watched_threads: {} } }, landings: [] };
+  const prompt = await attributePrompt(unplaced, features, batch);
   try {
     const r = await ask(ATTRIBUTE_MODEL, prompt, { label: `attribute ${day}` });
     const j = extractJson(r.text) as Record<string, { feature: string | string[] | null }>;
@@ -135,45 +99,18 @@ export async function attribute(unplaced: Unplaced[], features: string[], day: s
   }
 }
 
-/** the arch doc's mismatch and gap sections, capped */
-export function archExcerpt(arch: string, maxChars = 12000): string {
-  const out: string[] = [];
-  const lines = arch.split("\n");
-  let keep = false;
-  for (const l of lines) {
-    if (/^##\s/.test(l)) keep = /mismatch|gap|tech debt|failure/i.test(l);
-    if (keep) out.push(l);
-  }
-  const text = out.join("\n");
-  return text.length > maxChars ? `${text.slice(0, maxChars)}\n…` : text || "(the arch doc has no mismatch or gap section)";
-}
 
-/** the ledger as the reader sees it: no code pointers, no id counters, compact */
-export function ledgerForReader(l: Ledger): string {
-  const { ids: _ids, ...rest } = l;
-  const done = (a: Ledger["asks"][number]) => a.status === "closed" || a.status === "dropped";
-  return JSON.stringify({
-    ...rest,
-    requirements: l.requirements.map(({ code: _c, evidence: _e, ...r }) => (r.status === "retired" ? { id: r.id, status: r.status } : r)),
-    asks: l.asks.map((a) => (done(a) ? { id: a.id, text: a.text, status: a.status, origin: a.origin } : a)),
-    proposals: l.proposals.map(({ body: _b, ...p }) => p),
-  });
-}
 
 export const RAW_DIR = join(REPO, "evals/last-run");
 
 export async function read(feature: string, slice: Slice, day: string, calls: Call[]): Promise<{ ok: boolean; diff: string[]; note?: string; notes?: string[] }> {
-  const skill = await Bun.file(join(REPO, "skills/sweep/reader.md")).text();
-  const shapes = await Bun.file(join(REPO, "skills/sweep/shapes.md")).text();
   const before = await readLedger(feature);
   if (!before) return { ok: false, diff: [], note: "no ledger" };
   // code knows the landings; put them on the ledger first, the model only links them
   const fresh = slice.landings.filter((l) => !before.landings.some((x) => x.ref === l.ref)).map((l) => ({ at: l.at, repo: l.repo, ref: l.ref, number: l.number, sha: l.sha, title: l.title, by: l.by, url: l.url, asks: [], files: l.files }));
   if (fresh.length) await writeLedger(feature, applyPatch(before, { landings: { add: fresh } }), { actor: "model", now: new Date(`${day}T22:00:00Z`) });
   const ledger = (await readLedger(feature))!;
-  const archFile = Bun.file(join(root(), "alden/alden-portal/features", feature, "docs/arch.md"));
-  const arch = (await archFile.exists()) ? archExcerpt(await archFile.text()) : "(no arch doc)";
-  const base = `${skill}\n\n${shapes}\n\n# The feature: ${feature}\n\n# ledger.json as it stands (code pointers omitted)\n\n\`\`\`json\n${ledgerForReader(ledger)}\n\`\`\`\n\n# What is new (${day})\n\n${renderSlice(slice)}\n\n# From docs/arch.md\n\n${arch}\n\nToday is ${day}. Return the patch as one JSON object in a \`\`\`json fence, nothing else.`;
+  const base = await readerPrompt(feature, slice, day);
   let prompt = base;
   const stamp = `${day}-${feature.replace("/", "_")}`;
   for (let attempt = 0; attempt < 2; attempt++) {

@@ -21,20 +21,19 @@ On a schedule (`bun run sweep` is `/loop 15m /sweep`) or when asked. Never two a
 1. **Pull.** `argus pull`. Nothing new prints "nothing new"; stop there.
 2. **Place.** `argus place <batch>`. Code joins landings by files, replies by thread,
    messages by ticket key or PR. The rest goes to `state/unplaced.json`.
-3. **Attribute.** Read `state/unplaced.json` with `skills/sweep/attribute.md` and the
-   feature list (`argus show` for each feature's summary and open asks). For each message
-   you would bet on, `argus place <id> <feature>`. Leave the rest.
+3. **Attribute.** `argus prompt attribute <batch>` prints the unplaced messages with the
+   feature list; answer it yourself, then `argus place <id> <feature>` for each message
+   you would bet on. Leave the rest.
 4. **Read.** For each feature with a slice in `<batch>.placed.json`, one general-purpose
-   subagent with `model: "opus"`, prompt = `skills/sweep/reader.md` + `skills/sweep/shapes.md`
-   + `argus show <feature>` (code pointers dropped) + the slice rendered as messages and
-   landings + the arch doc's gap and mismatch sections. It returns a patch; apply it with
-   `argus write <feature> -` after `applyPatch`, or hand it back once with the refusal.
+   subagent with `model: "opus"` whose whole prompt is `argus prompt reader <feature>
+   <batch>`. Save its reply to a file and `argus patch <feature> <file>`. A refusal names
+   the path; hand it back to the subagent once with that text, then give up on it.
 5. **Reconcile.** `argus reconcile`. Landing blockers clear when Bitbucket says the
    merge deployed; ticket blockers when their asks closed.
 6. **Docs.** `accio stale`; for each listed feature, the `feature-docs` skill.
-7. **Validate and commit.** `argus validate`, then `argus commit`. A failing feature is
-   printed and left uncommitted; the rest commits. The cursor is promoted after the
-   commit, so a crashed run replays rather than skips.
+7. **Validate and commit.** `argus validate`, then `argus commit -m "<the first On-you
+   line, or: quiet run>"`. A failing feature is printed and left alone; the rest commits.
+   The cursor is promoted after the commit, so a crashed run replays rather than skips.
 
 ## Rules
 
