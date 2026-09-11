@@ -18,6 +18,7 @@ import {
   useCommit,
 } from "#/features/work/controls";
 import type {
+  DismissWrite,
   FileProposalResult,
   LedgerWrite,
   PlaceWrite,
@@ -25,6 +26,7 @@ import type {
 } from "#/lib/api";
 import {
   closeAsk,
+  dismissUnplaced,
   dropAsk,
   fileAsk,
   placeUnplaced,
@@ -322,6 +324,7 @@ function UnplacedRow({
 }) {
   const [dir, setDir] = useState("");
   const { busy, commit, error } = useCommit<PlaceWrite>();
+  const nothing = useCommit<DismissWrite>();
   const place = () =>
     commit(() => placeUnplaced({ data: { dir, id: item.id } }));
   const options = [...new Set([...item.candidates, ...features])];
@@ -370,6 +373,25 @@ function UnplacedRow({
         <Button disabled={busy || !dir} size="sm" type="submit">
           Place
         </Button>
+        <Button
+          disabled={nothing.busy}
+          onClick={() =>
+            nothing.commit(() => dismissUnplaced({ data: { id: item.id } }))
+          }
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <X />
+          Nothing
+        </Button>
+        <CommitError
+          v={
+            nothing.error?.ok === false
+              ? { error: nothing.error.error, ok: false }
+              : null
+          }
+        />
         <CommitError
           v={error?.ok === false ? { error: error.error, ok: false } : null}
         />

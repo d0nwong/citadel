@@ -752,3 +752,18 @@ export const listFeatureDirs = createServerFn({ method: "GET" }).handler(
     return (await l.listLedgers()).ledgers.map((x) => x.dir);
   }
 );
+
+export type DismissWrite =
+  | { ok: true; removed: number }
+  | { error: string; ok: false };
+
+/** Nothing: an unplaced message belongs to no feature. `argus dismiss <id>`; the thread is dropped from now on. */
+export const dismissUnplaced = createServerFn({ method: "POST" })
+  .validator((input: { id: string }) => ({ id: trimmed(input.id) }))
+  .handler(async ({ data }): Promise<DismissWrite> => {
+    const a = await import("#/server/argus");
+    const r = await a.argus<{ removed: number }>("dismiss", [data.id]);
+    return r.ok
+      ? { ok: true, removed: r.removed }
+      : { error: a.argusNote(r) ?? "argus refused", ok: false };
+  });
