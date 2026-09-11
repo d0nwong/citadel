@@ -59,6 +59,12 @@ Merged is not deployed.
 ### Tickets are proposed
 You write proposals with the ticket body in the house format; a person files them.
 
+### A live backend with no frontend on it is a ticket
+When a backend landing is on its branch and deployed, and the frontend work it needs has
+nobody on it (no landing, nobody in the thread saying they have it), propose an `[FE]`
+ticket for the user, naming the landing and the ask it serves. Waiting for someone to
+notice is how work went missing.
+
 ### Ids are permanent
 Never renumber, delete or reuse an id. Retire a requirement; drop an ask.
 
