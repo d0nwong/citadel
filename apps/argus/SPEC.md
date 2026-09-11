@@ -69,6 +69,10 @@ Three systems, unchanged in their split:
   `origin/dev`, never switched. Pinned by sha in every evidence pointer.
 - Linear via the MCP tools in a session (filing, editing) and the API key in Pensieve
   (filing from a proposal card).
+- A session's Linear and Slack MCP tools come through one local gateway (mcp-proxy on
+  :9090), `.mcp.json`'s `linear` and `slack`: the gateway holds the upstream keys and a
+  session presents `MCP_GATEWAY_TOKEN` from `.env`, via `scripts/mcp-headers.ts`.
+  `slack-pull` stays on the Web API.
 - Pensieve: TanStack Start, React 19, Tailwind 4, `@tanstack/ai-claude-code` for Ask, as
   today. It shells out to `bun scripts/argus.ts <verb>` in the argus checkout for every write.
 

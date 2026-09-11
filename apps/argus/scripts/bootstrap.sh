@@ -16,9 +16,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 SKILLS_DIR="$HOME/.claude/skills"
-# argus's env file — the checkout's own .env, seeded from .env.example. One key today,
-# SLACK_TOKEN; KEY=value lines, mode 600. Each tool keeps its own: Foundry's copy lives
-# in ~/.foundry/env, Pensieve's in its .env.
+# argus's env file — the checkout's own .env, seeded from .env.example; KEY=value lines,
+# mode 600. It holds the upstream keys (SLACK_TOKEN, LINEAR_API_KEY) once, for slack-pull
+# and for the MCP gateway (infra/), and the gateway token every Claude session presents.
 ENV_FILE="$ROOT/.env"
 ENV_EXAMPLE="$ROOT/.env.example"
 
@@ -102,6 +102,7 @@ cmd_prereqs() {
   tool bun    "accio, sync-skills, points, slack-pull — every script here"        "curl -fsSL https://bun.sh/install | bash"
   tool claude "the sweep is a Claude Code session (/loop 15m /sweep)"             "curl -fsSL https://claude.ai/install.sh | bash"
   tool gh     "office-hours and prototyping open PRs on github.com"              "brew install gh" opt
+  tool docker "the MCP gateway runs as a container (infra/compose.yaml)"         "" "" "install OrbStack: brew install orbstack"
 }
 
 # The sweep's landings scan, stale pass and feature-docs read the product checkouts
@@ -185,10 +186,10 @@ cmd_state() {
   ok "accio sync"
 }
 
-# SLACK_TOKEN is the one secret the loop needs, and .env is the one place it lives.
-# slack-pull reads it from the environment, which Bun fills from .env for every `bun …`
-# script — nothing is exported in the shell, so no other process, Claude sessions
-# included, inherits it. Never printed.
+# The upstream keys live in .env and nowhere else: slack-pull reads SLACK_TOKEN from the
+# environment, which Bun fills from .env for every `bun …` script, and the MCP gateway
+# gets both through compose's --env-file. Nothing is exported in the shell, so no other
+# process, Claude sessions included, inherits a key. Never printed.
 cmd_env() {
   info "env file"
   if [ -f "$ENV_FILE" ]; then
@@ -201,18 +202,53 @@ cmd_env() {
     chmod 600 "$ENV_FILE"
     ok "created $ENV_FILE ${c_dim}(from .env.example, mode 600)${c_0}"
   fi
-  if grep -Eq '^SLACK_TOKEN=.+' "$ENV_FILE"; then ok "SLACK_TOKEN set"; return 0; fi
-  warn "SLACK_TOKEN empty — slack-pull (and so the sweep's Slack intake) cannot reach the channel"
+  env_key SLACK_TOKEN "slack-pull (the sweep's Slack intake) and the gateway's Slack server cannot reach Slack" "the Slack user token, xoxp-…"
+  env_key LINEAR_API_KEY "the gateway's Linear server has no key" "a personal API key: linear.app → Settings → Security & access"
+}
+
+# One key: reported when set, else prompted for without echo (a terminal only).
+# $1 the key  $2 what breaks without it  $3 what to paste
+env_key() {
+  local k="$1"
+  if grep -Eq "^$k=.+" "$ENV_FILE"; then ok "$k set"; return 0; fi
+  warn "$k empty — $2"
   if [ "$CHECK" = 1 ] || [ ! -t 0 ]; then
-    say "  ${c_dim}./scripts/bootstrap.sh env${c_0}                    from a terminal, to be prompted"
-    say "  ${c_dim}foundry auth --slack${c_0}                          prints a token to paste, if Foundry is set up here"
+    say "  ${c_dim}./scripts/bootstrap.sh env${c_0}   from a terminal, to be prompted"
     FAIL=1; return 0
   fi
-  if confirm "enter the Slack user token (xoxp-…) now?"; then
-    local tok; read -rsp "  SLACK_TOKEN: " tok; echo >&2
-    [ -n "$tok" ] || { warn "empty — nothing written"; FAIL=1; return 0; }
-    write_env SLACK_TOKEN "$tok"; ok "stored SLACK_TOKEN in $ENV_FILE"
+  if confirm "enter $k ($3) now?"; then
+    local v; read -rsp "  $k: " v; echo >&2
+    [ -n "$v" ] || { warn "empty — nothing written"; FAIL=1; return 0; }
+    write_env "$k" "$v"; ok "stored $k in $ENV_FILE"
   else FAIL=1; fi
+}
+
+# The MCP gateway (infra/compose.yaml): mcp-proxy with the upstream keys, serving Slack's
+# and Linear's MCP servers on :9090 behind MCP_GATEWAY_TOKEN, minted here when absent.
+# It moved here from Foundry's infra/; while foundry-mcp still holds the port this phase
+# says so and stops, and never stops another project's container itself.
+cmd_mcp() {
+  info "mcp gateway"
+  local names; names="$(docker ps --format '{{.Names}}' 2>/dev/null || true)"
+  if printf '%s\n' "$names" | grep -qx argus-mcp && curl -fsS -m 3 "$MCP_URL/_readyz" >/dev/null 2>&1; then
+    ok "argus-mcp ready ${c_dim}($MCP_URL)${c_0}"; return 0
+  fi
+  if printf '%s\n' "$names" | grep -qx foundry-mcp; then
+    warn "foundry-mcp still serves :9090 — the gateway is argus's now: docker stop foundry-mcp, then ./scripts/bootstrap.sh mcp"
+    FAIL=1; return 0
+  fi
+  { have docker && docker info >/dev/null 2>&1; } || { warn "docker unreachable — start OrbStack"; FAIL=1; return 0; }
+  [ -f "$ENV_FILE" ] || { warn "$ENV_FILE missing — run the env phase first"; FAIL=1; return 0; }
+  grep -Eq '^(SLACK_TOKEN|LINEAR_API_KEY)=.+' "$ENV_FILE" || { warn "no SLACK_TOKEN or LINEAR_API_KEY in $ENV_FILE — nothing to serve"; FAIL=1; return 0; }
+  if [ "$CHECK" = 1 ]; then warn "argus-mcp not running — ./scripts/bootstrap.sh mcp"; FAIL=1; return 0; fi
+  if ! grep -Eq '^MCP_GATEWAY_TOKEN=.+' "$ENV_FILE"; then
+    have openssl || { warn "openssl missing — cannot mint MCP_GATEWAY_TOKEN"; FAIL=1; return 0; }
+    write_env MCP_GATEWAY_TOKEN "$(openssl rand -hex 24)"
+    ok "generated MCP_GATEWAY_TOKEN — Foundry's FOUNDRY_MCP_TOKEN must hold the same value"
+  fi
+  (cd "$ROOT/infra" && docker compose --env-file "$ENV_FILE" up -d --wait --wait-timeout 90) \
+    || { warn "docker compose up failed — docker logs argus-mcp"; FAIL=1; return 0; }
+  ok "argus-mcp ready ${c_dim}($MCP_URL)${c_0}"
 }
 
 # One key into .env, replacing an existing line for it — the same shape as Foundry's
@@ -223,32 +259,24 @@ write_env() {
   mv "$tmp" "$ENV_FILE"; chmod 600 "$ENV_FILE"
 }
 
-# Linear MCP state lives with the claude CLI, not in this repo. `claude mcp get linear`
-# runs a health check against .mcp.json's server; the phrasing it prints is advisory,
-# so anything other than a clear Connected / Needs authentication is reported as-is.
+# A session's Linear and Slack MCP servers (.mcp.json) are the local gateway's (mcp-proxy
+# on :9090, which holds the upstream keys); a session presents MCP_GATEWAY_TOKEN through
+# scripts/mcp-headers.ts. The gateway must be up, the token set, and each server must
+# answer `claude mcp get <name>` with Connected; its phrasing is advisory, so anything
+# else is reported as-is.
+MCP_URL="${MCP_GATEWAY_URL:-http://localhost:9090}"
 cmd_check() {
-  info "linear mcp"
+  info "mcp servers"
+  if curl -fsS -m 3 "$MCP_URL/_readyz" >/dev/null 2>&1; then ok "gateway ready ${c_dim}($MCP_URL)${c_0}"
+  else warn "no MCP gateway at $MCP_URL — ./scripts/bootstrap.sh mcp"; FAIL=1; return 0; fi
+  grep -Eq '^MCP_GATEWAY_TOKEN=.+' "$ENV_FILE" 2>/dev/null || { warn "MCP_GATEWAY_TOKEN empty in $ENV_FILE — the value of Foundry's FOUNDRY_MCP_TOKEN"; FAIL=1; return 0; }
   have claude || { warn "claude missing — run the prereqs phase first"; FAIL=1; return 0; }
-  local out
-  out="$(cd "$ROOT" && claude mcp get linear 2>&1 || true)"
-  if printf '%s' "$out" | grep -q "Connected"; then
-    ok "linear mcp authenticated ${c_dim}(claude mcp get linear)${c_0}"
-  elif printf '%s' "$out" | grep -qi "needs authentication"; then
-    warn "linear mcp not authenticated — the sweep's ticket pass and linear-ticket cannot write"
-    linear_steps; FAIL=1
-  elif printf '%s' "$out" | grep -qi "No MCP server found"; then
-    warn "no 'linear' server known to claude — .mcp.json should be picked up when a session starts in $ROOT"
-    linear_steps; FAIL=1
-  else
-    warn "could not tell — claude mcp get linear said:"; printf '%s\n' "$out" | sed 's/^/    /' >&2
-    linear_steps
-  fi
-}
-
-linear_steps() {
-  say "  1. ${c_dim}cd $ROOT && claude${c_0}      open a Claude session in this directory"
-  say "  2. ${c_dim}/mcp${c_0}                                 then choose ${c_bld}linear${c_0} → Authenticate"
-  say "  3. finish the browser login; rerun ${c_dim}./scripts/bootstrap.sh check${c_0}"
+  local s out
+  for s in linear slack; do
+    out="$(cd "$ROOT" && claude mcp get "$s" 2>&1 || true)"
+    if printf '%s' "$out" | grep -q "Connected"; then ok "$s mcp connected ${c_dim}(claude mcp get $s)${c_0}"
+    else warn "$s mcp not connected — claude mcp get $s said:"; printf '%s\n' "$out" | sed 's/^/    /' >&2; FAIL=1; fi
+  done
 }
 
 summary() {
@@ -269,6 +297,7 @@ cmd_all() {
   cmd_skills
   cmd_state
   cmd_env
+  cmd_mcp
   cmd_check
   summary
 }
@@ -289,11 +318,11 @@ bootstrap — take a brand-new Mac to a running sweep
     deps       bun install, when node_modules is missing or older than bun.lock
     skills     bun run sync-skills — every skills/<name>/ linked into ~/.claude/skills
     state      bun run accio sync, when .state/openapi.json is absent
-    env        the checkout's .env, created from .env.example; prompts for SLACK_TOKEN
-    check      is the Linear MCP server authenticated? prints the /mcp steps if not
+    env        the checkout's .env, created from .env.example; prompts for SLACK_TOKEN and LINEAR_API_KEY
+    mcp        the MCP gateway (infra/compose.yaml) on :9090; mints MCP_GATEWAY_TOKEN when absent
+    check      is the MCP gateway up, and are .mcp.json's linear and slack connected through it?
 
-Secrets stay yours: this script never prints a token, and the Linear login is a
-browser flow inside a Claude session that it can only point you at. So are the product
+Secrets stay yours: this script never prints a token. So are the product
 repos: nothing here knows a remote or clones one — the manifests say where a checkout
 should be, and you put it there.
 USAGE
@@ -319,6 +348,7 @@ case "${1:-}" in
   skills)   cmd_skills;  summary ;;
   state)    cmd_state;   summary ;;
   env)      cmd_env;     summary ;;
+  mcp)      cmd_mcp;     summary ;;
   check)    cmd_check;   summary ;;
   *) die "unknown command '$1' (bootstrap.sh --help)" ;;
 esac

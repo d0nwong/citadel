@@ -31,7 +31,9 @@ user's, and this skill only proposes.
    requirement and its evidence; for an ask, its history; for a day, the landings and the
    history entries dated that day.
 3. Only when the ledger cannot answer: the arch doc, `mcp__linear__get_issue` for a
-   ticket, `git -C <repo> show origin/<branch>:<path>` at the sha a code pointer names.
+   ticket, `git -C <repo> show origin/<branch>:<path>` at the sha a code pointer names,
+   `mcp__slack__slack_read_thread` for a Slack permalink (the channel id and the ts from
+   the link: `p1789096091998619` is `1789096091.998619`).
 4. Answer in the shape below. Then stop.
 
 ## Rules

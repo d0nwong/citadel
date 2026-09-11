@@ -81,7 +81,9 @@ bun link                      # `argus` and `accio` on PATH
 Both product checkouts must exist (`~/git/alden-portal-fe`, `~/git/alden-connect-portal-be`,
 or `FE_REPO` / `BE_REPO`); the run reads them at `origin/*` and never switches a branch.
 The deploy check reads the credentials `bb` keeps in `~/.bitbucket-rest-cli-config.json`
-(`BITBUCKET_CONFIG` to point elsewhere). Linear is the MCP server in `.mcp.json`.
+(`BITBUCKET_CONFIG` to point elsewhere). Linear and Slack are the MCP servers in `.mcp.json`, both behind the local MCP gateway
+(mcp-proxy on :9090, `infra/compose.yaml`, started by `./scripts/bootstrap.sh mcp`); a
+session presents `MCP_GATEWAY_TOKEN` from `.env`, and the gateway holds the keys.
 
 ## Running it
 
