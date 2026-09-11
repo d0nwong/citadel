@@ -116,6 +116,8 @@ export interface Landing {
   ref: string;
   repo: Repo;
   sha: string;
+  /** ticket keys the branch or title named; argus closes the ask a key serves once the landing is live */
+  tickets?: string[];
   title: string;
   url: string | null;
 }
