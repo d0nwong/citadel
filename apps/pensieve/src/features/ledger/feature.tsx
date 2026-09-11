@@ -131,37 +131,37 @@ function RequirementRow({ req, dir }: { req: Requirement; dir: string }) {
             {req.at ? `, ${req.at}` : ""}
           </span>
         )}
-        {req.status !== "retired" && !mode && (
-          <span className="ml-auto flex gap-1">
-            {req.status !== "confirmed" && (
-              <Button
-                onClick={() => setMode("confirm")}
-                size="xs"
-                type="button"
-                variant="ghost"
-              >
-                <ThumbsUp />
-                Confirm
-              </Button>
-            )}
-            {req.status !== "contradicted" && (
-              <Button
-                onClick={() => setMode("contradict")}
-                size="xs"
-                type="button"
-                variant="ghost"
-              >
-                <ThumbsDown />
-                Contradict
-              </Button>
-            )}
-          </span>
-        )}
       </div>
       <p className="mt-0.5 text-[15px] text-foreground leading-relaxed">
         {req.text}
       </p>
       <EvidenceLine evidence={req.evidence} />
+      {req.status !== "retired" && !mode && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {req.status !== "confirmed" && (
+            <Button
+              onClick={() => setMode("confirm")}
+              size="xs"
+              type="button"
+              variant="ghost"
+            >
+              <ThumbsUp />
+              Confirm
+            </Button>
+          )}
+          {req.status !== "contradicted" && (
+            <Button
+              onClick={() => setMode("contradict")}
+              size="xs"
+              type="button"
+              variant="ghost"
+            >
+              <ThumbsDown />
+              Contradict
+            </Button>
+          )}
+        </div>
+      )}
       {mode && (
         <form
           className="mt-2 flex flex-col gap-2"
@@ -375,8 +375,8 @@ function AskActions({
 }) {
   const ticket = useCommit<FileProposalResult>();
   return (
-    <span className="ml-auto flex flex-col items-end gap-1">
-      <span className="flex gap-1">
+    <span className="mt-2 flex flex-col items-start gap-1">
+      <span className="flex flex-wrap gap-1">
         {!filed && (
           <Button
             disabled={ticket.busy}
@@ -472,16 +472,6 @@ function AskRow({
             {ask.ready ? "unblocked" : "waiting"}
           </Tag>
         ) : null}
-        {isOpen(ask) && !mode && (
-          <AskActions
-            ask={ask}
-            dir={dir}
-            features={features}
-            filed={Boolean(key)}
-            onFiled={setFiled}
-            setMode={setMode}
-          />
-        )}
       </div>
       <p className="mt-0.5 text-[15px] text-foreground leading-relaxed">
         {ask.text}
@@ -533,6 +523,16 @@ function AskRow({
             </li>
           ))}
         </ol>
+      )}
+      {isOpen(ask) && !mode && (
+        <AskActions
+          ask={ask}
+          dir={dir}
+          features={features}
+          filed={Boolean(key)}
+          onFiled={setFiled}
+          setMode={setMode}
+        />
       )}
       {(mode === "close" || mode === "drop") && (
         <form

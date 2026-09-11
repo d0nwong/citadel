@@ -68,54 +68,6 @@ function AskRow({ ask, features }: { ask: HomeAsk; features: string[] }) {
         </span>
         <FeatureName dir={ask.dir} feature={ask.feature} />
         {key && <TicketLink ticket={key} />}
-        {!mode && (
-          <span className="ml-auto flex gap-1">
-            {!key && (
-              <Button
-                disabled={ticket.busy}
-                onClick={() =>
-                  ticket.commit(
-                    () => fileAsk({ data: { ask: ask.id, dir: ask.dir } }),
-                    (v) => setFiled({ key: v.key, url: v.url })
-                  )
-                }
-                size="xs"
-                type="button"
-                variant="outline"
-              >
-                <FilePlus2 />
-                {ticket.busy ? "Filing" : "Ticket"}
-              </Button>
-            )}
-            <Button
-              onClick={() => setMode("close")}
-              size="xs"
-              type="button"
-              variant="outline"
-            >
-              <Check />
-              Done
-            </Button>
-            <Button
-              onClick={() => setMode("drop")}
-              size="xs"
-              type="button"
-              variant="ghost"
-            >
-              <X />
-              Ignore
-            </Button>
-            <Button
-              onClick={() => setMode("move")}
-              size="xs"
-              type="button"
-              variant="ghost"
-            >
-              <ArrowRightLeft />
-              Move
-            </Button>
-          </span>
-        )}
       </div>
       <p className="mt-1 text-[15px] text-foreground leading-relaxed">
         {ask.text}
@@ -145,6 +97,54 @@ function AskRow({ ask, features }: { ask: HomeAsk; features: string[] }) {
             : null
         }
       />
+      {!mode && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {!key && (
+            <Button
+              disabled={ticket.busy}
+              onClick={() =>
+                ticket.commit(
+                  () => fileAsk({ data: { ask: ask.id, dir: ask.dir } }),
+                  (v) => setFiled({ key: v.key, url: v.url })
+                )
+              }
+              size="xs"
+              type="button"
+              variant="outline"
+            >
+              <FilePlus2 />
+              {ticket.busy ? "Filing" : "Ticket"}
+            </Button>
+          )}
+          <Button
+            onClick={() => setMode("close")}
+            size="xs"
+            type="button"
+            variant="outline"
+          >
+            <Check />
+            Done
+          </Button>
+          <Button
+            onClick={() => setMode("drop")}
+            size="xs"
+            type="button"
+            variant="ghost"
+          >
+            <X />
+            Ignore
+          </Button>
+          <Button
+            onClick={() => setMode("move")}
+            size="xs"
+            type="button"
+            variant="ghost"
+          >
+            <ArrowRightLeft />
+            Move
+          </Button>
+        </div>
+      )}
       {(mode === "close" || mode === "drop") && (
         <form
           className="mt-2 flex flex-col gap-2"
