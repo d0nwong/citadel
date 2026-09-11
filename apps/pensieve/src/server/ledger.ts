@@ -14,6 +14,7 @@ import {
   type Ask,
   type Ledger,
   onYou,
+  readyAsks,
   readyTickets,
   type Ticket,
   type Unplaced,
@@ -135,6 +136,8 @@ export interface Home {
   onYou: HomeAsk[];
   problems: LedgerProblem[];
   ready: HomeTicket[];
+  /** open asks whose wait is over */
+  readyAsks: HomeAsk[];
   unplaced: Unplaced[];
 }
 
@@ -146,11 +149,15 @@ export async function home(
   const { ledgers, problems } = await listLedgers(roots);
   const onYouAll: HomeAsk[] = [];
   const ready: HomeTicket[] = [];
+  const readyAsksAll: HomeAsk[] = [];
   const features: FeatureSummary[] = [];
   for (const { feature, dir, ledger } of ledgers) {
     const mine = onYou(ledger);
     for (const a of mine) {
       onYouAll.push({ ...a, dir, feature });
+    }
+    for (const a of readyAsks(ledger)) {
+      readyAsksAll.push({ ...a, dir, feature });
     }
     for (const t of readyTickets(ledger)) {
       ready.push({ ...t, dir, feature });
@@ -175,6 +182,7 @@ export async function home(
     onYou: onYouAll,
     problems,
     ready,
+    readyAsks: readyAsksAll,
     unplaced: await readUnplaced(unplacedFile),
   };
 }

@@ -112,16 +112,47 @@ export function NeedsMe({ asks }: { asks: HomeAsk[] }) {
   );
 }
 
-export function Ready({ tickets }: { tickets: HomeTicket[] }) {
-  if (tickets.length === 0) {
+export function Ready({
+  tickets,
+  asks,
+}: {
+  tickets: HomeTicket[];
+  asks: HomeAsk[];
+}) {
+  if (tickets.length === 0 && asks.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        No ticket of yours has every blocker cleared.
+        Nothing is waiting on a landing or an answer that has since arrived.
       </p>
     );
   }
   return (
     <ul>
+      {asks.map((a) => (
+        <li
+          className="flex flex-col gap-0.5 border-border border-b py-3 last:border-b-0"
+          key={`${a.feature}/${a.id}`}
+        >
+          <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <Tag tone="documented">unblocked</Tag>
+            <span className="text-muted-foreground text-xs">
+              {a.by}, {a.at}
+            </span>
+            <FeatureName dir={a.dir} feature={a.feature} />
+          </span>
+          <span className="text-[15px] text-foreground leading-relaxed">
+            {a.text}
+          </span>
+          {a.blockers?.map((b, i) => (
+            <span className="text-muted-foreground text-xs" key={i.toString()}>
+              {b.kind === "landing" &&
+                `${b.ref} is on ${b.branch} and deployed`}
+              {b.kind === "answer" && `${b.from} answered`}
+              {b.kind === "ticket" && `${b.key} is done`}
+            </span>
+          ))}
+        </li>
+      ))}
       {tickets.map((t) => (
         <li
           className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-border border-b py-3 last:border-b-0"

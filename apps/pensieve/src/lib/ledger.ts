@@ -66,10 +66,14 @@ export interface AskHistory {
 
 export interface Ask {
   at: string;
+  /** what the ask waits for; code clears a landing, a person answers an answer */
+  blockers?: Blocker[];
   by: string;
   history: AskHistory[];
   id: string;
   origin: AskOrigin;
+  /** derived by argus, present only with blockers: every one is cleared */
+  ready?: boolean;
   requirements?: string[];
   status: AskStatus;
   text: string;
@@ -161,6 +165,10 @@ export const onYou = (l: Ledger): Ask[] =>
     .sort((a, b) => a.at.localeCompare(b.at));
 
 /** tickets with nothing left to wait for */
+/** open asks whose every blocker cleared: the wait is over, somebody can pick it up */
+export const readyAsks = (l: Ledger): Ask[] =>
+  l.asks.filter((a) => isOpen(a) && a.ready === true);
+
 export const readyTickets = (l: Ledger): Ticket[] =>
   l.tickets.filter((t) => t.ready);
 

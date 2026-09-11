@@ -305,6 +305,11 @@ function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
           {ask.to ? ` → ${ask.to}` : ""} · {ask.at}
         </span>
         {ask.ticket && <span className="mono text-xs">{ask.ticket}</span>}
+        {ask.blockers?.length ? (
+          <Tag tone={ask.ready ? "documented" : "decided"}>
+            {ask.ready ? "unblocked" : "waiting"}
+          </Tag>
+        ) : null}
         {isOpen(ask) && !open && (
           <Button
             className="ml-auto"
@@ -330,6 +335,25 @@ function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
         >
           the thread
         </a>
+      )}
+      {ask.blockers && ask.blockers.length > 0 && (
+        <ul className="mt-1 ml-3 border-border border-l pl-3 text-xs">
+          {ask.blockers.map((b, i) => (
+            <li
+              className={
+                b.cleared
+                  ? "text-muted-foreground line-through"
+                  : "text-foreground"
+              }
+              key={i.toString()}
+            >
+              {b.kind === "landing" &&
+                `${b.ref || "a PR"} on ${b.branch}${b.deployed ? ", deployed" : ", not deployed"}`}
+              {b.kind === "answer" && `${b.from}: ${b.question}`}
+              {b.kind === "ticket" && `after ${b.key}`}
+            </li>
+          ))}
+        </ul>
       )}
       {ask.history.length > 0 && (
         <ol className="mt-1 ml-3 flex flex-col gap-0.5 border-border border-l pl-3 text-xs">

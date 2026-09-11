@@ -73,6 +73,7 @@ describe("home", () => {
       ["A-2", "admin/invoicing"],
     ]);
     expect(h.ready).toEqual([]);
+    expect(h.readyAsks).toEqual([]);
     expect(h.unplaced).toEqual([]);
     expect(
       h.features.map((f) => [f.dir, f.open, f.onYou, f.proposals])
@@ -101,8 +102,24 @@ describe("home", () => {
         url: "u",
       },
     ]);
+    l.asks[1].blockers = [
+      {
+        branch: "origin/dev",
+        cleared: {
+          at: "2026-09-11",
+          evidence: [{ kind: "pr", number: 771, repo: "be", url: "u" }],
+        },
+        deployed: true,
+        kind: "landing",
+        ref: "be#771",
+        repo: "be",
+      },
+    ];
+    l.asks[1].ready = true;
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
     const h = await home(roots, join(root, "state/unplaced.json"));
     expect(h.ready.map((t) => t.key)).toEqual(["ALD-41"]);
+    expect(h.readyAsks.map((a) => a.id)).toEqual(["A-2"]);
     expect(h.unplaced).toHaveLength(1);
     expect(await readUnplaced(join(root, "missing.json"))).toEqual([]);
   });
