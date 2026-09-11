@@ -120,9 +120,9 @@ schema.ts
 - [ ] Pensieve `bun test`, `typecheck`, `check` clean
 
 ### Phase 6: Tickets
-- [ ] Task 26: Proposals and `argus file` / `argus ticket`
-- [ ] Task 27: Blockers, the deploy check, ready
-- [ ] Task 28: `argus send` and the Send button
+- [x] Task 26: Proposals and `argus file` / `argus ticket`
+- [x] Task 27: Blockers, the deploy check, ready
+- [x] Task 28: `argus send` and the Send button
 
 ### Checkpoint: Stories 3 and 8
 - [ ] A proposal files to Linear and its key lands on the ledger

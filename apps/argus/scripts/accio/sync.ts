@@ -181,7 +181,8 @@ if (import.meta.main) {
     // newest rev we can honestly compare against: HEAD, or the doc's own stamp when the
     // checkout is older than the docs (two commits diff without a checkout)
     const newest = treeBehind ? (archSha ?? "HEAD") : "HEAD";
-    const coreDiff = productSha ? await gitDiffNames(feRoot, productSha, newest, f.core_files) : null;
+    const anchorSha = productSha ?? archSha;
+    const coreDiff = anchorSha ? await gitDiffNames(feRoot, anchorSha, newest, f.core_files) : null;
     const productAhead = !!archSha && !!productSha && archSha !== productSha
       && (await gitIsAncestor(feRoot, archSha, productSha)) === true;
     const decision = decideArchStamp({
@@ -203,7 +204,7 @@ if (import.meta.main) {
 
   const moved = [...byReason["core-changed"], ...byReason["spec-changed"]];
   console.log(
-    `stamps: ${byReason.aligned.length} arch docs follow their product tier` +
+    `stamps: ${byReason.aligned.length} arch docs kept their stamp` +
     (moved.length ? ` · ${moved.length} advanced to \`${feRev}\` (product tier now stale): ${moved.join(", ")}` : "") +
     (byReason.new.length ? ` · ${byReason.new.length} new` : "") +
     (byReason["no-product"].length ? ` · ${byReason["no-product"].length} without a product tier` : ""),

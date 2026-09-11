@@ -7,8 +7,6 @@
  * rewritten with no FE file touched), through the spec, and through decisions journaled
  * ahead of code — so this asks all of them, per feature, and says which fired:
  *
- *   tiers        product.md and arch.md stamps disagree — sync advanced the arch stamp
- *                because core files or owned endpoints changed (lib/stamps.ts)
  *   fe-core      core files differ between the product stamp and the FE ref
  *   be-handlers  `be_files` (manifest) differ between `last_verified_be` and the BE ref
  *
@@ -23,7 +21,7 @@ import {
 } from "./manifest.ts";
 import { readStamp, gitDiffNames } from "./stamps.ts";
 
-export type StaleReason = { kind: "tiers" | "fe-core" | "be-handlers"; detail: string };
+export type StaleReason = { kind: "fe-core" | "be-handlers"; detail: string };
 export type StaleReport = { id: string; dir: string; reasons: StaleReason[] };
 
 export async function computeStale(m: Manifest, opts: {
@@ -38,20 +36,16 @@ export async function computeStale(m: Manifest, opts: {
 
   for (const f of m.features) {
     const fdir = featureDir(f);
-    const product = await Bun.file(join(dir, fdir, "docs/product.md")).text().catch(() => null);
     const arch = await Bun.file(join(dir, fdir, "docs/arch.md")).text().catch(() => null);
-    const ps = readStamp(product);
-    if (!product || !ps) continue;                       // nothing verified yet — not stale, undocumented
+    const ps = readStamp(arch);
+    if (!arch || !ps) continue;                          // nothing verified yet — not stale, undocumented
     const reasons: StaleReason[] = [];
-
-    const as = readStamp(arch);
-    if (as && as.sha !== ps.sha) reasons.push({ kind: "tiers", detail: `product ${ps.rev} · arch ${as.rev}` });
 
     const fe = await gitDiffNames(feRepo, ps.sha, feRef, allCoreFiles(f));
     if (fe === null) reasons.push({ kind: "fe-core", detail: `could not diff ${ps.sha}..${feRef} (unknown sha?)` });
     else if (fe.length) reasons.push({ kind: "fe-core", detail: `${fe.length} core file${fe.length === 1 ? "" : "s"} changed ${ps.sha}..${feRef}` });
 
-    const bs = readStamp(product, "last_verified_be");
+    const bs = readStamp(arch, "last_verified_be");
     if (bs && f.be_files?.length) {
       const be = await gitDiffNames(beRepo, bs.sha, beRef, f.be_files);
       if (be === null) reasons.push({ kind: "be-handlers", detail: `could not diff ${bs.sha}..${beRef} (unknown sha? fetch first)` });
@@ -72,7 +66,7 @@ if (import.meta.main) {
   const reports = await computeStale(m, { feRef: opt("--fe-ref"), beRef: opt("--be-ref") });
   const stale = reports.filter(r => r.reasons.length);
   if (args.includes("--json")) { console.log(JSON.stringify(args.includes("--all") ? reports : stale, null, 2)); process.exit(0); }
-  if (!stale.length) { console.log(`stale: none (${reports.length} features with a product tier)`); process.exit(0); }
+  if (!stale.length) { console.log(`stale: none (${reports.length} features with an arch doc)`); process.exit(0); }
   console.log(`stale: ${stale.length} of ${reports.length} features\n`);
   for (const r of stale) {
     console.log(`  ${r.id}`);

@@ -83,7 +83,8 @@ const verbs: Record<string, Verb> = {
           problems.push({ feature, path: ledgerPath(feature), rule: `not JSON: ${(e as Error).message}` });
           continue;
         }
-        for (const p of validateLedger(raw)) problems.push({ feature, ...p });
+        // a standalone check reads the file as it is: user evidence on disk was a click, not a model write
+        for (const p of validateLedger(raw, { actor: "user" })) problems.push({ feature, ...p });
       }
       const arch = archDocPath(feature);
       if (await Bun.file(arch).exists()) for (const p of await validateDoc(arch)) problems.push({ feature, ...p });

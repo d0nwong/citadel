@@ -75,7 +75,14 @@ export function decideArchStamp(input: {
     input.treeBehind ? keep("tree-behind") : { ...input.current, reason };
 
   if (!input.existingArch) return { ...input.current, reason: "new" };
-  if (!product) return advance("no-product");
+  if (!product) {
+    // no product tier any more: the arch stamp is its own anchor and moves only when the
+    // feature's core files or owned endpoints changed since it was read
+    if (input.specChanged) return advance("spec-changed");
+    if (input.coreChangedSinceProduct === null) return keep("undecidable");
+    if (input.coreChangedSinceProduct) return advance("core-changed");
+    return keep("aligned");
+  }
   // A product run is a full re-read of the code at its rev; when that rev is newer than the
   // arch stamp, the arch tier can only follow — whatever HEAD or the spec says this sync.
   if (input.productAhead) return { rev: product.rev, date: product.date ?? input.current.date, reason: "aligned" };

@@ -145,25 +145,6 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     expect(problems).toEqual([]);
   });
 
-  test("audit flags doc tiers whose stamps disagree", async () => {
-    const { auditDocs } = await import("./accio/audit.ts");
-    const index = await Bun.file(`${ROOT}/.state/accio-index.json`).json();
-    const dir = `${ROOT}/.state/test-audit-tiers`;
-    const arch = (rev: string) => [
-      "---", "id: tasks", "tier: architecture", "aliases: []", "core_files:", "  - src/pages/tasks",
-      `last_verified: ${rev}`, "---", "# Tasks — Architecture", "## Component Map", "## Interfaces & Contracts", "",
-    ].join("\n");
-    const product = (rev: string) => ["---", "id: tasks", "tier: product", `last_verified: ${rev}`, "---", "# Tasks", ""].join("\n");
-    await Bun.write(`${dir}/tasks/docs/arch.md`, arch("staging@9249e1f48"));
-    await Bun.write(`${dir}/tasks/docs/product.md`, product("staging@7478faa06"));
-    let problems = await auditDocs(index, dir);
-    expect(problems.some(p => p.includes("tiers disagree") && p.includes("7478faa06") && p.includes("9249e1f48"))).toBe(true);
-    await Bun.write(`${dir}/tasks/docs/product.md`, product("staging@9249e1f48"));
-    problems = await auditDocs(index, dir);
-    expect(problems.some(p => p.includes("tiers disagree"))).toBe(false);
-    await Bun.$`rm -rf ${dir}`.quiet();
-  });
-
   test("arch stamp follows the product stamp unless the feature changed", async () => {
     const { decideArchStamp, readStamp, restamp, regionsOf } = await import("./accio/stamps.ts");
     const arch = "---\nid: x\nlast_verified: staging@9249e1f48\nlast_verified_date: 2026-09-01\n---\n# X\n<!-- accio:begin a -->\nrow\n<!-- accio:end a -->\n";
@@ -188,7 +169,9 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     // git could not answer → touch nothing
     expect(decide({ coreChangedSinceProduct: null })).toMatchObject({ rev: "staging@9249e1f48", reason: "undecidable" });
     expect(decide({ existingArch: null })).toMatchObject({ ...current, reason: "new" });
-    expect(decide({ product: null })).toMatchObject({ ...current, reason: "no-product" });
+    // no product tier: the arch stamp is its own anchor — kept when nothing moved, advanced when core files did
+    expect(decide({ product: null })).toMatchObject({ rev: "staging@9249e1f48", reason: "aligned" });
+    expect(decide({ product: null, coreChangedSinceProduct: true })).toMatchObject({ ...current, reason: "core-changed" });
     // restamp rewrites the two stamp lines and nothing else
     const re = restamp(arch, "staging@7478faa06", "2026-08-31");
     expect(readStamp(re)).toMatchObject({ rev: "staging@7478faa06", date: "2026-08-31" });

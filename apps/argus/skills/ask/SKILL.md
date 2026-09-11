@@ -74,7 +74,7 @@ paths. A person does something in every sentence.
 
 **Not checked** — one line, only when something was not read.
 
-**Sources:** — one footer line: `admin/invoicing ledger · R-12 · A-7 · arch.md · ALD-41`.
+**Sources:** — one footer line: `admin/invoicing ledger · R-12 · A-7 · arch.md · the ticket`.
 
 ## Red Flags
 

@@ -41,14 +41,6 @@ export async function auditDocs(index: AccioIndex, dir = FEATURES_DIR): Promise<
     const wantDir = relative(dir, path).replace(/\/docs\/arch\.md$/, "");
     if (wantDir !== f.dir) problems.push(`${name}: doc lives in \`${wantDir}\` but feature dir is \`${f.dir}\``);
 
-    // The two tiers describe one codebase. `accio sync` keeps the arch stamp on the product
-    // stamp unless the feature changed since the product tier was read — so a disagreement
-    // is a stale product doc, never a bookkeeping quirk (lib/stamps.ts).
-    const product = await Bun.file(join(dir, f.dir, "docs/product.md")).text().catch(() => null);
-    const ps = readStamp(product), as = readStamp(text);
-    if (ps && as && ps.sha !== as.sha)
-      problems.push(`${name}: tiers disagree — product.md verified at ${ps.rev}, arch.md at ${as.rev}; the feature changed since the product tier was read — run /feature-docs ${id}`);
-
     for (const c of f.core_files)
       if (!Object.keys(f.files).some(file => file === c || file.startsWith(c.replace(/\/$/, "") + "/")))
         problems.push(`${name}: core path \`${c}\` matches no analyzed file`);
