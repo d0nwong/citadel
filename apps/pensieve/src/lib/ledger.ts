@@ -164,13 +164,24 @@ export const onYou = (l: Ledger): Ask[] =>
     .filter((a) => isOpen(a) && a.to === "you")
     .sort((a, b) => a.at.localeCompare(b.at));
 
-/** tickets with nothing left to wait for */
 /** open asks whose every blocker cleared: the wait is over, somebody can pick it up */
 export const readyAsks = (l: Ledger): Ask[] =>
   l.asks.filter((a) => isOpen(a) && a.ready === true);
 
+/** every ask the ticket serves is closed or dropped: the work behind it is done */
+export const ticketDone = (l: Ledger, t: Ticket): boolean =>
+  t.asks.length > 0 &&
+  t.asks.every((id) => {
+    const a = l.asks.find((x) => x.id === id);
+    return a !== undefined && !isOpen(a);
+  });
+
+/**
+ * Tickets to pick up: nothing left to wait for, not yet sent to Foundry, and still wanted,
+ * meaning the ticket names no asks or at least one of them is open.
+ */
 export const readyTickets = (l: Ledger): Ticket[] =>
-  l.tickets.filter((t) => t.ready);
+  l.tickets.filter((t) => t.ready && !t.sent?.length && !ticketDone(l, t));
 
 /** `admin/invoicing` → `/features/alden/alden-portal/admin/invoicing` when the app is known */
 export const featureRoute = (app: string, dir: string) =>

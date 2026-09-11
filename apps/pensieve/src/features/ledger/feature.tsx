@@ -41,6 +41,7 @@ import {
   type Requirement,
   type StoryText,
   type Ticket,
+  ticketDone,
 } from "#/lib/ledger";
 import { EvidenceLine, Status } from "./bits";
 
@@ -622,7 +623,34 @@ export function Asks({
   );
 }
 
-export function Tickets({ tickets }: { tickets: Ticket[] }) {
+/** done once its asks are settled, sent once Foundry has it, else ready or blocked */
+function TicketState({
+  ledger,
+  ticket: t,
+}: {
+  ledger: Ledger;
+  ticket: Ticket;
+}) {
+  if (t.sent?.length) {
+    return <Tag tone="implemented">sent</Tag>;
+  }
+  if (ticketDone(ledger, t)) {
+    return <Tag tone="superseded">done</Tag>;
+  }
+  return (
+    <Tag tone={t.ready ? "documented" : "decided"}>
+      {t.ready ? "ready" : "blocked"}
+    </Tag>
+  );
+}
+
+export function Tickets({
+  tickets,
+  ledger,
+}: {
+  tickets: Ticket[];
+  ledger: Ledger;
+}) {
   if (tickets.length === 0) {
     return null;
   }
@@ -640,9 +668,7 @@ export function Tickets({ tickets }: { tickets: Ticket[] }) {
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="mono text-sm">{t.key}</span>
               <span className="text-foreground text-sm">{t.title}</span>
-              <Tag tone={t.ready ? "documented" : "decided"}>
-                {t.ready ? "ready" : "blocked"}
-              </Tag>
+              <TicketState ledger={ledger} ticket={t} />
             </div>
             {t.blockers.length > 0 && (
               <ul className="mt-1 ml-3 border-border border-l pl-3 text-xs">

@@ -74,7 +74,7 @@ function FeaturePage() {
       <div className="flex flex-col gap-10">
         <Story dir={dir} ledger={ledger} />
         <Asks dir={dir} features={features} ledger={ledger} />
-        <Tickets tickets={ledger.tickets} />
+        <Tickets ledger={ledger} tickets={ledger.tickets} />
         <Proposals dir={dir} proposals={ledger.proposals} />
         <Requirements dir={dir} ledger={ledger} />
         <Landings landings={ledger.landings} />

@@ -89,6 +89,8 @@ describe("home", () => {
       b.cleared = { at: "2026-09-11", evidence: [{ kind: "slack", url: "u" }] };
     }
     l.tickets[0].ready = true;
+    // the fixture's ALD-41 serves A-1, already closed; point it at the open ask so it is still wanted
+    l.tickets[0].asks = ["A-2"];
     await put(`${APP}/features/admin/invoicing/ledger.json`, l);
     await put("state/unplaced.json", [
       {
@@ -122,5 +124,30 @@ describe("home", () => {
     expect(h.readyAsks.map((a) => a.id)).toEqual(["A-2"]);
     expect(h.unplaced).toHaveLength(1);
     expect(await readUnplaced(join(root, "missing.json"))).toEqual([]);
+  });
+  test("a ticket leaves Ready once every ask it serves is settled, or once it was sent", async () => {
+    const l = await fixture();
+    for (const b of l.tickets[0].blockers) {
+      b.cleared = { at: "2026-09-11", evidence: [{ kind: "slack", url: "u" }] };
+    }
+    l.tickets[0].ready = true;
+    // ALD-41 serves A-1, which the fixture already has closed
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
+    let h = await home(roots, join(root, "state/unplaced.json"));
+    expect(h.ready).toEqual([]);
+    expect(h.features[0].ready).toBe(0);
+    // reopen A-1: the ticket is wanted again
+    l.asks[0].status = "asked";
+    l.asks[0].history = [];
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
+    h = await home(roots, join(root, "state/unplaced.json"));
+    expect(h.ready.map((t) => t.key)).toEqual(["ALD-41"]);
+    // sent: off the list whatever the asks say
+    l.tickets[0].sent = [
+      { at: "2026-09-11T10:00:00Z", job: "j", repo: "alden-portal-fe" },
+    ];
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
+    h = await home(roots, join(root, "state/unplaced.json"));
+    expect(h.ready).toEqual([]);
   });
 });

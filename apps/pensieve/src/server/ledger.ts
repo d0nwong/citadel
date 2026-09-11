@@ -172,7 +172,7 @@ export async function home(
         (a) => a.status !== "closed" && a.status !== "dropped"
       ).length,
       proposals: ledger.proposals.length,
-      ready: ledger.tickets.filter((t) => t.ready).length,
+      ready: readyTickets(ledger).length,
       summary: ledger.summary,
     });
   }
