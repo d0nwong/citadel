@@ -20,7 +20,7 @@ import {
 import { analyzeRepo } from "./analyze.ts";
 import { buildIndex, ATTR_DEPTH, type AccioIndex } from "./index-store.ts";
 import { renderArchDoc, readAliases, type DocMeta } from "./docs.ts";
-import { loadManifest, saveManifest, expand, archDocPath, STATE, FEATURES_DIR, MANIFEST_PATH, ROOT } from "./manifest.ts";
+import { loadManifest, saveManifest, expand, archDocPath, STATE, FEATURES_DIR, MANIFEST_PATH, DATA_ROOT } from "./manifest.ts";
 import { readStamp, restamp, decideArchStamp, gitDiffNames, gitIsAncestor, gitShortSha, type StampReason } from "./stamps.ts";
 import { auditDocs } from "./audit.ts";
 
@@ -38,7 +38,7 @@ const CHECK = has("--check");
 const ONLY = opt("--feature");
 
 const fail = (msg: string): never => { console.error(`error: ${msg}`); process.exit(1); };
-const rel = (p: string) => relative(ROOT, p);
+const rel = (p: string) => relative(DATA_ROOT, p);
 const today = () => new Date().toISOString().slice(0, 10);
 
 /** Which frontend revision the analysis ran against — branch-dependent, so always named. */

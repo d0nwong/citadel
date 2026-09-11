@@ -51,7 +51,7 @@ export async function loadBatches(): Promise<Batch[]> {
 /** thread root → feature dir, from every old work.json's keys.threads */
 async function workJsonThreads(): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  const base = join(ROOT, "alden/alden-portal/features");
+  const base = join(process.env.ARGUS_ROOT ?? ROOT, "alden/alden-portal/features");
   for await (const p of new Bun.Glob("**/work.json").scan({ cwd: base, absolute: true })) {
     const w = await Bun.file(p).json();
     const feature = p.slice(base.length + 1).replace(/\/work\.json$/, "");

@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { gatewayToken } from "./mcp-headers.ts";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { ENV_FILE, gatewayToken, resolveToken } from "./mcp-headers.ts";
 
 test("gatewayToken: the value, unquoted; blank or absent is none; the last line wins", () => {
   expect(gatewayToken("SLACK_TOKEN=x\nMCP_GATEWAY_TOKEN=abc\n")).toBe("abc");
@@ -7,4 +9,16 @@ test("gatewayToken: the value, unquoted; blank or absent is none; the last line 
   expect(gatewayToken("MCP_GATEWAY_TOKEN=\n")).toBeUndefined();
   expect(gatewayToken("SLACK_TOKEN=x")).toBeUndefined();
   expect(gatewayToken("MCP_GATEWAY_TOKEN=a\nMCP_GATEWAY_TOKEN=b")).toBe("b");
+});
+
+test("resolveToken: the environment wins, then the file; blank env falls through", () => {
+  expect(resolveToken({ MCP_GATEWAY_TOKEN: "env" }, "MCP_GATEWAY_TOKEN=file")).toBe("env");
+  expect(resolveToken({ MCP_GATEWAY_TOKEN: " " }, "MCP_GATEWAY_TOKEN=file")).toBe("file");
+  expect(resolveToken({}, undefined)).toBeUndefined();
+});
+
+test("ENV_FILE is the citadel root's .env", async () => {
+  const pkg = join(dirname(ENV_FILE), "package.json");
+  expect(existsSync(pkg)).toBe(true);
+  expect((await Bun.file(pkg).json()).name).toBe("citadel");
 });

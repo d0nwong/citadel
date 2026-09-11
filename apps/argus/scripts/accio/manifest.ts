@@ -12,10 +12,12 @@
 import { join } from "node:path";
 
 export const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
-export const APP_DIR = join(ROOT, "alden/alden-portal");
+/** where argus's data lives: ARGUS_ROOT, else this checkout (the layout before code and data split) */
+export const DATA_ROOT = process.env.ARGUS_ROOT ?? ROOT;
+export const APP_DIR = join(DATA_ROOT, "alden/alden-portal");
 export const MANIFEST_PATH = join(APP_DIR, ".doc-workspace/feature-manifest.json");
 export const FEATURES_DIR = join(APP_DIR, "features");
-export const STATE = join(ROOT, ".state");
+export const STATE = join(DATA_ROOT, ".state");
 export const DEFAULT_FE_REPO = "~/git/alden-portal-fe";
 export const DEFAULT_BE_REPO = "~/git/alden-connect-portal-be";
 export const expand = (p: string) => p.replace(/^~/, process.env.HOME ?? "~");

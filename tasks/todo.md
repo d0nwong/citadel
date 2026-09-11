@@ -57,13 +57,17 @@ See `tasks/plan.md` for the order and the checkpoints.
 
 ## Phase 3: Seams
 
-- [ ] **T6: Make all of argus honor `ARGUS_ROOT`.** (S)
+- [x] **T6: Make all of argus honor `ARGUS_ROOT`.** (S)
   - Acceptance: `accio` (`manifest.ts`, `find.ts`) resolves data from `ARGUS_ROOT`, and
     `mcp-headers.ts` reads the repo-root `.env`.
   - Verify: the 11 data-reading argus tests pass with `ARGUS_ROOT=~/git/argus`, new tests in
     `scripts/argus/paths.test.ts` and `scripts/accio.test.ts` pass, and
     `ARGUS_ROOT=~/git/argus bun run accio stale` matches running it from the old checkout.
   - Files: `apps/argus/scripts/accio/manifest.ts`, `find.ts`, `mcp-headers.ts`, the tests.
+  - Done: accio's `DATA_ROOT` (ARGUS_ROOT, else the checkout) feeds the app, manifest, features
+    and `.state`; `ROOT` stays the code root. evals read features from it too. The data tests
+    skip without data (135 pass, 13 skip) and all 148 pass with `ARGUS_ROOT=~/git/argus`.
+    `mcp-headers.ts` prefers `MCP_GATEWAY_TOKEN` from the environment, then the root `.env`.
 - [ ] **T7: Split code from data in Pensieve.** (M)
   - Acceptance: `WORKSPACE_DIR` is the data, a new `ARGUS_DIR` (default `../argus`) is the code,
     verbs are spawned as `bun $ARGUS_DIR/scripts/argus.ts` with `ARGUS_ROOT=$WORKSPACE_DIR`, and

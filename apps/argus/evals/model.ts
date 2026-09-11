@@ -25,6 +25,8 @@ import { ValidationError } from "../scripts/argus/validate.ts";
 import { readLedger, writeLedger } from "../scripts/argus/write.ts";
 
 const REPO = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+/** the features and manifest the run copies: ARGUS_ROOT, else this checkout */
+const DATA = process.env.ARGUS_ROOT ?? REPO;
 export const ATTRIBUTE_MODEL = "claude-sonnet-5";
 export const READER_MODEL = "claude-opus-5";
 
@@ -160,10 +162,10 @@ export async function runModel(batches: Batch[], opts: { features: string[]; day
       const l = (await Bun.file(src).json()) as Ledger;
       await Bun.write(join(ws, "alden/alden-portal/features", f, "ledger.json"), JSON.stringify({ ...l, as_of: "2026-01-01T00:00:00.000Z" }, null, 2));
     }
-    const arch = join(REPO, "alden/alden-portal/features", f, "docs/arch.md");
+    const arch = join(DATA, "alden/alden-portal/features", f, "docs/arch.md");
     if (await Bun.file(arch).exists()) cpSync(arch, join(ws, "alden/alden-portal/features", f, "docs/arch.md"));
   }
-  cpSync(join(REPO, "alden/alden-portal/.doc-workspace"), join(ws, "alden/alden-portal/.doc-workspace"), { recursive: true });
+  cpSync(join(DATA, "alden/alden-portal/.doc-workspace"), join(ws, "alden/alden-portal/.doc-workspace"), { recursive: true });
   const prevRoot = process.env.ARGUS_ROOT;
   process.env.ARGUS_ROOT = ws;
   try {

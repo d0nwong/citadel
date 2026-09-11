@@ -7,15 +7,22 @@
  *
  * Unit cases cover the measured invariants: orval naming, spec extraction, diffing.
  *
- *   bun test scripts/accio.test.ts        (needs .state/accio-index.json — run sync first)
+ *   bun test scripts/accio.test.ts        (tests that read argus's data need ARGUS_ROOT; they skip without it)
  */
 
 import { test, expect, describe } from "bun:test";
 import { $ } from "bun";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { orvalName, extractSwaggerDoc, flatten, indexOps, fingerprintOf, diffSpec, normPath } from "./accio/spec.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+/** argus's data (OpenAPI cache, accio index, arch docs) lives where ARGUS_ROOT points */
+const DATA = process.env.ARGUS_ROOT ?? ROOT;
+const HAS_SPEC = existsSync(`${DATA}/.state/openapi.json`);
+const HAS_INDEX = existsSync(`${DATA}/.state/accio-index.json`);
+const HAS_DOCS = existsSync(`${DATA}/alden/alden-portal/features`);
 const accio = async (...args: string[]) =>
   (await $`bun ${ROOT}/scripts/accio.ts ${args}`.nothrow().text());
 
@@ -30,8 +37,8 @@ describe("orval naming (pure function of method+path — measured 0/469 underiva
   for (const [m, p, want] of cases)
     test(`${m} ${p} → ${want}`, () => expect(orvalName(m, p)).toBe(want));
 
-  test("every spec op derives a unique name", async () => {
-    const doc = await Bun.file(`${ROOT}/.state/openapi.json`).json();
+  test.skipIf(!HAS_SPEC)("every spec op derives a unique name", async () => {
+    const doc = await Bun.file(`${DATA}/.state/openapi.json`).json();
     const ops = flatten(doc);
     const idx = indexOps(doc, ops);
     expect(idx.byName.size).toBe(ops.length);
@@ -49,15 +56,15 @@ describe("swagger-ui extraction", () => {
 });
 
 describe("spec diffing", () => {
-  test("fingerprint changes when a body field changes, not when description prose does", async () => {
-    const doc = await Bun.file(`${ROOT}/.state/openapi.json`).json();
+  test.skipIf(!HAS_SPEC)("fingerprint changes when a body field changes, not when description prose does", async () => {
+    const doc = await Bun.file(`${DATA}/.state/openapi.json`).json();
     const op = flatten(doc).find(o => o.body.length)!;
     const fp = fingerprintOf(op);
     expect(fingerprintOf({ ...op, description: op.description + " reworded" })).toBe(fp);
     expect(fingerprintOf({ ...op, body: [...op.body.slice(1)] })).not.toBe(fp);
   });
-  test("added/removed/changed partition", async () => {
-    const doc = await Bun.file(`${ROOT}/.state/openapi.json`).json();
+  test.skipIf(!HAS_SPEC)("added/removed/changed partition", async () => {
+    const doc = await Bun.file(`${DATA}/.state/openapi.json`).json();
     const ops = flatten(doc).slice(0, 3);
     const prev = Object.fromEntries(ops.map(o => [o.key, fingerprintOf(o)]));
     prev["GET /api/v1/ghost"] = "dead";
@@ -74,7 +81,7 @@ describe("spec diffing", () => {
 
 // ---------------------------------------------------------------- lookup: real questions
 
-describe("component lookup (derived layers — no curation yet)", () => {
+describe.skipIf(!HAS_INDEX)("component lookup (derived layers — no curation yet)", () => {
   test('"status select" ranks the status-select code first and names the endpoint', async () => {
     const out = await accio("status select");
     const firstHeading = out.split("\n").find(l => l.startsWith("## "));
@@ -101,7 +108,7 @@ describe("component lookup (derived layers — no curation yet)", () => {
   });
 });
 
-describe("reverse lookup", () => {
+describe.skipIf(!HAS_INDEX)("reverse lookup", () => {
   test("endpoint → which feature calls it", async () => {
     const out = await accio("tasks/{taskId}/status", "--endpoints");
     expect(out).toContain("PUT /api/v1/tasks/{taskId}/status/{status}");
@@ -109,7 +116,7 @@ describe("reverse lookup", () => {
   });
 });
 
-describe("scoping", () => {
+describe.skipIf(!HAS_INDEX)("scoping", () => {
   test("--in restricts to one feature", async () => {
     const out = await accio("subtask", "--in", "tasks");
     expect(out).not.toContain("admin-invoicings");
@@ -122,8 +129,8 @@ describe("scoping", () => {
 });
 
 describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
-  test("every arch doc has frontmatter routing keys and the required headings", async () => {
-    const dir = `${ROOT}/alden/alden-portal/features`;
+  test.skipIf(!HAS_DOCS)("every arch doc has frontmatter routing keys and the required headings", async () => {
+    const dir = `${DATA}/alden/alden-portal/features`;
     let n = 0;
     for await (const f of new Bun.Glob("**/docs/arch.md").scan({ cwd: dir, absolute: true })) {
       const text = await Bun.file(f).text();
@@ -137,7 +144,7 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     expect(n).toBeGreaterThan(10);
   });
 
-  test("audit is clean on freshly generated docs", async () => {
+  test.skipIf(!HAS_INDEX)("audit is clean on freshly generated docs", async () => {
     const out = await $`bun ${ROOT}/scripts/accio.ts audit`.nothrow().quiet();
     // "tiers disagree" is repo state (a product tier the sweep has not re-run yet), not a
     // code defect — it is asserted by its own test below and worked off by /sweep
@@ -179,10 +186,10 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
     expect(re.split("\n").slice(4)).toEqual(arch.split("\n").slice(4));
   });
 
-  test("audit catches prose drift: endpoints not in spec, or not called by the feature", async () => {
+  test.skipIf(!HAS_INDEX)("audit catches prose drift: endpoints not in spec, or not called by the feature", async () => {
     const { auditDocs } = await import("./accio/audit.ts");
-    const index = await Bun.file(`${ROOT}/.state/accio-index.json`).json();
-    const dir = `${ROOT}/.state/test-audit-docs`;
+    const index = await Bun.file(`${DATA}/.state/accio-index.json`).json();
+    const dir = mkdtempSync(join(tmpdir(), "accio-audit-"));
     await Bun.write(`${dir}/tasks/docs/arch.md`, [
       "---", "id: tasks", "tier: architecture", "aliases: []", "core_files:",
       "  - src/pages/tasks", "last_verified: x", "---",
@@ -197,3 +204,14 @@ describe("docs conformance (DOC-PROTOCOL retrieval contract)", () => {
   });
 });
 
+
+describe("data root", () => {
+  test("ARGUS_ROOT moves every data path and leaves the code root", async () => {
+    const js = 'import * as m from "./scripts/accio/manifest.ts"; console.log(JSON.stringify([m.ROOT, m.DATA_ROOT, m.APP_DIR, m.STATE, m.FEATURES_DIR]))';
+    const [root, data, app, state, features] = JSON.parse(
+      await $`bun -e ${js}`.cwd(ROOT).env({ ...process.env, ARGUS_ROOT: "/tmp/argus-data" }).text());
+    expect(root).toBe(ROOT);
+    expect(data).toBe("/tmp/argus-data");
+    expect([app, state, features]).toEqual(["/tmp/argus-data/alden/alden-portal", "/tmp/argus-data/.state", "/tmp/argus-data/alden/alden-portal/features"]);
+  });
+});
