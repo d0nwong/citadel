@@ -5,7 +5,14 @@
  * requirement and Close on an ask each run one argus verb; the reload is the record's.
  */
 
-import { Check, FilePlus2, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Check,
+  FilePlus2,
+  ThumbsDown,
+  ThumbsUp,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { Tag } from "#/components/bits";
 import { Button } from "#/components/ui/button";
@@ -15,7 +22,7 @@ import {
   FIELD_CLASS,
   useCommit,
 } from "#/features/work/controls";
-import type { FileProposalResult, LedgerWrite } from "#/lib/api";
+import type { FileProposalResult, LedgerWrite, MoveWrite } from "#/lib/api";
 import {
   closeAsk,
   confirmAll,
@@ -23,6 +30,7 @@ import {
   dropAsk,
   fileAsk,
   fileProposal,
+  moveAsk,
 } from "#/lib/api";
 import {
   type Ask,
@@ -298,11 +306,146 @@ export function Requirements({ ledger, dir }: { ledger: Ledger; dir: string }) {
   );
 }
 
-function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
-  const [mode, setMode] = useState<"close" | "drop" | null>(null);
+function MoveForm({
+  ask,
+  dir,
+  features,
+  onDone,
+}: {
+  ask: Ask;
+  dir: string;
+  features: string[];
+  onDone: () => void;
+}) {
+  const [to, setTo] = useState("");
+  const move = useCommit<MoveWrite>();
+  return (
+    <form
+      className="mt-2 flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        move.commit(() => moveAsk({ data: { ask: ask.id, dir, to } }), onDone);
+      }}
+    >
+      <select
+        className={FIELD_CLASS}
+        id={`move-${dir}-${ask.id}`}
+        onChange={(e) => setTo(e.target.value)}
+        value={to}
+      >
+        <option value="">Which feature?</option>
+        {features
+          .filter((f) => f !== dir)
+          .map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+      </select>
+      <Confirm busy={move.busy} label="Move it" onCancel={onDone} />
+      <CommitError
+        v={
+          move.error?.ok === false
+            ? { error: move.error.error, ok: false }
+            : null
+        }
+      />
+    </form>
+  );
+}
+
+type AskMode = "close" | "drop" | "move";
+
+/** the buttons on an open ask: Ticket files it, Done and Ignore settle it, Move re-homes it */
+function AskActions({
+  ask,
+  dir,
+  features,
+  filed,
+  onFiled,
+  setMode,
+}: {
+  ask: Ask;
+  dir: string;
+  features: string[];
+  filed: boolean;
+  onFiled: (v: { key: string; url: string }) => void;
+  setMode: (m: AskMode) => void;
+}) {
+  const ticket = useCommit<FileProposalResult>();
+  return (
+    <span className="ml-auto flex flex-col items-end gap-1">
+      <span className="flex gap-1">
+        {!filed && (
+          <Button
+            disabled={ticket.busy}
+            onClick={() =>
+              ticket.commit(
+                () => fileAsk({ data: { ask: ask.id, dir } }),
+                (v) => onFiled({ key: v.key, url: v.url })
+              )
+            }
+            size="xs"
+            type="button"
+            variant="outline"
+          >
+            <FilePlus2 />
+            {ticket.busy ? "Filing" : "Ticket"}
+          </Button>
+        )}
+        <Button
+          onClick={() => setMode("close")}
+          size="xs"
+          type="button"
+          variant="outline"
+        >
+          <Check />
+          Done
+        </Button>
+        <Button
+          onClick={() => setMode("drop")}
+          size="xs"
+          type="button"
+          variant="ghost"
+        >
+          <X />
+          Ignore
+        </Button>
+        {features.length > 0 && (
+          <Button
+            onClick={() => setMode("move")}
+            size="xs"
+            type="button"
+            variant="ghost"
+          >
+            <ArrowRightLeft />
+            Move
+          </Button>
+        )}
+      </span>
+      <CommitError
+        v={
+          ticket.error?.ok === false
+            ? { error: ticket.error.error, ok: false }
+            : null
+        }
+      />
+    </span>
+  );
+}
+
+function AskRow({
+  ask,
+  dir,
+  features = [],
+}: {
+  ask: Ask;
+  dir: string;
+  features?: string[];
+}) {
+  const [mode, setMode] = useState<AskMode | null>(null);
   const [reason, setReason] = useState("");
   const { busy, commit, error } = useCommit<LedgerWrite>();
-  const ticket = useCommit<FileProposalResult>();
   const [filed, setFiled] = useState<{ key: string; url: string } | null>(null);
   const settle = () =>
     commit(
@@ -341,48 +484,27 @@ function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
           </Tag>
         ) : null}
         {isOpen(ask) && !mode && (
-          <span className="ml-auto flex gap-1">
-            {!key && (
-              <Button
-                disabled={ticket.busy}
-                onClick={() =>
-                  ticket.commit(
-                    () => fileAsk({ data: { ask: ask.id, dir } }),
-                    (v) => setFiled({ key: v.key, url: v.url })
-                  )
-                }
-                size="xs"
-                type="button"
-                variant="outline"
-              >
-                <FilePlus2 />
-                {ticket.busy ? "Filing" : "Ticket"}
-              </Button>
-            )}
-            <Button
-              onClick={() => setMode("close")}
-              size="xs"
-              type="button"
-              variant="outline"
-            >
-              <Check />
-              Done
-            </Button>
-            <Button
-              onClick={() => setMode("drop")}
-              size="xs"
-              type="button"
-              variant="ghost"
-            >
-              <X />
-              Ignore
-            </Button>
-          </span>
+          <AskActions
+            ask={ask}
+            dir={dir}
+            features={features}
+            filed={Boolean(key)}
+            onFiled={setFiled}
+            setMode={setMode}
+          />
         )}
       </div>
       <p className="mt-0.5 text-[15px] text-foreground leading-relaxed">
         {ask.text}
       </p>
+      {mode === "move" && (
+        <MoveForm
+          ask={ask}
+          dir={dir}
+          features={features}
+          onDone={() => setMode(null)}
+        />
+      )}
       {ask.origin.kind !== "ticket" && (
         <a
           className="text-muted-foreground text-xs underline decoration-1 underline-offset-2 hover:text-foreground"
@@ -393,13 +515,6 @@ function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
           the thread
         </a>
       )}
-      <CommitError
-        v={
-          ticket.error?.ok === false
-            ? { error: ticket.error.error, ok: false }
-            : null
-        }
-      />
       {ask.blockers && ask.blockers.length > 0 && (
         <ul className="mt-1 ml-3 border-border border-l pl-3 text-xs">
           {ask.blockers.map((b, i) => (
@@ -430,7 +545,7 @@ function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
           ))}
         </ol>
       )}
-      {mode && (
+      {(mode === "close" || mode === "drop") && (
         <form
           className="mt-2 flex flex-col gap-2"
           onSubmit={(e) => {
@@ -464,7 +579,15 @@ function AskRow({ ask, dir }: { ask: Ask; dir: string }) {
   );
 }
 
-export function Asks({ ledger, dir }: { ledger: Ledger; dir: string }) {
+export function Asks({
+  ledger,
+  dir,
+  features = [],
+}: {
+  ledger: Ledger;
+  dir: string;
+  features?: string[];
+}) {
   const open = ledger.asks.filter(isOpen);
   const done = ledger.asks.filter((a) => !isOpen(a));
   return (
@@ -480,7 +603,7 @@ export function Asks({ ledger, dir }: { ledger: Ledger; dir: string }) {
       )}
       <ul>
         {open.map((a) => (
-          <AskRow ask={a} dir={dir} key={a.id} />
+          <AskRow ask={a} dir={dir} features={features} key={a.id} />
         ))}
       </ul>
       {done.length > 0 && (

@@ -720,3 +720,35 @@ export const fileAsk = createServerFn({ method: "POST" })
       url: made.url,
     };
   });
+
+export type MoveWrite = { ok: true; id: string } | { error: string; ok: false };
+
+/** Move: an ask to another feature. `argus move <dir> <A-n> <to>`; its thread follows. */
+export const moveAsk = createServerFn({ method: "POST" })
+  .validator((input: { dir: string; ask: string; to: string }) => ({
+    ask: trimmed(input.ask),
+    dir: trimmed(input.dir),
+    to: trimmed(input.to),
+  }))
+  .handler(async ({ data }): Promise<MoveWrite> => {
+    if (!data.to || data.to === data.dir) {
+      return { error: "Pick another feature.", ok: false };
+    }
+    const a = await import("#/server/argus");
+    const r = await a.argus<{ id: string }>("move", [
+      data.dir,
+      data.ask,
+      data.to,
+    ]);
+    return r.ok
+      ? { id: r.id, ok: true }
+      : { error: a.argusNote(r) ?? "argus refused", ok: false };
+  });
+
+/** Every feature directory with a ledger, for a Move picker. */
+export const listFeatureDirs = createServerFn({ method: "GET" }).handler(
+  async (): Promise<string[]> => {
+    const l = await import("#/server/ledger");
+    return (await l.listLedgers()).ledgers.map((x) => x.dir);
+  }
+);

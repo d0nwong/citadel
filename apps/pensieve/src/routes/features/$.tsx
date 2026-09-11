@@ -19,16 +19,19 @@ import {
   Story,
   Tickets,
 } from "#/features/ledger/feature";
-import { getLedger } from "#/lib/api";
+import { getLedger, listFeatureDirs } from "#/lib/api";
 
 export const Route = createFileRoute("/features/$")({
   staticData: { crumb: "Features" },
   loader: async ({ params }) => {
-    const r = await getLedger({ data: params._splat ?? "" });
+    const [r, features] = await Promise.all([
+      getLedger({ data: params._splat ?? "" }),
+      listFeatureDirs(),
+    ]);
     if (!r) {
       throw notFound();
     }
-    return { ...r, crumb: r.dir };
+    return { ...r, crumb: r.dir, features };
   },
   component: FeaturePage,
   notFoundComponent: () => (
@@ -37,7 +40,7 @@ export const Route = createFileRoute("/features/$")({
 });
 
 function FeaturePage() {
-  const { feature, dir, ledger } = Route.useLoaderData();
+  const { feature, dir, ledger, features } = Route.useLoaderData();
   return (
     <DocLayout>
       <PageHeader
@@ -70,7 +73,7 @@ function FeaturePage() {
       />
       <div className="flex flex-col gap-10">
         <Story dir={dir} ledger={ledger} />
-        <Asks dir={dir} ledger={ledger} />
+        <Asks dir={dir} features={features} ledger={ledger} />
         <Tickets tickets={ledger.tickets} />
         <Proposals dir={dir} proposals={ledger.proposals} />
         <Requirements dir={dir} ledger={ledger} />
