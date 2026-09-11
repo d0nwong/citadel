@@ -29,8 +29,8 @@ Spawned by the sweep once per feature with a slice in this run's batch; never ot
 3. For each message that asks for something or decides something, add an ask, or a
    requirement, or flip one. A decision from someone who can decide it flips a rule.
 4. For each new landing (already on the ledger), link the asks it served, clear any
-   blocker whose ref it is (only if the branch and deploy match), and note a mismatch it
-   opened or closed between the two codebases.
+   blocker whose ref it is (only if the branch and deploy match; each backend landing
+   says `deployed:`), and note a mismatch it opened or closed between the two codebases.
 5. When an ask wants work you own, add a proposal, never a ticket.
 6. Rewrite the four story texts as they read now. Leave `on_you` alone; it is derived.
 7. Return the patch. A refusal comes back naming the path; fix that and nothing else.

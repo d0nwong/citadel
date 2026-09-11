@@ -9,6 +9,7 @@
 
 import { join } from "node:path";
 import type { Batch, Placed, Slice } from "./batch.ts";
+import { type Deploy, deployedAt } from "./deploy.ts";
 import { featureDirOf, loadManifest } from "./manifest.ts";
 import { archDocPath, REPO_ROOT } from "./paths.ts";
 import type { Ledger } from "./schema.ts";
@@ -30,13 +31,14 @@ export function renderMessages(messages: Msg[]): string {
     .join("\n\n");
 }
 
-export function renderSlice(s: Slice): string {
+export function renderSlice(s: Slice, deploys: Record<string, string> = {}): string {
   const landings = s.landings
     .map((l) => {
       const files = `${l.files.slice(0, 40).join(", ")}${l.files.length > 40 ? ` (+${l.files.length - 40})` : ""}`;
       const tickets = l.ticketKeys.length ? `\ntickets: ${l.ticketKeys.join(", ")}` : "";
       const routes = l.routes.length ? `\nroutes: ${l.routes.join(", ")}` : "";
-      return `[${l.ref}] ${l.date} ${l.by} ${l.url ?? ""}\n${l.title}${tickets}\nsha ${l.sha}\nfiles: ${files}${routes}`;
+      const deployed = deploys[l.ref] ? `\ndeployed: ${deploys[l.ref]}` : "";
+      return `[${l.ref}] ${l.date} ${l.by} ${l.url ?? ""}\n${l.title}${tickets}\nsha ${l.sha}${deployed}\nfiles: ${files}${routes}`;
     })
     .join("\n\n");
   return `## Messages (${s.messages.length})\n\n${renderMessages(s.messages) || "none"}\n\n## Landings (${s.landings.length})\n\n${landings || "none"}`;
@@ -102,8 +104,23 @@ export async function attributePrompt(unplaced: Unplaced[], features: string[], 
   return `${await skill("attribute.md")}\n\n# Features\n\n${await featureSummaries(features)}\n\n# Unplaced (${unplaced.length} messages in ${groups.size} threads)\n\n${items.join("\n\n")}\n\nAnswer with the JSON object only, one entry per message id.`;
 }
 
+/** each backend landing's deploy, in words the reader can act on; the cache answers first */
+export async function deploysFor(slice: Slice, lookup: (repo: "fe" | "be", sha: string) => Promise<Deploy | null> = deployedAt): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const l of slice.landings) {
+    if (l.repo !== "be") continue;
+    try {
+      const d = await lookup(l.repo, l.sha);
+      out[l.ref] = d ? (d.result === "SUCCESSFUL" ? `yes, ${d.at.slice(0, 10)} (on dev)` : `no, the pipeline ${d.result.toLowerCase()}`) : "not yet";
+    } catch {
+      out[l.ref] = "unknown";
+    }
+  }
+  return out;
+}
+
 /** the reader's prompt for one feature and its slice */
-export async function readerPrompt(feature: string, slice: Slice, day: string): Promise<string> {
+export async function readerPrompt(feature: string, slice: Slice, day: string, deploys?: Record<string, string>): Promise<string> {
   const ledger = await readLedger(feature);
   if (!ledger) throw new Error(`${feature}: no ledger`);
   const archFile = Bun.file(archDocPath(feature));
@@ -113,7 +130,7 @@ export async function readerPrompt(feature: string, slice: Slice, day: string): 
     await skill("shapes.md"),
     `# The feature: ${feature}`,
     `# ledger.json as it stands (code pointers omitted)\n\n\`\`\`json\n${ledgerForReader(ledger)}\n\`\`\``,
-    `# What is new (${day})\n\n${renderSlice(slice)}`,
+    `# What is new (${day})\n\n${renderSlice(slice, deploys ?? (await deploysFor(slice)))}`,
     `# From docs/arch.md\n\n${arch}`,
     `Today is ${day}. Return the patch as one JSON object in a \`\`\`json fence, nothing else.`,
   ].join("\n\n");

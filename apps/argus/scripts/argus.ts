@@ -38,6 +38,7 @@ export function parseArgs(argv: string[]): Flags {
     if (a === "--dry-run") f.dryRun = true;
     else if (a === "--json") f.json = true;
     else if (a === "--user") f.actor = "user";
+    else if (a === "-m") f.opts.m = argv[++i] ?? "";
     else if (a.startsWith("--")) {
       const [k, inline] = a.slice(2).split("=", 2);
       const v = inline ?? (argv[i + 1] && !argv[i + 1]!.startsWith("--") ? argv[++i] : "true");

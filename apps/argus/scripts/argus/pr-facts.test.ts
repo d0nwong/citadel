@@ -48,6 +48,19 @@ describe("featuresForFiles", () => {
     expect(featuresForFiles(["src/features/usage-extra/a.ts"], table, "fe")).toEqual([]);
     expect(featuresForFiles(["src/components/capacity-ring.tsx"], table, "fe")).toEqual(["admin/usage"]);
   });
+  test("a file four or more features list is shared and yields to a feature's own file", () => {
+    const wide: Manifest = { ...manifest, features: [
+      ...manifest.features,
+      { id: "a", name: "A", type: "feature", entry_routes: [], core_files: [], be_files: ["src/config/swaggerSchemas.ts"], aliases: [] },
+      { id: "b", name: "B", type: "feature", entry_routes: [], core_files: [], be_files: ["src/config/swaggerSchemas.ts"], aliases: [] },
+      { id: "c", name: "C", type: "feature", entry_routes: [], core_files: [], be_files: ["src/config/swaggerSchemas.ts"], aliases: [] },
+      { id: "d", name: "D", type: "feature", entry_routes: [], core_files: [], be_files: ["src/config/swaggerSchemas.ts", "src/services/dService.ts"], aliases: [] },
+    ] };
+    const t = featureFiles(wide);
+    expect(featuresForFiles(["src/config/swaggerSchemas.ts", "src/services/dService.ts"], t, "be")).toEqual(["d"]);
+    expect(featuresForFiles(["src/config/swaggerSchemas.ts"], t, "be")).toEqual(["a", "b", "c", "d"]);
+    expect(featuresForFiles(["src/services/taskService.ts", "src/config/swaggerSchemas.ts"], t, "be")).toEqual(["tasks"]);
+  });
   test("backend files use be_files", () => {
     expect(featuresForFiles(["src/services/taskService.ts", "src/services/other.ts"], table, "be")).toEqual(["tasks"]);
     expect(featuresForFiles(["src/services/taskService.ts"], table, "fe")).toEqual([]);

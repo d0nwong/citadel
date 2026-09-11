@@ -38,11 +38,30 @@ export function featureFiles(m: Manifest): { dir: string; name: string; fe: stri
   }));
 }
 
-/** a changed file belongs to every feature one of whose listed paths is the file or a directory above it */
+/** a listed path claimed by this many features or more is shared plumbing, not a feature's own */
+export const SHARED_FROM = 4;
+
+const matches = (file: string, p: string) => file === p || file.startsWith(p.endsWith("/") ? p : `${p}/`);
+
+/**
+ * A changed file belongs to every feature one of whose listed paths is the file or a
+ * directory above it. Paths listed by many features (a swagger schema, a controller every
+ * page calls) only count when nothing a feature owns alone matched: a landing that touches
+ * both lands on the owners of its specific files, and one that touches only shared files
+ * lands on everyone who lists them.
+ */
 export function featuresForFiles(files: string[], table: ReturnType<typeof featureFiles>, side: "fe" | "be"): string[] {
-  const hit = new Map<string, number>();
+  const claims = new Map<string, number>();
+  for (const f of table) for (const p of f[side]) claims.set(p, (claims.get(p) ?? 0) + 1);
+  const specific = new Map<string, number>();
+  const shared = new Map<string, number>();
   for (const file of files)
     for (const f of table)
-      if (f[side].some((p) => file === p || file.startsWith(p.endsWith("/") ? p : `${p}/`))) hit.set(f.dir, (hit.get(f.dir) ?? 0) + 1);
-  return [...hit].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([dir]) => dir);
+      for (const p of f[side])
+        if (matches(file, p)) {
+          const bucket = (claims.get(p) ?? 1) >= SHARED_FROM ? shared : specific;
+          bucket.set(f.dir, (bucket.get(f.dir) ?? 0) + 1);
+        }
+  const pick = specific.size ? specific : shared;
+  return [...pick].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([dir]) => dir);
 }

@@ -19,7 +19,8 @@ shown here.
   },
   "asks": {
     "add":    [ { "text": "Sam wants a button on draft invoices for due on receipt.", "by": "Sam O", "to": "you", "at": "2026-09-09",
-                  "origin": { "kind": "slack", "url": "<permalink of the root>", "thread": "<root ts>" }, "requirements": ["R-3"] } ],
+                  "origin": { "kind": "slack", "url": "<permalink of the root>", "thread": "<root ts>" }, "requirements": ["R-3"],
+                  "status": "closed", "history": [ { "at": "2026-09-10", "status": "closed", "evidence": [ …evidence ] } ] } ],
     "update": [ { "id": "A-1", "status": "answered|built|acknowledged|closed|dropped", "at": "2026-09-10", "evidence": [ …evidence ] } ],
     "block":  [ { "id": "A-1", "blocker": { "kind": "landing", "repo": "be", "ref": "be#771" } } ]
   },
@@ -42,7 +43,8 @@ Evidence, exactly one of:
 { "kind": "assumption", "note": "<why you assume it>" }
 ```
 
-`by` is the asker's name, or `"someone"` when the message does not say. An ask `update`
+`by` is the asker's name, or `"someone"` when the message does not say. A new ask may
+carry `status` and `history` when it arrived, shipped and was acknowledged in one batch. An ask `update`
 may omit `status` to add evidence without moving it. `to` is a first name, `"you"` for
 the user, or `null`. A blocker is `{ "kind": "landing", "repo": "fe|be", "ref": "be#771" }`
 (leave `ref` empty when the thread only says "in PR"), `{ "kind": "answer", "from": "<name>",

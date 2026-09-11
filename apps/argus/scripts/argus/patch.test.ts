@@ -41,6 +41,18 @@ describe("patch", () => {
     expect(() => applyPatch(l, parsePatch({ asks: { update: [{ id: "A-9", status: "closed", at: "x", evidence: [slack(1)] }] } }))).toThrow("A-9 is not an ask");
   });
 
+  test("an ask can arrive already closed, history and all", async () => {
+    const l = await valid();
+    const p = parsePatch({ asks: { add: [{ text: "Sam wants the studio name on each subtask row.", by: "Sam O", to: "you", at: "2026-09-10", origin: { kind: "slack", url: "u", thread: "1789009907.490279" }, status: "closed", history: [
+      { at: "2026-09-10", status: "built", evidence: [{ kind: "pr", repo: "fe", number: 425, url: "u" }] },
+      { at: "2026-09-10", status: "closed", evidence: [slack(9)] },
+    ] }] } });
+    const next = applyPatch(l, p);
+    next.asks[2]!.id = "A-3";
+    expect(next.asks[2]).toMatchObject({ status: "closed" });
+    expect(next.asks[2]!.history).toHaveLength(2);
+    expect(validateLedger(next, { prev: l, actor: "model" })).toEqual([]);
+  });
   test("an empty patch changes nothing", async () => {
     const l = await valid();
     expect(applyPatch(l, parsePatch({}))).toEqual(l);

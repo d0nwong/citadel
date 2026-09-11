@@ -17,7 +17,8 @@ export type Patch = {
     update?: { id: string; status?: RequirementStatus; by?: string; at?: string; evidence: Evidence[]; text?: string }[];
   };
   asks?: {
-    add?: Omit<Ask, "id" | "history" | "status" | "ready">[];
+    /** `status` and `history` are optional: an ask that arrived and closed inside one batch comes whole */
+    add?: (Omit<Ask, "id" | "history" | "status" | "ready"> & { status?: AskStatus; history?: Ask["history"] })[];
     /** a wait on something: a landing, an answer, another ticket */
     block?: { id: string; blocker: Blocker }[];
     /** `status` omitted = more evidence on the current status */
@@ -108,6 +109,16 @@ export function parsePatch(v: unknown): Patch {
         ...(Array.isArray(a.requirements) ? { requirements: a.requirements as string[] } : {}),
         ...(typeof a.ticket === "string" ? { ticket: a.ticket } : {}),
         ...(Array.isArray(a.blockers) ? { blockers: a.blockers.map((b, j) => parseBlocker(b, `${path}.blockers[${j}]`)) } : {}),
+        ...(typeof a.status === "string" ? { status: a.status as AskStatus } : {}),
+        ...(Array.isArray(a.history)
+          ? {
+              history: a.history.map((h, j) => {
+                const hp = `${path}.history[${j}]`;
+                if (!isObj(h) || typeof h.at !== "string" || typeof h.status !== "string") throw err(hp, "expected { at, status, evidence }");
+                return { at: h.at, status: h.status as AskStatus, evidence: evidenceList(h.evidence, `${hp}.evidence`) };
+              }),
+            }
+          : {}),
       });
     });
     list(asks, "asks", "update").forEach((a, i) => {
@@ -179,7 +190,7 @@ export function applyPatch(l: Ledger, p: Patch): Ledger {
     if (u.text !== undefined) r.text = u.text;
     r.evidence = [...r.evidence, ...u.evidence];
   }
-  for (const a of p.asks?.add ?? []) next.asks.push({ id: "", status: "asked", history: [], ...a });
+  for (const a of p.asks?.add ?? []) next.asks.push({ id: "", status: a.status ?? "asked", history: a.history ?? [], ...a, ...(a.status ? { status: a.status } : {}) });
   for (const u of p.asks?.update ?? []) {
     const a = next.asks.find((x) => x.id === u.id);
     if (!a) throw err("patch.asks.update", `${u.id} is not an ask`);
