@@ -110,6 +110,12 @@ bun --hot ./index.ts
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
 
-This checkout is also **argus, the blackboard**: every `<app>/features/<dir>/{docs,journal,work.json}`, `queue/`, `marauder/` and `decisions/` are the record of what happened in the products (README.md "Layout"). `reports/`, `digests/` and `arcs/` are the archive of what the loop wrote before 2026-09-09.
-Two commands over it: `bun run marauder board|show|changelog` says where the work stands, `bun run accio` summons the API surface and the docs.
-To answer a question about any of it — a piece of work, a ticket, a day, a rule id, a feature — load the `ask` skill (`skills/ask/SKILL.md`): it retrieves with those two and answers read-only, citing paths.
+This checkout is also **argus**: one `ledger.json` per feature under
+`<app>/features/<dir>/` is the record of what the business asked for, what people asked,
+what landed and what waits, with evidence on every claim; `docs/arch.md` beside it is how
+the feature is built. `SPEC.md` is the source of truth for the shape and the run.
+Two CLIs over it: `argus` (the ledger: `show`, `validate`, the run's `pull`/`place`/`reconcile`,
+the click verbs) and `accio` (the code-and-docs index: `find`, `stale`, `sync`).
+To answer a question about any of it, load the `ask` skill (`skills/ask/SKILL.md`): it reads
+with those two and answers read-only, citing paths, and proposes rather than performs.
+Never edit a ledger or anything under `state/` by hand; the verbs write them.
