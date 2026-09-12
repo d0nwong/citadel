@@ -40,6 +40,14 @@ export const QA_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000003'
  */
 export const BUG_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000004'
 
+/**
+ * "Simplify", seeded by migration 0016 (CTD-175): spec in refactor mode (the
+ * unchanged suite and each named simplification as criteria), `forge-simplify`
+ * to remove what the ticket names with the suite as the oracle, then verify.
+ * A ticket naming no file and nothing to remove stops it at the first step.
+ */
+export const SIMPLIFY_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000005'
+
 export interface BlueprintStep {
   name: string
   model: StepModel
