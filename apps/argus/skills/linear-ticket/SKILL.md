@@ -1,6 +1,6 @@
 ---
 name: linear-ticket
-description: Draft and file a Linear issue in the house format (FORMAT.md) — Summary / Background / Scope / Acceptance Criteria / Pending / Technical Notes — for the Alden team, in the project named after the feature, assigned to the user, with the [FE] or [BE] tag in the title. Use when the user says "create a linear ticket", "file this as a ticket", "write this up for Linear", "make a ticket for <thing>", or when a ledger proposal needs a body a person can file. The reader writes proposals in this format; Pensieve's File button and `argus file` carry them to Linear.
+description: Draft and file a Linear issue in the house format (FORMAT.md) — Summary / Background / Scope / Acceptance Criteria / Pending / Technical Notes — on the team the ask names (Citadel for Pensieve, Argus or Foundry; Alden, the default, for an alden-portal feature), in the project named after it, assigned to the user, with the [FE] or [BE] tag in the title. Use when the user says "create a linear ticket", "file this as a ticket", "write this up for Linear", "make a ticket for <thing>", or when a ledger proposal needs a body a person can file. The reader writes proposals in this format; Pensieve's File button and `argus file` carry them to Linear.
 ---
 
 # linear-ticket — a ticket in the house format
@@ -31,10 +31,16 @@ place when a fact changes, and closing is the user's alone.
 3. Write the six sections per `FORMAT.md`. Title under 80 characters, prefixed `[FE]` or
    `[BE]`. Pending lists what the ticket waits on, one bullet per blocker, matching the
    ask's blockers on the ledger.
-4. File it, by the path you are on:
-   - From Pensieve: the File button on the proposal, or `propose_ticket` from Ask.
-   - From a terminal: `mcp__linear__save_issue` on team Alden, project named after the
-     feature (`Admin - Usage` for `admin/usage`) when one exists, assignee the user; then
+4. Pick the team the ask names. A ticket about Pensieve, Argus or Foundry goes on team
+   Citadel, project named after the app (`Pensieve`, `Argus`, `Foundry`); a ticket about an
+   alden-portal feature goes on team Alden, project named after the feature (`Admin - Usage`
+   for `admin/usage`), which is the default when nothing says otherwise.
+5. File it, by the path you are on:
+   - From Pensieve: the File button on the proposal, or `propose_ticket` from Ask — pass
+     `team: "Citadel"` for Pensieve, Argus or Foundry; omit `team` for an alden-portal
+     feature.
+   - From a terminal: `mcp__linear__save_issue` on the team from step 4, project named
+     after the app or feature when one exists, assignee the user; then
      `argus ticket <feature> <P-n> <key>` when a proposal exists, so the ledger has the key.
 
 ## Rules

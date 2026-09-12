@@ -1300,6 +1300,8 @@ describe("Ask with argus's code and data apart", () => {
   test("the data is an extra directory, ARGUS_ROOT, and readable through git -C", () => {
     expect(ADAPTER_CONFIG.addDirs).toEqual([WORKSPACE_DIR]);
     expect(ADAPTER_CONFIG.env).toEqual({ ARGUS_ROOT: WORKSPACE_DIR });
-    expect(ADAPTER_CONFIG.allowedTools).toContain(`Bash(git -C ${WORKSPACE_DIR} log:*)`);
+    expect(ADAPTER_CONFIG.allowedTools).toContain(
+      `Bash(git -C ${WORKSPACE_DIR} log:*)`
+    );
   });
 });

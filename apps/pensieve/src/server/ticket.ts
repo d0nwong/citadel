@@ -13,8 +13,8 @@
  * `verdict.ts`'s arrangement, for the same reason.
  */
 
-import type { ProjectLookup } from "./linear";
-import { knownProjects, TEAM_NAME } from "./linear";
+import type { ProjectLookup, Team } from "./linear";
+import { knownProjects, TEAMS, teamFor } from "./linear";
 
 /** The `linear-ticket` skill's Title rule. AC4 refuses a title *over* this. */
 export const TITLE_MAX = 80;
@@ -41,11 +41,11 @@ const SECTION_LIST = REQUIRED_SECTIONS.join(", ");
 
 /** Where the checks read from. Defaults to Linear, with its on-disk cache behind it. */
 export interface TicketSources {
-  projects: () => Promise<ProjectLookup>;
+  projects: (teamKey: string) => Promise<ProjectLookup>;
 }
 
 export const linearSources = (): TicketSources => ({
-  projects: () => knownProjects(),
+  projects: (teamKey) => knownProjects(fetch, teamKey),
 });
 
 /** A `## ` heading anywhere in the body, whitespace collapsed. Top-level: never built in a loop. */
@@ -71,6 +71,8 @@ export interface CheckedDraft {
     /** False when no project list could be had — the name is taken on trust and said so. */
     verified: boolean;
   };
+  /** The team the draft resolved to — Alden when none was named (CTD-172). */
+  team: Team;
   teamId?: string;
   title: string;
   viewerId?: string;
@@ -126,10 +128,12 @@ function checkSections(description: string): string | undefined {
 
 /**
  * Check a drafted issue and answer it resolved, or say why there is no proposal. Reads the
- * team's projects and nothing else; writes nothing at all.
+ * named team's projects and nothing else; writes nothing at all. `team` is Pensieve's own
+ * (Alden or Citadel, CTD-172), not Linear's key for a workspace team in general — an
+ * unrecognised one is refused before any project list is read.
  */
 export async function checkDraft(
-  input: { description: string; project: string; title: string },
+  input: { description: string; project: string; team?: string; title: string },
   sources: TicketSources = linearSources()
 ): Promise<DraftCheck> {
   const title = trimmed(input.title);
@@ -140,19 +144,28 @@ export async function checkDraft(
   if (bad) {
     return { error: bad, ok: false };
   }
-  if (!project) {
+
+  const team = teamFor(input.team);
+  if (!team) {
     return {
-      error: `the draft names no project — name one of team ${TEAM_NAME}'s`,
+      error: `"${trimmed(input.team)}" is not a team Pensieve files on — the teams are ${TEAMS.map((t) => t.name).join(", ")}`,
       ok: false,
     };
   }
 
-  const lookup = await sources.projects();
+  if (!project) {
+    return {
+      error: `the draft names no project — name one of team ${team.name}'s`,
+      ok: false,
+    };
+  }
+
+  const lookup = await sources.projects(team.key);
   const match = lookup.projects.find((p) => norm(p.name) === norm(project));
   if (!match && lookup.source !== "none") {
     const names = lookup.projects.map((p) => p.name).join(", ");
     return {
-      error: `"${project}" is not a project on team ${TEAM_NAME} — its projects are ${names || "none that could be read"}`,
+      error: `"${project}" is not a project on team ${team.name} — its projects are ${names || "none that could be read"}`,
       ok: false,
     };
   }
@@ -164,6 +177,7 @@ export async function checkDraft(
         verified: Boolean(match),
         ...(match ? { id: match.id } : {}),
       },
+      team,
       title,
       ...(lookup.teamId ? { teamId: lookup.teamId } : {}),
       ...(lookup.viewerId ? { viewerId: lookup.viewerId } : {}),

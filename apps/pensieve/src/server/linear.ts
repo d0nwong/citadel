@@ -17,8 +17,13 @@
  *
  * The team's projects are cached under `PENSIEVE_HOME` because the check that a project is
  * the team's must survive the credential being absent: with no key there is no way to ask
- * Linear, and `propose_ticket` still has to refuse a project that is not Liamai's
+ * Linear, and `propose_ticket` still has to refuse a project that is not the named team's
  * (LIA-113 AC4 holds under AC5). The cache is refreshed on every successful fetch.
+ *
+ * The team itself is one of a short table (CTD-172): Alden, the alden-portal features, and
+ * Citadel, which owns Pensieve, Argus and Foundry as projects. Alden is the default when a
+ * draft names none, so an ask about an alden-portal feature behaves exactly as before there
+ * was a second team.
  */
 
 import { randomBytes } from "node:crypto";
@@ -28,9 +33,37 @@ import { dirname, join, resolve } from "node:path";
 
 export const LINEAR_API_URL = "https://api.linear.app/graphql";
 
-/** The one team Pensieve files into. Everything else about the destination is the project. */
-export const TEAM_KEY = "LIA";
-export const TEAM_NAME = "Liamai";
+/**
+ * The teams Pensieve can file into. Alden is first because it is the default when a draft
+ * names none — an ask about an alden-portal feature behaves exactly as it did with one team.
+ */
+export const TEAMS = [
+  { key: "ALD", name: "Alden" },
+  { key: "CTD", name: "Citadel" },
+] as const;
+
+export type Team = (typeof TEAMS)[number];
+
+const [DEFAULT_TEAM] = TEAMS;
+
+/** The default team's key and name, for the reads that are not per draft (`linearConfig`, the cache file). */
+export const TEAM_KEY: string = DEFAULT_TEAM.key;
+export const TEAM_NAME: string = DEFAULT_TEAM.name;
+
+/**
+ * The named team, matched by key or name case-insensitively; the default (Alden) when
+ * nothing is named; `undefined` when the name is neither team Pensieve knows.
+ */
+export function teamFor(named?: string): Team | undefined {
+  const trimmed = named?.trim();
+  if (!trimmed) {
+    return DEFAULT_TEAM;
+  }
+  const norm = trimmed.toLowerCase();
+  return TEAMS.find(
+    (t) => t.key.toLowerCase() === norm || t.name.toLowerCase() === norm
+  );
+}
 
 /**
  * Where the last successful project list is kept, so AC4 survives a missing key.

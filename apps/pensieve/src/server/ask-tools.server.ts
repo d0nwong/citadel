@@ -28,7 +28,6 @@ import { PROPOSE_DECISION, PROPOSE_TICKET } from "../lib/ask-tools";
 import type { Unplaced } from "../lib/ledger";
 import type { LedgerRef } from "./ledger";
 import { listLedgers, readUnplaced } from "./ledger";
-import { TEAM_NAME } from "./linear";
 import type { TicketSources } from "./ticket";
 import { checkDraft } from "./ticket";
 
@@ -240,6 +239,8 @@ export const proposeDecisionTool = toolDefinition({
 const ticketInput = z.object({
   description: z.string(),
   project: z.string(),
+  /** Omitted files on Alden, as before there was a second team (CTD-172). */
+  team: z.string().optional(),
   title: z.string(),
 });
 
@@ -302,7 +303,7 @@ export async function proposeTicket(
     proposal: {
       description: draft.description,
       project: draft.project.name,
-      team: TEAM_NAME,
+      team: draft.team.name,
       title: draft.title,
       verified: draft.project.verified,
       ...(draft.project.id ? { projectId: draft.project.id } : {}),
@@ -312,7 +313,7 @@ export async function proposeTicket(
 
 export const proposeTicketTool = toolDefinition({
   description:
-    "Propose a new Linear issue for Liam to file. Takes a draft written per the linear-ticket skill — title under 80 characters, description the five-section body (Summary, Background, Scope / Out of Scope, Acceptance Criteria, Technical Notes, with Pending only between the last two), project a project name on team Liamai — checks it and answers a proposal that Pensieve shows as a card with a File button, or { ok: false, error } when the draft cannot be filed. It writes nothing: the issue exists only when Liam presses File, so never say the ticket has been filed or created. Call it once per ticket, for one plain issue — no sub-issues, blockers or labels.",
+    "Propose a new Linear issue for Liam to file. Takes a draft written per the linear-ticket skill — title under 80 characters, description the five-section body (Summary, Background, Scope / Out of Scope, Acceptance Criteria, Technical Notes, with Pending only between the last two), project a project name, and team only when the draft is about Pensieve, Argus or Foundry (team Citadel, project named after the app) — omit team for an alden-portal feature, which files on Alden as before. Checks it and answers a proposal that Pensieve shows as a card with a File button, or { ok: false, error } when the draft cannot be filed. It writes nothing: the issue exists only when Liam presses File, so never say the ticket has been filed or created. Call it once per ticket, for one plain issue — no sub-issues, blockers or labels.",
   inputSchema: ticketInput,
   name: PROPOSE_TICKET,
   outputSchema: ticketOutput,

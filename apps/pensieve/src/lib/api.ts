@@ -235,10 +235,10 @@ const filing = new Map<string, Promise<FileTicketResult>>();
 const trimmedText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
 /**
- * File the drafted issue the card is showing. Exactly one `issueCreate` on team Liamai, in
- * the card's project, assigned to the key's owner, with no labels; the issue is recorded
- * under the thread's `ticket:<toolCallId>` key, and a repeat answers that record rather
- * than creating a second issue (AC3).
+ * File the drafted issue the card is showing. Exactly one `issueCreate` on the draft's team
+ * (Alden when the card names none, CTD-172), in the card's project, assigned to the key's
+ * owner, with no labels; the issue is recorded under the thread's `ticket:<toolCallId>` key,
+ * and a repeat answers that record rather than creating a second issue (AC3).
  *
  * The draft is re-checked here rather than trusted: the card's title and body are editable,
  * so what is filed is not what `propose_ticket` approved.
@@ -248,6 +248,7 @@ export const fileTicket = createServerFn({ method: "POST" })
     z.object({
       description: z.string(),
       project: z.string(),
+      team: z.string().optional(),
       threadId,
       title: z.string(),
       toolCallId,
@@ -274,6 +275,7 @@ export const fileTicket = createServerFn({ method: "POST" })
       const check = await ticket.checkDraft({
         description: trimmedText(data.description),
         project: trimmedText(data.project),
+        team: trimmedText(data.team),
         title: trimmedText(data.title),
       });
       if (!check.ok) {
@@ -290,7 +292,7 @@ export const fileTicket = createServerFn({ method: "POST" })
       const { draft } = check;
       if (!draft.teamId) {
         return {
-          error: `team ${config.team} could not be read from Linear — the key may not reach it`,
+          error: `team ${draft.team.name} could not be read from Linear — the key may not reach it`,
           ok: false,
           status: 503,
         };
