@@ -1,8 +1,8 @@
 {
   "name": "pensieve",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Reading room for the argus blackboard \u2014 sweep reports, Slack digests, the change journal and feature docs.",
+  "description": "Reading room for the argus blackboard — sweep reports, Slack digests, the change journal and feature docs.",
   "type": "module",
   "imports": {
     "#/*": "./src/*"

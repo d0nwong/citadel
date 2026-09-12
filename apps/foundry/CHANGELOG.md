@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.0](https://github.com/d0nwong/citadel/compare/foundry-v1.4.0...foundry-v1.5.0) (2026-09-12)
+
+
+### Features
+
+* just bootstrap, check and auth replace three bootstrap scripts ([c1ca128](https://github.com/d0nwong/citadel/commit/c1ca128210fb3a727efeb1e07f2f2411d34665d5))
+* one .env at the citadel root for every app ([20b44af](https://github.com/d0nwong/citadel/commit/20b44afa1b8c292edd7bcba3ae4e36699869ef2f))
+* one compose stack and just recipes for it ([7b09d46](https://github.com/d0nwong/citadel/commit/7b09d46c477afe5d1ca7e68587e2599743897ad8))
+
 ## [1.4.0](https://github.com/d0nwong/foundry/compare/foundry-v1.3.0...foundry-v1.4.0) (2026-09-05)
 
 
