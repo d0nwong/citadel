@@ -105,6 +105,32 @@ describe('roles and lenses', () => {
   }
 })
 
+describe('handoff files keep one shape', () => {
+  /** Who writes each handoff file, and the headings its readers may name. */
+  const HANDOFF: Record<string, { writers: Array<string>; headings: Array<string> }> = {
+    'spec.md': { writers: ['forge-spec'], headings: ['Objective', 'Criteria', 'Commands', 'Out of scope', 'Assumptions', 'Blocked'] },
+    'plan.md': { writers: ['forge-plan', 'forge-debug'], headings: ['Change', 'Criteria → code', 'Order', 'Commands', 'Assumptions', 'Not doing', 'Root cause'] },
+  }
+  /** Headings only one writer produces (a bug plan's root cause; a spec that stops). */
+  const OPTIONAL: Record<string, Array<string>> = { 'forge-plan': ['Root cause'], 'forge-debug': ['Blocked'] }
+  const known = new Set(Object.values(HANDOFF).flatMap((h) => h.headings))
+
+  for (const [file, { writers, headings }] of Object.entries(HANDOFF)) {
+    for (const writer of writers) {
+      test(`${writer}'s template for ~/${file} carries every heading a reader may name`, () => {
+        const md = readSkill(writer)
+        for (const h of headings) if (!OPTIONAL[writer]?.includes(h)) expect(md, h).toContain(`## ${h}`)
+      })
+    }
+  }
+
+  for (const dir of skillDirs.filter((d) => d.startsWith('forge-'))) {
+    test(`${dir}: every handoff heading it names in backticks is one a writer produces`, () => {
+      for (const [, h] of readSkill(dir).matchAll(/`## ([^`]+)`/g)) expect(known, h).toContain(h)
+    })
+  }
+})
+
 describe('seeded blueprints invoke skills that exist', () => {
   const sqlFiles = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'))
 
