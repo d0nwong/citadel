@@ -1,6 +1,6 @@
 ---
 name: forge-verify
-description: Reviews the change against ~/spec.md on five axes, proves the suite, typecheck and lint pass, tightens tests that would pass any implementation, and writes the QA report to ~/qa-report.md and the PR description to /work/.git/PR_BODY.md. Small fixes only. Use as the last step of a QA blueprint.
+description: Reviews the change against ~/spec.md on five axes, proves the suite, typecheck and lint pass, tightens tests that would pass any implementation, and writes the QA report to ~/qa-report.md and the PR description to /work/.git/PR_BODY.md. Small fixes only. Use once a change exists against ~/spec.md and no ~/qa-report.md has been written.
 ---
 
 # forge-verify — review, prove, report
@@ -13,23 +13,22 @@ Adapted from `code-review-and-quality` in addy-agent-skills (MIT, © 2025 Addy O
 
 ## When to Use
 
-- As the final step of the "Spec → QA" and "Bug → Fix" blueprints, after `forge-implement`
 - Whenever a change exists in `/work` against a `~/spec.md` and no `~/qa-report.md` has been written
 
 **When NOT to use:** no diff against the base (nothing to verify — say so and stop); no `~/spec.md` (there is nothing to verify against; review the diff against the task text and say the spec was missing).
 
 ## Handoff
 
-Reads `git -C /work diff <base>..HEAD` plus the uncommitted diff, `~/spec.md` (Criteria, Commands, Out of scope), `~/plan.md` (`Not doing`), and `forge-implement`'s final message in this session (deviations, tests changed, anything left red). If `~/spec.md` has a `## Blocked` section, stop now: make no edits and repeat its reason as your final message. Writes `~/qa-report.md`, `/work/.git/PR_BODY.md` (under `.git/` on purpose: the commit sweep cannot pick it up), and small fixes to code or tests — a name, a missed edge, a test tightened. A finding that needs more than a small fix is reported, not made.
+Reads `git -C /work diff <base>..HEAD` plus the uncommitted diff, `~/spec.md` (Criteria, Commands, Out of scope), `~/plan.md` (`Not doing`), and the previous step's final message in this session, when there is one (deviations, tests changed, anything left red). If `~/spec.md` has a `## Blocked` section, stop now: make no edits and repeat its reason as your final message. Writes `~/qa-report.md`, `/work/.git/PR_BODY.md` (under `.git/` on purpose: the commit sweep cannot pick it up), and small fixes to code or tests — a name, a missed edge, a test tightened. A finding that needs more than a small fix is reported, not made.
 
 ## Step 1: Review the tests before the code
 
-Tests reveal what the change thinks it is. For every test `forge-test` and `forge-implement` touched:
+Tests reveal what the change thinks it is. For every test this run touched:
 
 - Does it name its criterion, and does what it asserts match what the criterion says is observed?
 - **Would it fail if the behaviour regressed?** Mentally revert the production change: a test that would still pass asserts nothing. Tighten it, or delete it and say so in the report; a test that passes against any implementation is worse than none.
 - Does it test state, not interactions; the public surface, not internals?
-- Was any test changed under `forge-implement`'s Step 4 rule, and does the reason hold against the spec?
+- Was any test changed after it was first written, and does the reason given for it hold against the spec?
 
 ## Step 2: Review the code on five axes
 
@@ -75,7 +74,7 @@ Not covered: <criterion, and why — e.g. C3 needs a browser and the repo has no
 Findings fixed here: <one line each, with the label>
 Findings left for the reader: <one line each, with the label>
 Tests tightened or removed: <name, and what it was not catching>
-Deviations from the plan: <from forge-implement's message, confirmed or corrected>
+Deviations from the plan: <from the previous step's message, confirmed or corrected>
 Assumptions carried: <the spec's and the plan's, in one list>
 ```
 
@@ -86,7 +85,7 @@ Every criterion in the spec has a row. A criterion with no test has a row that s
 `/work/.git/PR_BODY.md`, following the repo's own PR template (`.github/PULL_REQUEST_TEMPLATE.md`) when it has one, otherwise foundry's at `/usr/local/share/foundry/pr-template.md`: fill every section for real, delete the HTML comments and any section that is genuinely empty. Always:
 
 - A `Closes <ticket id>` line when the task named a ticket — the host links the PR to the ticket from it
-- **Summary:** the `Change` paragraph from the plan, corrected to what actually landed. When the plan opens with `## Root cause` (a bug run), the Summary opens with that sentence: the reader wants to know why the bug existed before what changed
+- **Summary:** the `Change` paragraph from the plan, corrected to what actually landed. When the plan opens with `## Root cause`, the Summary opens with that sentence: the reader wants to know why the bug existed before what changed
 - **Assumptions:** the report's `Assumptions carried`
 - **How verified:** the report's table and command line, verbatim, then the findings left for the reader
 

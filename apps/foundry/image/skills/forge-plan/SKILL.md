@@ -1,6 +1,6 @@
 ---
 name: forge-plan
-description: Plans the change that satisfies every criterion in ~/spec.md, then reviews that plan as a sceptical stranger would before anything is written. Writes ~/plan.md — files to touch, order, one line per criterion saying where it is met — and edits nothing in the workspace. Use as the step after forge-spec in a QA blueprint.
+description: Plans the change that satisfies every criterion in ~/spec.md, then reviews that plan as a sceptical stranger would before anything is written. Writes ~/plan.md — files to touch, order, one line per criterion saying where it is met — and edits nothing in the workspace. Use whenever ~/spec.md has criteria and ~/plan.md does not exist.
 ---
 
 # forge-plan — a plan for the spec, doubted before it is followed
@@ -13,10 +13,9 @@ Adapted from `planning-and-task-breakdown` and `doubt-driven-development` in add
 
 ## When to Use
 
-- As the second step of the "Spec → QA" blueprint, right after `forge-spec`
 - Whenever `~/spec.md` exists with criteria and `~/plan.md` does not
 
-**When NOT to use:** no `~/spec.md` yet (run `forge-spec` first); a change so small every criterion is met in one file and one function, where the plan is a paragraph — write that paragraph to `~/plan.md` and stop.
+**When NOT to use:** no `~/spec.md` yet (write the spec first); a change so small every criterion is met in one file and one function, where the plan is a paragraph — write that paragraph to `~/plan.md` and stop.
 
 ## Handoff
 

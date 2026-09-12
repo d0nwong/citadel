@@ -1,6 +1,6 @@
 ---
 name: forge-spec
-description: Turns a ticket's acceptance criteria into a testable spec at ~/spec.md — one numbered, checkable criterion per AC, grounded in the code, the exact commands that verify them, and every assumption made in place of a question. A ticket with no Acceptance Criteria section stops the run; a bug's reproduction is its criterion. Use as the first step of a QA or bug blueprint, or whenever tests are about to be written and no spec exists. Edits nothing in the workspace.
+description: Turns a ticket's acceptance criteria into a testable spec at ~/spec.md — one numbered, checkable criterion per AC, grounded in the code, the exact commands that verify them, and every assumption made in place of a question. A ticket with no Acceptance Criteria section stops the run; a bug's reproduction is its criterion. Use before any test or code is written, whenever ~/spec.md does not exist. Edits nothing in the workspace.
 ---
 
 # forge-spec — the ticket, made checkable
@@ -13,8 +13,8 @@ Adapted from `spec-driven-development` in addy-agent-skills (MIT, © 2025 Addy O
 
 ## When to Use
 
-- As the first step of the "Spec → QA" blueprint, with the job's task text as the argument
-- As the first step of the "Bug → Fix" blueprint, with `bug:` before the task text: the reproduction is the criterion
+- As the first step of a job, with the task text as the argument: a ticket id or URL, or the requirement written out
+- With `bug:` before the task text, or on a ticket that is a bug: the reproduction is the criterion
 - Whenever a job is about to write tests or code and `~/spec.md` does not exist
 
 **When NOT to use:** a task with no behaviour to check — a rename, a dependency bump, docs, config — where the spec would be one line; `~/spec.md` already exists for this task (read it instead).
@@ -23,7 +23,7 @@ Adapted from `spec-driven-development` in addy-agent-skills (MIT, © 2025 Addy O
 
 Reads the task text (a Linear id or URL, or the requirement written out), the repo, and the repo notes if the system prompt carries any. Writes exactly one file, `~/spec.md`, in the shape under Step 5. Never creates, edits or deletes anything under `/work`: the workspace is what gets committed, and nothing here is a change to the code.
 
-Every later step of the blueprint starts by reading `~/spec.md` and stops on a `## Blocked` section, so what is written here is binding for the run.
+Every step that reads `~/spec.md` stops on a `## Blocked` section, so what is written here is binding for the run.
 
 ## Step 1: Read the requirement, all of it
 
@@ -55,7 +55,7 @@ Run the test command once now, on the untouched checkout. A suite that is alread
 
 Find the ticket's **Acceptance Criteria** section (house-format tickets number them `AC1…`; keep the numbering as `C1…`). If there is no such section, or it is empty, go straight to Step 6: a Summary that describes the change in detail is not a substitute, because nobody agreed it is the definition of done. For each acceptance criterion, find the code where it would be satisfied — the route, the component, the function, the query — and read enough of it to know the criterion can be checked there. Then reword it as the check:
 
-**A bug is the one ticket whose definition of done is not an AC list but a reproduction.** When the argument starts with `bug:`, or the ticket is labelled Bug, or its description carries reproduction steps (Steps to reproduce, Expected / Actual) or names a failing check or test, the reproduction is `C1`, worded as the failing check: the steps as the state to set up, the expected behaviour as what must be observed, and what happens today in parentheses. Acceptance criteria the ticket also has follow as `C2…`. A bug ticket with no reproduction steps and no failing check is Step 6, and the Blocked text names which of the two is missing. Commands gains a `repro:` line — the exact command that shows the failure, or `none: needs a browser` — because `forge-debug` starts by running it.
+**A bug is the one ticket whose definition of done is not an AC list but a reproduction.** When the argument starts with `bug:`, or the ticket is labelled Bug, or its description carries reproduction steps (Steps to reproduce, Expected / Actual) or names a failing check or test, the reproduction is `C1`, worded as the failing check: the steps as the state to set up, the expected behaviour as what must be observed, and what happens today in parentheses. Acceptance criteria the ticket also has follow as `C2…`. A bug ticket with no reproduction steps and no failing check is Step 6, and the Blocked text names which of the two is missing. Commands gains a `repro:` line — the exact command that shows the failure, or `none: needs a browser` — because reproducing the failure is the first thing the next step does.
 
 ```
 Ticket says:   "Steps: claim CTD-9 from two jobs. Expected: the second is refused.
