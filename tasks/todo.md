@@ -1,273 +1,72 @@
-# Todo: citadel, step 1
+# Todo: Foundry role skills and the "Spec → QA" blueprint (CTD-65, slice 1)
 
-See `tasks/plan.md` for the order and the checkpoints.
+See `tasks/plan.md` for the order and the checkpoints. Branch: `yickkiuleung/ctd-65-create-skills`.
 
-## Phase 1: De-risk
+## Phase 1: De-risk and foundation
 
-- [x] **T1: Check that headersHelper runs under `claude -p` in a container.** (S)
-  - Acceptance: a throwaway container (bun + claude CLI, apps/argus `.mcp.json`,
-    `MCP_GATEWAY_URL=http://host.docker.internal:9090`, `CLAUDE_CODE_OAUTH_TOKEN`) lists
-    `mcp__linear__*` tools in `claude -p`. If it can't, the pre-trust fix is found and written into the spec.
-  - Verify: `claude -p "list your mcp tools" --output-format json` shows both servers.
-  - Files: `docs/spec/consolidation.md` (the outcome).
-  - Done: it fails without persisted trust and works with `hasTrustDialogAccepted`; recorded in the spec.
-- [x] **T2: Get Foundry web running in production mode.** (S–M)
-  - Acceptance: `vite build` output is served by a Bun entry (as in Pensieve's `server.ts`) on
-    :3777, with its server functions and job API working.
-  - Verify: `curl :3777/api/jobs` with the bearer returns 200, and the forge list renders.
-  - Files: `web/server.ts` (new), `web/package.json` (`start`), spec.
-  - Done: the build and entry work. `server.ts` lands in citadel in T12 (a copy is in the scratchpad).
+- [x] **T1: Prove a `claude -p` prompt starting with `/forge-probe` loads a user-scope skill in a forge.** (S)
+  - Acceptance: a throwaway skill `~/.claude/skills/forge-probe/SKILL.md` in a running forge whose body says "reply with exactly FORGE-SKILL-LOADED and nothing else"; `claude -p "/forge-probe hello" --output-format json` replies with that token. If it does not, the fallback (forge-run.sh inlining the skill body) is written into the spec's assumption 3 and raised before T3.
+  - Verify: the command above, run with `foundry exec <forge> …` or inside `foundry shell`; result recorded in `docs/spec/foundry-skills.md` assumption 3.
+  - Files: `docs/spec/foundry-skills.md`. The stub skill is not committed.
+  - Done 2026-09-12: forge `ctd65-probe` on Claude Code 2.1.252 returned FORGE-SKILL-LOADED for the slash prompt and "pong" for the control; forge removed. No forge-run.sh change needed.
+- [x] **T2: Guard test for the image's skills.** (S)
+  - Acceptance: `apps/foundry/image/skills.test.ts` asserts, for every `skills/*/SKILL.md`: frontmatter `name` equals the directory, `description` is non-empty; and for every directory named `forge-*`: the headings Overview, When to Use, Handoff, Finish, Common Rationalizations, Red Flags, Verification are present in that order. A second test reads every `db/migrations/*.sql`, collects `/forge-[a-z-]+` tokens, and asserts each names a directory. Runs with no database.
+  - Verify: `bun test apps/foundry/image` green against `work` alone (the forge-* checks vacuously pass; the seed check finds no tokens yet).
+  - Files: `apps/foundry/image/skills.test.ts`.
+- [x] **T3: `forge-spec` skill.** (M)
+  - Acceptance: `apps/foundry/image/skills/forge-spec/SKILL.md` in the agent-skills frame, adapted from `spec-driven-development` with MIT attribution. Reads the ticket via the Linear MCP when the task names one, else the task text; finds the repo's test, typecheck, lint and e2e commands; writes `~/spec.md` in the spec's shape with `C1…Cn` criteria; writes `## Blocked` instead when no criterion can be grounded; edits nothing in `/work`. Rationalizations table includes "I'll ask what they meant", "I'll add a reasonable criterion they forgot" and "no e2e runner, I'll assume Playwright". 150–250 lines.
+  - Verify: T2 green; read against the `~/spec.md` shape in the spec.
+  - Files: `apps/foundry/image/skills/forge-spec/SKILL.md`.
 
-## Phase 2: One repo
+## Checkpoint: Foundation
 
-- [x] **T3: Import Foundry and Pensieve with their histories.** (M)
-  - Acceptance: the docs commit comes first, then Foundry under `apps/foundry` and Pensieve
-    under `apps/pensieve`. Each is merged with `--allow-unrelated-histories`. Foundry's tags are
-    already `foundry-v*`, and Pensieve has none.
-  - Verify: `git log --oneline -- apps/foundry | wc -l` is 136, the same for `apps/pensieve` is
-    102, and `git log --follow apps/foundry/bin/foundry` reaches its first commit.
-  - Files: history only.
-  - Done: `git rev-list --count <merge>^2` is 136 and 102 (a path-limited `git log` leaves out
-    merges and empty commits, so it reads lower).
-- [x] **T4: Import argus's code-only history into `apps/argus`.** (M)
-  - Acceptance: `filter-repo --path` keeps scripts, skills, .claude, evals, tasks, docs, infra,
-    SPEC.md, README.md, CLAUDE.md, package.json, tsconfig.json, bun.lock, .mcp.json,
-    .gitignore, .env.example and .cursor. There are no `alden/`, `*/features/`, `state/` or
-    `.state/` paths, and the `pre-rebuild` tag becomes `argus-pre-rebuild`.
-  - Verify: `git ls-files apps/argus` matches the argus checkout's code paths, and
-    `git log --oneline -- apps/argus | grep -c "quiet run"` is 0.
-  - Files: history only.
-  - Done: 223 commits, no data paths, no "quiet run" commits, no code file missing.
-- [x] **T5: Set up one Bun workspace.** (M)
-  - Acceptance: a root `package.json` with `workspaces` and `packageManager: bun@1.4.0`, one
-    `bun.lock`, and the per-app lockfiles removed. The `argus` and `accio` bins resolve.
-  - Verify: `bun install && bun run --filter '*' typecheck && bun run --filter '*' test`, and
-    `bun run argus validate` against `ARGUS_ROOT=~/git/argus`.
-  - Files: `package.json`, `bun.lock`, each app's `package.json`.
-  - Baseline before the switch: Foundry web 34/34, Pensieve 135 pass. argus typecheck was already
-    broken on a clean install (`@types/bun` dropped in d8f3405; the old checkout's stale
-    `node_modules` hid it), so T5 declares it. 11 argus tests read data (OpenAPI cache, accio
-    index, arch docs) and fail without it; T6 fixes them. The bar for T5 is "same as baseline".
-  - Done: one `bun.lock`, results identical to baseline. `latest` pins resolved to the old
-    locks' versions; Foundry web's react-query went 5.102.0 → 5.102.8 to match Pensieve (two
-    copies of query-core broke its router types); argus got a `test` script.
-  - Follow-up (not step 1): argus's 12 pre-existing type errors, the same 12 in the old checkout.
+- [x] T1 answered and recorded; T2 green; `forge-spec` read end to end for both the criteria path and the Blocked path.
 
-**Checkpoint A:** histories and workspace are green. Review, then push citadel `main`.
+## Phase 2: The remaining skills
 
-## Phase 3: Seams
+- [x] **T4: `forge-plan` skill.** (M)
+  - Acceptance: adapted from `planning-and-task-breakdown` and the reviewer half of `doubt-driven-development`. Reads `~/spec.md` (stops on Blocked); explores the code each criterion touches; writes `~/plan.md` with files to touch, order, the test command, and one line per criterion saying where it will be satisfied; then re-reads it as a sceptical reviewer in the same turn and fixes it; edits nothing in `/work`. Never enters plan mode.
+  - Verify: T2 green; every criterion id in the spec shape has a line in the plan template.
+  - Files: `apps/foundry/image/skills/forge-plan/SKILL.md`.
+- [x] **T5: `forge-test` skill.** (M)
+  - Acceptance: adapted from `test-driven-development`. Reads `~/spec.md` and `~/plan.md`; uses the runner named in the spec; one test per criterion named `C<n>: <behaviour>`; runs the suite once and lists the red names in Finish; e2e tests only into an existing e2e runner, else the case is written at the level the repo can run and the report says so; touches tests, fixtures and test config only.
+  - Verify: T2 green; the Handoff section quotes what `forge-plan`'s Finish produces.
+  - Files: `apps/foundry/image/skills/forge-test/SKILL.md`.
+- [x] **T6: `forge-implement` skill.** (M)
+  - Acceptance: adapted from `incremental-implementation`. Reads `~/plan.md` and the red test list; implements one criterion at a time to green; fixes a test only when the test contradicts the spec, and says so; runs typecheck, lint and the suite before finishing; never re-plans beyond what the code forces; never skips or deletes a failing test.
+  - Verify: T2 green.
+  - Files: `apps/foundry/image/skills/forge-implement/SKILL.md`.
+- [x] **T7: `forge-verify` skill.** (M)
+  - Acceptance: adapted from `code-review-and-quality`. Reviews `git diff <base>..HEAD` on the five axes; runs the suite, typecheck and lint once more; proves e2e files parse; tightens or deletes a test that would pass any implementation; writes `~/qa-report.md` in the spec's table shape and `/work/.git/PR_BODY.md` from the repo's PR template or foundry's, with the report under "How verified" and a `Closes <ticket>` line; small fixes only, no features.
+  - Verify: T2 green; the PR body section list matches `apps/foundry/image/pr-template.md`.
+  - Files: `apps/foundry/image/skills/forge-verify/SKILL.md`.
 
-- [x] **T6: Make all of argus honor `ARGUS_ROOT`.** (S)
-  - Acceptance: `accio` (`manifest.ts`, `find.ts`) resolves data from `ARGUS_ROOT`, and
-    `mcp-headers.ts` reads the repo-root `.env`.
-  - Verify: the 11 data-reading argus tests pass with `ARGUS_ROOT=~/git/argus`, new tests in
-    `scripts/argus/paths.test.ts` and `scripts/accio.test.ts` pass, and
-    `ARGUS_ROOT=~/git/argus bun run accio stale` matches running it from the old checkout.
-  - Files: `apps/argus/scripts/accio/manifest.ts`, `find.ts`, `mcp-headers.ts`, the tests.
-  - Done: accio's `DATA_ROOT` (ARGUS_ROOT, else the checkout) feeds the app, manifest, features
-    and `.state`; `ROOT` stays the code root. evals read features from it too. The data tests
-    skip without data (135 pass, 13 skip) and all 148 pass with `ARGUS_ROOT=~/git/argus`.
-    `mcp-headers.ts` prefers `MCP_GATEWAY_TOKEN` from the environment, then the root `.env`.
-    (Claude Code strips that variable from a headersHelper's environment, so a container hands
-    the token over as a secret file instead; see T13.)
-- [x] **T7: Split code from data in Pensieve.** (M)
-  - Acceptance: `WORKSPACE_DIR` is the data, a new `ARGUS_DIR` (default `../argus`) is the code,
-    verbs are spawned as `bun $ARGUS_DIR/scripts/argus.ts` with `ARGUS_ROOT=$WORKSPACE_DIR`, and
-    Ask's cwd is `ARGUS_DIR`.
-  - Verify: `bun run --filter pensieve test` (including `ask.test.ts`), and a feature page plus
-    one click verb work in dev.
-  - Files: `src/server/workspace.ts`, `argus.ts`, `ask.ts`, `.env.example`.
-  - Done: `ARGUS_DIR` (env, else `../argus`, else the workspace) is the code. Verbs run
-    `bun $ARGUS_DIR/scripts/argus.ts` with the data as cwd and `ARGUS_ROOT`. Ask's sandbox is
-    `ARGUS_DIR`, with the data as `addDirs`, `env.ARGUS_ROOT`, `git -C <data>` read rules and
-    absolute data paths in its prompt. 137 pass; a real `argus show tasks` from citadel
-    against `~/git/argus` returns ok and writes nothing.
-- [x] **T8: Move to one `.env`.** (M)
-  - Acceptance: a root `.env.example` holds every key once (`FOUNDRY_MCP_TOKEN` becomes
-    `MCP_GATEWAY_TOKEN`, and `BITBUCKET_TOKEN` and `GH_TOKEN` are added). Foundry reads the root
-    `.env`. `ARGUS_ENV`, `argus-env.sh` and the liamai fallback are gone.
-  - Verify: `grep -rn "ARGUS_ENV\|liamai/env\|argus-env" apps` is empty, and Foundry's and
-    Pensieve's tests pass.
-  - Files: `.env.example`, `apps/foundry/bin/foundry`, `web/.../foundry-env.ts`, `job-api.ts`,
-    Pensieve's `package.json` scripts.
-  - Done: one root `.env.example`; the four app copies are gone. Foundry (CLI and web) reads the
-    root `.env`, with the environment as the fallback in a container, and sends forges
-    `FOUNDRY_MCP_TOKEN=$MCP_GATEWAY_TOKEN`; `migrate_env`, `ARGUS_ENV` and the liamai fallback
-    are gone. Pensieve's `root-env.sh` replaces `argus-env.sh` and exports only Pensieve's own
-    keys (checked: a Slack or gateway token in the file never reaches it). Foundry web 34/34,
-    Pensieve 137/0, no new lint.
-  - Left for later: the old names still appear in the argus and Pensieve bootstraps (T9
-    replaces them) and in Foundry's and Pensieve's READMEs (T15).
+## Checkpoint: Skills
 
-## Phase 4: Ops
+- [x] Read all five in order as one run; every Finish ends on a statement; every Blocked path stops with no edits; T2 green.
 
-- [x] **T9: Add the just environment recipes.** (M)
-  - Acceptance: `bootstrap`, `check`, and `auth linear|slack|claude|foundry-api` port the three
-    `bootstrap.sh` scripts and `foundry auth`. They're safe to run twice and write `.env` with
-    mode 600.
-  - Verify: on a scratch clone, `just bootstrap` then `just check` reports nothing missing, and
-    running `just bootstrap` again changes nothing.
-  - Files: `justfile`, `scripts/*.ts` for anything longer than a few lines; old bootstraps deleted.
-  - Done: `justfile` (`bootstrap`, `check`, `auth`) over `scripts/bootstrap.ts`: phases prereqs,
-    identity, deps, env, trust, data, home, links, forge, plus `import <file>...` (copies only
-    keys the .env lacks and .env.example names) and `auth linear|slack|claude|foundry-api|gateway`.
-    Checked on a scratch copy: `check` creates nothing; a run without a terminal creates a
-    mode-600 .env and mints the two tokens; a second run leaves it byte-identical; no secret in
-    any output. No global `set dotenv-load` (it would hand the Slack token to every recipe).
-- [x] **T10: Add the just stack and database recipes.** (S–M)
-  - Acceptance: `up`, `down`, `logs`, `ps`, `migrate`, `psql`, `sweep-once` and `release-dry`
-    replace `infra.sh`, `db.sh` and the delegating `package.json` scripts.
-  - Verify: `just --list` shows each with a doc line, and
-    `grep -rn "infra.sh\|db.sh" apps` is empty.
-  - Files: `justfile`, `apps/foundry/package.json`, deleted scripts.
-  - Done: `up`, `down`, `ps`, `logs`, `migrate`, `db-generate`, `db-studio`, `db-url`, `psql`,
-    `serve foundry|pensieve`, `setup-bb`; `scripts/stack.ts` holds the preflight, the URL and
-    psql. `infra.sh`, `db.sh` and Foundry's delegating scripts are gone; `foundry setup` calls
-    `just up postgres mcp` and `just migrate`. `set positional-arguments`: a quoted argument
-    (SQL, a path) reaches the script whole. `sweep-once` lands with T14 and `release-dry` with
-    T16, where they have something to act on.
+## Phase 3: The blueprint
 
-## Phase 5: Stack
+- [x] **T8: `QA_BLUEPRINT_ID` and migration 0013.** (S)
+  - Acceptance: `QA_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000003'` in `features/blueprints/types.ts` beside `DEFAULT_BLUEPRINT_ID`, with a comment saying it is not the ignite default. Migration generated with `bun run --filter foundry-web db:generate -- --custom --name seed_qa_blueprint` (journal entry and snapshot copy come with it), SQL written in 0007's style: the five steps from the spec's table, `ON CONFLICT DO NOTHING`, and an `INSERT` of the v1 `blueprint_revisions` row with `source = 'seed'` and note "Shipped with CTD-65.", also `ON CONFLICT DO NOTHING`. `DEFAULT_BLUEPRINT_ID` unchanged.
+  - Verify: `db:migrate` twice on the local DB; `psql` shows three blueprints and one revision for the new id; T2's seed check passes.
+  - Files: `apps/foundry/web/src/features/blueprints/types.ts`, `apps/foundry/web/src/db/migrations/0013_seed_qa_blueprint.sql`, `meta/_journal.json`, `meta/0013_snapshot.json`.
+- [x] **T9: Blueprint store test.** (S)
+  - Acceptance: `features/blueprints/server/blueprint-store.test.ts` against the real DB (header as `job-api.test.ts`): `getBlueprintRow(QA_BLUEPRINT_ID)` returns five steps whose prompts start with `/forge-`; `validate()` returns them unchanged; the revision list for that id has one entry with `source === 'seed'`; `getBlueprintRow(DEFAULT_BLUEPRINT_ID)` is still "Plan → Execute".
+  - Verify: `bun run --filter foundry-web test` green after `db:migrate`.
+  - Files: `apps/foundry/web/src/features/blueprints/server/blueprint-store.test.ts`.
+- [x] **T10: README.** (S)
+  - Acceptance: the blueprints table in `apps/foundry/README.md` gains the "Spec → QA" row, and the `/work` paragraph mentions the five `forge-*` skills in one sentence. `just migrate seeds two` becomes three.
+  - Verify: read.
+  - Files: `apps/foundry/README.md`.
 
-- [x] **T11: Bring up the gateway and Postgres from the root compose.** (S)
-  - Acceptance: the root `compose.yaml` `include:`s `apps/argus/infra/compose.yaml` (mcp) and
-    `apps/foundry/infra/compose.yaml` (postgres).
-  - Verify: `just up && just ps` shows both healthy, and `curl :9090/_readyz` returns 200.
-  - Files: `compose.yaml`, both infra compose files.
-  - Done: root `compose.yaml` (`name: citadel`) includes both files, each given the root .env.
-    The fixed container names are gone (they clashed with the live `argus-mcp` and
-    `foundry-postgres`). Postgres keeps the `foundry-pgdata` volume by default so Foundry's
-    history survives cutover; `POSTGRES_VOLUME` moves a trial stack, and `just up` refuses a
-    volume a container from another project holds. Trial on project `citadel-t11`, ports
-    19090/15432 and a throwaway volume: both healthy, `/_readyz` 200, migrations applied, the
-    guard refused `foundry-pgdata`; the live stack was untouched.
-- [x] **T12: Foundry web stays on the host; `just foundry` runs it.** (decided at checkpoint B)
-  - Why: Foundry web runs `git push` and opens PRs with `gh` and `bb` using keychain-backed
-    credentials a container cannot read. Containerizing it (tokens, a credential helper,
-    same-path mounts for `~/git` and `~/.foundry`, the Docker socket, and T2's `server.ts`) moves
-    to the deploy work.
-  - Done: `just foundry` runs the dev server with the stack's DATABASE_URL; it reads the root
-    .env itself. Pensieve's container reaches it at `host.docker.internal:3777`. Until cutover the
-    live Foundry holds :3777 and the live postgres :5432, so it is for after the switch.
-- [x] **T13: Add the Pensieve service.** (M, needs T7)
-  - Acceptance: an image that includes `apps/argus`, mounts `argus-data` read-only except for
-    `decisions/`, and mounts the FE/BE clones read-only. Ask runs on `CLAUDE_CODE_OAUTH_TOKEN`,
-    and Send reaches `http://foundry-web:3777`.
-  - The data mount can't be `/workspace`: that is the sandbox's virtual name for Ask's cwd
-    (`ARGUS_DIR`). Mount it at `/argus-data` and set `WORKSPACE_DIR` and `ARGUS_DIR` explicitly.
-  - Verify: the smoke test in the spec (feature page, a click verb, Send, an Ask answer).
-  - Done: the image builds from the repo root with argus's code, trusts `/app/apps/argus`, and
-    sets a system-wide git `safe.directory`; a root `.dockerignore` keeps `.env` out (checked:
-    none in the image). Compose passes only Pensieve's keys, mounts the data at `/argus-data`,
-    the FE/BE checkouts read-only, and a volume for Claude's transcripts so a resumed
-    conversation survives a restart. Three fixes found by the trial: `apps/argus/.claude/
-    settings.json` approves the linear and slack servers (trust alone left them pending); the
-    gateway token reaches the headersHelper as a compose secret file, because Claude Code runs
-    helpers without secret-looking variables; the gateway's healthcheck waits for every
-    upstream route. Trial on port 13778 against a copy of the data: pages serve, Claude is
-    logged in by token, both MCP servers connect, `argus show` reads the data. Send waits on
-    T12's decision.
-  - Files: `apps/pensieve/Dockerfile`, `apps/pensieve/compose.yaml`.
+## Checkpoint: Complete
 
-**Checkpoint B:** the stack runs without the sweep. Review before T14. (passed 2026-09-11)
+- [x] `bun run --filter foundry-web typecheck && bun run --filter foundry-web test && bun test apps/foundry/image` green (2026-09-12: typecheck clean, 38 + 19 pass). `check` is red on main already — 1244 pre-existing ultracite errors, and CI does not run it — so the new files match the surrounding style rather than the linter.
 
-- [x] **T14: Add the sweep image and service, behind a profile.** (M–L, needs T1)
-  - Acceptance: the image has bun, the claude CLI, git and the argus code. On first start,
-    `loop.sh` clones `d0nwong/citadel-data` into `argus-data` and FE/BE into `product` (with
-    `BITBUCKET_TOKEN`), then loops `flock … claude -p "/sweep"` every 900 seconds and pushes with
-    `GH_TOKEN`. The service is under `profiles: [sweep]`.
-  - Verify: `just sweep-once` with `argus pull --dry-run` prints a batch, `just up` doesn't
-    start the sweep, and a second `sweep-once` while one is running exits on the lock.
-  - Files: `apps/argus/Dockerfile`, `apps/argus/infra/compose.yaml`, `apps/argus/infra/sweep/loop.sh`.
-  - Done: `citadel/sweep` runs as `bun` (uid 1000; root is refused). `loop.sh` clones what is
-    missing, runs `/sweep` under `.git/sweep.lock`, and pushes only when a `gh_token` secret exists.
-    Recipes `sweep-once [--dry-run]`, `sweep-on`, `sweep-off`; the preflight refuses a real tick
-    while the host's `/loop 15m /sweep` runs. Trial on a copy of the data: FE/BE cloned with the
-    API-token git username, `argus pull --dry-run` printed a batch and wrote nothing, the lock and
-    the refusal held, both MCP servers connect, Bitbucket REST 200. `GH_TOKEN` is still unset:
-    create a fine-grained token (contents: write on d0nwong/argus) before cutover.
+## Phase 4: Prove it on a job
 
-## Phase 6: Release, CI, docs
-
-- [x] **T15: Update the docs and paths.** (M)
-  - Acceptance: a root README; CLAUDE.md, argus SPEC.md's Commands and Structure sections, the
-    skill path references and Ask's allowlist all point at the new paths.
-  - Verify: `grep -rn "git/argus\|git/foundry\|git/pensieve" apps docs` returns only intended
-    hits, and `bun run --filter argus test` (`skills.test.ts`) passes.
-  - Files: `README.md`, `apps/argus/CLAUDE.md`, `SPEC.md`, `skills/*`, Pensieve's `ask-tools.ts`.
-  - Done: a root README; argus's README, SPEC, CLAUDE.md and sweep skill now name `apps/…`, the
-    data repo (`ARGUS_ROOT`) and the sweep service instead of `/loop 15m /sweep`; Pensieve's and
-    Foundry's READMEs, CONTRIBUTING, `infra/README.md` and `serve.sh` use the recipes. Ask's
-    allowlist needed nothing: its rules are relative to argus's directory, which is still the
-    working directory, and the FE/BE defaults are right on a host and set by env in the stack.
-- [x] **T16: Set up release-please.** (S)
-  - Acceptance: the manifest and config from the spec, `bootstrap-sha` set to the T4 merge, and
-    the workflow and `pr-title.yml` moved from Foundry with app scopes.
-  - Verify: `just release-dry` proposes nothing on a clean main, and a `feat(pensieve):` commit
-    on a scratch branch proposes only `pensieve-v0.2.0`.
-  - Files: `release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/*`.
-  - Done: manifest mode at the root, component tags, `bootstrap-sha` at the argus import merge
-    (9eac352) so imported history is never re-released. Foundry keeps 1.4.0 and its tag, with 16
-    commits after it to release; argus and Pensieve start at 0.1.0. Its workflows moved from
-    `apps/foundry/.github` to the root, where GitHub reads them, and the release token falls back
-    to `GITHUB_TOKEN`. `just release-dry` shows what it would propose — it needs a GH_TOKEN,
-    so it is unrun so far.
-- [x] **T17: Add CI.** (S)
-  - Acceptance: `ci.yml` installs once, then typechecks, tests and checks each app whose paths
-    changed.
-  - Verify: a PR touching only Pensieve runs only Pensieve's jobs, and they pass.
-  - Files: `.github/workflows/ci.yml`.
-  - Done: one job — install once, typecheck Pensieve and foundry-web, then the four test suites,
-    with a postgres service and the extensions the local stack's init SQL creates. Checked
-    locally the way a runner has it: Pensieve's tests pass with no data directory and no `claude`
-    on PATH. argus's 12 pre-existing type errors were fixed (unchecked indexes and regex groups),
-    so its typecheck is in CI too. Lint stays out: foundry-web has 1133 Biome diagnostics,
-    Pensieve 2, all pre-existing. Path filters were not worth it — the whole job is seconds.
-
-**Checkpoint C** (2026-09-12): criteria 1–4 are met — histories, a fresh clone that installs,
-typechecks and passes its tests, `just bootstrap`/`just check` on a clean machine, and one
-`just up` with the gateway, postgres and Pensieve healthy, `just foundry` on the host, Ask's
-servers connected and the pages serving. Criterion 6 (release-please proposes one app's version)
-waits on a `GH_TOKEN`. Criterion 5 is cutover, below.
-
-## Phase 7: Cutover (ask before each step)
-
-- [x] **T18: Cut the sweep over.** In order, one at a time:
-  1. `just auth gh` — a fine-grained GitHub token, contents: write on the data repo alone.
-     Without it the sweep commits locally and never pushes.
-  2. `just auth bitbucket` — the account's email and a read-only Atlassian API token
-     (`read:repository:bitbucket`, `read:pipeline:bitbucket`) for the product repos and pipelines.
-  3. Stop the host loop if it runs (`pgrep -f 'loop 15m /sweep'`), and push `~/git/argus`.
-  4. Make sure the old containers stay stopped: citadel's stack wants 9090, 5432 and 3778.
-  5. `just link` — the 9 links (dry-run checked: bun's global argus link, foundry, seven skills).
-  6. `just up` — gateway, postgres, Pensieve.
-  7. `just foundry` — Foundry's web UI on this Mac.
-  8. `just sweep-on` — the loop, one tick per SWEEP_INTERVAL against `ARGUS_DATA_DIR`.
-  - Done 2026-09-12: both tokens checked first (GitHub push on d0nwong/argus, Bitbucket REST and
-    git). `just link` moved 9 links; `just up` brought the gateway, postgres and Pensieve up in
-    13s over the live data; Foundry runs on the host. The first container tick cloned the product
-    repos, read Slack and both repos, closed A-1 on admin/projects, refreshed six arch docs,
-    validated 26 features, committed `93fd26f` and pushed it. Pensieve renders the result.
-    Commits are authored `argus sweep <sweep@citadel.local>` (`SWEEP_GIT_NAME`/`SWEEP_GIT_EMAIL`
-    change that). `.state/last-api-sync.md` stays modified: `argus commit` stages only ledgers,
-    threads and docs.
-  - Criterion 6 done 2026-09-12: `just release-dry` proposes one pull request — argus 0.1.0 →
-    0.2.0, foundry 1.4.0 → 1.5.0 (continuing from its imported tag), pensieve 0.1.0 → 0.2.0. It
-    reads citadel, so it uses gh's token: `.env`'s GH_TOKEN is scoped to the data repo alone.
-  - Left: after 24 hours, check that ticks keep landing in `d0nwong/citadel-data` and that no commit
-    appeared that the sweep did not make (criterion 5).
-- [x] **T19: Archive and trim.** Archive `d0nwong/foundry` and `d0nwong/pensieve` with a
-  pointer README, and delete argus's code from `d0nwong/citadel-data` in one commit.
-  - Verify: the sweep still ticks after the trim.
-  - Done 2026-09-12: you archived all three, which made the data repo read-only and the sweep's
-    push fail with a 403 — it is the one live write target of the three. Unarchived it, renamed
-    it `d0nwong/citadel-data` so it reads as data rather than a superseded code repo, and gave
-    it a description and a README pointing at citadel. The trim removed 121 files (the CLIs,
-    skills, evals, infra, tasks, docs, `package.json`, `tsconfig.json`, `.mcp.json`, `CLAUDE.md`,
-    `SPEC.md`) in `b39bcf7`; only `.env.example`, `bun.lock` and `scripts/bootstrap.sh` had no
-    counterpart in citadel, and all three were superseded by design. The container never read
-    any of it: its WORKDIR is `/app/apps/argus` in the image. After the trim `just sweep-once
-    --dry-run` printed "nothing new", `argus validate` passed 26 features, and Pensieve served
-    200. The local checkout stays at `~/git/argus` — the mount, `ARGUS_DATA_DIR` and
-    `WORKSPACE_DIR` all default to it — with `node_modules/`, `.env`, `evals/last-run/` and
-    `queue/` left behind untracked.
+- [ ] **T11: Two real jobs.** (M)
+  - Acceptance: `foundry build`; ignite with "Spec → QA" on a small repo with a real runner and a ticket with acceptance criteria: five steps ran, tests are named by criterion, the PR body carries the report table. Second job on a ticket with no criteria: settles no-changes, final message names what is missing. Both job ids in the PR body under "How verified".
+  - Verify: the ledger and the PR.
+  - Files: none in the repo beyond the PR body.
