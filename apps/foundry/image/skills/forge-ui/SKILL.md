@@ -27,7 +27,7 @@ Reads and writes nothing of its own. The step that opened it holds the spec, the
 The sources are the repo's, read at run time and in this order:
 
 1. **The component inventory**: the `ui:list` script when `package.json` has one, run with the repo's package manager (it prints each shared component, its import path, one line on what it is for, and its stories); otherwise the shared components directory (`components/ui`, `components/fields`, `shared/ui`), read by name and by the one-line comment at the top of each
-2. **The design doc**: `DESIGN.md` or the file the repo notes name — its principles, tokens, typography scale, recipes and anti-patterns table; `CLAUDE.md` where it carries UI rules
+2. **The design doc**: `DESIGN.md` or the file the repo notes name — its principles, tokens, typography scale and anti-patterns table in full, and of its recipes only the ones for the components the change uses or should use; `CLAUDE.md` where it carries UI rules
 3. **The repo notes** in the system prompt: rules the owner has written down that the doc does not yet carry
 
 A repo with no inventory script and no doc gets the checks below against its own neighbouring components, and the line carried back says `inventory: none found`.
