@@ -92,9 +92,29 @@ Every criterion in the spec has a row. A criterion with no test has a row that s
 
 Write it as rendered markdown: one unbroken line per paragraph and per bullet, never hard-wrapped at a column — a hard wrap splits inline code mid-token and renders as an inserted space.
 
+## Step 6: Commit, in the repo's style
+
+Commit everything that belongs to the change, in one commit, before finishing. The host pushes the branch and opens the PR with the newest commit's subject as the PR title, and CI lints that title — a run that leaves its work uncommitted gets a sweep commit whose subject is the task's first line, which fails the lint before a reviewer sees the PR.
+
+- Subject: a Conventional Commit, `type(scope): summary` — `feat`, `fix`, `test`, `docs`, `chore`, `refactor` — in the style `git log --oneline -20` shows the repo already uses, under 72 characters, imperative. Follow the repo's own convention if `CONTRIBUTING.md` or its recent history documents a different one.
+- Body: the `Closes <ticket id>` line when the task named a ticket, then the assumptions carried, wrapped at 72 columns — `git log` is read in a terminal that does not soft-wrap, the one place hard wrapping is right.
+- Nothing else: `.git/PR_BODY.md` is under `.git/` on purpose and never enters the commit; `~/qa-report.md` is outside the workspace.
+
+```
+feat(pensieve): file tickets on the team and project the ask names
+
+Closes CTD-172
+
+Assumptions: the checkout's LIA/Liamai constants were stale against
+Linear's own team list and are replaced; team is an explicit optional
+field defaulting to Alden, no inference from the project name.
+```
+
+Do not push, and do not open the PR: the host does both once the run ends.
+
 ## Finish
 
-End with the report's table and command line, the findings left for the reader with their labels, and the verdict in one line: ready for review, or not, and the Critical or required finding that makes it not. Every sentence is a statement; never end on a question or an offer, because nobody answers and the run simply ends.
+End with the commit subject, the report's table and command line, the findings left for the reader with their labels, and the verdict in one line: ready for review, or not, and the Critical or required finding that makes it not. Every sentence is a statement; never end on a question or an offer, because nobody answers and the run simply ends.
 
 ## Common Rationalizations
 
@@ -114,6 +134,7 @@ End with the report's table and command line, the findings left for the reader w
 - A finding without a label, or a Critical buried under nits
 - A test left in place that would pass with the production change reverted
 - A PR body with a section left as the template's comment
+- Work left uncommitted at the end, or a commit whose subject is not a Conventional Commit
 - A fix in this step that adds behaviour the spec did not ask for
 - A file in the diff that only the formatter touched, left in
 - A final message that ends on a question
@@ -124,4 +145,5 @@ End with the report's table and command line, the findings left for the reader w
 - [ ] The diff was read on all five axes and every finding is labelled and either fixed in place or left for the reader
 - [ ] Test, typecheck and lint were run after the last edit, with command and result in the report
 - [ ] `~/qa-report.md` has a row per criterion, and `/work/.git/PR_BODY.md` carries the table under How verified
+- [ ] The change is committed with a Conventional Commit subject and the `Closes` line in the body; `git -C /work status --porcelain` is empty
 - [ ] The final message states the verdict and ends on a statement
