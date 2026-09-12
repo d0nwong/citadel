@@ -49,7 +49,7 @@ lint:      bun run check
 e2e:       none configured
 ```
 
-Run the test command once now, on the untouched checkout. A suite that is already red is an Assumption the later steps need to know about, not a surprise for the verify step.
+Run the test, typecheck and lint commands once now, on the untouched checkout, and write their state under Assumptions — `bun test 212 pass`, `typecheck clean`, `lint: 3 pre-existing errors in src/legacy/` — because every later step reads it there instead of rerunning them to learn it. A suite that is already red is an Assumption the later steps need to know about, not a surprise for the verify step.
 
 ## Step 3: Ground every acceptance criterion in the code
 
@@ -93,7 +93,7 @@ ASSUMPTIONS
   (features/jobs/queries.ts recentSince), so C3 uses 7 days.
 - No Slack tools available; the linked thread was not read. C4 is written from the
   ticket text alone.
-- The suite is green on the untouched checkout (bun test, 212 pass).
+- The suite is green on the untouched checkout (bun test, 212 pass); typecheck clean; lint has 3 pre-existing errors in src/legacy/ that this change does not touch.
 ```
 
 Prefer the choice the code already makes over the choice that seems best. Where the ticket contradicts the code, the criterion follows the ticket and the contradiction is an assumption the PR reader will see.
@@ -168,7 +168,7 @@ End with the Criteria list verbatim, the Commands line, and the Assumptions — 
 
 - [ ] Every criterion traces to a line of the ticket's Acceptance Criteria section, states the state to set up and what must be observed, and names where in the code it is satisfied
 - [ ] A ticket with no Acceptance Criteria section produced `## Blocked`, not criteria; a bug's `C1` is its reproduction and Commands has a `repro:` line; a criterion that changes a published contract is followed by the standing contract criterion
-- [ ] Every command in Commands exists in the repo and the test command was run once on the untouched checkout
+- [ ] Every command in Commands exists in the repo, and test, typecheck and lint were each run once on the untouched checkout with their state under Assumptions
 - [ ] Every gap in the ticket has a line under Assumptions naming what was decided and why
 - [ ] `~/spec.md` exists and `/work` has no changes (`git -C /work status --porcelain` is empty)
 - [ ] The final message ends on a statement
