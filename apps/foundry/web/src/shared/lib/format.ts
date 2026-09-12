@@ -1,3 +1,6 @@
+/** Truncate `s` to at most `n` characters. */
+export const trim1 = (s: string, n: number) => s.slice(0, n)
+
 export function duration(ms: number): string {
   if (ms < 0) ms = 0
   const s = Math.floor(ms / 1000)

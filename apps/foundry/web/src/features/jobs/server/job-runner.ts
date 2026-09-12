@@ -80,13 +80,7 @@ async function docker(args: Array<string>, timeout = 30_000): Promise<string> {
 /* Preflight                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Everything that must hold before a container is worth starting. */
-async function preflight(
-  job: JobRow,
-): Promise<{ credEnv: Record<string, string>; originUrl: string; notes: string; comments?: string }> {
-  if (job.repo.kind !== 'local') throw new Error(`only local repos run today — this job targets a ${job.repo.kind} ref`)
-  const repoPath = job.repo.path
-
+async function claudeCredential(): Promise<Record<string, string>> {
   const cred = await readFoundryEnv()
   const credEnv: Record<string, string> = {}
   if (cred.CLAUDE_CODE_OAUTH_TOKEN) credEnv.CLAUDE_CODE_OAUTH_TOKEN = cred.CLAUDE_CODE_OAUTH_TOKEN
@@ -99,7 +93,10 @@ async function preflight(
     credEnv.FOUNDRY_MCP_URL = MCP_URL
     credEnv.FOUNDRY_MCP_SERVERS = cred.FOUNDRY_MCP_SERVERS || 'linear,slack'
   }
+  return credEnv
+}
 
+async function dockerReady(): Promise<void> {
   try {
     await docker(['info', '--format', '{{.OperatingSystem}}'])
   } catch {
@@ -110,7 +107,9 @@ async function preflight(
   } catch {
     throw new Error(`image ${IMAGE} not built — run: foundry build`)
   }
+}
 
+async function gitOrigin(repoPath: string, baseBranch: string): Promise<string> {
   try {
     await git(repoPath, ['rev-parse', '--git-dir'])
   } catch {
@@ -123,21 +122,36 @@ async function preflight(
     throw new Error(`${repoPath} has no 'origin' remote — nowhere to push`)
   }
   try {
-    await git(repoPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${job.baseBranch}`])
+    await git(repoPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${baseBranch}`])
   } catch {
-    throw new Error(`base branch '${job.baseBranch}' does not exist in ${repoPath}`)
+    throw new Error(`base branch '${baseBranch}' does not exist in ${repoPath}`)
   }
+  return originUrl
+}
 
-  // The PR CLI check is a preflight concern only for hosts we *can* serve:
-  // an exotic origin still gets its branch pushed, just no PR.
+// The PR CLI check is a preflight concern only for hosts we *can* serve:
+// an exotic origin still gets its branch pushed, just no PR.
+async function prCliReady(originUrl: string): Promise<void> {
   const cli = prCliFor(originHost(originUrl))
-  if (cli !== null) {
-    try {
-      await exec(cli, ['--version'], { timeout: 15_000 })
-    } catch {
-      throw new Error(`'${cli}' CLI not found on PATH — needed to open PRs on ${originHost(originUrl)}`)
-    }
+  if (cli === null) return
+  try {
+    await exec(cli, ['--version'], { timeout: 15_000 })
+  } catch {
+    throw new Error(`'${cli}' CLI not found on PATH — needed to open PRs on ${originHost(originUrl)}`)
   }
+}
+
+/** Everything that must hold before a container is worth starting. */
+async function preflight(
+  job: JobRow,
+): Promise<{ credEnv: Record<string, string>; originUrl: string; notes: string; comments?: string }> {
+  if (job.repo.kind !== 'local') throw new Error(`only local repos run today — this job targets a ${job.repo.kind} ref`)
+  const repoPath = job.repo.path
+
+  const credEnv = await claudeCredential()
+  await dockerReady()
+  const originUrl = await gitOrigin(repoPath, job.baseBranch)
+  await prCliReady(originUrl)
 
   // Read now rather than at insert time: the notes that apply are the ones
   // standing when the forge lights, not when the job was queued.
