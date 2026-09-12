@@ -47,7 +47,7 @@ queue/.state.json
 queue/.state.next.json
 queue/.lock/
 # where that cursor lived while the digest owned it. slack-pull adopts it on its first run
-# and deletes it (ARG-161); the lines stay so an un-migrated checkout cannot commit one
+# and deletes it (CTD-161); the lines stay so an un-migrated checkout cannot commit one
 digests/.state.json
 digests/.state.next.json
 # slack-pull's 24h user-id → name cache

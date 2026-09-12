@@ -323,7 +323,7 @@ export const fileTicket = createServerFn({ method: "POST" })
     return task;
   });
 
-// ── the board, a feature, and the triage queue (LIA-160, ARG-167) ──────────────
+// ── the board, a feature, and the triage queue (LIA-160, CTD-167) ──────────────
 
 /** The home page: on you, ready, unplaced, and one line per feature. */
 export const getHome = createServerFn({ method: "GET" }).handler(

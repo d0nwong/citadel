@@ -12,7 +12,7 @@
  * Opened from a feature page (`?feature=<dir>`, optionally with `?q=…`): the feature travels
  * with every run of the thread and is stored as the conversation's own (`metadata.feature`),
  * so the session's first retrieval is that feature's story and "it" in a question means
- * that feature (LIA-162 AC4, ARG-167 AC5). A question that arrived in the
+ * that feature (LIA-162 AC4, CTD-167 AC5). A question that arrived in the
  * URL is sent as soon as a credential is known to be available — or left in the composer
  * when it is not — and `q` and `feature` leave the URL once the first answer has landed
  * and the file carries them.

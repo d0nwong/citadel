@@ -191,7 +191,7 @@ You cannot write files, edit tickets or comments, or run the sweep; the argus ve
 
 /**
  * The extra system prompt a conversation opened from a feature page carries (LIA-162 AC4,
- * ARG-167 AC5). Without it "it" has no antecedent on the first turn: the page the question was
+ * CTD-167 AC5). Without it "it" has no antecedent on the first turn: the page the question was
  * asked from is the browser's, not the session's, and `chat({ context })` reaches only the
  * tool's `execute`. It names the retrieval too, so the feature's own story is the first
  * thing read rather than the board.
@@ -638,7 +638,7 @@ export const askPersistence = askStore.persistence;
 export const SESSION_KEY = "sessionId";
 
 /**
- * The feature this conversation is about, when it was opened from one (LIA-162 AC4, ARG-167
+ * The feature this conversation is about, when it was opened from one (LIA-162 AC4, CTD-167
  * AC5). Written once, on the first run that names it, and never again: the conversation is
  * about the feature it started on, whatever a later request claims.
  */
@@ -1057,7 +1057,7 @@ export async function* askStream(
 
 export interface Conversation {
   createdAt: string;
-  /** The feature this conversation was opened on, when it was (LIA-162, ARG-167). */
+  /** The feature this conversation was opened on, when it was (LIA-162, CTD-167). */
   feature?: string;
   /** `'length'` when the last run stopped at the turn cap — the page says so under the answer. */
   finishReason?: "length";

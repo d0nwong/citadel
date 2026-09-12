@@ -179,10 +179,10 @@ sweep never reads half of one, and it is never edited afterwards by either side.
 lay these files over what they read, so a row decided a minute ago wears its verdict
 before argus has applied it.
 
-The click applies it (ARG-169): once the file is renamed into place, `decideUnsorted` and
+The click applies it (CTD-169): once the file is renamed into place, `decideUnsorted` and
 `verifyEvent` run `bun run marauder apply` in `WORKSPACE_DIR` (`src/server/marauder.ts`
 `applyDecisions`, a `Bun.spawn` with a 30 s timeout and stderr captured) — argus's own
-verb (ARG-168), which applies the decision files through the same correction functions
+verb (CTD-168), which applies the decision files through the same correction functions
 the command line goes through and renders the pages, under the lock every writing verb of
 the sweep holds — and answer `{ ok, applied, note? }`. An applied Unsorted row is gone on
 the re-read, and a verified event reads as confirmed. When the lock is busy, the run fails

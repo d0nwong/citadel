@@ -375,7 +375,7 @@ describe("AC1 — a run writes the user turn on start and the full transcript be
   });
 });
 
-describe("ARG-167 AC5 — the feature a conversation was opened on", () => {
+describe("CTD-167 AC5 — the feature a conversation was opened on", () => {
   test("written on the first run that names it, and never overwritten", async () => {
     const dir = await scratch();
     const store = conversationStore(dir);

@@ -60,7 +60,7 @@ if (!first || first === "help" || first === "--help" || first === "-h") {
 }
 
 /**
- * The four verbs `marauder` took over (ARG-161). A pointer, not a search result: someone
+ * The four verbs `marauder` took over (CTD-161). A pointer, not a search result: someone
  * typing `accio arc` wants where the work stands, and the answer is one command away.
  */
 const MOVED: Record<string, [command: string, why: string]> = {

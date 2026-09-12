@@ -1,5 +1,5 @@
 /**
- * The feature a conversation was opened on, above the transcript (LIA-162 AC4, ARG-167
+ * The feature a conversation was opened on, above the transcript (LIA-162 AC4, CTD-167
  * AC5). One line and no controls: Send and Verify are on the feature's own page, and a
  * correction arrives as a card in the thread — so all this has to do is say what "it" means
  * in the conversation below and link back. A conversation opened on nothing renders nothing.

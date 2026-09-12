@@ -25,7 +25,7 @@ describe("parseLandings", () => {
 
 describe("ticketKeysIn", () => {
   test("rule ids and http talk are not tickets", () => {
-    expect(ticketKeysIn("ALD-4 fixes BR-12 and MM-3 on the API-1 path, see ARG-160 and R-2")).toEqual(["ALD-4", "ARG-160"]);
+    expect(ticketKeysIn("ALD-4 fixes BR-12 and MM-3 on the API-1 path, see CTD-160 and R-2")).toEqual(["ALD-4", "CTD-160"]);
   });
 });
 
