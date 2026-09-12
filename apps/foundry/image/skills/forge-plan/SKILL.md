@@ -24,7 +24,7 @@ Reads `~/spec.md` and the repo. Stops with no edits on a `## Blocked` section, r
 Open the place the spec names and read outward until the shape of the change is known: types crossed, callers affected, the test beside it, the convention the neighbours follow. Every line of the plan points at something read here. Collect on the way:
 
 - The existing helper or component that already does most of it — new code beside a fit is the first thing Step 4 rejects
-- For a UI criterion, the repo's `ui:list` script when `package.json` has one: the shared components to build with
+- When a criterion touches UI — a component, a route's rendered output, a stylesheet or token file, a story — the lens at `~/.claude/skills/forge-ui/SKILL.md`: the repo's component inventory and design doc are what the plan builds with, and Assumptions carries its one line
 - The repo notes in the system prompt and `CLAUDE.md`
 - When a criterion changes a contract — a route's params or body, a validation schema, the API document, a generated client type, an exported interface — the lens at `~/.claude/skills/forge-api/SKILL.md`: plan the change additive, state the migration path where it cannot be, and carry its one line into Assumptions
 

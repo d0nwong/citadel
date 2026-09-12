@@ -1,9 +1,9 @@
-# Todo: CTD-175 — forge-simplify and "Simplify"
+# Todo: CTD-171 — forge-ui lens
 
 Plan: `tasks/plan.md`.
 
-- [x] **T1: `forge-simplify` skill.** Chesterton's fence, plan first, one change at a time, suite as oracle, never a test.
-- [x] **T2: Neighbouring skills.** `forge-spec` refactor mode (`refactor:` prefix or a ticket naming files and what to remove; C1 unchanged suite; Blocked when nothing named). `forge-verify` whole-diff readability for a refactor; Summary names the `Not doing` line.
-- [x] **T3: Blueprint.** `SIMPLIFY_BLUEPRINT_ID`, migration 0016, store test row, README row and "seeds five".
-- [x] **Checks.** (57 image, store 12 pass, typecheck clean.) `bun test apps/foundry/image`, store test after `just migrate`, typecheck.
-- [x] **T4: Prove on a job.** (2026-09-12: job a1c54410 → PR #14 made the disguised change, fixed in the skills; rerun b0327f27 → PR #15 left it unmade.) Simplify on the citadel refactor ticket: AC1 (same suite count, no test changed, PR body names each simplification and one left), AC2 (the disguised behaviour change left unmade with why).
+- [x] **T1: `forge-ui` skill.** Inventory and doc first; adherence, accessibility floor, states, render anti-patterns; one line back.
+- [x] **T2: Roles read it.** `forge-plan` Step 1 (UI criterion → the lens, inventory in the plan); `forge-verify` Step 3 axis 7 (UI), report line.
+- [x] **T3: Repo notes + README.** Ticket's rules into alden-portal-fe notes where DESIGN.md lacks them.
+- [x] **Checks.** (62 image.) `bun test apps/foundry/image` (lens detected, read by two roles).
+- [ ] **T4: Prove on a job.** AC1 (hand-rolled UI flagged and replaced or listed), AC2 (on-system UI: no findings), AC3 (no non-UI file edited by the lens).
