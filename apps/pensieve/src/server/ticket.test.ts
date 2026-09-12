@@ -9,20 +9,34 @@ import {
   TITLE_MAX,
 } from "./ticket";
 
-/** The team's projects as `knownProjects()` would answer them, without a credential in sight. */
-const lookup = (over: Partial<ProjectLookup> = {}): ProjectLookup => ({
-  projects: [
+/** Each known team's projects, as `knownProjects(fetch, teamKey)` would answer them. */
+const PROJECTS: Record<string, { id: string; name: string }[]> = {
+  ALD: [
     { id: "p_alden", name: "Alden Portal" },
-    { id: "p_pensieve", name: "Pensieve" },
+    { id: "p_usage", name: "Admin - Usage" },
   ],
+  CTD: [
+    { id: "p_pensieve", name: "Pensieve" },
+    { id: "p_argus", name: "Argus" },
+  ],
+};
+
+/** The named team's projects, without a credential in sight. */
+const lookup = (
+  teamKey: string,
+  over: Partial<ProjectLookup> = {}
+): ProjectLookup => ({
+  projects: PROJECTS[teamKey] ?? [],
   source: "live",
-  teamId: "team_lia",
+  teamId: `team_${teamKey.toLowerCase()}`,
   viewerId: "user_liam",
   ...over,
 });
 
+// No default for the key: the check has to ask for a team, and a fake that quietly
+// substituted one would pass whether or not it was asked for the right list.
 const sources = (over: Partial<ProjectLookup> = {}): TicketSources => ({
-  projects: () => Promise.resolve(lookup(over)),
+  projects: (teamKey) => Promise.resolve(lookup(teamKey, over)),
 });
 
 /** A body carrying the sections named, in the order given. */
@@ -33,7 +47,7 @@ const FIVE = bodyOf(REQUIRED_SECTIONS);
 
 const draft = (over: Partial<Parameters<typeof checkDraft>[0]> = {}) => ({
   description: FIVE,
-  project: "Pensieve",
+  project: "Admin - Usage",
   title: "[FE] Rename the Ask panel to Argus",
   ...over,
 });
@@ -133,20 +147,36 @@ describe("AC4 — Pending, the sixth section", () => {
   });
 });
 
-describe("AC4 — the project is the team's", () => {
+describe("C2 — no team named resolves against Alden, the default", () => {
   test("a match carries its id, the team and the assignee through", async () => {
-    const r = await checkDraft(draft({ project: "Pensieve" }), sources());
+    const r = await checkDraft(draft({ project: "Admin - Usage" }), sources());
     expect(r).toEqual({
       draft: {
         // Trimmed: the card's textarea and the model's draft both arrive with slack at the ends.
         description: FIVE.trim(),
-        project: { id: "p_pensieve", name: "Pensieve", verified: true },
-        teamId: "team_lia",
+        project: { id: "p_usage", name: "Admin - Usage", verified: true },
+        team: { key: "ALD", name: "Alden" },
+        teamId: "team_ald",
         title: "[FE] Rename the Ask panel to Argus",
         viewerId: "user_liam",
       },
       ok: true,
     });
+  });
+  test("naming Alden by name answers the same draft as naming no team", async () => {
+    const named = await checkDraft(
+      draft({ project: "Admin - Usage", team: "Alden" }),
+      sources()
+    );
+    expect(named.ok && named.draft.team).toEqual({
+      key: "ALD",
+      name: "Alden",
+    });
+    const unnamed = await checkDraft(
+      draft({ project: "Admin - Usage" }),
+      sources()
+    );
+    expect(named).toEqual(unnamed);
   });
   test("the name is matched case-insensitively and answered in Linear's spelling", async () => {
     const r = await checkDraft(
@@ -162,13 +192,70 @@ describe("AC4 — the project is the team's", () => {
   test("a project that is not the team's is refused, and the answer lists the ones that are", async () => {
     const error = await refuse({ project: "Skunkworks" });
     expect(error).toBe(
-      '"Skunkworks" is not a project on team Liamai — its projects are Alden Portal, Pensieve'
+      '"Skunkworks" is not a project on team Alden — its projects are Alden Portal, Admin - Usage'
     );
   });
   test("no project named is refused", async () => {
     expect(await refuse({ project: " " })).toBe(
-      "the draft names no project — name one of team Liamai's"
+      "the draft names no project — name one of team Alden's"
     );
+  });
+});
+
+describe("C1 — a draft naming Citadel resolves against Citadel's projects", () => {
+  test("a match on the named team carries Citadel's id, team and assignee through", async () => {
+    const r = await checkDraft(
+      draft({ project: "Pensieve", team: "Citadel" }),
+      sources()
+    );
+    expect(r).toEqual({
+      draft: {
+        description: FIVE.trim(),
+        project: { id: "p_pensieve", name: "Pensieve", verified: true },
+        team: { key: "CTD", name: "Citadel" },
+        teamId: "team_ctd",
+        title: "[FE] Rename the Ask panel to Argus",
+        viewerId: "user_liam",
+      },
+      ok: true,
+    });
+  });
+  test("the team is matched by its key as well as its name", async () => {
+    const r = await checkDraft(
+      draft({ project: "Argus", team: "CTD" }),
+      sources()
+    );
+    expect(r.ok && r.draft.team).toEqual({ key: "CTD", name: "Citadel" });
+    expect(r.ok && r.draft.project).toEqual({
+      id: "p_argus",
+      name: "Argus",
+      verified: true,
+    });
+  });
+});
+
+describe("C3 — a project that exists only on the other team is not matched", () => {
+  test('team Alden naming project "Pensieve" is refused as a project Alden does not have, not matched to Citadel\'s id', async () => {
+    const error = await refuse({ project: "Pensieve", team: "Alden" });
+    expect(error).toBe(
+      '"Pensieve" is not a project on team Alden — its projects are Alden Portal, Admin - Usage'
+    );
+  });
+});
+
+describe("C4 — a team that is neither Alden nor Citadel is refused", () => {
+  test("the error names the unknown team, and no project list is read", async () => {
+    let calledWith: string | undefined;
+    const src: TicketSources = {
+      projects: (teamKey) => {
+        calledWith = teamKey;
+        return Promise.resolve(lookup(teamKey));
+      },
+    };
+    const r = await checkDraft(draft({ team: "Skunkworks" }), src);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toContain("Skunkworks");
+    expect(calledWith).toBeUndefined();
   });
 });
 
@@ -176,7 +263,7 @@ describe("AC5 — the check with no project list to check against", () => {
   test("a cached list refuses exactly as a live one does", async () => {
     const src = sources({ source: "cache" });
     expect(await refuse({ project: "Skunkworks" }, src)).toContain(
-      "is not a project on team Liamai"
+      "is not a project on team Alden"
     );
     expect((await checkDraft(draft(), src)).ok).toBe(true);
   });

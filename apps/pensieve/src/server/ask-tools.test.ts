@@ -7,8 +7,11 @@
 
 import { describe, expect, test } from "bun:test";
 import type { Ledger, Unplaced } from "../lib/ledger";
-import { proposeDecision } from "./ask-tools.server";
+import { proposeDecision, proposeTicket } from "./ask-tools.server";
 import type { LedgerRef } from "./ledger";
+import type { ProjectLookup } from "./linear";
+import type { TicketSources } from "./ticket";
+import { REQUIRED_SECTIONS } from "./ticket";
 
 const FIXTURE = new URL("../test/fixtures/ledger.json", import.meta.url)
   .pathname;
@@ -175,3 +178,84 @@ test.each(["attach", "dismiss", "send", "new"])(
     expect(!out.ok && out.error).toContain("propose_decision:");
   }
 );
+
+/** A body carrying the five required sections, in order. */
+const TICKET_BODY = REQUIRED_SECTIONS.map(
+  (h) => `## ${h}\n\nsomething about ${h}.\n`
+).join("\n");
+
+/** Each known team's projects, without a credential or a cache file in sight. */
+const TICKET_PROJECTS: Record<string, { id: string; name: string }[]> = {
+  ALD: [{ id: "p_usage", name: "Admin - Usage" }],
+  CTD: [{ id: "p_pensieve", name: "Pensieve" }],
+};
+
+const ticketSources = (): TicketSources => ({
+  projects: (teamKey) =>
+    Promise.resolve({
+      projects: TICKET_PROJECTS[teamKey] ?? [],
+      source: "live",
+      teamId: `team_${teamKey.toLowerCase()}`,
+      viewerId: "user_liam",
+    } satisfies ProjectLookup),
+});
+
+describe("propose_ticket", () => {
+  test("C1: a draft naming Citadel proposes a Citadel card with the project's id", async () => {
+    const out = await proposeTicket(
+      {
+        description: TICKET_BODY,
+        project: "Pensieve",
+        team: "Citadel",
+        title: "[BE] File tickets on the named team",
+      },
+      {},
+      ticketSources()
+    );
+    expect(out).toMatchObject({
+      ok: true,
+      proposal: {
+        project: "Pensieve",
+        projectId: "p_pensieve",
+        team: "Citadel",
+        verified: true,
+      },
+    });
+  });
+
+  test("C2: a draft naming no team proposes an Alden card, as today", async () => {
+    const out = await proposeTicket(
+      {
+        description: TICKET_BODY,
+        project: "Admin - Usage",
+        title: "[BE] File tickets on the named team",
+      },
+      {},
+      ticketSources()
+    );
+    expect(out).toMatchObject({
+      ok: true,
+      proposal: {
+        project: "Admin - Usage",
+        projectId: "p_usage",
+        team: "Alden",
+        verified: true,
+      },
+    });
+  });
+
+  test("C4: a team that is neither Alden nor Citadel is refused, naming the team", async () => {
+    const out = await proposeTicket(
+      {
+        description: TICKET_BODY,
+        project: "Admin - Usage",
+        team: "Skunkworks",
+        title: "[BE] File tickets on the named team",
+      },
+      {},
+      ticketSources()
+    );
+    expect(out.ok).toBe(false);
+    expect(!out.ok && out.error).toContain("Skunkworks");
+  });
+});

@@ -21,6 +21,11 @@ const {
 } = await import("./linear");
 type LinearErr = InstanceType<typeof LinearError>;
 
+// `linearSources` is the one production caller that turns a draft's team into a project
+// list. It reads through the cache under PENSIEVE_HOME, which this file already pins to
+// scratch, so the wiring is provable here without a credential or a stubbed global fetch.
+const { linearSources } = await import("./ticket");
+
 afterAll(() => rm(HOME, { force: true, recursive: true }));
 
 interface Seen {
@@ -49,13 +54,33 @@ const fake = (replies: { status?: number; body: unknown }[], seen: Seen[]) => {
   }) as typeof fetch;
 };
 
-const TEAM = {
+const TEAM_ALD = {
   data: {
     teams: {
       nodes: [
         {
-          id: "team_lia",
-          name: "Liamai",
+          id: "team_ald",
+          name: "Alden",
+          projects: {
+            nodes: [
+              { id: "p_alden", name: "Alden Portal" },
+              { id: "p_usage", name: "Admin - Usage" },
+            ],
+          },
+        },
+      ],
+    },
+    viewer: { id: "user_liam" },
+  },
+};
+
+const TEAM_CTD = {
+  data: {
+    teams: {
+      nodes: [
+        {
+          id: "team_ctd",
+          name: "Citadel",
           projects: {
             nodes: [
               { id: "p_pensieve", name: "Pensieve" },
@@ -73,6 +98,7 @@ beforeEach(async () => {
   forgetProjects();
   process.env.LINEAR_API_KEY = "lin_api_test";
   await rm(projectsCacheFile(), { force: true });
+  await rm(projectsCacheFile("CTD"), { force: true });
 });
 
 describe("AC2 — the credential is LINEAR_API_KEY in the environment, and nothing else", () => {
@@ -99,49 +125,52 @@ describe("AC2 — the credential is LINEAR_API_KEY in the environment, and nothi
 describe("AC5 — the team's projects, live then cached", () => {
   test("a live read answers the team, the viewer and the projects, and writes the cache", async () => {
     const seen: Seen[] = [];
-    const lookup = await knownProjects(fake([{ body: TEAM }], seen));
+    const lookup = await knownProjects(fake([{ body: TEAM_ALD }], seen));
     expect(lookup).toEqual({
       projects: [
-        { id: "p_pensieve", name: "Pensieve" },
-        { id: "p_argus", name: "Argus" },
+        { id: "p_alden", name: "Alden Portal" },
+        { id: "p_usage", name: "Admin - Usage" },
       ],
       source: "live",
-      teamId: "team_lia",
+      teamId: "team_ald",
       viewerId: "user_liam",
     });
     // A personal API key goes in `authorization` unprefixed — Linear's contract for lin_api_.
     expect(seen[0].headers.authorization).toBe("lin_api_test");
     expect(seen[0].url).toBe("https://api.linear.app/graphql");
     expect((seen[0].body as { variables: { key: string } }).variables.key).toBe(
-      "LIA"
+      "ALD"
     );
 
     const cached = JSON.parse(await readFile(projectsCacheFile(), "utf8"));
-    expect(cached.teamId).toBe("team_lia");
+    expect(cached.teamId).toBe("team_ald");
     expect(cached.viewerId).toBe("user_liam");
     expect(cached.projects).toHaveLength(2);
   });
   test("with the credential gone the cache still answers, and Linear is never called", async () => {
-    await knownProjects(fake([{ body: TEAM }], []));
+    await knownProjects(fake([{ body: TEAM_ALD }], []));
     forgetProjects();
     process.env.LINEAR_API_KEY = "";
 
     const seen: Seen[] = [];
-    const lookup = await knownProjects(fake([{ body: TEAM }], seen));
+    const lookup = await knownProjects(fake([{ body: TEAM_ALD }], seen));
     expect(seen).toEqual([]);
     expect(lookup.source).toBe("cache");
-    expect(lookup.teamId).toBe("team_lia");
-    expect(lookup.projects.map((p) => p.name)).toEqual(["Pensieve", "Argus"]);
+    expect(lookup.teamId).toBe("team_ald");
+    expect(lookup.projects.map((p) => p.name)).toEqual([
+      "Alden Portal",
+      "Admin - Usage",
+    ]);
   });
   test("no credential and no cache is 'none' — a lookup that cannot be made, not a failure", async () => {
     process.env.LINEAR_API_KEY = "";
-    expect(await knownProjects(fake([{ body: TEAM }], []))).toEqual({
+    expect(await knownProjects(fake([{ body: TEAM_ALD }], []))).toEqual({
       projects: [],
       source: "none",
     });
   });
   test("an outage falls back to the cache rather than turning every draft into a refusal", async () => {
-    await knownProjects(fake([{ body: TEAM }], []));
+    await knownProjects(fake([{ body: TEAM_ALD }], []));
     forgetProjects();
     const lookup = await knownProjects(
       fake([{ body: { errors: [{ message: "upstream is down" }] } }], [])
@@ -151,10 +180,75 @@ describe("AC5 — the team's projects, live then cached", () => {
   });
   test("the second read inside the window is the memo, not a second round trip", async () => {
     const seen: Seen[] = [];
-    const f = fake([{ body: TEAM }], seen);
+    const f = fake([{ body: TEAM_ALD }], seen);
     await knownProjects(f);
     await knownProjects(f);
     expect(seen).toHaveLength(1);
+  });
+});
+
+describe("C5 — the project cache is per team", () => {
+  test("Citadel's projects are fetched and cached under their own key, apart from Alden's", async () => {
+    await knownProjects(fake([{ body: TEAM_ALD }], []));
+
+    const seenCtd: Seen[] = [];
+    const lookup = await knownProjects(
+      fake([{ body: TEAM_CTD }], seenCtd),
+      "CTD"
+    );
+    expect(lookup).toEqual({
+      projects: [
+        { id: "p_pensieve", name: "Pensieve" },
+        { id: "p_argus", name: "Argus" },
+      ],
+      source: "live",
+      teamId: "team_ctd",
+      viewerId: "user_liam",
+    });
+    expect(
+      (seenCtd[0].body as { variables: { key: string } }).variables.key
+    ).toBe("CTD");
+    expect(projectsCacheFile("CTD")).not.toBe(projectsCacheFile());
+
+    const aldCache = JSON.parse(await readFile(projectsCacheFile(), "utf8"));
+    const ctdCache = JSON.parse(
+      await readFile(projectsCacheFile("CTD"), "utf8")
+    );
+    expect(aldCache.teamId).toBe("team_ald");
+    expect(ctdCache.teamId).toBe("team_ctd");
+  });
+
+  test("with the credential gone, Citadel's cache answers from its own file, and Alden's file is untouched", async () => {
+    await knownProjects(fake([{ body: TEAM_ALD }], []));
+    const aldCacheBefore = await readFile(projectsCacheFile(), "utf8");
+    forgetProjects();
+    await knownProjects(fake([{ body: TEAM_CTD }], []), "CTD");
+    forgetProjects();
+    process.env.LINEAR_API_KEY = "";
+
+    const seen: Seen[] = [];
+    const lookup = await knownProjects(fake([{ body: TEAM_CTD }], seen), "CTD");
+    expect(seen).toEqual([]);
+    expect(lookup.source).toBe("cache");
+    expect(lookup.teamId).toBe("team_ctd");
+    expect(lookup.projects.map((p) => p.name)).toEqual(["Pensieve", "Argus"]);
+
+    const aldCacheAfter = await readFile(projectsCacheFile(), "utf8");
+    expect(aldCacheAfter).toBe(aldCacheBefore);
+  });
+
+  test("the draft check's own reader asks for the team it is given, not the default", async () => {
+    await knownProjects(fake([{ body: TEAM_ALD }], []));
+    forgetProjects();
+    await knownProjects(fake([{ body: TEAM_CTD }], []), "CTD");
+    forgetProjects();
+    // No credential, so the read is the cache alone and never touches the real fetch.
+    process.env.LINEAR_API_KEY = "";
+
+    const lookup = await linearSources().projects("CTD");
+    expect(lookup.source).toBe("cache");
+    expect(lookup.teamId).toBe("team_ctd");
+    expect(lookup.projects.map((p) => p.name)).toEqual(["Pensieve", "Argus"]);
   });
 });
 

@@ -78,7 +78,7 @@ export function parseAnswer(output: unknown): Answer {
       description,
       project: str(p.project) ?? "",
       projectId: str(p.projectId),
-      team: str(p.team) ?? "Liamai",
+      team: str(p.team) ?? "Alden",
       title,
       verified: p.verified === true,
     },
@@ -164,6 +164,7 @@ function Proposed({
         data: {
           description,
           project: proposal.project,
+          team: proposal.team,
           threadId,
           title,
           toolCallId,
