@@ -5,6 +5,8 @@
   "bin": {
     "foundry": "./bin/foundry"
   },
-  "scripts": {},
+  "scripts": {
+    "test": "bun test ./image"
+  },
   "packageManager": "bun@1.4.0"
 }
