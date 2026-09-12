@@ -67,26 +67,26 @@ point of a sandbox, and they boot far slower. Containers are reproducible from
 From a **brand-new Mac**, one script:
 
 ```sh
-git clone <this repo> ~/git/foundry && cd ~/git/foundry
-./scripts/bootstrap.sh         # host tooling, git identity, PATH, config files, then foundry setup
-./scripts/bootstrap.sh --check # or: report what's missing and change nothing
+git clone https://github.com/d0nwong/citadel ~/git/citadel && cd ~/git/citadel
+just bootstrap                 # host tooling, git identity, the one .env, dependencies
+just check                     # or: report what's missing and change nothing
 ```
 
-`bootstrap.sh` is the step *before* `foundry setup`, which checks for docker, bun and
+`just bootstrap` is the step *before* `foundry setup`, which checks for docker, bun and
 gh and dies when they are missing. It installs them instead — OrbStack, bun, the
 `claude` CLI, `gh`, `php` + the `bb` phar, `tailscale` — prompting before each one,
-settles `git config --global user.name/user.email` (every forge inherits it), symlinks
-`bin/foundry` onto your PATH, creates `infra/.env` and `web/.env` from their examples,
-then hands over to `foundry setup` and mints the trigger-API token. Every phase is a
-no-op when it's already done, and each runs on its own
-(`./scripts/bootstrap.sh prereqs|identity|link|envfiles|foundry`).
+settles `git config --global user.name/user.email` (every forge inherits it), writes the one
+`.env` at citadel's root and mints the tokens that can be minted, and reports what is left —
+including where `foundry` on your PATH points, which cutover moves. Every phase is a no-op
+when it's already done, and each runs on its own
+(`just bootstrap prereqs|identity|deps|env|trust|data|home|links|forge`).
 
 It never writes a credential — those stay with `foundry auth`, below — and three things
-stay yours to do: `gh auth login`, `./scripts/setup-bb.sh` for Bitbucket, and cloning
+stay yours to do: `gh auth login`, `just setup-bb` for Bitbucket, and cloning
 the repos you want jobs to target under `~/git`, which is the only directory the
 Repos page scans.
 
-`setup-bb.sh` installs the `bb` phar and walks you through an Atlassian API token.
+`just setup-bb` installs the `bb` phar and walks you through an Atlassian API token.
 It exists because `bb auth` stores whatever you type without checking it — including
 nothing at all, which is how an empty config gets written over a working one. This
 takes the token without echoing it and verifies it against a real Bitbucket repo
@@ -99,8 +99,8 @@ stored credentials.
 ```
 
 `foundry setup` chains everything below — `foundry auth`, `foundry auth --linear`
-(prompted), `foundry build`, `bun install` in `web/`, `bun run infra:up`, and
-`bun run db:migrate` — skipping any step that's already done, so it's safe to rerun.
+(prompted), `foundry build`, `bun install` for the workspace, `just up postgres mcp`, and
+`just migrate` — skipping any step that's already done, so it's safe to rerun.
 Pass `--linear`/`--no-linear` to preselect the Linear/MCP prompt non-interactively.
 The steps below are the same thing run by hand, for when you want more control:
 
@@ -112,24 +112,23 @@ The steps below are the same thing run by hand, for when you want more control:
 ```
 
 Everything below writes a bare `foundry` for brevity. To get that, symlink it onto
-your PATH — `ln -s "$PWD/bin/foundry" ~/.local/bin/foundry` (no sudo, unlike
-`/usr/local/bin`); `bootstrap.sh link` does exactly that. Otherwise run
-`./bin/foundry` from the repo root.
+your PATH — `ln -s "$PWD/apps/foundry/bin/foundry" ~/.local/bin/foundry` (no sudo, unlike
+`/usr/local/bin`), which cutover does for you. Otherwise run `./apps/foundry/bin/foundry`
+from citadel's root.
 
-### Shell entry points
+### Commands
 
-Every `bun run` script in the root `package.json` is a one-line forward to a shell
-script, so nothing about setting a machine up depends on bun being there first:
+`bin/foundry` is the CLI. Everything around it is a `just` recipe from citadel's root, so
+nothing about setting a machine up depends on bun being there first:
 
-| script | `bun run` alias |
+| recipe | |
 |---|---|
-| `./scripts/bootstrap.sh` | `setup`, `setup:check` |
-| `./scripts/setup-bb.sh [--verify\|--reauth]` | `setup:bb` |
-| `./scripts/db.sh migrate\|generate\|studio\|url` | `db:migrate`, `db:generate`, `db:studio` |
-| `./infra/infra.sh up\|down\|reset\|status\|logs\|psql\|url` | `infra:*` |
-| `./web/serve.sh up\|down\|status\|url` | `web:serve*` |
-
-`bin/foundry` is the odd one out: it is the CLI, not a wrapper, and has no alias.
+| `just bootstrap [phase]`, `just check` | host tooling, the one `.env`, dependencies |
+| `just setup-bb` | the `bb` phar and an Atlassian API token, verified before it is written |
+| `just migrate`, `just db-generate`, `just db-studio`, `just db-url` | the app schema |
+| `just up postgres`, `just down`, `just ps`, `just logs postgres`, `just psql` | the local stack |
+| `just foundry` | the web UI on this Mac, http://localhost:3777 |
+| `just serve foundry up\|down\|status\|url` | share it on your tailnet |
 
 ### Auth
 
@@ -145,29 +144,28 @@ token in the checkout's `.env` (chmod 600), injected into every forge as
 
 #### One credential file
 
-Every credential `foundry auth` stores — the Claude credential, the gateway's
-`FOUNDRY_MCP_TOKEN`, `FOUNDRY_API_TOKEN` — lives in the
-repo's own `.env` (gitignored; `.env.example` lists the keys): `KEY=value` lines, mode
-600, rewritten one key at a time, and read fresh by every reader here — the CLI,
-`infra.sh`, the web server — so a new value needs no restart. The upstream keys
-(`SLACK_TOKEN`, `LINEAR_API_KEY`) are argus's: they live in argus's `.env` beside the MCP
-gateway it runs, and foundry reads them from there (`ARGUS_ENV`, default
-`~/git/argus/.env`). `foundry auth --api` prints the `KEY=value` line Pensieve needs. On the first `foundry` command after upgrading, any key
-still sitting in the old `~/.foundry/env` or `~/.config/liamai/env` is copied in once,
-with an `ok` line saying so; neither old file is read again or deleted.
+Every credential `foundry auth` stores — the Claude credential and `FOUNDRY_API_TOKEN` —
+lives in citadel's one `.env` at the root (gitignored; `.env.example` lists every key):
+`KEY=value` lines, mode 600, rewritten one key at a time, and read fresh by both readers
+here, the CLI and the web server, so a new value needs no restart. In a container there is no
+file, and the same keys arrive as environment variables. The upstream keys (`SLACK_TOKEN`,
+`LINEAR_API_KEY`) and `MCP_GATEWAY_TOKEN` live in that same file, beside the MCP gateway argus
+runs; a forge sees the gateway token as `FOUNDRY_MCP_TOKEN`. `foundry auth --api` prints the
+`KEY=value` line Pensieve needs.
 
 ### MCP gateway (Linear, Slack)
 
 Forges never hold third-party credentials. They reach Linear and Slack through the MCP
-gateway argus runs ([mcp-proxy](https://github.com/tbxark/mcp-proxy), `~/git/argus/infra/`),
+gateway argus runs ([mcp-proxy](https://github.com/tbxark/mcp-proxy), `apps/argus/infra/`),
 which holds the Linear and Slack keys on the host and re-exposes their MCP servers at
 `host.docker.internal:9090/{linear,slack}/mcp`, behind one gateway token. argus's own Claude
 sessions and Pensieve's Ask are its other clients.
 
 ```sh
-~/git/argus/scripts/bootstrap.sh env   # SLACK_TOKEN and LINEAR_API_KEY into argus's .env
-~/git/argus/scripts/bootstrap.sh mcp   # starts argus-mcp on :9090, minting MCP_GATEWAY_TOKEN
-foundry auth --linear                  # copies that token into FOUNDRY_MCP_TOKEN
+just auth slack ; just auth linear     # the upstream keys into citadel's .env
+just auth gateway                      # mint MCP_GATEWAY_TOKEN (--rotate replaces it)
+just up mcp                            # the gateway on :9090
+foundry auth --linear                  # says whether the key and the token are there
 foundry recreate <name>                # existing forges pick the gateway up on next start
 ```
 
@@ -244,7 +242,7 @@ So `foundry rm` then `foundry new` with the same name resumes where you left off
 - Your SSH keys are never mounted.
 - Forges talk to Linear only through the MCP gateway, presenting `FOUNDRY_MCP_TOKEN`;
   the Linear API key itself never enters a container. To cut every forge off,
-  rotate `MCP_GATEWAY_TOKEN` in argus's `.env` and rerun `~/git/argus/scripts/bootstrap.sh mcp`. The gateway port
+  run `just auth gateway --rotate`, then `just up mcp`. The gateway port
   (9090) listens on the Mac like the web UI does, which is what the token is for.
 
 ## Local infra
@@ -252,15 +250,15 @@ So `foundry rm` then `foundry new` with the same name resumes where you left off
 Postgres for the web UI's job ledger, in a container, from the repo root:
 
 ```sh
-bun run infra:up       # postgres on localhost:5432, waits until it's healthy
-bun run infra:psql     # a psql shell in it
-bun run infra:down     # stop (data survives; --purge to wipe)
+just up postgres       # postgres on localhost:5432, waits until it's healthy
+just psql     # a psql shell in it
+just down     # stop (data survives; --purge to wipe)
 
-bun run db:migrate     # apply the app schema (web/src/db/migrations)
+just migrate     # apply the app schema (web/src/db/migrations)
 ```
 
 Connection string: `postgresql://foundry:foundry@localhost:5432/foundry` — also
-printed by `bun run infra:url`. The app's tables live in the `foundry` schema, not
+printed by `just db-url`. The app's tables live in the `foundry` schema, not
 `public`. See `infra/README.md` and `web/README.md` for the rest.
 
 ## Web UI
@@ -274,7 +272,7 @@ sheet as the agent works.
 
 ```sh
 foundry setup           # once — credential, web deps, infra, schema (see Setup above)
-bun run web:dev         # http://localhost:3777
+just foundry         # http://localhost:3777
 ```
 
 Two things worth knowing:
@@ -349,7 +347,7 @@ job's forge runs `claude -p` once per step, all in one session (`--session-id` t
 **Blueprints** page. A job snapshots the steps it ran, so editing or deleting a
 blueprint never rewrites history.
 
-`db:migrate` seeds two, and both are yours to edit:
+`just migrate` seeds two, and both are yours to edit:
 
 | blueprint | steps | for |
 |---|---|---|
@@ -405,9 +403,9 @@ The full request and response contract is the OpenAPI document at
 ### Reaching it from your other devices
 
 ```sh
-bun run web:serve          # https://<this-node>.ts.net -> localhost:3777
-bun run web:serve:status
-bun run web:unserve
+just serve foundry up          # https://<this-node>.ts.net -> localhost:3777
+just serve foundry status
+just serve foundry down
 ```
 
 Tailnet only, over `tailscale serve` — the dev server never becomes public. Exposing

@@ -26,7 +26,7 @@ interface TrackedRepo {
 
 /**
  * The imported set lives in Postgres. It used to be ~/.foundry/repos.json;
- * `bun run db:migrate` adopts that file once and then leaves it alone.
+ * `just migrate` adopts that file once and then leaves it alone.
  *
  * Keyed by path, since that is what the scan walks. The last base branch comes
  * from the job ledger — no separate store, and it is the same answer on every

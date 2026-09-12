@@ -5,16 +5,16 @@
 First time on a clone: `foundry setup` (see the README's "Setup" section) does
 credential, forge image, web deps, infra and schema in one idempotent pass.
 
-From the repo root:
+From citadel's root:
 
 ```sh
-bun run infra:up       # postgres on localhost:5432, waits until healthy
-bun run db:migrate     # apply the app schema (web/src/db/migrations)
-bun run web:dev        # http://localhost:3777
+just up postgres       # postgres on localhost:5432, waits until healthy
+just migrate     # apply the app schema (web/src/db/migrations)
+just foundry        # http://localhost:3777
 ```
 
-`infra:up` only needs to be run once per session (or after `infra:down`); rerun
-`db:migrate` whenever new migrations land. See the README's "Local infra" section
+`just up postgres` only needs to be run once per session (or after `just down`); rerun
+`just migrate` whenever new migrations land. See the README's "Local infra" section
 and `web/README.md` for connection details and troubleshooting.
 
 ## Branch naming

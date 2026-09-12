@@ -41,29 +41,23 @@ two could share a shell later.
 
 ## Setup
 
-`./scripts/bootstrap.sh` takes a brand-new Mac to a running Pensieve. Same shape as
-[Foundry's](https://github.com/d0nwong/foundry) and argus's: phases that run alone
-(`prereqs`, `workspace`, `envfiles`, `home`, `deps`, `check`), `--check` to report
-without changing anything, a prompt before every install, a no-op when a step is already
-done. It installs bun and the `claude` CLI (`tailscale` optional), checks that the argus
-checkout `WORKSPACE_DIR` names is a git repo with `reports/` and `skills/` — reporting
-only; nothing here clones it or runs a git write command inside it — writes `.env` from
-`.env.example`, creates `~/.pensieve/conversations/`, runs `bun install`, and finally
-probes the two things that fail quietly: whether Foundry answers on `FOUNDRY_URL`, and
-whether there is a Claude credential.
+`just bootstrap`, from citadel's root, takes a brand-new Mac to a running Pensieve, and
+`just check` reports what is missing while changing nothing. Phases run alone (`prereqs`,
+`identity`, `deps`, `env`, `trust`, `data`, `home`, `links`, `forge`), every install is
+prompted, and a step already done is a no-op. It installs bun and the `claude` CLI
+(`tailscale` optional), writes the one `.env` every app shares, creates
+`~/.pensieve/conversations/`, installs the workspace's dependencies, and reports the rest:
+argus's data directory, the product checkouts, and whether Claude trusts `apps/argus` — which
+Ask needs before its Slack and Linear tools work on a host.
 
-It never mints a secret, and never writes one either. `.env` carries two —
-`FOUNDRY_API_TOKEN` and `LINEAR_API_KEY` — and the `envfiles` phase only says which of them
-is missing and names the command that mints it: `cd ~/git/foundry && foundry auth --api`
-for the token, Linear's own personal-API-key page for the key. Pasting them in is yours to
-do, so no secret ever lands in `.env` without someone having looked at it. `claude login`
-is likewise the CLI's own flow, which the script can only detect and point you at.
+Pensieve reads two secrets from that `.env`: `FOUNDRY_API_TOKEN`, which bootstrap mints and
+`just auth foundry-api --rotate` replaces, and `LINEAR_API_KEY`, which you paste in with
+`just auth linear`. Neither is ever echoed, and the file stays mode 600.
 
 ```sh
-git clone <this repo> ~/git/pensieve && cd ~/git/pensieve
-./scripts/bootstrap.sh            # everything, asking first
-./scripts/bootstrap.sh --check    # what's missing, touching nothing
-./scripts/bootstrap.sh check      # just: is Foundry up, is there a Claude credential?
+git clone https://github.com/d0nwong/citadel ~/git/citadel && cd ~/git/citadel
+just bootstrap                    # everything, asking first
+just check                        # what's missing, touching nothing
 ```
 
 ## Running
@@ -83,14 +77,14 @@ reason. `PENSIEVE_HOME` is where its conversations go; nothing about Ask touches
 checkout — `git status` there is the same before and after a run.
 
 Sending a ticket needs Foundry's trigger-API token: `foundry auth --api` in the Foundry repo
-prints one, and `FOUNDRY_API_TOKEN` in this repo's `.env` is where Pensieve reads it from —
+prints one, and `FOUNDRY_API_TOKEN` in citadel's one `.env` is where Pensieve reads it from —
 the environment and nowhere else, fresh on every request. `FOUNDRY_URL` defaults to
 `http://localhost:3777`. With no token, Unsorted and Verify still work — Send is shown off, with the reason.
 
 Filing a ticket from a proposal card needs `LINEAR_API_KEY` in the environment. Its home is
-argus's `.env`, which also feeds the MCP gateway: `bun run dev` and `bun run start` go through
-`scripts/argus-env.sh`, which copies that one key in when neither the shell nor this `.env`
-sets it. It is a personal
+citadel's one `.env`, which also feeds the MCP gateway: `bun run dev` and `bun run start` go
+through `scripts/root-env.sh`, which copies in only the keys Pensieve reads — never the Slack
+or gateway token, which an Ask run would otherwise inherit. It is a personal
 API key from linear.app (Settings → Security & access), which files into Linear as the key's owner. Without it a proposal is still checked against the last project list
 Pensieve cached, and File is shown off with the reason.
 
@@ -116,13 +110,18 @@ it won't displace anything else the node serves; `TS_HTTPS_PORT=443` takes the r
 Needs MagicDNS + HTTPS certs enabled in
 the tailnet admin; `vite.config.ts` already allows `.ts.net` hosts.
 
-In a container — the blackboard is mounted, never copied in, because it changes every
-sweep tick:
+In the stack — argus's data is mounted, never copied in, because it changes every sweep tick:
 
 ```sh
-docker compose up --build    # mounts ~/git/argus at /workspace, read-only — except decisions/
-WORKSPACE_DIR=/some/where FOUNDRY_API_TOKEN=… ANTHROPIC_API_KEY=… docker compose up
+just up pensieve             # http://localhost:3778 (PENSIEVE_PORT moves it)
 ```
+
+The data directory (`ARGUS_DATA_DIR`, `~/git/argus` by default) is mounted at `/argus-data`,
+and the container runs argus's verbs against it from `/app/apps/argus` (`ARGUS_DIR`). The
+product checkouts are mounted read-only, for Ask's history reads. The container gets only the
+keys Pensieve reads; the gateway token arrives as a secret file, because Claude Code runs a
+headersHelper without secret-looking variables. Ask's conversations live on a volume, with
+Claude's own transcripts beside them, so a resumed conversation survives a restart.
 
 The blackboard is mounted read-only and `decisions/` is mounted writable over it, so the
 container can write exactly the one directory it owns. Foundry runs on the host, so
@@ -332,6 +331,6 @@ src/features/ask/         Ask's chat as a feature slice — model/ (state, the b
 src/routes/               file routes (routeTree.gen.ts is generated by `tsr`)
 src/components/           shell, markdown renderer, small shared bits
 server.ts                 production entry (Bun.serve → dist)
-scripts/bootstrap.sh      brand-new Mac → running Pensieve, in phases; --check reports without touching anything
+scripts/root-env.sh       runs a command with only the keys Pensieve reads, from citadel's .env
 scripts/serve.sh          build + run + `tailscale serve`, torn down together
 ```

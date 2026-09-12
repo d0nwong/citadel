@@ -12,8 +12,8 @@ safe to repeat, and the first run after days away catches up.
 | | job | never |
 |---|---|---|
 | **argus** (this repo) | Knows. One ledger per feature, kept by the sweep; the arch doc beside it; the `argus` and `accio` CLIs. | Post to Slack. Close a ticket. Send work anywhere. |
-| **Pensieve** (`~/git/pensieve`) | Shows and decides. Renders the ledgers; every click runs one `argus` verb; Ask answers over the same record and proposes changes for a click. | Write the checkout with its own code. |
-| **Foundry** (`~/git/foundry`) | Executes. Takes a ticket key and a repo over HTTP, runs it in a forge, pushes a PR. | Read the ledger. Judge readiness. |
+| **Pensieve** (`apps/pensieve`) | Shows and decides. Renders the ledgers; every click runs one `argus` verb; Ask answers over the same record and proposes changes for a click. | Write the checkout with its own code. |
+| **Foundry** (`apps/foundry`) | Executes. Takes a ticket key and a repo over HTTP, runs it in a forge, pushes a PR. | Read the ledger. Judge readiness. |
 
 One line: **argus knows, you decide in Pensieve, Foundry does.**
 
@@ -72,23 +72,27 @@ evals/                                          the 14-day fixture, expectations
 
 ## Setting it up
 
+This directory is `apps/argus` in citadel; the commands come from citadel's root:
+
 ```sh
-bun install
-bun link                      # `argus` and `accio` on PATH
-./scripts/bootstrap.sh env    # SLACK_TOKEN into .env, mode 600
+just bootstrap                # host tools, the one .env, dependencies
+just auth slack               # SLACK_TOKEN into that .env, mode 600
+bun run argus <verb>          # and `bun run accio <verb>`; `just link` puts them on PATH at cutover
 ```
 
 Both product checkouts must exist (`~/git/alden-portal-fe`, `~/git/alden-connect-portal-be`,
-or `FE_REPO` / `BE_REPO`); the run reads them at `origin/*` and never switches a branch.
+or `FE_REPO` / `BE_REPO`); the run reads them at `origin/*` and never switches a branch. The
+sweep container clones its own copies instead.
 The deploy check reads the credentials `bb` keeps in `~/.bitbucket-rest-cli-config.json`
 (`BITBUCKET_CONFIG` to point elsewhere). Linear and Slack are the MCP servers in `.mcp.json`, both behind the local MCP gateway
-(mcp-proxy on :9090, `infra/compose.yaml`, started by `./scripts/bootstrap.sh mcp`); a
+(mcp-proxy on :9090, `infra/compose.yaml`, started by `just up mcp`); a
 session presents `MCP_GATEWAY_TOKEN` from `.env`, and the gateway holds the keys.
 
 ## Running it
 
 ```sh
-bun run sweep                 # claude '/loop 15m /sweep'
+just sweep-once [--dry-run]   # one tick in the stack; --dry-run only pulls
+just sweep-on                 # the loop: one tick per SWEEP_INTERVAL (900s)
 argus pull                    # the batch, or "nothing new"
 argus place <batch>           # the joins
 argus reconcile               # clear what deployed

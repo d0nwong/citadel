@@ -189,12 +189,17 @@ See `tasks/plan.md` for the order and the checkpoints.
 
 ## Phase 6: Release, CI, docs
 
-- [ ] **T15: Update the docs and paths.** (M)
+- [x] **T15: Update the docs and paths.** (M)
   - Acceptance: a root README; CLAUDE.md, argus SPEC.md's Commands and Structure sections, the
     skill path references and Ask's allowlist all point at the new paths.
   - Verify: `grep -rn "git/argus\|git/foundry\|git/pensieve" apps docs` returns only intended
     hits, and `bun run --filter argus test` (`skills.test.ts`) passes.
   - Files: `README.md`, `apps/argus/CLAUDE.md`, `SPEC.md`, `skills/*`, Pensieve's `ask-tools.ts`.
+  - Done: a root README; argus's README, SPEC, CLAUDE.md and sweep skill now name `apps/…`, the
+    data repo (`ARGUS_ROOT`) and the sweep service instead of `/loop 15m /sweep`; Pensieve's and
+    Foundry's READMEs, CONTRIBUTING, `infra/README.md` and `serve.sh` use the recipes. Ask's
+    allowlist needed nothing: its rules are relative to argus's directory, which is still the
+    working directory, and the FE/BE defaults are right on a host and set by env in the stack.
 - [ ] **T16: Set up release-please.** (S)
   - Acceptance: the manifest and config from the spec, `bootstrap-sha` set to the T4 merge, and
     the workflow and `pr-title.yml` moved from Foundry with app scopes.

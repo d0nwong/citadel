@@ -5,8 +5,8 @@ routing) + **shadcn/ui** + **Tailwind v4**, running on **bun**.
 
 ```sh
 bun install
-bun run infra:up   # from the repo root — postgres
-bun run db:migrate # apply the schema
+just up postgres   # from the repo root — postgres
+just migrate # apply the schema
 bun run dev        # http://localhost:3777
 bun run build
 ```
@@ -214,7 +214,7 @@ recorded as a `sys` line in the job's log; if the write fails the job stays queu
 failure is an `err` line, and the ticket's state is yours to fix by hand — never a status
 change on the job. The fetch happens *before* the insert, so an unknown `ticketId` (`400`)
 or an unreachable Linear (`502`) queues nothing. With no Linear key configured, a request
-that omits `instructions` is `503` naming argus's `bootstrap.sh env`; one that supplies them is
+that omits `instructions` is `503` naming citadel's `.env`; one that supplies them is
 `202` with an `err` line that the claim was skipped. Foundry only fetches and composes here
 — it never judges whether the ticket is ready (no Pending-section or blocked-by check on
 this path); the caller decided that by sending it.
@@ -276,12 +276,12 @@ and committed. Everything lives in the **`foundry`** schema — `public` is left
 extensions `infra/postgres/init/00-init.sql` installs.
 
 ```sh
-bun run db:generate   # schema.ts -> a new migration; commit it
-bun run db:migrate    # apply
-bun run db:studio     # drizzle studio
+just db-generate   # schema.ts -> a new migration; commit it
+just migrate    # apply
+just db-studio     # drizzle studio
 ```
 
-`db:migrate` also carries two one-time hand-overs, both idempotent: it adopts
+`just migrate` also carries two one-time hand-overs, both idempotent: it adopts
 `~/.foundry/repos.json`, which is where the imported set used to live (leaving the
 file alone — `~/.foundry` is the CLI's state directory), and it exports any remaining
 `job_logs` rows to `~/.foundry/logs/<id>.jsonl` *before* the migration that drops that
@@ -290,7 +290,7 @@ the export can never clobber one that is being written right now.
 
 `DATABASE_URL` comes from `web/.env` (copy `.env.example`; bun loads it automatically),
 and falls back to the local stack's URL so a fresh clone needs no configuration.
-`bun run infra:url` from the repo root prints it.
+`just db-url` from the repo root prints it.
 
 | table | holds |
 |---|---|
@@ -300,7 +300,7 @@ and falls back to the local stack's URL so a fresh clone needs no configuration.
 | `jobs` | one row per job; a job *is* the run here, so there is no separate runs table |
 
 Log lines are deliberately not a table: they live in `~/.foundry/logs/<id>.jsonl`
-(LIA-18, above). `bun run db:migrate` exports any rows left in the old `job_logs`
+(LIA-18, above). `just migrate` exports any rows left in the old `job_logs`
 table to those files before dropping it, so an existing database keeps its history —
 the same one-time-adoption pattern `src/db/migrate.ts` uses for `~/.foundry/repos.json`.
 
@@ -397,7 +397,7 @@ src/
   db/
     schema.ts                 drizzle schema (the `foundry` postgres schema)
     client.ts                 node-only: the pool
-    migrate.ts                bun run db:migrate
+    migrate.ts                just migrate
     migrations/               generated SQL, committed
 ```
 
@@ -412,7 +412,7 @@ in `src/shared/ui` without further edits.
 
 `bun test` (the runner is bun's own — no framework dependency). The readiness-guard
 suite is pure; the claim-race and tick suites run against the local Postgres, so
-`bun run infra:up` first. Test rows are keyed `TEST-…` and swept by their own
+`just up postgres` first. Test rows are keyed `TEST-…` and swept by their own
 `afterAll`, database and log files both.
 
 ## Conventions for server code

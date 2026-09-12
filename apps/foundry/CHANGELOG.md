@@ -99,8 +99,8 @@
 ### Features
 
 * add foundry CLI for Claude Code forges on OrbStack ([7401dbb](https://github.com/d0nwong/foundry/commit/7401dbb09c510f79a9350acfd857a3b179ca74dc))
-* **infra:** add a local postgres stack behind `bun run infra:up` ([a258542](https://github.com/d0nwong/foundry/commit/a25854272b4bb659d692b1112b3184044a5aebbf))
-* **infra:** local postgres stack behind `bun run infra:up` ([21cf2e9](https://github.com/d0nwong/foundry/commit/21cf2e94499ae9991ca0154b78e36d43250a9031))
+* **infra:** add a local postgres stack behind `just up postgres` ([a258542](https://github.com/d0nwong/foundry/commit/a25854272b4bb659d692b1112b3184044a5aebbf))
+* **infra:** local postgres stack behind `just up postgres` ([21cf2e9](https://github.com/d0nwong/foundry/commit/21cf2e94499ae9991ca0154b78e36d43250a9031))
 * **web:** add TanStack Start + shadcn POC frontend ([647dbdf](https://github.com/d0nwong/foundry/commit/647dbdfa05a8f8907bdedff03a9482c9b8564f87))
 * **web:** curate repos, and make discovery real ([6b258cd](https://github.com/d0nwong/foundry/commit/6b258cd00784241dfbf7eae1cb3c69e52375505c))
 * **web:** make the UI responsive ([3654b46](https://github.com/d0nwong/foundry/commit/3654b46983c7d6f701d73bd32e9a6be788391af0))

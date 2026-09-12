@@ -20,9 +20,9 @@ Three systems, unchanged in their split:
 
 - **argus** knows. This repo. The ledger per feature, the run that keeps it current, and
   the skills and scripts that do it.
-- **Pensieve** shows and decides. `~/git/pensieve`. Renders the ledger, takes the clicks,
+- **Pensieve** shows and decides. `apps/pensieve` in citadel. Renders the ledger, takes the clicks,
   hosts Ask.
-- **Foundry** executes. `~/git/foundry`. Unchanged by this rebuild; receives a ticket key
+- **Foundry** executes. `apps/foundry` in citadel. Unchanged by this rebuild; receives a ticket key
   and a repo.
 
 ### User stories
@@ -62,7 +62,8 @@ Three systems, unchanged in their split:
 ## Tech Stack
 
 - Bun 1.x, TypeScript 5.9, `bun test`. No Node-only libraries where Bun has the API.
-- Claude Code skills in this repo, run by `/loop 15m /sweep` or on demand. Workers are
+- Claude Code skills in this repo, run by the stack's sweep service (`just sweep-on`, one tick
+  per `SWEEP_INTERVAL`) or on demand. Workers are
   subagents spawned by the sweep with `model: "opus"`; the loop session runs on Sonnet.
 - Slack Web API with a user token (`SLACK_TOKEN` in `.env`), read only.
 - Git over local checkouts of the FE and BE repos, fetched to `origin/staging` and
@@ -172,9 +173,10 @@ Global state, under `state/`, gitignored except where noted:
 
 ## Commands
 
-`argus` and `accio` are CLIs: `bin` entries in `package.json`, `bun link` once, then
-callable from anywhere. Skills call them bare. Pensieve spawns `bun scripts/argus.ts <verb>`
-inside `WORKSPACE_DIR`, never relying on PATH.
+`argus` and `accio` are CLIs: `bin` entries in `package.json`, run from citadel's root as
+`bun run argus` / `bun run accio`, and put on PATH by `just link` at cutover. Skills call them
+bare. Pensieve spawns `bun $ARGUS_DIR/scripts/argus.ts <verb>` against the data directory
+(`ARGUS_ROOT`), never relying on PATH.
 
 ```sh
 # the run, one verb per stage; every verb takes --dry-run and is safe to repeat
@@ -201,10 +203,11 @@ bun test                                          # scripts/**/*.test.ts
 bun run typecheck                                 # tsc --noEmit
 bun run evals                                     # replays state/batches over fixtures, prints attribution and closure scores
 
-# the loop
-bun run sweep                                     # claude '/loop 15m /sweep' --model claude-sonnet-5 --dangerously-skip-permissions
+# the loop (from citadel's root)
+just sweep-once [--dry-run]                       # one tick in the stack, or a pull that writes nothing
+just sweep-on  |  just sweep-off                  # the loop: one tick per SWEEP_INTERVAL
 
-# Pensieve, from ~/git/pensieve
+# Pensieve, from apps/pensieve
 bun run dev  |  bun run typecheck  |  bun test  |  bun run check
 ```
 
@@ -246,7 +249,7 @@ is older than it. Rerunning a batch is a no-op once every ledger is newer.
 ## Project Structure
 
 ```
-argus/
+apps/argus/                            in citadel; the data lives in the argus data repo (ARGUS_ROOT)
   SPEC.md                              this file
   README.md                            rewritten: the three systems, the ledger, the run
   docs/intent/  docs/ideas/            what was agreed and why
@@ -439,7 +442,7 @@ Phases 1 and 2 can run in parallel. 5 can start once 1 is done, on fixtures.
 - The seven acceptance criteria under Objective hold.
 - Eight user stories pass by hand in Pensieve after phase 7.
 - The retired list is gone, `git grep marauder` returns nothing outside `docs/`.
-- `bun run sweep` runs for a working day with no intervention and no false Needs-me.
+- The sweep runs for a working day with no intervention and no false Needs-me.
 
 ## Open Questions
 

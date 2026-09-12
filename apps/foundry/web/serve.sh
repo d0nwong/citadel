@@ -41,7 +41,7 @@ cmd_up() {
   tailscale serve --bg "http://localhost:$PORT" >/dev/null
   ok "$(serve_url)  ${c_dim}(tailnet only — not public)${c_0}"
   say ""
-  say "  ${c_dim}bun run web:unserve   # stop sharing${c_0}"
+  say "  ${c_dim}just serve foundry down   # stop sharing${c_0}"
 }
 
 cmd_down() {
@@ -66,10 +66,10 @@ usage() {
 cat >&2 <<'USAGE'
 serve — share the foundry web UI over tailscale
 
-  bun run web:serve          share localhost:3777 with your tailnet over HTTPS
-  bun run web:unserve        stop sharing
-  bun run web:serve:status   what this node is currently serving
-  bun run web:serve:url      print the https URL (for scripts)
+  just serve foundry up        share localhost:3777 with your tailnet over HTTPS
+  just serve foundry down      stop sharing
+  just serve foundry status    what this node is currently serving
+  just serve foundry url       print the https URL (for scripts)
 
 Tailnet only — nothing here exposes the dev server to the public internet.
 `tailscale funnel` does that, deliberately by hand.

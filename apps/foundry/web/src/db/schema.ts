@@ -1,5 +1,5 @@
 /**
- * The database, as Drizzle sees it. `bun run db:generate` turns edits here into
+ * The database, as Drizzle sees it. `just db-generate` turns edits here into
  * SQL under ./migrations, which is what actually gets committed and applied.
  *
  * Everything lives in the `foundry` schema, not `public` — the database is

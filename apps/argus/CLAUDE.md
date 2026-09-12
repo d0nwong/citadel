@@ -119,3 +119,10 @@ the click verbs) and `accio` (the code-and-docs index: `find`, `stale`, `sync`).
 To answer a question about any of it, load the `ask` skill (`skills/ask/SKILL.md`): it reads
 with those two and answers read-only, citing paths, and proposes rather than performs.
 Never edit a ledger or anything under `state/` by hand; the verbs write them.
+
+This directory is `apps/argus` in **citadel**, the one repo behind the loop, with
+`apps/foundry` and `apps/pensieve` beside it. Commands come from citadel's root: `just` lists
+them, `bun run argus` and `bun run accio` run the CLIs, `just up` runs the stack. The data —
+`<app>/features/*/ledger.json`, the arch docs and `state/` — is not in this repo: it lives in
+the argus data repo, wherever `ARGUS_ROOT` points (the stack mounts it at `/argus-data`), and
+every verb reads and writes it there.

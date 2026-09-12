@@ -1,6 +1,6 @@
 ---
 name: sweep
-description: One pass over the workspace loop — pull Slack and both repos' base branches into a batch, place what code can place, have the model attribute the rest and rewrite each affected feature's ledger, reconcile blockers, refresh stale arch docs, validate and commit. Run via /loop 15m /sweep or on demand; every step is state-driven and safe to repeat, so the first run after days away catches up. Use when the user says "sweep", "run the sweep", "catch me up", or asks to run the loop.
+description: One pass over the workspace loop — pull Slack and both repos' base branches into a batch, place what code can place, have the model attribute the rest and rewrite each affected feature's ledger, reconcile blockers, refresh stale arch docs, validate and commit. Run by the stack's sweep service, one tick per SWEEP_INTERVAL, or on demand; every step is state-driven and safe to repeat, so the first run after days away catches up. Use when the user says "sweep", "run the sweep", "catch me up", or asks to run the loop.
 ---
 
 # sweep — one pass over the loop
@@ -14,7 +14,8 @@ can place stays unplaced for Pensieve, a claim without a pointer is refused.
 
 ## When to Use
 
-On a schedule (`bun run sweep` is `/loop 15m /sweep`) or when asked. Never two at once.
+On a schedule (the `sweep` service runs one tick per `SWEEP_INTERVAL`; `just sweep-once` runs
+one by hand) or when asked. Never two at once: the run holds a lock in the data repo's `.git`.
 
 ## Process
 

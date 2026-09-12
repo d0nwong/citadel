@@ -1,5 +1,5 @@
 /**
- * `bun run db:migrate` — applies everything in ./migrations, wrapped in the
+ * `just migrate` — applies everything in ./migrations, wrapped in the
  * two one-time hand-overs from the files that used to hold this state (repos)
  * and the table that used to hold it (job logs).
  */
