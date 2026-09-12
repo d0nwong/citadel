@@ -21,27 +21,7 @@ Adapted from `code-review-and-quality` in addy-agent-skills (MIT, © 2025 Addy O
 
 Reads `git -C /work diff <base>..HEAD` plus the uncommitted diff, `~/spec.md` (Criteria, Commands, Out of scope), `~/plan.md` (`Not doing`), and the previous step's final message in this session, when there is one (deviations, tests changed, anything left red). If `~/spec.md` has a `## Blocked` section, stop now: make no edits and repeat its reason as your final message. Writes `~/qa-report.md`, `/work/.git/PR_BODY.md` (under `.git/` on purpose: the commit sweep cannot pick it up), and small fixes to code or tests — a name, a missed edge, a test tightened. A finding that needs more than a small fix is reported, not made.
 
-## Step 1: Commit first, in the repo's style
-
-Before reading a line of the diff, commit everything the previous steps left in `/work`, in one commit. The host pushes the branch and opens the PR with the newest commit's subject as the PR title, and CI lints that title — a run that ends with its work uncommitted, or that runs out of budget before committing, gets a sweep commit whose subject is the task's first line, which fails the lint before a reviewer sees the PR. Committing first means a timeout at any later point still leaves a PR with the right title and the right body. Every later edit in this step is folded in with `git commit --amend --no-edit`.
-
-- Subject: a Conventional Commit, `type(scope): summary` — `feat`, `fix`, `test`, `docs`, `chore`, `refactor` — in the style `git log --oneline -20` shows the repo already uses, under 72 characters, imperative. Follow the repo's own convention if `CONTRIBUTING.md` or its recent history documents a different one.
-- Body: the `Closes <ticket id>` line when the task named a ticket, then the assumptions carried from `~/spec.md` and `~/plan.md`, wrapped at 72 columns — `git log` is read in a terminal that does not soft-wrap, the one place hard wrapping is right.
-- Nothing else: `.git/PR_BODY.md` is under `.git/` on purpose and never enters the commit; `~/qa-report.md` is outside the workspace.
-
-```
-feat(pensieve): file tickets on the team and project the ask names
-
-Closes CTD-172
-
-Assumptions: the checkout's LIA/Liamai constants were stale against
-Linear's own team list and are replaced; team is an explicit optional
-field defaulting to Alden, no inference from the project name.
-```
-
-Do not push, and do not open the PR: the host does both once the run ends.
-
-## Step 2: Review the tests before the code
+## Step 1: Review the tests before the code
 
 Tests reveal what the change thinks it is. For every test this run touched:
 
@@ -50,7 +30,7 @@ Tests reveal what the change thinks it is. For every test this run touched:
 - Does it test state, not interactions; the public surface, not internals?
 - Was any test changed after it was first written, and does the reason given for it hold against the spec?
 
-## Step 3: Review the code on five axes, six when the diff touches a contract
+## Step 2: Review the code on five axes, six when the diff touches a contract
 
 Walk the diff file by file. Label every finding with a severity so the reader knows what is required:
 
@@ -72,7 +52,13 @@ Lead with what matters: a correctness or security finding is the review; ten nit
 
 Fix in place when the fix is small and certain — a name, a missed null, a tightened assertion. Report, with the label, when it is not. Do not add behaviour, do not refactor beyond the finding, do not rewrite the plan.
 
-## Step 4: Write ~/qa-report.md, with the Commands line pending
+## Step 3: Prove it, once
+
+Run the test, typecheck and lint commands from `~/spec.md` after the last edit of Step 2. Record the command and the result for each, in one line. For e2e tests the spec says are CI-run, prove they parse: the typecheck covers `.ts` specs; otherwise the runner's list mode (`playwright test --list`, `cypress` has none — read the file). Do not try to run them; the forge has no browser and no running app.
+
+Then read `git -C /work status --porcelain` once more and confirm every changed file belongs to the change. A file the repo's lint-fix script touched and nothing else did — a rewrapped line, a reordered import, in code the plan never named — is reverted with `git checkout -- <file>`, and the report says so: the PR is the change, and a reviewer should not have to reason about a reformatted line in a file the ticket never mentioned.
+
+## Step 4: Write ~/qa-report.md
 
 ```markdown
 # QA report: <ticket id>
@@ -83,7 +69,7 @@ Fix in place when the fix is small and certain — a name, a missed null, a tigh
 | C2 | routes/jobs.test.tsx › "C2: …" | integration | yes | pass |
 | C4 | e2e/jobs.spec.ts › "C4: …" | e2e | no — CI runs it on the PR | written, typechecks |
 
-Commands: <pending until Step 6, then: `bun test` 216 pass · `bun run typecheck` clean · `bun run check` clean>
+Commands: `bun test` 216 pass · `bun run typecheck` clean · `bun run check` clean
 
 Not covered: <criterion, and why — e.g. C3 needs a browser and the repo has no e2e runner>
 Findings fixed here: <one line each, with the label>
@@ -94,9 +80,9 @@ Deviations from the plan: <from the previous step's message, confirmed or correc
 Assumptions carried: <the spec's and the plan's, in one list>
 ```
 
-Every criterion in the spec has a row. A criterion with no test has a row that says so. The report is written now, before the proof, so a run that hits the budget mid-suite still leaves the table and the findings; only the Commands line waits.
+Every criterion in the spec has a row. A criterion with no test has a row that says so.
 
-## Step 5: Write the PR description, then amend
+## Step 5: Write the PR description
 
 `/work/.git/PR_BODY.md`, following the repo's own PR template (`.github/PULL_REQUEST_TEMPLATE.md`) when it has one, otherwise foundry's at `/usr/local/share/foundry/pr-template.md`: fill every section for real, delete the HTML comments and any section that is genuinely empty. Always:
 
@@ -107,29 +93,39 @@ Every criterion in the spec has a row. A criterion with no test has a row that s
 
 Write it as rendered markdown: one unbroken line per paragraph and per bullet, never hard-wrapped at a column — a hard wrap splits inline code mid-token and renders as an inserted space.
 
-Then `git -C /work add -A && git -C /work commit --amend --no-edit`, so the fixes from Step 3 and any test tightened in Step 2 sit in the one commit from Step 1.
+## Step 6: Commit, in the repo's style
 
-## Step 6: Prove it, once
+Commit everything that belongs to the change, in one commit, before finishing. The host pushes the branch and opens the PR with the newest commit's subject as the PR title, and CI lints that title — a run that leaves its work uncommitted gets a sweep commit whose subject is the task's first line, which fails the lint before a reviewer sees the PR.
 
-Run the test, typecheck and lint commands from `~/spec.md` now, after the last edit of Step 3, once each. A command runs again only after a fix it forced, and then once: a full suite is the most expensive thing this step does, and this step runs on whatever budget the four before it left. Record the command and the result for each in one line, then replace the pending Commands line in `~/qa-report.md` and in `/work/.git/PR_BODY.md` with it. For e2e tests the spec says are CI-run, prove they parse: the typecheck covers `.ts` specs; otherwise the runner's list mode (`playwright test --list`, `cypress` has none — read the file). Do not try to run them; the forge has no browser and no running app.
+- Subject: a Conventional Commit, `type(scope): summary` — `feat`, `fix`, `test`, `docs`, `chore`, `refactor` — in the style `git log --oneline -20` shows the repo already uses, under 72 characters, imperative. Follow the repo's own convention if `CONTRIBUTING.md` or its recent history documents a different one.
+- Body: the `Closes <ticket id>` line when the task named a ticket, then the assumptions carried, wrapped at 72 columns — `git log` is read in a terminal that does not soft-wrap, the one place hard wrapping is right.
+- Nothing else: `.git/PR_BODY.md` is under `.git/` on purpose and never enters the commit; `~/qa-report.md` is outside the workspace.
 
-Then read `git -C /work status --porcelain` once more and confirm every changed file belongs to the change. A file the repo's lint-fix script touched and nothing else did — a rewrapped line, a reordered import, in code the plan never named — is reverted with `git checkout -- <file>`, and the report says so: the PR is the change, and a reviewer should not have to reason about a reformatted line in a file the ticket never mentioned. Amend the commit one last time so `git -C /work status --porcelain` is empty.
+```
+feat(pensieve): file tickets on the team and project the ask names
+
+Closes CTD-172
+
+Assumptions: the checkout's LIA/Liamai constants were stale against
+Linear's own team list and are replaced; team is an explicit optional
+field defaulting to Alden, no inference from the project name.
+```
+
+Do not push, and do not open the PR: the host does both once the run ends.
 
 ## Finish
 
-End with the commit subject, the report's table and its Commands line, the findings left for the reader with their labels, and the verdict in one line: ready for review, or not, and the Critical or required finding that makes it not. Every sentence is a statement; never end on a question or an offer, because nobody answers and the run simply ends.
+End with the commit subject, the report's table and command line, the findings left for the reader with their labels, and the verdict in one line: ready for review, or not, and the Critical or required finding that makes it not. Every sentence is a statement; never end on a question or an offer, because nobody answers and the run simply ends.
 
 ## Common Rationalizations
 
 | Rationalization | Reality |
 |---|---|
-| "The tests pass, so it's good" | Tests are necessary, not sufficient. Step 2 asks whether they would fail; Steps 3 and 6 cover what tests cannot. |
+| "The tests pass, so it's good" | Tests are necessary, not sufficient. Step 1 asks whether they would fail; Steps 2 and 3 cover what tests cannot. |
 | "I wrote none of this, so I can't judge the intent" | The spec is the intent. Review against it; that is the whole point of a different model reading the diff. |
 | "This is a small structural problem, I'll refactor it properly" | A refactor is a change nobody planned. Name the move under findings; fix only what is small and certain. |
 | "The e2e tests can't run here, so I'll leave them out of the report" | They are the reader's first question. A row that says written, typechecks, CI-run is the honest answer. |
 | "LGTM, the diff is clean" | Approval without evidence helps no one. The report shows the reading: a row per criterion, a line per command. |
-| "I'll commit once everything is verified" | A run that hits the budget before its commit hands the host a sweep commit whose subject fails the title lint, and no PR body. Commit first; amend after. |
-| "I'll run the suite once more after the amend, to be safe" | The amend changed no code. One full run after the last edit is the proof; a second one is the verify step's budget spent on nothing. |
 | "This might be a minor concern" (about a bug that will ship) | Say what it is and label it. Softening a real finding is the same failure as missing it. |
 
 ## Red Flags
@@ -139,8 +135,7 @@ End with the commit subject, the report's table and its Commands line, the findi
 - A finding without a label, or a Critical buried under nits
 - A test left in place that would pass with the production change reverted
 - A PR body with a section left as the template's comment
-- A review begun before the first commit, work left uncommitted at the end, or a commit whose subject is not a Conventional Commit
-- The suite, typecheck or lint run more than once with no edit between
+- Work left uncommitted at the end, or a commit whose subject is not a Conventional Commit
 - A fix in this step that adds behaviour the spec did not ask for
 - A file in the diff that only the formatter touched, left in
 - A final message that ends on a question
@@ -150,7 +145,7 @@ End with the commit subject, the report's table and its Commands line, the findi
 - [ ] Every test touched by this run was checked against its criterion and would fail on regression, or was tightened or removed with the reason recorded
 - [ ] The diff was read on all five axes and every finding is labelled and either fixed in place or left for the reader
 - [ ] The API lens was applied when the diff touched a contract and the report carries its line; a diff touching none has no API row
-- [ ] Test, typecheck and lint were run once each after the last edit, with command and result replacing the pending Commands line in the report and the PR body
+- [ ] Test, typecheck and lint were run after the last edit, with command and result in the report
 - [ ] `~/qa-report.md` has a row per criterion, and `/work/.git/PR_BODY.md` carries the table under How verified
-- [ ] The change was committed with a Conventional Commit subject and the `Closes` line in the body before the review began, and amended after the last edit; `git -C /work status --porcelain` is empty
+- [ ] The change is committed with a Conventional Commit subject and the `Closes` line in the body; `git -C /work status --porcelain` is empty
 - [ ] The final message states the verdict and ends on a statement

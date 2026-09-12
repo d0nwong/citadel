@@ -1,13 +1,13 @@
 ---
 name: forge-implement
-description: Implements ~/plan.md one criterion at a time until every red test for its criteria is green, then runs the whole suite, the typecheck and the lint once each. Simplest code that works, repo conventions over habit, no re-planning beyond what the code forces, no skipped tests. Use whenever ~/plan.md exists and the tests for its criteria are red.
+description: Implements ~/plan.md one criterion at a time until every red test for its criteria is green, then typecheck and lint pass. Simplest code that works, repo conventions over habit, no re-planning beyond what the code forces, no skipped tests. Use whenever ~/plan.md exists and the tests for its criteria are red.
 ---
 
 # forge-implement — the plan, to green
 
 ## Overview
 
-The spec says what, the plan says where, the tests say when it is done. This step writes the production code, one slice of the plan at a time, running that slice's test files after each, until the red list — the criterion tests seen failing before this step — is green; then the whole suite, the typecheck and the lint run once each. A full suite costs minutes on a real repo and the job's budget is shared with the steps after this one, so the expensive commands run when they can answer a question and not again. The simplest code that makes a test pass is the code to write; the repo's conventions win over general habit; and a failing test is never made to pass by changing what it asserts, unless the test contradicts the spec and the message says so.
+The spec says what, the plan says where, the tests say when it is done. This step writes the production code, one slice of the plan at a time, running the tests after each, until the red list — the criterion tests seen failing before this step — is green and the whole suite, the typecheck and the lint pass. The simplest code that makes a test pass is the code to write; the repo's conventions win over general habit; and a failing test is never made to pass by changing what it asserts, unless the test contradicts the spec and the message says so.
 
 Adapted from `incremental-implementation` in addy-agent-skills (MIT, © 2025 Addy Osmani) for an unattended run: the GREEN and REFACTOR halves of the TDD cycle, sliced by criterion, with the "want me to also fix…" questions that skill asks turned into a `Noticed, not touched` list.
 
@@ -23,7 +23,7 @@ Reads `~/plan.md` (`Change`, `Criteria → code`, `Order`, `Not doing`), `~/spec
 
 ## Step 1: Start from the red list, not the plan
 
-Run the spec's test command once before editing — the whole suite, this once, because the question is what is red on the untouched base. The failures must match the red list recorded before this step: the same names, red for the same reasons. A test that is red for a different reason, or a test that is not on the list, is the first thing to understand — the base may have moved, or the previous step's note was wrong. Record what you find; it goes in the Finish under Assumptions.
+Run the spec's test command once before editing. The failures must match the red list recorded before this step: the same names, red for the same reasons. A test that is red for a different reason, or a test that is not on the list, is the first thing to understand — the base may have moved, or the previous step's note was wrong. Record what you find; it goes in the Finish under Assumptions.
 
 Then take the plan's `Order` as the order. Do not re-plan: the plan was reviewed, and second-guessing it beyond what the code forces produces a change that matches neither the plan nor the spec.
 
@@ -32,15 +32,14 @@ Then take the plan's `Order` as the order. Do not re-plan: the plan was reviewed
 For each slice in `Order`:
 
 1. **Implement** the smallest complete piece that makes that slice's tests pass — the naive, obviously-correct version first
-2. **Run** the test command on the slice's test files only (`bun test path/to/file.test.ts`, `pnpm test src/feature/thing.test.ts`); the slice's tests go green. The whole suite, the typecheck and the lint wait for Step 5
-3. **Keep** the build compilable: a type changed here has every caller fixed here, not three slices later — found by reading the callers the plan named, not by running the typecheck after every slice
+2. **Run** the test command; the slice's tests go green and nothing else goes red
+3. **Check** the build stays compilable: a type changed here has every caller fixed here, not three slices later
 4. **Move on** — carry forward, never restart
 
 ```
-Slice 1 — C1: queries.ts listJobs({ status })       bun test queries.test.ts → C1 green
-Slice 2 — C1: routes/jobs.tsx renders the select     bun test routes/jobs.test.tsx → C1 green
-Slice 3 — C2: filter read from search params         bun test routes/jobs.test.tsx → C2 green
-Step 5                                               bun test → 215 pass · typecheck clean · lint clean
+Slice 1 — C1: queries.ts listJobs({ status })       bun test → C1 green, 213 pass
+Slice 2 — C1: routes/jobs.tsx renders the select     bun test → C1 green, 214 pass
+Slice 3 — C2: filter read from search params         bun test → C2 green, 215 pass
 ```
 
 Simplicity check after each slice, before the next:
@@ -74,11 +73,9 @@ A red test is made green by changing the code, with one exception: the test asse
 
 When the plan turns out to be wrong once you are in the code — the helper it named does not fit, the file it named is not where the behaviour lives — correct course by the smallest deviation that keeps the criteria, and say so in the Finish. If part of the plan is blocked, finish every other part and state plainly what was left out and why.
 
-## Step 5: The whole suite, then typecheck and lint — once each
+## Step 5: The whole suite, then typecheck and lint
 
-With every slice done, run the three commands from `~/spec.md` — test, typecheck, lint — once each, and fix what they find. A command runs a second time only after a fix it forced, and then once. A clean run repeated on unchanged code adds nothing; on a repo whose suite takes ninety seconds it takes the budget the verify step needs. A lint that auto-fixes (`ultracite fix`, `biome check --write`, `eslint --fix`) is run when the repo's own scripts do; its edits are part of this step's diff.
-
-Whether a failure is pre-existing is already known: the spec step ran the suite, the typecheck and the lint on the untouched base and wrote their state under `~/spec.md`'s Assumptions. Read that; never stash the change and rerun to find out. A failure the spec did not record is this change's to fix, and one it did record is left alone and named in the Finish.
+With every slice done, run the three commands from `~/spec.md` — test, typecheck, lint — and fix what they find. Run each again only after a change that could affect it; a clean run repeated on unchanged code adds nothing. A lint that auto-fixes (`ultracite fix`, `biome check --write`, `eslint --fix`) is run when the repo's own scripts do; its edits are part of this step's diff.
 
 Then read `git -C /work status --porcelain` and `git diff` once, as a reviewer: every changed file is one the plan named or one a compile error forced; no stray file, no debug line, no leftover fixture.
 
@@ -95,8 +92,6 @@ End with: the criteria implemented, keyed to the slices; the test, typecheck and
 | "I'll loosen the assertion, the spirit is the same" | The assertion is the criterion. Loosening it makes the criterion untested while reporting green. |
 | "While I'm in this file I'll tidy the imports" | The diff is the PR. Every unrelated line is a line a reviewer has to reason about. `Noticed, not touched`. |
 | "Let me run the suite again to be sure" | After a clean run, rerunning unchanged code adds nothing. Run after the next edit. |
-| "Is that lint error mine? I'll stash and check" | The spec ran the lint and the typecheck on the untouched base and wrote the result under Assumptions. Read it; a stash-and-rerun costs a minute to learn what is already written down. |
-| "I'll run the full suite after each slice, it's safer" | The slice's own test files say whether the slice is done. The full suite says whether the change is done, and that is one question, asked once in Step 5. |
 | "I'll ask whether they want the generic version" | Nobody answers. Write the specific version the spec asks for; generalise at the third use. |
 
 ## Red Flags
@@ -106,13 +101,12 @@ End with: the criteria implemented, keyed to the slices; the test, typecheck and
 - A file changed that neither the plan nor a compile error named
 - A slice whose tests pass while an earlier slice's went red
 - A Finish that reports "tests pass" with no command and no count
-- The full suite, the typecheck or the lint run more than once with no edit between, or run per slice; a stash-and-rerun to learn what the spec's Assumptions already record
 - A final message that ends on a question
 
 ## Verification
 
 - [ ] Every test on the red list is green, or left red with the reason in the Finish
-- [ ] The test, typecheck and lint commands from `~/spec.md` were run once each after the last edit (again only after a fix one forced) and pass; slices were proven by their own test files
+- [ ] The test, typecheck and lint commands from `~/spec.md` were run after the last edit and pass
 - [ ] Every changed file is one the plan named or a compile error forced; `Noticed, not touched` holds the rest
 - [ ] No test was skipped, deleted or weakened
 - [ ] The final message ends on a statement
