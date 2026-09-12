@@ -66,7 +66,11 @@ See `tasks/plan.md` for the order and the checkpoints. Branch: `yickkiuleung/ctd
 
 ## Phase 4: Prove it on a job
 
-- [ ] **T11: Two real jobs.** (M)
+- [x] **T11: Two real jobs.** (M)
   - Acceptance: `foundry build`; ignite with "Spec → QA" on a small repo with a real runner and a ticket with acceptance criteria: five steps ran, tests are named by criterion, the PR body carries the report table. Second job on a ticket with no criteria: settles no-changes, final message names what is missing. Both job ids in the PR body under "How verified".
   - Verify: the ledger and the PR.
   - Files: none in the repo beyond the PR body.
+  - Done 2026-09-12:
+    - CTD-172 on citadel@main, job `a8518064` — 24 min, five steps, PR https://github.com/d0nwong/citadel/pull/4: 10 files, tests named `C1…C5`, C6 documentation-only, QA table in the PR body, 148 pass. Verify reverted the `linearSources()` wiring, saw the suite stay green, and added a guard test. Conflicts with `bc79b77` (the team rename committed on this branch) once both merge.
+    - ALD-52 on alden-portal-fe@staging, first run job `9b33f72b` — cancelled at the plan step after the spec step derived 11 criteria from the Summary with the AC section removed; led to the "no AC section → Blocked" rule (`57d15d4`).
+    - ALD-52 re-run job `953c8536` on the rebuilt image — 3 min, Blocked at step 1, every later step made no edits, settled succeeded with no changes and the missing criteria named.
