@@ -44,8 +44,9 @@ function seedDirs(routeFile: string, a: Analysis): string[] {
     if (m) {
       // lift src/pages/admin/clients/index.tsx -> src/pages/admin/clients,
       // but src/pages/dashboard/index.tsx -> src/pages/dashboard
-      const dir = m[1].split("/").length > 3 && !/^src\/(pages|features)\/(admin)\//.test(imp)
-        ? m[1].split("/").slice(0, 3).join("/") : m[1];
+      const head = m[1] ?? imp;
+      const dir = head.split("/").length > 3 && !/^src\/(pages|features)\/(admin)\//.test(imp)
+        ? head.split("/").slice(0, 3).join("/") : head;
       out.add(dir);
     } else if (/^src\//.test(imp)) out.add(imp);
   }
@@ -92,7 +93,7 @@ export async function deriveManifest(a: Analysis, feRepo: string): Promise<Manif
           if (seen.has(t)) continue;
           seen.add(t);
           const m = t.match(/^(src\/features\/[^/]+)\//);
-          if (m) g.files.add(m[1]);
+          if (m?.[1]) g.files.add(m[1]);
           if (/^src\/(pages|features|components)\//.test(t)) next.push(t);
         }
       frontier = next;

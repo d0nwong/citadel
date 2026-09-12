@@ -183,8 +183,8 @@ The old repos keep running until the stack has proven itself. Only one sweep may
 3. On a fresh clone, `just bootstrap` writes one `.env` and `just check` reports nothing
    missing. There's no `.env` in any app directory, and nothing reads `ARGUS_ENV` or
    `~/.config/liamai/env`.
-4. After `just up`, the gateway, postgres, Pensieve and the sweep are healthy, and `just foundry`
-   runs Foundry. Pensieve at :3778 shows today's ledgers, Send to Foundry creates a job at
+4. After `just up`, the gateway, postgres and Pensieve are healthy (the sweep waits for
+   `just sweep-on` at cutover), and `just foundry` runs Foundry. Pensieve at :3778 shows today's ledgers, Send to Foundry creates a job at
    :3777, and Ask answers a question.
 5. The sweep service finishes a tick and pushes to `d0nwong/argus`, and `~/git/argus` has no new
    commits for 24 hours after cutover.

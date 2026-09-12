@@ -183,7 +183,7 @@ function analyzeFile(absPath: string, feRoot: string, srcAbs: string, idx: OpInd
     // orval symbols resolve by name; the hook capitalises the method after `use`
     if (ts.isIdentifier(node) && ORVAL_ID.test(node.text)) {
       const base = node.text.replace(/^use/, "");
-      const hit = idx.byName.get(base[0].toLowerCase() + base.slice(1));
+      const hit = idx.byName.get(base.charAt(0).toLowerCase() + base.slice(1));
       if (hit) ops.add(hit);
     }
 

@@ -47,8 +47,9 @@ function renderFrontmatter(f: IdxFeature, meta: DocMeta): string {
 /** minimal frontmatter reader — only what sync needs back out of an existing doc */
 export function readAliases(doc: string): string[] {
   const m = doc.match(/^---\n[\s\S]*?\naliases:\s*\[([^\]]*)\][\s\S]*?\n---/);
-  if (!m || !m[1].trim()) return [];
-  return m[1].split(",").map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+  const list = m?.[1]?.trim();
+  if (!list) return [];
+  return list.split(",").map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
 }
 
 // ---------------------------------------------------------------- regions

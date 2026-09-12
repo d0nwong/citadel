@@ -66,11 +66,12 @@ describe("spec diffing", () => {
   test.skipIf(!HAS_SPEC)("added/removed/changed partition", async () => {
     const doc = await Bun.file(`${DATA}/.state/openapi.json`).json();
     const ops = flatten(doc).slice(0, 3);
+    const first = ops[0]!;
     const prev = Object.fromEntries(ops.map(o => [o.key, fingerprintOf(o)]));
     prev["GET /api/v1/ghost"] = "dead";
-    delete prev[ops[0].key];
+    delete prev[first.key];
     const d = diffSpec(ops, prev);
-    expect(d.added.map(o => o.key)).toEqual([ops[0].key]);
+    expect(d.added.map(o => o.key)).toEqual([first.key]);
     expect(d.removed).toEqual(["GET /api/v1/ghost"]);
     expect(d.changed).toEqual([]);
   });

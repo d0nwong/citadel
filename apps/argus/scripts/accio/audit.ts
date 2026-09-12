@@ -47,8 +47,9 @@ export async function auditDocs(index: AccioIndex, dir = FEATURES_DIR): Promise<
 
     const called = new Set(f.ops.map(o => normPath(o.key.replace(/^~/, ""))));
     for (const m of proseOf(text).matchAll(METHOD_RE)) {
-      const key = normPath(`${m[1]} ${m[2].replace(/[`"').,]+$/, "")}`);
-      if (!specKeys.has(key)) problems.push(`${name}: prose names \`${m[1]} ${m[2]}\` — not in the spec`);
+      const [, method = "", path = ""] = m;
+      const key = normPath(`${method} ${path.replace(/[`"').,]+$/, "")}`);
+      if (!specKeys.has(key)) problems.push(`${name}: prose names \`${method} ${path}\` — not in the spec`);
       else if (f.type === "feature" && !called.has(key))
         problems.push(`${name}: prose names \`${m[1]} ${m[2]}\` — nothing this feature reaches calls it`);
     }

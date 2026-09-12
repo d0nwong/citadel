@@ -220,8 +220,9 @@ See `tasks/plan.md` for the order and the checkpoints.
   - Done: one job — install once, typecheck Pensieve and foundry-web, then the four test suites,
     with a postgres service and the extensions the local stack's init SQL creates. Checked
     locally the way a runner has it: Pensieve's tests pass with no data directory and no `claude`
-    on PATH. Left out, both pre-existing: argus's 12 type errors, and lint (foundry-web has 1133
-    Biome diagnostics, Pensieve 2). Path filters were not worth it — the whole job is seconds.
+    on PATH. argus's 12 pre-existing type errors were fixed (unchecked indexes and regex groups),
+    so its typecheck is in CI too. Lint stays out: foundry-web has 1133 Biome diagnostics,
+    Pensieve 2, all pre-existing. Path filters were not worth it — the whole job is seconds.
 
 **Checkpoint C:** success criteria 1–4 and 6 are met.
 

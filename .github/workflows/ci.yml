@@ -30,6 +30,8 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
+      - name: typecheck argus
+        run: bun run --filter argus typecheck
       - name: typecheck pensieve
         run: bun run --filter pensieve typecheck
       - name: typecheck foundry-web

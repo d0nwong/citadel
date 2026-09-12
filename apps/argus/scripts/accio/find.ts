@@ -215,8 +215,9 @@ if (!ENDPOINTS_ONLY) {
     }
   }
 
-  if (featHits.length && !compHits.length && featHits[0].s >= 4) {
-    const f = featHits[0].f;
+  const top = featHits[0];
+  if (top && !compHits.length && top.s >= 4) {
+    const f = top.f;
     console.log(`\n## feature: ${f.id}${f.aliases.length ? `  (aka ${f.aliases.join(", ")})` : ""}`);
     console.log(`  routes: ${f.entry_routes.join(", ") || "—"}`);
     console.log(`  ${f.ops.filter(o => o.dist <= ATTR_DEPTH).length} direct ops · doc: ${docPath(f)}`);
