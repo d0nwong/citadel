@@ -71,6 +71,7 @@ describe('jobs list status filter', () => {
 What makes these tests hold:
 
 - **State, not interactions.** Assert on what the criterion says is observed, never on which internal method was called; a refactor must not break them.
+- **Functionality, not CSS or labels.** Assert on what the user can do and what data appears, never on a class name, a colour, a pixel value or the exact copy of a label — those change with the design language and the test should survive it. Find elements by role and accessible name, not by class or by matching a sentence.
 - **One assertion per concept.** A criterion with two observations is two criteria; the spec step already split them.
 - **DAMP over DRY.** Each test reads as its own story: repeat a setup rather than hide it in a helper the reader has to chase.
 - **Real over mocked.** Real implementation, then a fake, then a stub; a mock only at a boundary that is slow or non-deterministic. A suite that passes against mocks while production breaks is worse than none.
@@ -105,6 +106,7 @@ End with: the tests written, keyed by criterion (`C2 → features/jobs/queries.t
 ## Red Flags
 
 - A test whose name does not start with a criterion id
+- A test that asserts a class name, a colour, a pixel value or a label's exact wording
 - A new test that passed on its first run and was left as it was
 - A change to a file outside tests, fixtures, factories and test config
 - A new framework, assertion library or test directory in a repo that had one
