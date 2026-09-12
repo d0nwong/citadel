@@ -287,7 +287,7 @@ function trust() {
 
 function data() {
   info("argus's data");
-  const dir = expand(process.env.WORKSPACE_DIR || readEnv().WORKSPACE_DIR || join(HOME, "git/argus"));
+  const dir = expand(process.env.WORKSPACE_DIR || readEnv().WORKSPACE_DIR || join(HOME, "git/citadel-data"));
   if (!existsSync(join(dir, ".git"))) return miss(`${tilde(dir)} is not a git checkout — clone the data repo there, or set WORKSPACE_DIR`);
   const branch = run(["git", "-C", dir, "branch", "--show-current"]).stdout.toString().trim();
   ok(`${tilde(dir)} ${dim(`(on ${branch || "?"})`)}`);

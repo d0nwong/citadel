@@ -1,6 +1,6 @@
 # Tasks: Argus and Pensieve, rebuilt around the ledger
 
-Plan: `tasks/plan.md`. Spec: `SPEC.md`. Paths are relative to `~/git/argus` unless they
+Plan: `tasks/plan.md`. Spec: `SPEC.md`. Paths are relative to `~/git/citadel-data` unless they
 start with `pensieve/`, which means `~/git/pensieve`.
 
 ## Phase 0: Freeze

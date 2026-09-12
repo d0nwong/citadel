@@ -10,7 +10,7 @@ Pensieve, Foundry does.
 | [`apps/foundry`](apps/foundry) | The executor: it takes a ticket key and a repo, runs the work in a forge container, and opens the PR. | this Mac (`just foundry`, :3777), because it pushes with your own credentials |
 
 argus's data — the ledgers, the arch docs and `state/` — is not in this repo. It lives in its own
-repo, cloned where `ARGUS_DATA_DIR` points (`~/git/argus` by default). The sweep writes it;
+repo, cloned where `ARGUS_DATA_DIR` points (`~/git/citadel-data` by default). The sweep writes it;
 Pensieve reads it, and writes it through the verbs.
 
 ## Getting started

@@ -29,7 +29,7 @@ services:
     volumes:
       # argus's data, read and written through argus's verbs (a click writes one ledger).
       # Until cutover it is the host checkout; after it, the volume the sweep shares.
-      - ${ARGUS_DATA_DIR:-~/git/argus}:/argus-data
+      - ${ARGUS_DATA_DIR:-~/git/citadel-data}:/argus-data
       - ${FE_REPO_HOST:-~/git/alden-portal-fe}:/repos/fe:ro
       - ${BE_REPO_HOST:-~/git/alden-connect-portal-be}:/repos/be:ro
       - pensieve-home:/data

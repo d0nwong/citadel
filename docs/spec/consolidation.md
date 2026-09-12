@@ -158,7 +158,7 @@ combined release PR. Images are tagged `<app>:<version>`, and compose reads the 
 The old repos keep running until the stack has proven itself. Only one sweep may run at a time:
 
 1. Build and smoke-test the stack with the sweep service **stopped**.
-2. Stop the host loop (`bun run sweep` in `~/git/argus`), then push the data repo.
+2. Stop the host loop (`bun run sweep` in `~/git/citadel-data`), then push the data repo.
 3. Start the sweep service. Watch it for a day.
 4. Archive `d0nwong/foundry` and `d0nwong/pensieve` (with a README pointing at citadel), and
    trim `d0nwong/citadel-data` down to data.
@@ -187,7 +187,7 @@ The old repos keep running until the stack has proven itself. Only one sweep may
 4. After `just up`, the gateway, postgres and Pensieve are healthy (the sweep waits for
    `just sweep-on` at cutover), and `just foundry` runs Foundry. Pensieve at :3778 shows today's ledgers, Send to Foundry creates a job at
    :3777, and Ask answers a question.
-5. The sweep service finishes a tick and pushes to `d0nwong/citadel-data`, and `~/git/argus` has no new
+5. The sweep service finishes a tick and pushes to `d0nwong/citadel-data`, and `~/git/citadel-data` has no new
    commits for 24 hours after cutover.
 6. A `feat(pensieve):` merge makes release-please propose `pensieve-v0.2.0` and nothing else.
 

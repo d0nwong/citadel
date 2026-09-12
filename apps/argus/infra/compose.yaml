@@ -67,7 +67,7 @@ services:
       - mcp_gateway_token
       - gh_token
     volumes:
-      - ${ARGUS_DATA_DIR:-~/git/argus}:/argus-data
+      - ${ARGUS_DATA_DIR:-~/git/citadel-data}:/argus-data
       - sweep-product:/home/bun/git
       - sweep-claude:/home/bun/.claude
     depends_on:

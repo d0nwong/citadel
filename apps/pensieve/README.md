@@ -116,7 +116,7 @@ In the stack — argus's data is mounted, never copied in, because it changes ev
 just up pensieve             # http://localhost:3778 (PENSIEVE_PORT moves it)
 ```
 
-The data directory (`ARGUS_DATA_DIR`, `~/git/argus` by default) is mounted at `/argus-data`,
+The data directory (`ARGUS_DATA_DIR`, `~/git/citadel-data` by default) is mounted at `/argus-data`,
 and the container runs argus's verbs against it from `/app/apps/argus` (`ARGUS_DIR`). The
 product checkouts are mounted read-only, for Ask's history reads. The container gets only the
 keys Pensieve reads; the gateway token arrives as a secret file, because Claude Code runs a

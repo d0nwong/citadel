@@ -16,7 +16,7 @@ import { parse as parseYaml } from "yaml";
 import { dropTitle, outline } from "./sections";
 
 export const WORKSPACE_DIR = resolve(
-  process.env.WORKSPACE_DIR || join(homedir(), "git/argus")
+  process.env.WORKSPACE_DIR || join(homedir(), "git/citadel-data")
 );
 
 /**

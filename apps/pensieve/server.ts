@@ -32,5 +32,5 @@ Bun.serve({
 });
 
 console.log(
-  `pensieve · http://localhost:${PORT} · workspace ${process.env.WORKSPACE_DIR ?? "~/git/argus"}`
+  `pensieve · http://localhost:${PORT} · workspace ${process.env.WORKSPACE_DIR ?? "~/git/citadel-data"}`
 );
