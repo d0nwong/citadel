@@ -21,3 +21,6 @@ export function relative(ts: number, from = Date.now()): string {
 
 export const clockTime = (ts: number) =>
   new Date(ts).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
+/** Truncates to at most `n` characters, marking the cut with a trailing ellipsis. */
+export const trim1 = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)

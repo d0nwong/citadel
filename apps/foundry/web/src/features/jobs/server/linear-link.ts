@@ -22,6 +22,7 @@
  * merging or closing the PR on Bitbucket sends nothing back, so the ticket's
  * status is still the user's to move.
  */
+import { trim1 } from '@/shared/lib/format'
 import { readFoundryEnv } from './foundry-env'
 
 const API = 'https://api.linear.app/graphql'
@@ -83,8 +84,6 @@ export type LinkResult = {
   unknown: Array<string>
   failed: Array<{ id: string; reason: string }>
 }
-
-const trim1 = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 interface GqlResponse<T> {
   data?: T
