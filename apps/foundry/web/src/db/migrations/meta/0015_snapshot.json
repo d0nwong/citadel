@@ -1,6 +1,6 @@
 {
-  "id": "cff1c355-e689-4666-882d-6c89c858777a",
-  "prevId": "3cfe7dc8-98e0-4282-8c07-c411707e8f1b",
+  "id": "f9fd89a7-1a88-4895-bc0a-7f0467ff275f",
+  "prevId": "cff1c355-e689-4666-882d-6c89c858777a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -64,16 +64,16 @@
         "blueprint_revisions_blueprint_id_blueprints_id_fk": {
           "name": "blueprint_revisions_blueprint_id_blueprints_id_fk",
           "tableFrom": "blueprint_revisions",
+          "tableTo": "blueprints",
+          "schemaTo": "foundry",
           "columnsFrom": [
             "blueprint_id"
           ],
-          "tableTo": "blueprints",
-          "schemaTo": "foundry",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -147,10 +147,10 @@
       "uniqueConstraints": {
         "blueprints_name_unique": {
           "name": "blueprints_name_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "name"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -341,9 +341,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "jobs_status_idx": {
           "name": "jobs_status_idx",
@@ -356,9 +356,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "jobs_ticket_id_unique": {
           "name": "jobs_ticket_id_unique",
@@ -371,9 +371,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "where": "\"foundry\".\"jobs\".\"status\" <> 'cancelled'",
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "jobs_idempotency_key_unique": {
           "name": "jobs_idempotency_key_unique",
@@ -386,39 +387,39 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "jobs_repo_id_repos_id_fk": {
           "name": "jobs_repo_id_repos_id_fk",
           "tableFrom": "jobs",
+          "tableTo": "repos",
+          "schemaTo": "foundry",
           "columnsFrom": [
             "repo_id"
           ],
-          "tableTo": "repos",
-          "schemaTo": "foundry",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "jobs_blueprint_id_blueprints_id_fk": {
           "name": "jobs_blueprint_id_blueprints_id_fk",
           "tableFrom": "jobs",
+          "tableTo": "blueprints",
+          "schemaTo": "foundry",
           "columnsFrom": [
             "blueprint_id"
           ],
-          "tableTo": "blueprints",
-          "schemaTo": "foundry",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -470,10 +471,10 @@
       "uniqueConstraints": {
         "repos_path_unique": {
           "name": "repos_path_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "path"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -505,10 +506,10 @@
   "schemas": {
     "foundry": "foundry"
   },
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

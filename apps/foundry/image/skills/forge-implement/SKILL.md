@@ -1,30 +1,29 @@
 ---
 name: forge-implement
-description: Implements ~/plan.md one criterion at a time until every test forge-test wrote is green, then typecheck and lint pass. Simplest code that works, repo conventions over habit, no re-planning beyond what the code forces, no skipped tests. Use as the step after forge-test in a QA blueprint.
+description: Implements ~/plan.md one criterion at a time until every red test for its criteria is green, then typecheck and lint pass. Simplest code that works, repo conventions over habit, no re-planning beyond what the code forces, no skipped tests. Use whenever ~/plan.md exists and the tests for its criteria are red.
 ---
 
 # forge-implement — the plan, to green
 
 ## Overview
 
-The spec says what, the plan says where, the tests say when it is done. This step writes the production code, one slice of the plan at a time, running the tests after each, until the red list from `forge-test` is green and the whole suite, the typecheck and the lint pass. The simplest code that makes a test pass is the code to write; the repo's conventions win over general habit; and a failing test is never made to pass by changing what it asserts, unless the test contradicts the spec and the message says so.
+The spec says what, the plan says where, the tests say when it is done. This step writes the production code, one slice of the plan at a time, running the tests after each, until the red list — the criterion tests seen failing before this step — is green and the whole suite, the typecheck and the lint pass. The simplest code that makes a test pass is the code to write; the repo's conventions win over general habit; and a failing test is never made to pass by changing what it asserts, unless the test contradicts the spec and the message says so.
 
 Adapted from `incremental-implementation` in addy-agent-skills (MIT, © 2025 Addy Osmani) for an unattended run: the GREEN and REFACTOR halves of the TDD cycle, sliced by criterion, with the "want me to also fix…" questions that skill asks turned into a `Noticed, not touched` list.
 
 ## When to Use
 
-- As the fourth step of the "Spec → QA" blueprint, after `forge-test`
 - Whenever `~/plan.md` exists and the tests for its criteria are red
 
-**When NOT to use:** no `~/plan.md` (run `forge-plan`); no red tests and no does-not-compile-yet tests (nothing to implement — say so and stop).
+**When NOT to use:** no `~/plan.md` (write the plan first); no red tests and no does-not-compile-yet tests (nothing to implement — say so and stop).
 
 ## Handoff
 
-Reads `~/plan.md` (`Change`, `Criteria → code`, `Order`, `Not doing`), `~/spec.md` (Commands, Assumptions), and the red list in `forge-test`'s final message, which is in this session. If `~/spec.md` has a `## Blocked` section, stop now: make no edits and repeat its reason as your final message. Writes production code. Changes a test only under Step 4's rule, and never deletes, skips or weakens one.
+Reads `~/plan.md` (`Change`, `Criteria → code`, `Order`, `Not doing`), `~/spec.md` (Commands, Assumptions), and the red list the previous step's final message recorded, when this session has one; otherwise the test run in Step 1 is the list. If `~/spec.md` has a `## Blocked` section, stop now: make no edits and repeat its reason as your final message. Writes production code. Changes a test only under Step 4's rule, and never deletes, skips or weakens one.
 
 ## Step 1: Start from the red list, not the plan
 
-Run the spec's test command once before editing. The failures must match the red list `forge-test` reported: the same names, red for the same reasons. A test that is red for a different reason, or a test that is not on the list, is the first thing to understand — the base may have moved, or the previous step's note was wrong. Record what you find; it goes in the Finish under Assumptions.
+Run the spec's test command once before editing. The failures must match the red list recorded before this step: the same names, red for the same reasons. A test that is red for a different reason, or a test that is not on the list, is the first thing to understand — the base may have moved, or the previous step's note was wrong. Record what you find; it goes in the Finish under Assumptions.
 
 Then take the plan's `Order` as the order. Do not re-plan: the plan was reviewed, and second-guessing it beyond what the code forces produces a change that matches neither the plan nor the spec.
 
@@ -82,7 +81,7 @@ Then read `git -C /work status --porcelain` and `git diff` once, as a reviewer: 
 
 ## Finish
 
-End with: the criteria implemented, keyed to the slices; the test, typecheck and lint commands run and their results in one line each; every deviation from the plan and every test changed under Step 4, with the reason; the `Noticed, not touched` list; and anything left red or left out, with why. `forge-verify` reads this to know what to check hardest. Every sentence is a statement; never end on a question or an offer, because nobody answers and the run simply ends.
+End with: the criteria implemented, keyed to the slices; the test, typecheck and lint commands run and their results in one line each; every deviation from the plan and every test changed under Step 4, with the reason; the `Noticed, not touched` list; and anything left red or left out, with why. The step that verifies reads this to know what to check hardest. Every sentence is a statement; never end on a question or an offer, because nobody answers and the run simply ends.
 
 ## Common Rationalizations
 
@@ -106,7 +105,7 @@ End with: the criteria implemented, keyed to the slices; the test, typecheck and
 
 ## Verification
 
-- [ ] Every test on `forge-test`'s red list is green, or left red with the reason in the Finish
+- [ ] Every test on the red list is green, or left red with the reason in the Finish
 - [ ] The test, typecheck and lint commands from `~/spec.md` were run after the last edit and pass
 - [ ] Every changed file is one the plan named or a compile error forced; `Noticed, not touched` holds the rest
 - [ ] No test was skipped, deleted or weakened

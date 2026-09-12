@@ -200,7 +200,9 @@ and it reads the requirement, plans first, branches from main, verifies against 
 existing code, and finishes with a PR. Five more, `forge-spec` → `forge-plan` →
 `forge-test` → `forge-implement` → `forge-verify`, are the steps of the **Spec → QA**
 blueprint below: each is one role, written for a headless run, adapted from the
-[agent-skills](https://github.com/addyosmani/agent-skills) plugin. Skills are re-synced
+[agent-skills](https://github.com/addyosmani/agent-skills) plugin. `forge-debug` takes
+`forge-plan`'s slot in **Bug → Fix** — reproduce, localise, reduce, name the root
+cause — and on its own is what a follow-up job runs on a failed check. Skills are re-synced
 into `~/.claude/skills` on every container start, so `foundry recreate` picks up new
 versions — and a job forge is built fresh, so `foundry build` is what ships a change.
 
@@ -351,13 +353,14 @@ job's forge runs `claude -p` once per step, all in one session (`--session-id` t
 **Blueprints** page. A job snapshots the steps it ran, so editing or deleting a
 blueprint never rewrites history.
 
-`just migrate` seeds three, and all are yours to edit:
+`just migrate` seeds four, and all are yours to edit:
 
 | blueprint | steps | for |
 |---|---|---|
 | **Plan → Execute** | plan · fable · high → execute · sonnet | anything. Read and plan first, implement second — what the ignite dialog starts on |
 | **Backfill Tests** | survey · fable · high → write-tests · sonnet → verify · sonnet | tests over logic that already exists: characterise the behaviour, cover it, then check the tests would actually fail on a regression. Production code is off limits, so a bug it turns up is reported rather than fixed |
 | **Spec → QA** | spec · fable · high → plan · fable · high → test · sonnet → implement · sonnet → verify · opus · medium | a ticket with acceptance criteria. Each step is a `/forge-*` skill: write the criteria down as checks, plan and self-review, write one red test per criterion, implement to green, then review on five axes and put a QA report in the PR body. e2e tests are written for the repo's own runner and left to CI. A ticket with no checkable criteria stops at the first step with no changes, on purpose |
+| **Bug → Fix** | spec · fable · high → debug · fable · high → test · sonnet → implement · sonnet → verify · opus · medium | a ticket with reproduction steps or a failing check. The reproduction is the criterion; `forge-debug` reproduces it, localises and reduces it, and writes the plan with the root cause first; then the same test, implement and verify steps as Spec → QA, so the first test is the reproduction seen red, and the PR body opens with the root cause. A ticket with neither steps nor a failing check stops at the first step, naming what is missing |
 
 The ignite dialog preselects **Plan → Execute** — planning first is the right default
 for a run nobody is watching. It matches on the seeded row's id, not its name, so
