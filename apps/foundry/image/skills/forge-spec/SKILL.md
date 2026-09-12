@@ -81,7 +81,7 @@ Rules that keep criteria testable:
 - **Numbers for vague asks.** "Make it faster" becomes a target the test can measure, chosen from what the code and the ticket support, and recorded as an assumption.
 - **Cite the rule.** Where the ticket cites a product rule ("BR-93"), carry the citation on the criterion.
 
-A criterion is never derived from the Summary, Scope or Technical Notes: those inform the wording of a criterion the ticket already has and go into Out of scope and Assumptions, but they do not add rows. The one exception is a boundary the code forces on an existing criterion — the field is nullable, the list can be empty — which is split out as its own `C<n>` and named under Assumptions. Criteria that would merely be nice are not added: the spec is what the ticket signed off as done, checkable.
+A criterion is never derived from the Summary, Scope or Technical Notes: those inform the wording of a criterion the ticket already has and go into Out of scope and Assumptions, but they do not add rows. The one exception is a boundary the code forces on an existing criterion — the field is nullable, the list can be empty — which is split out as its own `C<n>` and named under Assumptions. The other is the contract: when a criterion changes a request or response contract the repo publishes — a route's params or body, a validation schema, the published API document, a generated client type — one standing criterion is added after the ticket's own: `C<n> — The published contract stays backward compatible with what <consumer> was generated from, or the change <consumer> makes is named under Assumptions`, with the consumer taken from the repo notes, then the ticket, and written as `consumer not named` when neither names one. Criteria that would merely be nice are not added: the spec is what the ticket signed off as done, checkable.
 
 ## Step 4: Decide what a person would have been asked
 
@@ -167,7 +167,7 @@ End with the Criteria list verbatim, the Commands line, and the Assumptions — 
 ## Verification
 
 - [ ] Every criterion traces to a line of the ticket's Acceptance Criteria section, states the state to set up and what must be observed, and names where in the code it is satisfied
-- [ ] A ticket with no Acceptance Criteria section produced `## Blocked`, not criteria; a bug's `C1` is its reproduction and Commands has a `repro:` line
+- [ ] A ticket with no Acceptance Criteria section produced `## Blocked`, not criteria; a bug's `C1` is its reproduction and Commands has a `repro:` line; a criterion that changes a published contract is followed by the standing contract criterion
 - [ ] Every command in Commands exists in the repo and the test command was run once on the untouched checkout
 - [ ] Every gap in the ticket has a line under Assumptions naming what was decided and why
 - [ ] `~/spec.md` exists and `/work` has no changes (`git -C /work status --porcelain` is empty)

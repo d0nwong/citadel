@@ -1,6 +1,6 @@
 ---
 name: forge-verify
-description: Reviews the change against ~/spec.md on five axes, proves the suite, typecheck and lint pass, tightens tests that would pass any implementation, and writes the QA report to ~/qa-report.md and the PR description to /work/.git/PR_BODY.md. Small fixes only. Use once a change exists against ~/spec.md and no ~/qa-report.md has been written.
+description: Reviews the change against ~/spec.md on five axes — a sixth, the API lens, when the diff touches a contract — proves the suite, typecheck and lint pass, tightens tests that would pass any implementation, and writes the QA report to ~/qa-report.md and the PR description to /work/.git/PR_BODY.md. Small fixes only. Use once a change exists against ~/spec.md and no ~/qa-report.md has been written.
 ---
 
 # forge-verify — review, prove, report
@@ -30,7 +30,7 @@ Tests reveal what the change thinks it is. For every test this run touched:
 - Does it test state, not interactions; the public surface, not internals?
 - Was any test changed after it was first written, and does the reason given for it hold against the spec?
 
-## Step 2: Review the code on five axes
+## Step 2: Review the code on five axes, six when the diff touches a contract
 
 Walk the diff file by file. Label every finding with a severity so the reader knows what is required:
 
@@ -46,6 +46,7 @@ Walk the diff file by file. Label every finding with a severity so the reader kn
 3. **Architecture** — follows the repo's existing pattern or justifies a new one; reuses the canonical helper rather than a near-duplicate; feature logic stays in its own layer; nothing outside `~/spec.md`'s scope or inside `~/plan.md`'s `Not doing`
 4. **Security** — input validated at the boundary; queries parameterised; no secret in code or log; external data treated as untrusted
 5. **Performance** — no N+1, no unbounded fetch, no work in a hot path the spec did not ask for
+6. **API** — only when the diff touches a contract (a route's params or body, a validation schema, the published API document, a generated client type, a module's exported interface): read the lens at `~/.claude/skills/forge-api/SKILL.md` and apply its checks — the consumer named, additive or not, one error shape, validation at the boundary, schema and document changed together. Findings carry the same labels as the other five; when every check holds, the report says so in the lens's one line. A diff that touches no contract gets no API row at all
 
 Lead with what matters: a correctness or security finding is the review; ten nits under it are noise. For a structural finding, name the move (reuse helper X, collapse the two branches, move this into the module that owns the concept), not just the problem.
 
@@ -73,6 +74,7 @@ Commands: `bun test` 216 pass · `bun run typecheck` clean · `bun run check` cl
 Not covered: <criterion, and why — e.g. C3 needs a browser and the repo has no e2e runner>
 Findings fixed here: <one line each, with the label>
 Findings left for the reader: <one line each, with the label>
+API: <only when the diff touched a contract: the lens's one line — additive and the consumer unaffected, or the findings with their labels>
 Tests tightened or removed: <name, and what it was not catching>
 Deviations from the plan: <from the previous step's message, confirmed or corrected>
 Assumptions carried: <the spec's and the plan's, in one list>
@@ -142,6 +144,7 @@ End with the commit subject, the report's table and command line, the findings l
 
 - [ ] Every test touched by this run was checked against its criterion and would fail on regression, or was tightened or removed with the reason recorded
 - [ ] The diff was read on all five axes and every finding is labelled and either fixed in place or left for the reader
+- [ ] The API lens was applied when the diff touched a contract and the report carries its line; a diff touching none has no API row
 - [ ] Test, typecheck and lint were run after the last edit, with command and result in the report
 - [ ] `~/qa-report.md` has a row per criterion, and `/work/.git/PR_BODY.md` carries the table under How verified
 - [ ] The change is committed with a Conventional Commit subject and the `Closes` line in the body; `git -C /work status --porcelain` is empty

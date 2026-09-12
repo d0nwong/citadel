@@ -30,6 +30,7 @@ While reading, collect what the plan has to reuse:
 - The existing function, helper or component that already does most of it. New code where a suitable implementation exists is the first thing the review below rejects.
 - For a UI criterion: the repo's `package.json` `ui:list` script, if present, run with the repo's package manager. The shared components it lists are what the plan builds with, so the change stays visually consistent. Absent or failing, continue without it.
 - The repo notes in the system prompt, `CLAUDE.md`, `CONTRIBUTING.md`: standing preferences the plan honours from the start rather than discovers halfway.
+- The contract, when a criterion changes one — a route's params or body, a validation schema, the published API document, a generated client type, a module's exported interface: read the API lens at `~/.claude/skills/forge-api/SKILL.md` before slicing and plan the change by it. Additive where the criterion allows; where it does not, the plan states the migration path in the order the consumer can follow. Either way Assumptions carries the lens's one line: additive or not, and which consumer changes with it. A criterion that touches no contract gets no such line.
 
 ## Step 2: Map the dependencies, then slice
 
@@ -67,6 +68,7 @@ A criterion the plan cannot place — nothing read in Step 1 could satisfy it as
 ## Assumptions
 - <every decision the spec left open, and the reading of the code that made it>
 - <any criterion that could not be placed as worded, and the closest change planned instead>
+- <API: additive or not, and the consumer — only when a criterion changes a contract, in the shape the lens's Finish gives>
 
 ## Not doing
 - <the adjacent cleanup, the refactor, the second feature — named so the implement step does not drift into it>
@@ -115,6 +117,7 @@ End with the `Change` paragraph, the `Criteria → code` list verbatim, and the 
 
 - [ ] Every criterion in `~/spec.md` has a line under `Criteria → code` naming a file and a symbol that was read
 - [ ] Slices are ordered so each one's command can pass when it lands
+- [ ] A criterion that changes a contract has the API lens's line under Assumptions, and a plan that touches none has no such line
 - [ ] The adversarial pass ran with all six checks and every finding is either fixed or recorded as a trade-off
 - [ ] `~/plan.md` exists and `git -C /work status --porcelain` is empty
 - [ ] The final message ends on a statement
