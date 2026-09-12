@@ -15,7 +15,7 @@
  *   just check                         report only
  *   just bootstrap env deps            some phases
  *   just bootstrap import <file>...    copy the keys .env lacks from other .env files
- *   just auth linear|slack|claude|foundry-api|gateway [--rotate]
+ *   just auth linear|slack|claude|foundry-api|gateway|gh|bitbucket [--rotate]
  */
 
 import { randomBytes } from "node:crypto";
@@ -396,6 +396,25 @@ function auth(what: string | undefined, flags: string[]) {
       ok(`stored ${k} in ${tilde(ENV_FILE)} ${dim("(restart the gateway to pick it up)")}`);
       return;
     }
+    case "gh": {
+      if (!process.stdin.isTTY) return miss("just auth gh needs a terminal to type the token into");
+      const v = secret("GH_TOKEN");
+      if (!v) return miss("nothing typed — nothing written");
+      writeKey(ENV_FILE, "GH_TOKEN", v);
+      ok(`stored GH_TOKEN in ${tilde(ENV_FILE)} ${dim("(the sweep pushes the data repo with it; a fine-grained token, contents: write on that repo alone)")}`);
+      return;
+    }
+    case "bitbucket": {
+      if (!process.stdin.isTTY) return miss("just auth bitbucket needs a terminal to type the token into");
+      const user = prompt("  BITBUCKET_USERNAME (the account's email, for an Atlassian API token):")?.trim();
+      if (!user) return miss("nothing typed — nothing written");
+      const v = secret("BITBUCKET_TOKEN");
+      if (!v) return miss("nothing typed — nothing written");
+      writeKey(ENV_FILE, "BITBUCKET_USERNAME", user);
+      writeKey(ENV_FILE, "BITBUCKET_TOKEN", v);
+      ok(`stored the Bitbucket pair in ${tilde(ENV_FILE)} ${dim("(read-only is enough: read:repository:bitbucket, read:pipeline:bitbucket)")}`);
+      return;
+    }
     case "claude":
       return passthrough([FOUNDRY_BIN, "auth", "--claude"]);
     case "foundry-api":
@@ -409,7 +428,7 @@ function auth(what: string | undefined, flags: string[]) {
       ok("minted MCP_GATEWAY_TOKEN — restart the gateway, and recreate forges to pick it up");
       return;
     default:
-      miss("just auth linear|slack|claude|foundry-api|gateway [--rotate]");
+      miss("just auth linear|slack|claude|foundry-api|gateway|gh|bitbucket [--rotate]");
   }
 }
 
