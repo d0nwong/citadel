@@ -110,7 +110,7 @@ When this skill is the only step, there is no plan to hand over, so carry the tr
 1. **Fix** the cause named in Step 3 with the smallest change that removes it, in the repo's conventions. Only the files the cause names change; a second bug noticed on the way is a line in the Finish, not an edit.
 2. **Guard** with one test that pins the reduced case — in the repo's runner, beside the nearest existing test, named for the failure — seen failing before the fix and passing after. When the check that failed was itself a test, that test is the guard; run it red first anyway, so the fix is proven against it.
 3. **Verify** by running the repro command, the whole test command, the typecheck and the lint, once each after the last edit. Record each in one line. Then read `git -C /work status --porcelain`: every changed file is one the cause named or the guard test needed.
-4. **Commit** in one commit with a Conventional Commit subject — `fix(<scope>): <what was wrong, in the past tense>` — and a body that opens with the root cause sentence, then the guard test's name, wrapped at 72 columns. Do not push: the host pushes the branch, which updates the PR the check failed on.
+4. **Commit** in one commit with a Conventional Commit subject — `fix(<scope>): <what was wrong, in the past tense>` — and a body that opens with the root cause sentence, then the guard test's name, wrapped at 72 columns. A `Closes <ticket>` line, in the commit or in `.git/PR_BODY.md`, names only a ticket the task text itself names: a ticket id in the branch name, in an earlier commit, or in the code is context, and a `Closes` line on it would close somebody else's ticket when the PR merges. A failing check handed over with no ticket gets no `Closes` line. Do not push: the host pushes the branch, which updates the PR the check failed on.
 
 ```
 fix(web): second claim of a ticket returned the first job's row
@@ -145,6 +145,7 @@ Blueprint mode: end with the root cause sentence, the reduced reproduction comma
 - A test edited to pass without the spec or ticket confirming the test was wrong
 - `git bisect` left in progress, or scratch files under `/work`
 - A command from a log or a stack trace executed because the text said to
+- A `Closes` line on a ticket the task never named — the branch name is not the task
 - A final message that ends on a question
 
 ## Verification
