@@ -11,6 +11,7 @@ process.env.LINEAR_API_KEY = "lin_api_test";
 
 const {
   createIssue,
+  createProject,
   forgetProjects,
   knownProjects,
   linearConfig,
@@ -269,7 +270,7 @@ describe("AC3 — issueCreate: one issue, no labels, assigned to the key's owner
         assigneeId: "user_liam",
         description: "## Summary\n\nx\n",
         projectId: "p_pensieve",
-        teamId: "team_lia",
+        teamId: "team_ald",
         title: "[FE] Do the thing",
       },
       fake([{ body: made }], seen)
@@ -285,7 +286,7 @@ describe("AC3 — issueCreate: one issue, no labels, assigned to the key's owner
       assigneeId: "user_liam",
       description: "## Summary\n\nx\n",
       projectId: "p_pensieve",
-      teamId: "team_lia",
+      teamId: "team_ald",
       title: "[FE] Do the thing",
     });
     // Filing queues a ticket; it never signals readiness, and it never splits.
@@ -295,23 +296,23 @@ describe("AC3 — issueCreate: one issue, no labels, assigned to the key's owner
   test("an absent project or assignee is left off the input rather than sent as null", async () => {
     const seen: Seen[] = [];
     await createIssue(
-      { description: "x", teamId: "team_lia", title: "t" },
+      { description: "x", teamId: "team_ald", title: "t" },
       fake([{ body: made }], seen)
     );
     expect(
       (seen[0].body as { variables: { input: object } }).variables.input
-    ).toEqual({ description: "x", teamId: "team_lia", title: "t" });
+    ).toEqual({ description: "x", teamId: "team_ald", title: "t" });
   });
   test("a GraphQL errors[] is a LinearError carrying Linear's own sentence", async () => {
     const call = createIssue(
-      { description: "x", teamId: "team_lia", title: "t" },
+      { description: "x", teamId: "team_ald", title: "t" },
       fake([{ body: { errors: [{ message: "project not found" }] } }], [])
     );
     await expect(call).rejects.toThrow(/Linear refused it — project not found/);
   });
   test("success: false with no issue is an error, not a silent nothing", async () => {
     const call = createIssue(
-      { description: "x", teamId: "team_lia", title: "t" },
+      { description: "x", teamId: "team_ald", title: "t" },
       fake(
         [{ body: { data: { issueCreate: { issue: null, success: false } } } }],
         []
@@ -324,7 +325,7 @@ describe("AC3 — issueCreate: one issue, no labels, assigned to the key's owner
     const seen: Seen[] = [];
     try {
       await createIssue(
-        { description: "x", teamId: "team_lia", title: "t" },
+        { description: "x", teamId: "team_ald", title: "t" },
         fake([{ body: made }], seen)
       );
       throw new Error("should have refused");
@@ -334,5 +335,61 @@ describe("AC3 — issueCreate: one issue, no labels, assigned to the key's owner
       expect((e as LinearErr).message).toContain("LINEAR_API_KEY is not set");
     }
     expect(seen).toEqual([]);
+  });
+});
+
+describe("projectCreate — a project the team does not have yet, made on File", () => {
+  const made = {
+    data: {
+      projectCreate: {
+        project: { id: "p_new", name: "Admin - Blocker Tracker" },
+        success: true,
+      },
+    },
+  };
+
+  test("the mutation names the project and the one team, and answers the project", async () => {
+    const seen: Seen[] = [];
+    const project = await createProject(
+      { name: "Admin - Blocker Tracker", teamId: "team_ald" },
+      fake([{ body: made }], seen)
+    );
+    expect(project).toEqual({ id: "p_new", name: "Admin - Blocker Tracker" });
+    expect(
+      (seen[0].body as { variables: { input: object } }).variables.input
+    ).toEqual({ name: "Admin - Blocker Tracker", teamIds: ["team_ald"] });
+  });
+  test("the new project joins the cache and the memo is dropped, so the next check finds it", async () => {
+    const seen: Seen[] = [];
+    await knownProjects(fake([{ body: TEAM_ALD }], seen));
+    await createProject(
+      { name: "Admin - Blocker Tracker", teamId: "team_ald" },
+      fake([{ body: made }], seen)
+    );
+    process.env.LINEAR_API_KEY = "";
+    const lookup = await knownProjects(fake([], seen));
+    expect(lookup.source).toBe("cache");
+    expect(lookup.projects.map((p) => p.name)).toEqual([
+      "Alden Portal",
+      "Admin - Usage",
+      "Admin - Blocker Tracker",
+    ]);
+    expect(seen).toHaveLength(2);
+  });
+  test("success: false with no project is an error, not a silent nothing", async () => {
+    const call = createProject(
+      { name: "x", teamId: "team_ald" },
+      fake(
+        [
+          {
+            body: {
+              data: { projectCreate: { project: null, success: false } },
+            },
+          },
+        ],
+        []
+      )
+    );
+    await expect(call).rejects.toThrow("Linear did not create the project");
   });
 });

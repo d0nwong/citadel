@@ -147,9 +147,12 @@ export const askChat = createServerFn({ method: "POST" })
       () => abortController.abort(),
       { once: true }
     );
-    return toServerSentEventsResponse(
-      ask.askStream(data, { abortController }),
-      { abortController }
+    const { withKeepalive } = await import("#/server/keepalive");
+    // A comment every 15 s keeps proxies with an idle limit from cutting a quiet stretch.
+    return withKeepalive(
+      toServerSentEventsResponse(ask.askStream(data, { abortController }), {
+        abortController,
+      })
     );
   });
 
@@ -238,7 +241,9 @@ const trimmedText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
  * File the drafted issue the card is showing. Exactly one `issueCreate` on the draft's team
  * (Alden when the card names none, CTD-172), in the card's project, assigned to the key's
  * owner, with no labels; the issue is recorded under the thread's `ticket:<toolCallId>` key,
- * and a repeat answers that record rather than creating a second issue (AC3).
+ * and a repeat answers that record rather than creating a second issue (AC3). A project the
+ * team does not have yet is created first, on the team, by name — one `projectCreate` ahead
+ * of the `issueCreate`.
  *
  * The draft is re-checked here rather than trusted: the card's title and body are editable,
  * so what is filed is not what `propose_ticket` approved.
@@ -299,11 +304,19 @@ export const fileTicket = createServerFn({ method: "POST" })
       }
       let issue: FiledTicket;
       try {
+        let projectId = draft.project.id;
+        if (draft.project.isNew) {
+          const project = await linear.createProject({
+            name: draft.project.name,
+            teamId: draft.teamId,
+          });
+          projectId = project.id;
+        }
         const made = await linear.createIssue({
           description: draft.description,
           teamId: draft.teamId,
           title: draft.title,
-          ...(draft.project.id ? { projectId: draft.project.id } : {}),
+          ...(projectId ? { projectId } : {}),
           ...(draft.viewerId ? { assigneeId: draft.viewerId } : {}),
         });
         issue = { ...made, at: new Date().toISOString() };

@@ -28,6 +28,10 @@ Bun.serve({
     return server.fetch(req);
   },
   hostname: "0.0.0.0",
+  // Ask streams for minutes with quiet stretches (a long generation, a slow tool); Bun's
+  // default idleTimeout (10 s) would close the socket and the page would show
+  // "Stream response body read failed". 0 disables it.
+  idleTimeout: 0,
   port: PORT,
 });
 

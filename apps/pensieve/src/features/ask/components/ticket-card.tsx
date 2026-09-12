@@ -30,6 +30,8 @@ const TITLE_MAX = 80;
 /** What `propose_ticket` answers, as the card reads it back off the wire. */
 interface Proposal {
   description: string;
+  /** True when the team has no project by this name yet: File creates it before the issue. */
+  isNew: boolean;
   project: string;
   projectId?: string;
   team: string;
@@ -76,6 +78,7 @@ export function parseAnswer(output: unknown): Answer {
     ok: true,
     proposal: {
       description,
+      isNew: p.isNew === true,
       project: str(p.project) ?? "",
       projectId: str(p.projectId),
       team: str(p.team) ?? "Alden",
@@ -254,6 +257,13 @@ function Proposed({
         <p className="text-sm text-subtle leading-snug">
           The project could not be checked against Linear, so{" "}
           <span className="mono">{proposal.project}</span> is taken on trust.
+        </p>
+      )}
+      {proposal.isNew && (
+        <p className="text-sm text-subtle leading-snug">
+          Team {proposal.team} has no project called{" "}
+          <span className="mono">{proposal.project}</span> yet — File creates
+          it, then the issue in it.
         </p>
       )}
 

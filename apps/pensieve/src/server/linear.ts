@@ -438,7 +438,52 @@ export async function openIssues(
   return issues;
 }
 
-// ── the one mutation ───────────────────────────────────────────────────────────
+// ── the two mutations ──────────────────────────────────────────────────────────
+
+const PROJECT_CREATE = `mutation CreateProject($input: ProjectCreateInput!) {
+  projectCreate(input: $input) {
+    success
+    project { id name }
+  }
+}`;
+
+/**
+ * Create one project on the team, for a draft whose project the team does not have yet
+ * (`CheckedDraft.project.isNew`). The new project joins the on-disk cache and the memo is
+ * dropped, so the next check — a second ticket for the same feature — finds it without a
+ * round trip.
+ */
+export async function createProject(
+  input: { name: string; teamId: string },
+  fetchImpl: Fetch = fetch,
+  teamKey: string = TEAM_KEY
+): Promise<LinearProject> {
+  const data = await graphql<{
+    projectCreate: { project: LinearProject | null; success: boolean };
+  }>(
+    PROJECT_CREATE,
+    { input: { name: input.name, teamIds: [input.teamId] } },
+    fetchImpl
+  );
+  const { project, success } = data.projectCreate;
+  if (!(success && project)) {
+    throw new LinearError(0, "Linear did not create the project");
+  }
+  const made = { id: project.id, name: project.name };
+  memos.delete(teamKey);
+  const cached = await readCache(teamKey);
+  if (cached) {
+    await writeCache(
+      {
+        ...cached,
+        at: new Date().toISOString(),
+        projects: [...cached.projects, made],
+      },
+      teamKey
+    );
+  }
+  return made;
+}
 
 const ISSUE_CREATE = `mutation FileTicket($input: IssueCreateInput!) {
   issueCreate(input: $input) {
