@@ -1,6 +1,6 @@
 ---
 name: forge-test
-description: Writes one test per criterion in ~/spec.md, red before the code exists, with the repo's own runner and conventions — never a new framework. Use as the step after forge-plan in a QA blueprint, or whenever a spec has criteria and no tests yet. Touches tests, fixtures and test config only.
+description: Writes one test per criterion in ~/spec.md, red before the code exists, with the repo's own runner and conventions — never a new framework. Use whenever ~/spec.md has criteria and no tests yet. Touches tests, fixtures and test config only.
 ---
 
 # forge-test — the spec, as tests that fail
@@ -9,18 +9,17 @@ description: Writes one test per criterion in ~/spec.md, red before the code exi
 
 Every criterion in the spec becomes a test that fails before the change exists and passes after it. A test that passes on its first run proves nothing; a criterion with no test is a promise nobody checked. Tests are named after the criterion they pin, so the QA report can say per criterion what was covered, and they are written in the repo's own runner, layout and style, so they read like every other test there.
 
-Adapted from `test-driven-development` in addy-agent-skills (MIT, © 2025 Addy Osmani) for an unattended run: the RED half of the cycle happens here, GREEN and REFACTOR in `forge-implement`, and the browser-runtime checks that skill adds are left to CI, where the app actually runs.
+Adapted from `test-driven-development` in addy-agent-skills (MIT, © 2025 Addy Osmani) for an unattended run: the RED half of the cycle happens here, GREEN and REFACTOR in the step that implements, and the browser-runtime checks that skill adds are left to CI, where the app actually runs.
 
 ## When to Use
 
-- As the third step of the "Spec → QA" blueprint, after `forge-spec` and `forge-plan`
 - Whenever `~/spec.md` exists with criteria and its criteria have no tests
 
-**When NOT to use:** no `~/spec.md` (run `forge-spec` first); a task with no behaviour change — docs, config, a rename — where a test would only pin the framework.
+**When NOT to use:** no `~/spec.md` (write the spec first); a task with no behaviour change — docs, config, a rename — where a test would only pin the framework.
 
 ## Handoff
 
-Reads `~/spec.md` (Criteria, Commands, Assumptions) and `~/plan.md` (`Criteria → code`, which says where each criterion is met and so where its test belongs). If `~/spec.md` has a `## Blocked` section, stop now: make no edits and repeat its reason as your final message. Writes test files, fixtures, factories and test config only. Production code does not change in this step, even to make a test compile; a criterion whose test cannot compile against the current code is written anyway and recorded as such in the Finish, so `forge-implement` starts by making it compile, then pass.
+Reads `~/spec.md` (Criteria, Commands, Assumptions) and `~/plan.md` (`Criteria → code`, which says where each criterion is met and so where its test belongs). If `~/spec.md` has a `## Blocked` section, stop now: make no edits and repeat its reason as your final message. Writes test files, fixtures, factories and test config only. Production code does not change in this step, even to make a test compile; a criterion whose test cannot compile against the current code is written anyway and recorded as such in the Finish, so the step that implements starts by making it compile, then pass.
 
 ## Step 1: Find the runner before writing a line
 
@@ -76,6 +75,7 @@ What makes these tests hold:
 - **DAMP over DRY.** Each test reads as its own story: repeat a setup rather than hide it in a helper the reader has to chase.
 - **Real over mocked.** Real implementation, then a fake, then a stub; a mock only at a boundary that is slow or non-deterministic. A suite that passes against mocks while production breaks is worse than none.
 - **Boundaries the spec names.** Where the spec's Assumptions mention empty, missing or malformed input, a test pins it.
+- **A bug's test is the reproduction, red before any fix.** When a criterion is a reproduction (a bug's `C1`, and `~/plan.md` opens with `## Root cause`), the test performs the reduced case the plan names and asserts the expected behaviour, so it fails on the untouched code for the reason the ticket describes — that failure is the bug, confirmed — and passes only once the cause is removed. Never write it against the fix; the fix does not exist yet, and a test written to pass proves nothing about it.
 
 ## Step 4: Run them, and watch them fail
 
@@ -84,13 +84,13 @@ Run the spec's test command once. The new tests must fail, for the right reason:
 - Fails because the code does not do it yet → correct, it is red
 - Fails because the test cannot compile against current code → correct, record the name under "does not compile yet"
 - Fails because of the test itself — a wrong import, a wrong helper → fix the test now
-- Passes → the test is not testing the criterion. Tighten it until it fails, or the criterion is already met, in which case say so in the Finish and keep the test as the regression guard
+- Passes → the test is not testing the criterion. Tighten it until it fails, or the criterion is already met, in which case say so in the Finish and keep the test as the regression guard. A reproduction test that passes has not reproduced the bug: rewrite it against the plan's reduced case until it goes red, and if it will not, the Finish says the bug was not seen at this level
 
 The rest of the suite must be exactly as it was before this step; the spec recorded whether it was green on the base.
 
 ## Finish
 
-End with: the tests written, keyed by criterion (`C2 → features/jobs/queries.test.ts › "C2: …"`), each marked red / does-not-compile-yet / already-passing; the tests that are e2e and will run in CI, not here; any criterion left without a test and why; and the exact command that runs the suite. `forge-implement` reads this list to know what green means. Every sentence is a statement; never end on a question or an offer, because nobody answers and the run simply ends.
+End with: the tests written, keyed by criterion (`C2 → features/jobs/queries.test.ts › "C2: …"`), each marked red / does-not-compile-yet / already-passing; the tests that are e2e and will run in CI, not here; any criterion left without a test and why; and the exact command that runs the suite. The step that implements reads this list to know what green means. Every sentence is a statement; never end on a question or an offer, because nobody answers and the run simply ends.
 
 ## Common Rationalizations
 
