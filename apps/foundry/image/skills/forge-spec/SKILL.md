@@ -1,6 +1,6 @@
 ---
 name: forge-spec
-description: Turns a ticket's acceptance criteria into a checkable spec at ~/spec.md, one criterion per AC grounded in the code, with the exact commands and every assumption made in place of a question. Use when a job starts and ~/spec.md does not exist; with `bug:` before the task, or on a bug ticket, the reproduction is the criterion.
+description: Turns a ticket's acceptance criteria into a checkable spec at ~/spec.md, one criterion per AC grounded in the code, with the exact commands and every assumption made in place of a question. Use when a job starts and ~/spec.md does not exist; with `bug:` before the task the reproduction is the criterion, with `refactor:` the unchanged suite and each named simplification are.
 ---
 
 # forge-spec — the ticket, made checkable
@@ -13,6 +13,7 @@ Write down what "done" means before anything is written: one checkable criterion
 
 - The first step of a job, with the task text as the argument: a ticket id or URL, or the requirement written out
 - `bug:` before the task, or a ticket labelled Bug or carrying reproduction steps or a failing check
+- `refactor:` before the task, or a ticket that names files and what to remove from them with no behaviour change
 
 **When NOT to use:** `~/spec.md` already exists (read it); a task with no behaviour to check — a rename, a dependency bump, docs.
 
@@ -53,6 +54,8 @@ C1 —     With a job already holding the claim on a ticket, a second POST /api/
 repro:   bun test src/features/jobs/server/job-api.test.ts -t "claims the ticket"
 ```
 
+**A refactor's criteria are the unchanged suite and each named simplification.** With `refactor:`, or a ticket naming files and what to remove, `C1` is `The test suite passes with the same count as the base and no test file changes (base: <count>)`, and each simplification the ticket names is one `C<n>` worded as what is observable in the code afterwards: `trim1` defined once, in `shared/text.ts`; `job-runner.ts` under 500 lines; no nested ternary in `stepsSummary`. A refactor ticket that names no file, or nothing removable, is Step 5.
+
 ## Step 4: Write ~/spec.md
 
 ```markdown
@@ -79,7 +82,7 @@ Prefer the choice the code already makes. Where the ticket contradicts the code,
 
 ## Step 5: When nothing can be grounded, stop
 
-No Acceptance Criteria section, an empty one, no criterion that can be grounded, or a bug with neither reproduction steps nor a failing check: write `## Blocked` in place of Criteria, naming what is missing and what is needed, and stop. A precise Summary is not a substitute: nobody signed it off as done. Later steps make no edits and repeat the reason; a job that produces nothing costs less than a PR nobody asked for.
+No Acceptance Criteria section, an empty one, no criterion that can be grounded, a bug with neither reproduction steps nor a failing check, or a refactor naming no file and nothing to remove: write `## Blocked` in place of Criteria, naming what is missing and what is needed, and stop. A precise Summary is not a substitute: nobody signed it off as done. Later steps make no edits and repeat the reason; a job that produces nothing costs less than a PR nobody asked for.
 
 ## Finish
 
@@ -104,6 +107,6 @@ End with the Criteria verbatim, the Commands line and the Assumptions — or the
 ## Verification
 
 - [ ] Every criterion traces to an AC line, states state and observation, and names where it is satisfied
-- [ ] No AC section, or a bug with no reproduction, produced `## Blocked`
+- [ ] No AC section, a bug with no reproduction, or a refactor with nothing named, produced `## Blocked`
 - [ ] Test, typecheck and lint ran once on the untouched checkout, state recorded under Assumptions
 - [ ] `~/spec.md` exists and `git -C /work status --porcelain` is empty

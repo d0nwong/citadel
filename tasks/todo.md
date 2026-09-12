@@ -1,9 +1,9 @@
-# Todo: CTD-174 — forge-api lens
+# Todo: CTD-175 — forge-simplify and "Simplify"
 
 Plan: `tasks/plan.md`.
 
-- [ ] **T1: `forge-api` skill.** Lens shape: Overview, When to Use, Handoff, checklist sections, Finish, rationalizations, red flags, verification. Attribution to `api-and-interface-design`.
-- [ ] **T2: Roles apply it.** `forge-plan` Step 1 (read the lens, plan additive, Assumptions say additive or not + consumer). `forge-verify` Step 2 sixth axis, report line. `forge-spec` standing criterion.
-- [ ] **T3: Guard test + README.** Role vs lens shapes; every lens is named by a role; README paragraph.
-- [ ] **Checks.** `bun test apps/foundry/image`, `bun run --filter foundry-web typecheck`.
-- [ ] **T4: Prove on jobs.** Repo notes for the two alden repos; `foundry build`; AC1 (backend ticket changing a request schema → plan Assumptions state additive; PR review section has the API axis); AC2 (ALD-45 → no API axis). Job ids in the PR body.
+- [x] **T1: `forge-simplify` skill.** Chesterton's fence, plan first, one change at a time, suite as oracle, never a test.
+- [x] **T2: Neighbouring skills.** `forge-spec` refactor mode (`refactor:` prefix or a ticket naming files and what to remove; C1 unchanged suite; Blocked when nothing named). `forge-verify` whole-diff readability for a refactor; Summary names the `Not doing` line.
+- [x] **T3: Blueprint.** `SIMPLIFY_BLUEPRINT_ID`, migration 0016, store test row, README row and "seeds five".
+- [ ] **Checks.** `bun test apps/foundry/image`, store test after `just migrate`, typecheck.
+- [ ] **T4: Prove on a job.** Simplify on the citadel refactor ticket: AC1 (same suite count, no test changed, PR body names each simplification and one left), AC2 (the disguised behaviour change left unmade with why).
