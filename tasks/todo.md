@@ -224,14 +224,18 @@ See `tasks/plan.md` for the order and the checkpoints.
     so its typecheck is in CI too. Lint stays out: foundry-web has 1133 Biome diagnostics,
     Pensieve 2, all pre-existing. Path filters were not worth it — the whole job is seconds.
 
-**Checkpoint C:** success criteria 1–4 and 6 are met.
+**Checkpoint C** (2026-09-12): criteria 1–4 are met — histories, a fresh clone that installs,
+typechecks and passes its tests, `just bootstrap`/`just check` on a clean machine, and one
+`just up` with the gateway, postgres and Pensieve healthy, `just foundry` on the host, Ask's
+servers connected and the pages serving. Criterion 6 (release-please proposes one app's version)
+waits on a `GH_TOKEN`. Criterion 5 is cutover, below.
 
 ## Phase 7: Cutover (ask before each step)
 
-- [ ] **T18: Cut the sweep over.** Add `just link` first: it repoints what bootstrap only
-  reports: the Bun global link behind `argus`/`accio` (`~/.bun/install/global/node_modules/argus`),
-  `~/.local/bin/foundry`, and the global skills (`bun scripts/sync-skills.ts` from apps/argus).
-  Then Stop the host `bun run sweep`, push `d0nwong/argus`, then
+- [ ] **T18: Cut the sweep over.** `just link` is written and dry-run checked (9 links: bun's
+  global `argus` link, `~/.local/bin/foundry`, and seven skills; unrelated skills untouched, a
+  real directory of the same name reported rather than overwritten). Needs a `GH_TOKEN` first, or
+  the sweep ticks without pushing. Then Stop the host `bun run sweep`, push `d0nwong/argus`, then
   `docker compose --profile sweep up -d sweep`.
   - Verify: after 24 hours, ticks are visible in `d0nwong/argus`, `~/git/argus` has no new
     commits, and Pensieve is current (success criterion 5).

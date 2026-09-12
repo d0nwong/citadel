@@ -89,3 +89,7 @@ release-dry:
     bunx release-please@17 release-pr --dry-run --repo-url https://github.com/d0nwong/citadel \
       --config-file release-please-config.json --manifest-file .release-please-manifest.json \
       --token "$(bun -e 'process.stdout.write(process.env.GH_TOKEN ?? "")')"
+
+# Cutover only: point this machine's argus, accio, foundry and global skills at citadel.
+link *args:
+    bun scripts/link.ts "$@"
