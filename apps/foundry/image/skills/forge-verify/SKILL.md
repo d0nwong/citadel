@@ -13,7 +13,7 @@ Adapted from `code-review-and-quality` in addy-agent-skills (MIT, © 2025 Addy O
 
 ## When to Use
 
-- As the final step of the "Spec → QA" blueprint, after `forge-implement`
+- As the final step of the "Spec → QA" and "Bug → Fix" blueprints, after `forge-implement`
 - Whenever a change exists in `/work` against a `~/spec.md` and no `~/qa-report.md` has been written
 
 **When NOT to use:** no diff against the base (nothing to verify — say so and stop); no `~/spec.md` (there is nothing to verify against; review the diff against the task text and say the spec was missing).
@@ -86,7 +86,7 @@ Every criterion in the spec has a row. A criterion with no test has a row that s
 `/work/.git/PR_BODY.md`, following the repo's own PR template (`.github/PULL_REQUEST_TEMPLATE.md`) when it has one, otherwise foundry's at `/usr/local/share/foundry/pr-template.md`: fill every section for real, delete the HTML comments and any section that is genuinely empty. Always:
 
 - A `Closes <ticket id>` line when the task named a ticket — the host links the PR to the ticket from it
-- **Summary:** the `Change` paragraph from the plan, corrected to what actually landed
+- **Summary:** the `Change` paragraph from the plan, corrected to what actually landed. When the plan opens with `## Root cause` (a bug run), the Summary opens with that sentence: the reader wants to know why the bug existed before what changed
 - **Assumptions:** the report's `Assumptions carried`
 - **How verified:** the report's table and command line, verbatim, then the findings left for the reader
 

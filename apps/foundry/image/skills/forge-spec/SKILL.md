@@ -1,6 +1,6 @@
 ---
 name: forge-spec
-description: Turns a ticket's acceptance criteria into a testable spec at ~/spec.md — one numbered, checkable criterion per AC, grounded in the code, the exact commands that verify them, and every assumption made in place of a question. A ticket with no Acceptance Criteria section stops the run. Use as the first step of a QA blueprint, or whenever tests are about to be written and no spec exists. Edits nothing in the workspace.
+description: Turns a ticket's acceptance criteria into a testable spec at ~/spec.md — one numbered, checkable criterion per AC, grounded in the code, the exact commands that verify them, and every assumption made in place of a question. A ticket with no Acceptance Criteria section stops the run; a bug's reproduction is its criterion. Use as the first step of a QA or bug blueprint, or whenever tests are about to be written and no spec exists. Edits nothing in the workspace.
 ---
 
 # forge-spec — the ticket, made checkable
@@ -14,6 +14,7 @@ Adapted from `spec-driven-development` in addy-agent-skills (MIT, © 2025 Addy O
 ## When to Use
 
 - As the first step of the "Spec → QA" blueprint, with the job's task text as the argument
+- As the first step of the "Bug → Fix" blueprint, with `bug:` before the task text: the reproduction is the criterion
 - Whenever a job is about to write tests or code and `~/spec.md` does not exist
 
 **When NOT to use:** a task with no behaviour to check — a rename, a dependency bump, docs, config — where the spec would be one line; `~/spec.md` already exists for this task (read it instead).
@@ -53,6 +54,17 @@ Run the test command once now, on the untouched checkout. A suite that is alread
 ## Step 3: Ground every acceptance criterion in the code
 
 Find the ticket's **Acceptance Criteria** section (house-format tickets number them `AC1…`; keep the numbering as `C1…`). If there is no such section, or it is empty, go straight to Step 6: a Summary that describes the change in detail is not a substitute, because nobody agreed it is the definition of done. For each acceptance criterion, find the code where it would be satisfied — the route, the component, the function, the query — and read enough of it to know the criterion can be checked there. Then reword it as the check:
+
+**A bug is the one ticket whose definition of done is not an AC list but a reproduction.** When the argument starts with `bug:`, or the ticket is labelled Bug, or its description carries reproduction steps (Steps to reproduce, Expected / Actual) or names a failing check or test, the reproduction is `C1`, worded as the failing check: the steps as the state to set up, the expected behaviour as what must be observed, and what happens today in parentheses. Acceptance criteria the ticket also has follow as `C2…`. A bug ticket with no reproduction steps and no failing check is Step 6, and the Blocked text names which of the two is missing. Commands gains a `repro:` line — the exact command that shows the failure, or `none: needs a browser` — because `forge-debug` starts by running it.
+
+```
+Ticket says:   "Steps: claim CTD-9 from two jobs. Expected: the second is refused.
+                Actual: both jobs run."
+C1 —           With a job already holding the claim on a ticket, a second POST /api/jobs
+               naming the same ticket is refused with 409 (today: 200, and both run).
+               Satisfied in features/jobs/server/job-store.ts claimTicket.
+repro:         bun test src/features/jobs/server/job-api.test.ts -t "claims the ticket"
+```
 
 ```
 Ticket says:   "Users should be able to filter the job list by status."
@@ -100,6 +112,7 @@ Prefer the choice the code already makes over the choice that seems best. Where 
 
 ## Commands
 test: <exact>   typecheck: <exact>   lint: <exact>   e2e: <exact, or "none configured">
+repro: <bug only: the exact command that shows the failure, or "none: needs a browser">
 
 ## Out of scope
 - <what the ticket says or implies is not this change, so the implement step does not drift>
@@ -112,7 +125,7 @@ The Criteria ids are what the test step names its tests after (`C2: selecting fa
 
 ## Step 6: When nothing can be grounded, stop
 
-If the ticket has no Acceptance Criteria section, or the section is empty, or not one of its criteria can be grounded in the code, write the spec with a `## Blocked` section instead of Criteria:
+If the ticket has no Acceptance Criteria section, or the section is empty, or not one of its criteria can be grounded in the code — or, for a bug, there are neither reproduction steps nor a failing check — write the spec with a `## Blocked` section instead of Criteria:
 
 ```markdown
 ## Blocked
@@ -135,6 +148,7 @@ End with the Criteria list verbatim, the Commands line, and the Assumptions — 
 | "I'll ask what they meant by 'recent'" | Nobody will answer. Decide from what the code already does, write it under Assumptions, and move on. |
 | "They obviously forgot an error-path criterion; I'll add a reasonable one" | A criterion the ticket did not ask for is scope nobody approved. Split one out only where the code forces a boundary on an existing criterion, and say so. |
 | "There's no AC section, but the Summary is precise enough to write criteria from" | The Summary says what the change is; the AC section says when it is done, and only that was signed off. No section, no criteria: Blocked. |
+| "It's a bug, so 'it should work' is the criterion" | The criterion is the reproduction: these steps, this expected outcome, this failure today. Without steps or a failing check there is nothing to see red: Blocked, naming which is missing. |
 | "There's no e2e runner, so I'll assume Playwright" | Adding a runner is a dependency decision. Write `none configured`; the test step writes the case at the level the repo can run. |
 | "The criteria are a bit thin, but I can flesh them out" | Thin is a fact about the ticket, not a gap to fill. One groundable acceptance criterion is enough to proceed; zero, or no section, is Blocked. |
 | "I'll skip running the suite now; verify runs it later" | A suite that is already red on the base changes what "green" means for every later step. Run it once, record it. |
@@ -153,7 +167,7 @@ End with the Criteria list verbatim, the Commands line, and the Assumptions — 
 ## Verification
 
 - [ ] Every criterion traces to a line of the ticket's Acceptance Criteria section, states the state to set up and what must be observed, and names where in the code it is satisfied
-- [ ] A ticket with no Acceptance Criteria section produced `## Blocked`, not criteria
+- [ ] A ticket with no Acceptance Criteria section produced `## Blocked`, not criteria; a bug's `C1` is its reproduction and Commands has a `repro:` line
 - [ ] Every command in Commands exists in the repo and the test command was run once on the untouched checkout
 - [ ] Every gap in the ticket has a line under Assumptions naming what was decided and why
 - [ ] `~/spec.md` exists and `/work` has no changes (`git -C /work status --porcelain` is empty)

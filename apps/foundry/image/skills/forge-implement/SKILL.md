@@ -13,7 +13,7 @@ Adapted from `incremental-implementation` in addy-agent-skills (MIT, © 2025 Add
 
 ## When to Use
 
-- As the fourth step of the "Spec → QA" blueprint, after `forge-test`
+- As the fourth step of the "Spec → QA" or "Bug → Fix" blueprint, after `forge-test`; in a bug run the plan came from `forge-debug` and its `Change` is the root cause's fix, never the symptom's
 - Whenever `~/plan.md` exists and the tests for its criteria are red
 
 **When NOT to use:** no `~/plan.md` (run `forge-plan`); no red tests and no does-not-compile-yet tests (nothing to implement — say so and stop).

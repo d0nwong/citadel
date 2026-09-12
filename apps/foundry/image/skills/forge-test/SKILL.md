@@ -13,7 +13,7 @@ Adapted from `test-driven-development` in addy-agent-skills (MIT, © 2025 Addy O
 
 ## When to Use
 
-- As the third step of the "Spec → QA" blueprint, after `forge-spec` and `forge-plan`
+- As the third step of the "Spec → QA" blueprint, after `forge-spec` and `forge-plan`, or of "Bug → Fix", after `forge-debug`
 - Whenever `~/spec.md` exists with criteria and its criteria have no tests
 
 **When NOT to use:** no `~/spec.md` (run `forge-spec` first); a task with no behaviour change — docs, config, a rename — where a test would only pin the framework.
@@ -76,6 +76,7 @@ What makes these tests hold:
 - **DAMP over DRY.** Each test reads as its own story: repeat a setup rather than hide it in a helper the reader has to chase.
 - **Real over mocked.** Real implementation, then a fake, then a stub; a mock only at a boundary that is slow or non-deterministic. A suite that passes against mocks while production breaks is worse than none.
 - **Boundaries the spec names.** Where the spec's Assumptions mention empty, missing or malformed input, a test pins it.
+- **A bug's test is the reproduction, red before any fix.** When a criterion is a reproduction (a bug's `C1`, and `~/plan.md` opens with `## Root cause`), the test performs the reduced case the plan names and asserts the expected behaviour, so it fails on the untouched code for the reason the ticket describes — that failure is the bug, confirmed — and passes only once the cause is removed. Never write it against the fix; the fix does not exist yet, and a test written to pass proves nothing about it.
 
 ## Step 4: Run them, and watch them fail
 
@@ -84,7 +85,7 @@ Run the spec's test command once. The new tests must fail, for the right reason:
 - Fails because the code does not do it yet → correct, it is red
 - Fails because the test cannot compile against current code → correct, record the name under "does not compile yet"
 - Fails because of the test itself — a wrong import, a wrong helper → fix the test now
-- Passes → the test is not testing the criterion. Tighten it until it fails, or the criterion is already met, in which case say so in the Finish and keep the test as the regression guard
+- Passes → the test is not testing the criterion. Tighten it until it fails, or the criterion is already met, in which case say so in the Finish and keep the test as the regression guard. A reproduction test that passes has not reproduced the bug: rewrite it against the plan's reduced case until it goes red, and if it will not, the Finish says the bug was not seen at this level
 
 The rest of the suite must be exactly as it was before this step; the spec recorded whether it was green on the base.
 

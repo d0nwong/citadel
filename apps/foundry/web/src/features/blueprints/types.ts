@@ -32,6 +32,14 @@ export const DEFAULT_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000001'
  */
 export const QA_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000003'
 
+/**
+ * "Bug → Fix", seeded by migration 0014 (CTD-173): the reproduction as the
+ * criterion, `forge-debug` to find the root cause and plan its fix, then the
+ * same test, implement and verify steps as "Spec → QA". A ticket with neither
+ * reproduction steps nor a failing check stops it at the first step.
+ */
+export const BUG_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000004'
+
 export interface BlueprintStep {
   name: string
   model: StepModel
