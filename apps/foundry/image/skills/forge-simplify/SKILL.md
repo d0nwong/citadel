@@ -21,7 +21,7 @@ Reads `~/spec.md` (Criteria, Commands, the base state under Assumptions) and the
 
 ## Step 1: Understand before touching
 
-For each named simplification, before any edit: what is this code's responsibility, what calls it and what does it call, which edge and error paths exist, which tests define it, and why was it written this way (`git -C /work log --oneline -- <file>`, the comments that say why). A fence whose reason is unknown stays up: that simplification goes under `Not doing` with what was not understood.
+For each named simplification, before any edit: what is this code's responsibility, what calls it and what does it call, which edge and error paths exist, which tests define it, and why was it written this way (`git -C /work log --oneline -- <file>`, the comments that say why). A fence whose reason is unknown stays up: that simplification goes under `Not doing` with what was not understood. So does any named change that alters what the code returns, throws or does for some input, however the ticket words it: an acceptance criterion cannot make a behaviour change a simplification. Under `Not doing` with the input that would differ, and the Finish says so.
 
 ## Step 2: Write ~/plan.md
 
@@ -67,12 +67,13 @@ End with each simplification made, keyed to its criterion; each left unmade and 
 |---|---|
 | "Fewer lines is simpler" | A one-line nested ternary is not simpler than a five-line if chain. Comprehension speed, not line count. |
 | "That test pins an accident, I'll fix the test" | Then the simplification changes behaviour. Leave it unmade and say which test and what it pins. |
+| "The ticket asks for it, so it's in scope" | The ticket names what to remove; it cannot make a change of output a refactor. Unmade, with the input that would differ. |
 | "The original author must have had a reason" | Check: git log and the comments. A reason found is a fence that stays; none found is a fence that goes. Assumed either way is a guess. |
 | "While I'm here, this unrelated code too" | Outside the named files is outside the ticket. `Not doing`. |
 
 ## Red Flags
 
-- A test file, fixture or snapshot in the diff
+- A test file, fixture or snapshot in the diff, or a change of output for any input made because a criterion named it
 - A simplification longer or harder to follow than the original, or a rename to a preference rather than a convention
 - Error handling removed because it "cleans up" the code
 - An empty `Not doing`

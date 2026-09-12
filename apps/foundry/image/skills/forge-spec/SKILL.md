@@ -54,7 +54,7 @@ C1 —     With a job already holding the claim on a ticket, a second POST /api/
 repro:   bun test src/features/jobs/server/job-api.test.ts -t "claims the ticket"
 ```
 
-**A refactor's criteria are the unchanged suite and each named simplification.** With `refactor:`, or a ticket naming files and what to remove, `C1` is `The test suite passes with the same count as the base and no test file changes (base: <count>)`, and each simplification the ticket names is one `C<n>` worded as what is observable in the code afterwards: `trim1` defined once, in `shared/text.ts`; `job-runner.ts` under 500 lines; no nested ternary in `stepsSummary`. A refactor ticket that names no file, or nothing removable, is Step 5.
+**A refactor's criteria are the unchanged suite and each named simplification.** With `refactor:`, or a ticket naming files and what to remove, `C1` is `The test suite passes with the same count as the base and no test file changes (base: <count>)`, and each simplification the ticket names is one `C<n>` worded as what is observable in the code afterwards: `trim1` defined once, in `shared/text.ts`; `job-runner.ts` under 500 lines; no nested ternary in `stepsSummary`. A named simplification that would change what the code returns, throws or does for some input — a dropped suffix, a changed default, a different message — is not a criterion however the ticket words it: it goes under Assumptions as a behaviour change the ticket asked for and the run will leave unmade, with the input that would differ. A refactor ticket that names no file, or nothing removable, is Step 5.
 
 ## Step 4: Write ~/spec.md
 

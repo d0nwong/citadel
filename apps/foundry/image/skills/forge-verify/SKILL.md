@@ -41,7 +41,7 @@ For every test this run touched: does it name its criterion and assert what the 
 Label every finding: **Critical:** (must not merge), unlabelled (required before merge), **Nit:** (may ignore), **FYI:** (no action).
 
 1. **Correctness** — each criterion, on the error paths and boundaries the spec named; off-by-one, a race, state left inconsistent
-2. **Readability** — names that follow the repo, no dead code, no shim for code that never shipped. For a refactor (the spec's `C1` is the unchanged suite), asked of the whole diff: does the reader hold fewer concepts than before, is anything left that reads harder, and is the pass count the base's with no test file in the diff
+2. **Readability** — names that follow the repo, no dead code, no shim for code that never shipped. For a refactor (the spec's `C1` is the unchanged suite), asked of the whole diff: does the reader hold fewer concepts than before, is anything left that reads harder, and is the pass count the base's with no test file in the diff; any change of what the code returns, throws or does is **Critical:** in a refactor, whatever the ticket asked for
 3. **Architecture** — the repo's pattern or a justified new one; the canonical helper; nothing outside the spec's scope or inside `Not doing`
 4. **Security** — input validated at the boundary, queries parameterised, no secret in code or log
 5. **Performance** — no N+1, no unbounded fetch, nothing in a hot path the spec did not ask for
