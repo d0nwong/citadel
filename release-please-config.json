@@ -1,23 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "include-component-in-tag": true,
-  "separate-pull-requests": false,
+  "include-component-in-tag": false,
   "bootstrap-sha": "9eac3524988cf5ec19e6a0d8a142971de86b779b",
   "packages": {
-    "apps/argus": {
+    ".": {
       "release-type": "node",
-      "package-name": "argus",
-      "changelog-path": "CHANGELOG.md"
-    },
-    "apps/foundry": {
-      "release-type": "node",
-      "package-name": "foundry",
-      "changelog-path": "CHANGELOG.md"
-    },
-    "apps/pensieve": {
-      "release-type": "node",
-      "package-name": "pensieve",
-      "changelog-path": "CHANGELOG.md"
+      "package-name": "citadel",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "1.0.0"
     }
   }
 }
