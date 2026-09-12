@@ -1,13 +1,13 @@
 ---
 name: forge-spec
-description: Turns a ticket into a testable spec at ~/spec.md — numbered, checkable criteria grounded in the code, the exact commands that verify them, and every assumption made in place of a question. Use as the first step of a QA blueprint, or whenever tests are about to be written and no spec exists. Edits nothing in the workspace.
+description: Turns a ticket's acceptance criteria into a testable spec at ~/spec.md — one numbered, checkable criterion per AC, grounded in the code, the exact commands that verify them, and every assumption made in place of a question. A ticket with no Acceptance Criteria section stops the run. Use as the first step of a QA blueprint, or whenever tests are about to be written and no spec exists. Edits nothing in the workspace.
 ---
 
 # forge-spec — the ticket, made checkable
 
 ## Overview
 
-Code without a spec is guessing, and tests without a spec test the guess. This step writes the spec down before anything else happens: what the change is, the criteria that decide whether it landed, and the commands that run those checks. A criterion is worded as its own test — the state to set up and what must then be observed — so the test step has nothing to interpret. A criterion nobody could check is not a criterion; a ticket with none of them stops the run rather than getting criteria invented for it.
+Code without a spec is guessing, and tests without a spec test the guess. This step writes the spec down before anything else happens: what the change is, the criteria that decide whether it landed, and the commands that run those checks. A criterion is worded as its own test — the state to set up and what must then be observed — so the test step has nothing to interpret. Criteria come from the ticket's Acceptance Criteria section and nowhere else: the Summary and Scope say what the change is, the criteria say when it is done, and only the second is something a person signed off as the definition of done. A ticket with no Acceptance Criteria section stops the run rather than getting criteria derived for it, however detailed the rest of the ticket is.
 
 Adapted from `spec-driven-development` in addy-agent-skills (MIT, © 2025 Addy Osmani) for an unattended run: the clarifying questions that skill asks a person become assumptions written into the spec.
 
@@ -50,9 +50,9 @@ e2e:       none configured
 
 Run the test command once now, on the untouched checkout. A suite that is already red is an Assumption the later steps need to know about, not a surprise for the verify step.
 
-## Step 3: Ground every criterion in the code
+## Step 3: Ground every acceptance criterion in the code
 
-Take each acceptance criterion the ticket gives (house-format tickets number them `AC1…`; keep the numbering as `C1…`). For each one, find the code where it would be satisfied — the route, the component, the function, the query — and read enough of it to know the criterion can be checked there. Then reword it as the check:
+Find the ticket's **Acceptance Criteria** section (house-format tickets number them `AC1…`; keep the numbering as `C1…`). If there is no such section, or it is empty, go straight to Step 6: a Summary that describes the change in detail is not a substitute, because nobody agreed it is the definition of done. For each acceptance criterion, find the code where it would be satisfied — the route, the component, the function, the query — and read enough of it to know the criterion can be checked there. Then reword it as the check:
 
 ```
 Ticket says:   "Users should be able to filter the job list by status."
@@ -69,7 +69,7 @@ Rules that keep criteria testable:
 - **Numbers for vague asks.** "Make it faster" becomes a target the test can measure, chosen from what the code and the ticket support, and recorded as an assumption.
 - **Cite the rule.** Where the ticket cites a product rule ("BR-93"), carry the citation on the criterion.
 
-A criterion the ticket implies but does not state — an error path, an empty state, a boundary — may be added only when the code you read forces it (the field is nullable, the list can be empty). Say so in Assumptions. Criteria that would merely be nice are not added: the spec is what the ticket asked for, checkable.
+A criterion is never derived from the Summary, Scope or Technical Notes: those inform the wording of a criterion the ticket already has and go into Out of scope and Assumptions, but they do not add rows. The one exception is a boundary the code forces on an existing criterion — the field is nullable, the list can be empty — which is split out as its own `C<n>` and named under Assumptions. Criteria that would merely be nice are not added: the spec is what the ticket signed off as done, checkable.
 
 ## Step 4: Decide what a person would have been asked
 
@@ -112,16 +112,17 @@ The Criteria ids are what the test step names its tests after (`C2: selecting fa
 
 ## Step 6: When nothing can be grounded, stop
 
-If, after Steps 1–3, not one criterion can be grounded — the ticket is a title, or its criteria name nothing the code can check — write the spec with a `## Blocked` section instead of Criteria:
+If the ticket has no Acceptance Criteria section, or the section is empty, or not one of its criteria can be grounded in the code, write the spec with a `## Blocked` section instead of Criteria:
 
 ```markdown
 ## Blocked
-The ticket has no acceptance criteria that name an observable outcome. It says "improve
-the jobs page" and nothing else; the code offers no single reading. Needed: at least one
-line of the form "when <state>, <what is observed>".
+The ticket has no Acceptance Criteria section. Its Summary describes five filter controls
+in detail, but nothing in it was signed off as the definition of done, so there is nothing
+to write tests against. Needed: an Acceptance Criteria section with at least one line of
+the form "when <state>, <what is observed>".
 ```
 
-Then stop. Every later step reads this section, makes no edits, and repeats the reason, so the job settles with no changes and the reason in its final message — the correct outcome for a ticket that is not ready. Thin criteria are not padded into a spec: a job that implements invented criteria produces a PR nobody asked for, which costs more than a job that produced nothing.
+Then stop. Every later step reads this section, makes no edits, and repeats the reason, so the job settles with no changes and the reason in its final message — the correct outcome for a ticket that is not ready. Missing criteria are not reconstructed from the rest of the ticket: a job that implements criteria nobody signed off produces a PR nobody asked for, which costs more than a job that produced nothing.
 
 ## Finish
 
@@ -132,9 +133,10 @@ End with the Criteria list verbatim, the Commands line, and the Assumptions — 
 | Rationalization | Reality |
 |---|---|
 | "I'll ask what they meant by 'recent'" | Nobody will answer. Decide from what the code already does, write it under Assumptions, and move on. |
-| "They obviously forgot an error-path criterion; I'll add a reasonable one" | A criterion the ticket did not ask for is scope nobody approved. Add it only when the code forces it, and say so. |
+| "They obviously forgot an error-path criterion; I'll add a reasonable one" | A criterion the ticket did not ask for is scope nobody approved. Split one out only where the code forces a boundary on an existing criterion, and say so. |
+| "There's no AC section, but the Summary is precise enough to write criteria from" | The Summary says what the change is; the AC section says when it is done, and only that was signed off. No section, no criteria: Blocked. |
 | "There's no e2e runner, so I'll assume Playwright" | Adding a runner is a dependency decision. Write `none configured`; the test step writes the case at the level the repo can run. |
-| "The criteria are a bit thin, but I can flesh them out" | Thin is a fact about the ticket, not a gap to fill. One groundable criterion is enough to proceed; zero is Blocked. |
+| "The criteria are a bit thin, but I can flesh them out" | Thin is a fact about the ticket, not a gap to fill. One groundable acceptance criterion is enough to proceed; zero, or no section, is Blocked. |
 | "I'll skip running the suite now; verify runs it later" | A suite that is already red on the base changes what "green" means for every later step. Run it once, record it. |
 | "The ticket is clear, I can go straight to writing tests" | Then writing the spec takes five minutes and the tests get criterion ids to trace to. The spec is the trace. |
 
@@ -142,6 +144,7 @@ End with the Criteria list verbatim, the Commands line, and the Assumptions — 
 
 - A criterion that names a file, a function or a query instead of an outcome
 - A criterion with "and" in it: two checks
+- A criterion with no `AC<n>` line behind it in the ticket
 - A Commands line with a command you did not find in the repo
 - A spec with no Assumptions section: a ticket with no gaps has not been read closely
 - An edit, however small, under `/work`
@@ -149,7 +152,8 @@ End with the Criteria list verbatim, the Commands line, and the Assumptions — 
 
 ## Verification
 
-- [ ] Every criterion states the state to set up and what must be observed, and names where in the code it is satisfied
+- [ ] Every criterion traces to a line of the ticket's Acceptance Criteria section, states the state to set up and what must be observed, and names where in the code it is satisfied
+- [ ] A ticket with no Acceptance Criteria section produced `## Blocked`, not criteria
 - [ ] Every command in Commands exists in the repo and the test command was run once on the untouched checkout
 - [ ] Every gap in the ticket has a line under Assumptions naming what was decided and why
 - [ ] `~/spec.md` exists and `/work` has no changes (`git -C /work status --porcelain` is empty)

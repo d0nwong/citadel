@@ -40,8 +40,9 @@ whose in-forge checks are green, and whose e2e tests run in CI on the PR.
 - Skills are copied and adapted, not the plugin installed verbatim: its skills assume a person is
   present.
 - No browser and no app boot inside the forge image. e2e runs in the repo's CI on the PR.
-- Thin acceptance criteria are not invented around: the spec step says what is missing rather
-  than making criteria up.
+- Criteria come only from the ticket's Acceptance Criteria section. No section, or none that
+  can be grounded, and the spec step writes Blocked instead of deriving criteria from the
+  Summary.
 
 ## Out of scope — own tickets in the series
 

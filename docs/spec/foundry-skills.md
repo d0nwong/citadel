@@ -40,8 +40,11 @@ role in a headless `claude -p` step, and a seeded blueprint that chains them. Wh
    forge, so `forge-spec` fetches the ticket itself. The arch docs live in the `citadel-data`
    repo, which a forge cannot see. In this slice the arch doc reaches the spec step only if the
    task text inlines it (see Open Questions).
-6. **Thin criteria stop the job rather than get invented.** When `forge-spec` cannot ground a
-   single checkable criterion, it writes `~/spec.md` with a `## Blocked` section and stops. Every
+6. **No Acceptance Criteria section stops the job.** Criteria come only from the ticket's
+   Acceptance Criteria; the Summary and Scope inform their wording but never add rows. When the
+   section is missing or empty, or none of its lines can be grounded, `forge-spec` writes
+   `~/spec.md` with a `## Blocked` section and stops. (Decided 2026-09-12 after the first
+   ALD-52 run derived eleven criteria from a detailed Summary with the section removed.) Every
    later skill starts by reading `~/spec.md`; on `Blocked` it makes no edits and ends with the
    reason. The job settles as no-changes with the reason in its final message.
 7. **e2e means the repo's own e2e runner.** `forge-test` writes e2e tests only where the repo
@@ -151,7 +154,7 @@ test: <exact command found in the repo>   typecheck: <…>   lint: <…>   e2e: 
 ## Assumptions
 - <every gap in the ticket, and what was decided>
 
-## Blocked            ← only when there is no groundable criterion
+## Blocked            ← no Acceptance Criteria section, or none groundable
 <what the ticket is missing>
 ```
 
