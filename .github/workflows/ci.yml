@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Foundry's job tests use a real database, as they do locally.
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: foundry
+          POSTGRES_PASSWORD: foundry
+          POSTGRES_DB: foundry
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U foundry -d foundry"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry
+      # argus's data is its own repo, and Pensieve reads a directory rather than cloning one.
+      WORKSPACE_DIR: ${{ runner.temp }}/argus-data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - name: typecheck pensieve
+        run: bun run --filter pensieve typecheck
+      - name: typecheck foundry-web
+        run: bun run --filter foundry-web typecheck
+      - name: test the recipes' scripts
+        run: bun test ./scripts/
+      - name: test argus
+        # The tests that read argus's data skip without it; the rest run.
+        run: bun run --filter argus test
+      - name: test pensieve
+        run: |
+          mkdir -p "$WORKSPACE_DIR"
+          bun run --filter pensieve test
+      - name: the extensions the local stack's init SQL creates
+        run: psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto; CREATE EXTENSION IF NOT EXISTS citext;'
+      - name: migrate foundry's schema
+        run: bun run --filter foundry-web db:migrate
+      - name: test foundry-web
+        run: bun run --filter foundry-web test

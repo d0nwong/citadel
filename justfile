@@ -83,3 +83,9 @@ sweep-on:
 # Stop the sweep loop in the stack.
 sweep-off:
     docker compose --env-file .env --profile sweep stop sweep
+
+# What release-please would propose (needs GH_TOKEN in .env or the environment).
+release-dry:
+    bunx release-please@17 release-pr --dry-run --repo-url https://github.com/d0nwong/citadel \
+      --config-file release-please-config.json --manifest-file .release-please-manifest.json \
+      --token "$(bun -e 'process.stdout.write(process.env.GH_TOKEN ?? "")')"

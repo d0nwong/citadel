@@ -200,17 +200,28 @@ See `tasks/plan.md` for the order and the checkpoints.
     Foundry's READMEs, CONTRIBUTING, `infra/README.md` and `serve.sh` use the recipes. Ask's
     allowlist needed nothing: its rules are relative to argus's directory, which is still the
     working directory, and the FE/BE defaults are right on a host and set by env in the stack.
-- [ ] **T16: Set up release-please.** (S)
+- [x] **T16: Set up release-please.** (S)
   - Acceptance: the manifest and config from the spec, `bootstrap-sha` set to the T4 merge, and
     the workflow and `pr-title.yml` moved from Foundry with app scopes.
   - Verify: `just release-dry` proposes nothing on a clean main, and a `feat(pensieve):` commit
     on a scratch branch proposes only `pensieve-v0.2.0`.
   - Files: `release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/*`.
-- [ ] **T17: Add CI.** (S)
+  - Done: manifest mode at the root, component tags, `bootstrap-sha` at the argus import merge
+    (9eac352) so imported history is never re-released. Foundry keeps 1.4.0 and its tag, with 16
+    commits after it to release; argus and Pensieve start at 0.1.0. Its workflows moved from
+    `apps/foundry/.github` to the root, where GitHub reads them, and the release token falls back
+    to `GITHUB_TOKEN`. `just release-dry` shows what it would propose — it needs a GH_TOKEN,
+    so it is unrun so far.
+- [x] **T17: Add CI.** (S)
   - Acceptance: `ci.yml` installs once, then typechecks, tests and checks each app whose paths
     changed.
   - Verify: a PR touching only Pensieve runs only Pensieve's jobs, and they pass.
   - Files: `.github/workflows/ci.yml`.
+  - Done: one job — install once, typecheck Pensieve and foundry-web, then the four test suites,
+    with a postgres service and the extensions the local stack's init SQL creates. Checked
+    locally the way a runner has it: Pensieve's tests pass with no data directory and no `claude`
+    on PATH. Left out, both pre-existing: argus's 12 type errors, and lint (foundry-web has 1133
+    Biome diagnostics, Pensieve 2). Path filters were not worth it — the whole job is seconds.
 
 **Checkpoint C:** success criteria 1–4 and 6 are met.
 
