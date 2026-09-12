@@ -202,7 +202,11 @@ existing code, and finishes with a PR. Five more, `forge-spec` → `forge-plan` 
 blueprint below: each is one role, written for a headless run, adapted from the
 [agent-skills](https://github.com/addyosmani/agent-skills) plugin. `forge-debug` takes
 `forge-plan`'s slot in **Bug → Fix** — reproduce, localise, reduce, name the root
-cause — and on its own is what a follow-up job runs on a failed check. Skills are re-synced
+cause — and on its own is what a follow-up job runs on a failed check. `forge-api` is not a
+step but a lens: the contract checks `forge-plan` and `forge-verify` read when a change
+touches a route, a validation schema, the published API document or a generated client
+type — who consumes it, additive or not, one error shape — and skip when it does not, so a
+frontend-only ticket pays nothing for it. Skills are re-synced
 into `~/.claude/skills` on every container start, so `foundry recreate` picks up new
 versions — and a job forge is built fresh, so `foundry build` is what ships a change.
 

@@ -1,112 +1,74 @@
 ---
 name: forge-implement
-description: Implements ~/plan.md one criterion at a time until every red test for its criteria is green, then typecheck and lint pass. Simplest code that works, repo conventions over habit, no re-planning beyond what the code forces, no skipped tests. Use whenever ~/plan.md exists and the tests for its criteria are red.
+description: Implements ~/plan.md one slice at a time until every red test for its criteria is green, then runs the suite, typecheck and lint once each. Use when ~/plan.md exists and the tests for its criteria are red.
 ---
 
 # forge-implement — the plan, to green
 
 ## Overview
 
-The spec says what, the plan says where, the tests say when it is done. This step writes the production code, one slice of the plan at a time, running the tests after each, until the red list — the criterion tests seen failing before this step — is green and the whole suite, the typecheck and the lint pass. The simplest code that makes a test pass is the code to write; the repo's conventions win over general habit; and a failing test is never made to pass by changing what it asserts, unless the test contradicts the spec and the message says so.
-
-Adapted from `incremental-implementation` in addy-agent-skills (MIT, © 2025 Addy Osmani) for an unattended run: the GREEN and REFACTOR halves of the TDD cycle, sliced by criterion, with the "want me to also fix…" questions that skill asks turned into a `Noticed, not touched` list.
+The spec says what, the plan says where, the tests say when it is done. Write the simplest code that makes each slice's tests pass, in the repo's conventions, and never make a test pass by changing what it asserts. Adapted from `incremental-implementation` in addy-agent-skills (MIT, © 2025 Addy Osmani): the GREEN and REFACTOR halves, sliced by criterion, with "want me to also fix…" turned into a `Noticed, not touched` list.
 
 ## When to Use
 
-- Whenever `~/plan.md` exists and the tests for its criteria are red
+- `~/plan.md` exists and the tests for its criteria are red
 
-**When NOT to use:** no `~/plan.md` (write the plan first); no red tests and no does-not-compile-yet tests (nothing to implement — say so and stop).
+**When NOT to use:** no `~/plan.md`; no red and no does-not-compile-yet tests (nothing to implement — say so and stop).
 
 ## Handoff
 
-Reads `~/plan.md` (`Change`, `Criteria → code`, `Order`, `Not doing`), `~/spec.md` (Commands, Assumptions), and the red list the previous step's final message recorded, when this session has one; otherwise the test run in Step 1 is the list. If `~/spec.md` has a `## Blocked` section, stop now: make no edits and repeat its reason as your final message. Writes production code. Changes a test only under Step 4's rule, and never deletes, skips or weakens one.
+Reads `~/plan.md` (`Change`, `Criteria → code`, `Order`, `Not doing`), `~/spec.md` (Commands, Assumptions) and the red list in the previous step's final message when this session has one. Stops with no edits on a `## Blocked` section. Writes production code; changes a test only under Step 3, never deletes, skips or weakens one.
 
-## Step 1: Start from the red list, not the plan
+## Step 1: Start from the red list
 
-Run the spec's test command once before editing. The failures must match the red list recorded before this step: the same names, red for the same reasons. A test that is red for a different reason, or a test that is not on the list, is the first thing to understand — the base may have moved, or the previous step's note was wrong. Record what you find; it goes in the Finish under Assumptions.
+Run the spec's test command once: the failures must match the red list, same names, same reasons. A test red for another reason, or not on the list, is understood first and recorded in the Finish. Then follow the plan's `Order`; do not re-plan.
 
-Then take the plan's `Order` as the order. Do not re-plan: the plan was reviewed, and second-guessing it beyond what the code forces produces a change that matches neither the plan nor the spec.
+## Step 2: One slice at a time
 
-## Step 2: One slice at a time, to green
-
-For each slice in `Order`:
-
-1. **Implement** the smallest complete piece that makes that slice's tests pass — the naive, obviously-correct version first
-2. **Run** the test command; the slice's tests go green and nothing else goes red
-3. **Check** the build stays compilable: a type changed here has every caller fixed here, not three slices later
-4. **Move on** — carry forward, never restart
+For each slice: implement the smallest complete piece, the obviously-correct version first; run that slice's test files only (`bun test path/to/file.test.ts`); keep the build compilable by fixing every caller of a changed type here, found by reading the callers the plan named; move on. After each slice ask: fewer lines? an abstraction earning its keep? would the neighbouring code's author say "why didn't you just…"? Three similar lines beat a premature abstraction.
 
 ```
-Slice 1 — C1: queries.ts listJobs({ status })       bun test → C1 green, 213 pass
-Slice 2 — C1: routes/jobs.tsx renders the select     bun test → C1 green, 214 pass
-Slice 3 — C2: filter read from search params         bun test → C2 green, 215 pass
+Slice 1 — C1: queries.ts listJobs({ status })       bun test queries.test.ts → C1 green
+Slice 2 — C1: routes/jobs.tsx renders the select     bun test routes/jobs.test.tsx → C1 green
+Step 4                                               bun test → 215 pass · typecheck clean · lint clean
 ```
 
-Simplicity check after each slice, before the next:
-
-- Can this be done in fewer lines?
-- Is this abstraction earning its keep, or is it built for a requirement the spec does not have?
-- Would the person who wrote the neighbouring code say "why didn't you just…"?
-
-Three similar lines beat a premature abstraction. Generalise at the third use, not the first.
-
-## Step 3: Conventions over habit
-
-The code has to read as if the repo's regular author wrote it:
-
-- Naming, file placement, comment density and idioms come from the surrounding code, not from a general style
-- Reuse the helper the plan named; do not write a near-duplicate because the existing one is a line away from fitting
-- Repo notes in the system prompt, `CLAUDE.md` and `CONTRIBUTING.md` hold: the package manager, what to verify with, changelog or changeset files the repo requires with a change
-- For UI: the shared components `ui:list` reported in the plan, not a one-off element
-
-Touch only what the plan touches. Adjacent cleanups, import reordering in files you only read, modernising syntax you passed by — none of it. Anything worth doing outside the plan goes on a list:
+Naming, placement, idioms and comment density come from the surrounding code; the helper the plan named is reused, not near-duplicated; the repo notes and `CLAUDE.md` hold. Touch only what the plan touches. Anything worth doing outside it goes on a list:
 
 ```
 NOTICED, NOT TOUCHED
 - features/jobs/queries.ts has an unused import (unrelated)
-- the error toast in routes/jobs.tsx could name the job (separate change)
 ```
 
-## Step 4: When a test is wrong
+## Step 3: When a test is wrong
 
-A red test is made green by changing the code, with one exception: the test asserts something the spec's criterion does not say. Then the test changes, and only to match the criterion, and the Finish names the test, the criterion, and what was wrong. A test is never skipped, commented out, deleted, or loosened to pass. A test that cannot be made green without breaking the spec is left red, the slice is finished otherwise, and the Finish says so — that is an outcome the verify step and a reader can act on; a green suite that lies is not.
+A red test goes green by changing the code, with one exception: it asserts something the spec's criterion does not say. Then the test changes, only to match the criterion, and the Finish names it. A test that cannot go green without breaking the spec is left red and the Finish says so. When the plan is wrong once in the code, correct course by the smallest deviation that keeps the criteria, and say so.
 
-When the plan turns out to be wrong once you are in the code — the helper it named does not fit, the file it named is not where the behaviour lives — correct course by the smallest deviation that keeps the criteria, and say so in the Finish. If part of the plan is blocked, finish every other part and state plainly what was left out and why.
+## Step 4: The whole suite, typecheck and lint, once each
 
-## Step 5: The whole suite, then typecheck and lint
-
-With every slice done, run the three commands from `~/spec.md` — test, typecheck, lint — and fix what they find. Run each again only after a change that could affect it; a clean run repeated on unchanged code adds nothing. A lint that auto-fixes (`ultracite fix`, `biome check --write`, `eslint --fix`) is run when the repo's own scripts do; its edits are part of this step's diff.
-
-Then read `git -C /work status --porcelain` and `git diff` once, as a reviewer: every changed file is one the plan named or one a compile error forced; no stray file, no debug line, no leftover fixture.
+Run the three commands from `~/spec.md` once each and fix what they find; a command runs again only after a fix it forced. Whether a failure is pre-existing is under the spec's Assumptions: read it, never stash and rerun. A lint that auto-fixes runs when the repo's own scripts do. Then read `git diff` once as a reviewer: every changed file is one the plan named or a compile error forced; no debug line, no leftover fixture.
 
 ## Finish
 
-End with: the criteria implemented, keyed to the slices; the test, typecheck and lint commands run and their results in one line each; every deviation from the plan and every test changed under Step 4, with the reason; the `Noticed, not touched` list; and anything left red or left out, with why. The step that verifies reads this to know what to check hardest. Every sentence is a statement; never end on a question or an offer, because nobody answers and the run simply ends.
+End with the criteria implemented by slice; the three commands and results, one line each; every deviation and every test changed under Step 3, with the reason; `Noticed, not touched`; anything left red. Every sentence is a statement; nobody answers a question.
 
 ## Common Rationalizations
 
 | Rationalization | Reality |
 |---|---|
-| "The plan's approach is fine but I'd do it differently" | The plan was reviewed; a different approach was not. Deviate only where the code forces it, and say so. |
-| "This test is flaky, I'll skip it for now" | A skipped test is a criterion nobody checks. Leave it red and say why; the verify step and the reader decide. |
-| "I'll loosen the assertion, the spirit is the same" | The assertion is the criterion. Loosening it makes the criterion untested while reporting green. |
-| "While I'm in this file I'll tidy the imports" | The diff is the PR. Every unrelated line is a line a reviewer has to reason about. `Noticed, not touched`. |
-| "Let me run the suite again to be sure" | After a clean run, rerunning unchanged code adds nothing. Run after the next edit. |
-| "I'll ask whether they want the generic version" | Nobody answers. Write the specific version the spec asks for; generalise at the third use. |
+| "I'd do it differently from the plan" | The plan was reviewed; the alternative was not. Deviate only where the code forces it, and say so. |
+| "I'll loosen the assertion, the spirit is the same" | The assertion is the criterion. Loosening it reports green on something untested. |
+| "Is that lint error mine? I'll stash and check" | The spec recorded the base state. Read it. |
+| "I'll run the full suite after each slice" | The slice's own test files say the slice is done; the full suite says the change is done, once. |
 
 ## Red Flags
 
-- A test edited, skipped, deleted or loosened without a Step 4 reason in the Finish
-- A new helper whose name describes something the repo already has
+- A test edited, skipped or loosened without a Step 3 reason in the Finish
 - A file changed that neither the plan nor a compile error named
-- A slice whose tests pass while an earlier slice's went red
-- A Finish that reports "tests pass" with no command and no count
-- A final message that ends on a question
+- The suite, typecheck or lint run with no edit in between, or a stash-and-rerun
 
 ## Verification
 
-- [ ] Every test on the red list is green, or left red with the reason in the Finish
-- [ ] The test, typecheck and lint commands from `~/spec.md` were run after the last edit and pass
-- [ ] Every changed file is one the plan named or a compile error forced; `Noticed, not touched` holds the rest
-- [ ] No test was skipped, deleted or weakened
-- [ ] The final message ends on a statement
+- [ ] Every red-list test is green, or left red with the reason in the Finish
+- [ ] Suite, typecheck and lint ran once each after the last edit and pass
+- [ ] Every changed file is one the plan named or a compile error forced

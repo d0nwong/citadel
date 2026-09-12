@@ -1,43 +1,45 @@
-# Plan: forge-debug and the "Bug → Fix" blueprint (CTD-173, slice 2 of CTD-65)
+# Plan: forge-api, the API and interface lens (CTD-174, slice 3 of CTD-65)
 
-Ticket: CTD-173. Replaces the finished slice-1 plan (in git history at `2644b59`).
+Ticket: CTD-174. Replaces the finished slice-2 plan (in git history at `b145b13`).
 
 ## Overview
 
-One new skill, `forge-debug`, takes `forge-plan`'s slot for a bug: reproduce, localise,
-reduce, then write `~/plan.md` with a `## Root cause` section first. Everything after it
-is the Spec → QA pipeline unchanged, so the reproduction is the first test written red
-and the fix is proven against it. The same skill, handed a failing log with no spec and
-no later steps, carries the triage through to the fix, a guard test and a commit — the
-CTD-170 follow-up case. The bug shape enters through `forge-spec`'s new bug mode (the
-reproduction is `C1`, `repro:` joins Commands, no steps and no failing check is Blocked).
+A lens is a checklist a role applies, not a step a blueprint runs. `forge-api` holds the
+contract rules from agent-skills' `api-and-interface-design` — contract first, addition over
+modification, one error shape, validation at the boundary, the list/filter/patch shapes, the
+TypeScript shapes — rewritten as checks against a diff. `forge-plan` reads it before slicing
+when a criterion changes a contract; `forge-verify` applies it as a sixth axis when the diff
+touches one; `forge-spec` adds the standing criterion (the published contract stays
+backward compatible, or the consumer that changes is named). Nothing runs when no contract
+is touched, so a frontend-only ticket costs nothing.
 
 ## Architecture decisions
 
-- **Debug and implement stay two steps**, as the ticket recommends: localise on fable,
-  fix on sonnet. `forge-debug` edits nothing under `/work` in blueprint mode, like
-  `forge-plan`; scratch goes under `~/debug/`.
-- **The root cause reaches the PR body through the plan.** `forge-verify` opens the
-  Summary with the plan's `## Root cause` sentence when it exists. One clause added.
-- **Bug mode is explicit in the blueprint** (`/forge-spec bug: {{task}}`) and also
-  detected from the ticket (Bug label, reproduction steps, a failing check), so a bug
-  ignited on Spec → QA still gets its reproduction as the criterion.
-- **Standalone mode inlines the later skills' rules** rather than reading their files:
-  a follow-up job has one step and one skill loaded.
+- **Chosen from the diff, not the blueprint.** The ticket's open question; a per-repo
+  blueprint is what it is avoiding. "Touches a contract" is defined once, in the lens, and
+  the two roles repeat the same test.
+- **The lens is read as a file, never invoked.** `~/.claude/skills/forge-api/SKILL.md` is
+  what plan and verify open; a lens has no `/forge-api` step and no Handoff files of its own.
+  This is the one place a skill names another, and it is a checklist, not a chain.
+- **Consumers come from the repo notes.** A backend checkout cannot see who generates a
+  client from its document. The lens says where to look (notes, then the ticket) and what to
+  write when nobody is named.
+- **Guard test learns the two shapes.** A role has `## Step N:` headings between Handoff and
+  Finish; a lens has none and is named by at least one role. Same frame otherwise.
 
 ## Task list
 
-- T1: `forge-debug` skill (two modes).
-- T2: `forge-spec` bug mode; `forge-test` Prove-It line; one clause each in
-  `forge-verify` and `forge-implement`.
-- T3: `BUG_BLUEPRINT_ID`, migration 0014 via `drizzle-kit generate --custom`, store test
-  parametrised over both seeded skill blueprints, README row.
-- T4: `foundry build`; prove AC1–AC3 on real jobs and record the ids in the PR body.
+- T1: `forge-api` skill (lens shape).
+- T2: `forge-plan` Step 1 line; `forge-verify` sixth axis + report line; `forge-spec`
+  standing criterion.
+- T3: guard test: role/lens distinction; README paragraph.
+- T4: repo notes for alden-connect-portal-be and alden-portal-fe (the cross-repo path);
+  `foundry build`; prove AC1 (backend ticket, request schema) and AC2 (ALD-45, no contract).
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| A bug the forge cannot reproduce (browser-only) | Step 1 reproduces one level down and says the browser path is unproven; never fixes blind |
-| `git bisect` leaves `/work` on a detached commit | The skill names `git bisect reset` in the same line; Red Flag for bisect left in progress |
-| Standalone mode edits beyond the cause | "Only the files the root cause names"; a second bug is a Finish line, not an edit |
+| The lens fires on every backend diff | "Touches a contract" is a list of concrete things; a handler body change alone is not one |
+| A consumer the checkout cannot see | Repo notes name it; absent notes, the Assumption says "consumer not named" rather than "none" |
+| Verify's sixth axis becomes a second review | It is one row when applied, with the additive verdict; findings only where a rule is broken |
