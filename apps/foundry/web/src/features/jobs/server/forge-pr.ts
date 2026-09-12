@@ -8,6 +8,7 @@
  */
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { trim1 } from '@/shared/lib/format'
 
 const exec = promisify(execFile)
 
@@ -36,8 +37,6 @@ export function prCliFor(host: string): 'gh' | 'bb' | null {
 
 /* eslint-disable-next-line no-control-regex -- ANSI escapes are control chars by definition */
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '')
-
-const trim1 = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 export async function createPullRequest(originUrl: string, req: PrRequest): Promise<PrResult> {
   const host = originHost(originUrl)
