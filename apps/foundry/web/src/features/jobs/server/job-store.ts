@@ -6,7 +6,7 @@
  * milliseconds and optional fields rather than nullable timestamptz columns.
  */
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, inArray, lt, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, lt, ne, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobs, repos } from '@/db/schema'
 import { getBlueprintRow, toSnapshot } from '@/features/blueprints/server/blueprint-store'
@@ -142,8 +142,8 @@ export async function lastBaseBranchByRepo(): Promise<Map<string, string>> {
 /**
  * Shared insert behind `createJob` and `createJobIdempotent`. With a
  * `ticketId` the insert doubles as the trigger API's claim on the ticket:
- * `jobs_ticket_id_unique` is the arbiter, and losing the race comes back as
- * null rather than an error.
+ * `jobs_ticket_id_unique` is the arbiter among non-cancelled rows (CTD-176),
+ * and losing the race comes back as null rather than an error.
  * An idempotency key (LIA-91) rides the same mechanism on
  * `jobs_idempotency_key_unique`: two concurrent first requests with one key
  * insert one row, and the loser is told null so it can re-read the winner.
@@ -217,9 +217,17 @@ export async function createJobIdempotent(input: NewJobInput, ticketId?: string)
   return insertJob(input, ticketId)
 }
 
-/** The job holding a ticket's claim, if any — how the API answers a 409. */
+/**
+ * The job holding a ticket's claim, if any — how the API answers a 409.
+ * Excludes cancelled rows (CTD-176): they no longer hold the claim, so a
+ * cancelled job never comes back as the 409's holder, even if a cancelled and
+ * an open row for the same ticket exist side by side.
+ */
 export async function getJobByTicketId(ticketId: string): Promise<JobRow | undefined> {
-  const [row] = await db.select().from(jobs).where(eq(jobs.ticketId, ticketId))
+  const [row] = await db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.ticketId, ticketId), ne(jobs.status, 'cancelled')))
   return row
 }
 

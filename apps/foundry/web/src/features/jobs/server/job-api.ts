@@ -142,7 +142,7 @@ export const TriggerPayloadSchema = z
         'A blueprint id, or `"none"` for one bare step. Default: the seeded "Plan → Execute" (a bare job if that row is gone).',
       ),
       ticketId: optionalString('ticketId', (s) => s.max(64, 'ticketId is too long')).describe(
-        'A Linear issue identifier (`LIA-52`). Claims the ticket: the row is the claim (a second trigger for it is a `409` naming the holder), and once it exists the issue is assigned to the host key\'s user and moved to In Progress. Without `instructions`, the brief is composed from the issue.',
+        'A Linear issue identifier (`LIA-52`). Claims the ticket: the row is the claim (a second trigger for it is a `409` naming the holder, unless that holder was cancelled — a cancelled job releases the ticket), and once it exists the issue is assigned to the host key\'s user and moved to In Progress. Without `instructions`, the brief is composed from the issue.',
       ),
       callbackUrl: z
         .url({
@@ -228,7 +228,7 @@ export const JobDetailSchema = JobSchema.extend({ logs: z.array(LogLineSchema) }
 
 export const ErrorSchema = z.object({ error: z.string().describe('What went wrong, written for the caller.') })
 
-/** The `409` from a `ticketId` that already has a job. */
+/** The `409` from a `ticketId` whose job still holds the claim — never a cancelled one. */
 export const ConflictSchema = ErrorSchema.extend({
   job: z.object({ id: z.uuid(), status: JobStatusSchema }).optional().describe('The job holding the ticket, when it still exists.'),
 })

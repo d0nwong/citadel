@@ -112,9 +112,11 @@ export const jobs = foundry.table(
     sourceJobId: uuid('source_job_id'),
     /**
      * Linear issue identifier (e.g. LIA-52) when the job was queued from a
-     * ticket over `POST /api/jobs`. Unique — the insert IS the claim on the
-     * ticket, taken before any Linear write; NULL for UI-created jobs, and
-     * NULLs don't collide.
+     * ticket over `POST /api/jobs`. Unique among non-cancelled rows — the
+     * insert IS the claim on the ticket, taken before any Linear write; NULL
+     * for UI-created jobs, and NULLs don't collide. Cancelling a job (CTD-176)
+     * drops it out of `jobs_ticket_id_unique`'s predicate below, releasing the
+     * claim, while the row itself keeps the ticket id it ran.
      */
     ticketId: text('ticket_id'),
     /**
@@ -163,7 +165,11 @@ export const jobs = foundry.table(
   (t) => [
     index('jobs_created_at_idx').on(t.createdAt.desc()),
     index('jobs_status_idx').on(t.status),
-    uniqueIndex('jobs_ticket_id_unique').on(t.ticketId),
+    // Partial (CTD-176): a cancelled row keeps its ticket_id for the record but
+    // drops out of the index, so the next trigger for that ticket can claim it.
+    uniqueIndex('jobs_ticket_id_unique')
+      .on(t.ticketId)
+      .where(sql`${t.status} <> 'cancelled'`),
     uniqueIndex('jobs_idempotency_key_unique').on(t.idempotencyKey),
   ],
 )

@@ -13,6 +13,7 @@ import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
 import { deleteLogs } from './job-logs'
 import { handleGetJob, handleListRepos, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX } from './job-api'
+import { cancelJob, getJob } from './job-store'
 import { ticketBrief } from './linear-link'
 import type { ApiDeps } from './job-api'
 import type { LinearIssue } from './linear-link'
@@ -189,6 +190,58 @@ test('ticketId claims once; the second trigger is a 409 naming the holder, and c
   const body = (await second.json()) as { job?: { id: string; status: string } }
   expect(body.job).toEqual({ id: job.id, status: 'queued' })
   expect(claimed.length).toBe(claimsAfterFirst)
+})
+
+/* ------------------------------------------------------------------ */
+/* CTD-176 — a cancelled job releases its ticket claim                 */
+/* ------------------------------------------------------------------ */
+
+test('CTD-176 C1: a cancelled job releases its ticket claim — the next trigger is 202 with a new job', async () => {
+  const ticketId = `TEST-${rand}-C1`
+  const first = await handleTriggerJob(post(valid({ ticketId })), deps)
+  expect(first.status).toBe(202)
+  const jobA = (await first.json()) as Job
+
+  expect(await cancelJob(jobA.id)).toBe(true)
+
+  const second = await handleTriggerJob(post(valid({ ticketId })), deps)
+  expect(second.status).toBe(202)
+  const jobB = (await second.json()) as Job
+  expect(jobB.id).not.toBe(jobA.id)
+  expect(jobB.ticketId).toBe(ticketId)
+})
+
+test('CTD-176 C2: after the ticket is retriggered, the cancelled job stays cancelled with its ticketId intact', async () => {
+  const ticketId = `TEST-${rand}-C2`
+  const first = await handleTriggerJob(post(valid({ ticketId })), deps)
+  const jobA = (await first.json()) as Job
+  expect(await cancelJob(jobA.id)).toBe(true)
+
+  const second = await handleTriggerJob(post(valid({ ticketId })), deps)
+  expect(second.status).toBe(202)
+
+  const rowA = await getJob(jobA.id)
+  expect(rowA?.id).toBe(jobA.id)
+  expect(rowA?.status).toBe('cancelled')
+  expect(rowA?.ticketId).toBe(ticketId)
+})
+
+test('CTD-176 C3: two concurrent first triggers for one ticketId still insert exactly one job', async () => {
+  const ticketId = `TEST-${rand}-C3`
+  const before = await rowCount()
+
+  const [a, b] = await Promise.all([
+    handleTriggerJob(post(valid({ ticketId })), deps),
+    handleTriggerJob(post(valid({ ticketId })), deps),
+  ])
+  expect([a.status, b.status].sort()).toEqual([202, 409])
+  const winner = a.status === 202 ? a : b
+  const loser = a.status === 202 ? b : a
+  const job = (await winner.json()) as Job
+  const conflict = (await loser.json()) as { job?: { id: string; status: string } }
+  expect(conflict.job?.id).toBe(job.id)
+
+  expect(await rowCount()).toBe(before + 1)
 })
 
 /* ------------------------------------------------------------------ */

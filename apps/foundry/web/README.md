@@ -22,7 +22,8 @@ modules never enter the client bundle.
 - `features/jobs/server/job-store.ts` — the ledger's queries, plus the write paths
   the runner uses (`patchJob`, guarded `settleJob`). A job queued from a Linear ticket
   claims it here: the row's unique `ticket_id` insert *is* the claim, taken before any
-  Linear write.
+  Linear write. The index is partial — a cancelled job drops out of it and releases the
+  ticket, so a run that was cancelled can be triggered again (CTD-176).
 - `features/jobs/server/job-logs.ts` — the other half of a job's state, on disk:
   `appendLogs` / `readLogs` over `~/.foundry/logs/<id>.jsonl` (see below).
 - `features/jobs/server/job-runner.ts` — the orchestrator (see below).
@@ -209,7 +210,8 @@ issue with its own `LINEAR_API_KEY` and composes the brief from its body: `<KEY>
 the ticket is then **claimed in Linear** — assigned to the key's user and moved to the
 team's started state (the one named "In Progress" when there are several) — in claim
 order: the row insert first (the unique `ticket_id` index is the claim, hence the
-`409`), the Linear write second, ignition last. The claim is awaited before the `202` and
+`409`; it excludes cancelled rows, so cancelling a job frees its ticket), the Linear
+write second, ignition last. The claim is awaited before the `202` and
 recorded as a `sys` line in the job's log; if the write fails the job stays queued, the
 failure is an `err` line, and the ticket's state is yours to fix by hand — never a status
 change on the job. The fetch happens *before* the insert, so an unknown `ticketId` (`400`)
