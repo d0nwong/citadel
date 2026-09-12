@@ -1,86 +1,97 @@
-# Plan: citadel, step 1
+# Plan: Foundry role skills and the "Spec → QA" blueprint (CTD-65, slice 1)
 
-Spec: `docs/spec/consolidation.md`. Intent: `docs/intent/monorepo.md`.
+Spec: `docs/spec/foundry-skills.md`. Intent: `docs/intent/foundry-skills.md`.
+Replaces the finished consolidation plan (in git history at `1c362a3`).
 
 ## Overview
 
-Import the three histories, make one Bun workspace, split argus's code from its data, replace the
-bash dispatchers with just, then build the compose stack one service at a time. The sweep comes
-last and stays off until cutover, because only one sweep may ever write. The two riskiest
-unknowns are checked first so a bad answer can still change the plan.
+Five skills go into the forge image, one seeded blueprint chains them, two tests guard the
+seams. The one thing that could change the shape of every skill is whether a headless
+`claude -p` prompt starting with `/forge-spec` actually loads the skill, so that is checked
+first with a stub. Skills are then written in pipeline order, because each one's Handoff
+section is the next one's input. The blueprint seed comes last, since its prompts name the
+skills and the guard test cross-checks them. Nothing here touches `work`, the two existing
+seeded blueprints, `forge-run.sh` or the Dockerfile.
 
 ## Architecture decisions
 
-- **Data stays in `d0nwong/citadel-data`** for step 1. citadel holds code only. The sweep container
-  clones the data repo into the `argus-data` volume, and Pensieve mounts the same volume.
-- **`ARGUS_ROOT` is the data seam.** It already exists in `scripts/argus/paths.ts`, and step 1
-  extends it to `accio`. Pensieve keeps `WORKSPACE_DIR` for the data and gains the argus code
-  path, so it can spawn `bun <argus>/scripts/argus.ts` with `ARGUS_ROOT=$WORKSPACE_DIR`.
-- **Ask's working directory becomes `apps/argus`**, where the skills, CLAUDE.md and `.mcp.json`
-  live. It reaches the data through the verbs, with `ARGUS_ROOT` set.
-- **One `.env` at the root.** Foundry's `ARGUS_ENV`, Pensieve's `argus-env.sh` and the
-  `~/.config/liamai/env` fallback all go away.
-- **The sweep service sits behind a compose profile** (`--profile sweep`), so `just up` never
-  starts a second writer by accident.
-- **Tags:** Foundry's are already `foundry-v*`, the component form release-please uses. Pensieve
-  has none. argus's one tag, `pre-rebuild`, becomes `argus-pre-rebuild`.
-- **Foundry web stays on the host in step 1** (checkpoint B): it pushes and opens PRs with
-  keychain-backed git, gh and bb credentials. `just foundry` runs it.
+- **Skill invocation is by slash command in the step prompt.** If T1 shows `claude -p` does
+  not expand a user-scope skill, the fallback is a small addition to `forge-run.sh`: when a
+  step prompt starts with `/<name>` and `~/.claude/skills/<name>/SKILL.md` exists, prepend the
+  file body. That is an ask-first change per the spec, so T1 reports back before anything
+  else is written.
+- **Skill frame is the `agent-skills` one** (Overview, When to Use, numbered steps with
+  examples, Common Rationalizations, Red Flags, Verification) plus Handoff and Finish. A
+  shared reference file `apps/foundry/image/skills/FRAME.md` is not created: five files is
+  few enough to keep in step by hand, and the guard test checks the section headings.
+- **Handoff files live in `$HOME`**: `~/spec.md`, `~/plan.md`, `~/qa-report.md`. Criteria carry
+  ids `C1…Cn`; tests are named `C3: …`; the report is a per-criterion table.
+- **The migration is generated with `drizzle-kit generate --custom`** so the journal entry
+  and the snapshot copy match what 0007 got, then the SQL is written by hand in 0007's style.
+- **Verify runs on opus, medium.** Different model from implement, on purpose. Editable.
 
-## Dependency graph
+## Task list
 
-```
-T1 headersHelper spike ─┐            T2 foundry-web prod spike ─┐
-                        │                                       │
-T3 import foundry+pensieve ── T4 import argus ── T5 workspace ──┤
-                                                   │            │
-               ┌───────────────┬──────────────────┤            │
-          T6 ARGUS_ROOT   T8 one .env        T16 release-please, T17 CI
-               │               │
-          T7 pensieve split    │
-               └──────┬────────┘
-                 T9 just: env recipes ── T10 just: stack recipes
-                                              │
-                 T11 mcp+postgres ── T12 foundry-web (T2) ── T13 pensieve (T7)
-                                                                  │
-                                                  T14 sweep image+service (T1)
-                                                                  │
-                                                  T15 docs and paths ── T18 cutover ── T19 archive
-```
+### Phase 1: De-risk and foundation
 
-## Phases and checkpoints
+- T1: Prove slash-command skill loading under `claude -p` in a forge (stub skill).
+- T2: Guard test for skills: frontmatter, section headings, seed prompts name real skills.
+- T3: `forge-spec` skill.
 
-1. **De-risk (T1, T2).** These two spikes decide the open questions and can run in parallel.
-2. **One repo (T3–T5).** Checkpoint A: histories are in place and `bun run --filter '*'
-   typecheck` and `test` pass. Review before pushing citadel.
-3. **Seams (T6–T8).** The code works against a data directory it doesn't live in, and one
-   `.env` feeds everything.
-4. **Ops (T9, T10).** just replaces every bash dispatcher.
-5. **Stack (T11–T14).** Checkpoint B, after T13: the stack runs without the sweep, and the
-   smoke test passes. Review before building the sweep.
-6. **Release, CI, docs (T15–T17).** Checkpoint C: success criteria 1–4 and 6 are met.
-7. **Cutover (T18, T19).** Ask before each step. Success criterion 5 is met after 24 hours.
+### Checkpoint: Foundation
 
-## Parallel work
+T1 answered either way and recorded in the spec. T2 runs green against `work` and
+`forge-spec`. `forge-spec` read end to end against the frame and the `~/spec.md` shape in
+the spec. Both `~/spec.md` paths exercised in thought: criteria found, and `## Blocked`.
 
-- T1 and T2 at any time.
-- T6, T8 and T16/T17 once T5 lands.
-- T12 and T13 once T11 lands, if T2 and T7 are done.
+### Phase 2: The remaining skills
 
-T3 → T4 → T5 must run in order, because they rewrite the same history.
+- T4: `forge-plan` skill.
+- T5: `forge-test` skill.
+- T6: `forge-implement` skill.
+- T7: `forge-verify` skill.
 
-## Risks
+### Checkpoint: Skills
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| headersHelper doesn't run under `claude -p` (untrusted folder) | High: the sweep and Ask lose Slack/Linear MCP | T1 checks first; the fallback is pre-trusting the folder in the image's `~/.claude.json` |
-| Two sweeps write the data repo | High: conflicting commits, a rewound cursor | Compose profile, the `flock`, and cutover stops the host loop first |
-| Pensieve's spawn and Ask paths break after the split | Medium | T7 has its own tests; `ask.test.ts` already exercises git over `WORKSPACE_DIR` |
-| filter-repo drops a code file whose history ran through a data path | Low | T4 checks with a diff of `git ls-files` against the argus checkout's code paths |
-| `setup-token` OAuth token expires | Low | `just check` reports its age; `just auth claude` renews it |
-| Forges made with `--mount DIR` get a container path | Low | Document that `--mount` takes a host path; named-volume forges are unaffected |
+Read the five in pipeline order as one run would: every file a skill reads is written by an
+earlier one; every Finish ends on a statement; every Blocked path stops with no edits. T2
+green.
+
+### Phase 3: The blueprint
+
+- T8: `QA_BLUEPRINT_ID` constant and migration 0013 with its revision row.
+- T9: Blueprint store test against the real database.
+- T10: README: the blueprints table and the skills paragraph.
+
+### Checkpoint: Complete
+
+`bun run --filter foundry-web typecheck`, `check`, `db:migrate`, `test`, and
+`bun test apps/foundry/image` all green. Then T11.
+
+### Phase 4: Prove it on a job
+
+- T11: `foundry build`, ignite a job with "Spec → QA" on a small repo with a real runner and a
+  ticket with acceptance criteria; a second job on a ticket with none. Record both job ids in
+  the PR body.
+
+## Risks and mitigations
+
+| Risk | Mitigation |
+|---|---|
+| `claude -p "/forge-spec …"` does not load the skill | T1 first; fallback inlines the skill body in forge-run.sh (ask first) |
+| Skills too long for a step's context, or too short to be effective | 150–250 lines each; T11 is the real measure, and the second job run reads the ledger for lost instructions |
+| `forge-test` cannot make a test fail red because implement has not run | It runs the suite once, records the failing names in its Finish, and `forge-implement` starts by re-running them |
+| The e2e runner detection is wrong for a repo | `forge-spec` writes the exact e2e command into `~/spec.md` or "none configured"; every later skill trusts that line, so one place to fix |
+| A user has already hand-made a blueprint named "Spec → QA" | `ON CONFLICT DO NOTHING`, as 0007; the seeded row is then simply absent and the store test says so |
+| Migration test needs a migrated DB | Same as `job-api.test.ts`: `just up postgres`, `db:migrate`, documented in the test header |
 
 ## Open questions
 
-None that block the plan. T1 and T2 answer the spec's two open questions, and the plan changes
-only if T1 fails and pre-trusting the folder doesn't work either.
+Carried from the spec, none blocking: arch doc into the forge (Pensieve inlines it, own
+ticket); verify's model; whether "Plan → Execute" should gain a verify step.
+
+## Parallelization
+
+T4–T7 could be written in parallel once T3 fixes the `~/spec.md` shape, but each one's
+Handoff quotes the previous one's Finish, so sequential is safer and the files are small.
+T8 and T10 do not depend on the skills' text, only their names, and can go alongside T5–T7.

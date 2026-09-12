@@ -22,8 +22,6 @@ jobs:
           --health-interval 2s --health-timeout 3s --health-retries 30
     env:
       DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry
-      # argus's data is its own repo, and Pensieve reads a directory rather than cloning one.
-      WORKSPACE_DIR: ${{ runner.temp }}/argus-data
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -42,6 +40,10 @@ jobs:
         # The tests that read argus's data skip without it; the rest run.
         run: bun run --filter argus test
       - name: test pensieve
+        # argus's data is its own repo, and Pensieve reads a directory rather than cloning one.
+        # `runner` is a step-level context: in the job's `env` it makes the whole file invalid.
+        env:
+          WORKSPACE_DIR: ${{ runner.temp }}/argus-data
         run: |
           mkdir -p "$WORKSPACE_DIR"
           bun run --filter pensieve test

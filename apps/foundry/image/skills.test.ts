@@ -1,0 +1,86 @@
+/**
+ * The seams around the skills the image ships: every skill is one Claude Code
+ * reads (frontmatter naming its own directory), every forge-* skill keeps the
+ * frame the others are written to, and every `/forge-…` a seeded blueprint
+ * step invokes is a skill that exists — a renamed skill would otherwise leave
+ * the step running as plain prompt text, silently. No database, no docker.
+ */
+import { describe, expect, test } from 'bun:test'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+
+const SKILLS = path.join(import.meta.dir, 'skills')
+const MIGRATIONS = path.join(import.meta.dir, '..', 'web', 'src', 'db', 'migrations')
+
+/** The section order every forge-* skill follows; steps sit between Handoff and Finish. */
+const FRAME = ['Overview', 'When to Use', 'Handoff', 'Finish', 'Common Rationalizations', 'Red Flags', 'Verification']
+
+const skillDirs = readdirSync(SKILLS, { withFileTypes: true })
+  .filter((d) => d.isDirectory())
+  .map((d) => d.name)
+  .sort()
+
+const readSkill = (dir: string) => readFileSync(path.join(SKILLS, dir, 'SKILL.md'), 'utf8')
+
+const frontmatter = (md: string): Record<string, string> => {
+  const m = /^---\n([\s\S]*?)\n---\n/.exec(md)
+  if (!m) return {}
+  return Object.fromEntries(
+    m[1]
+      .split('\n')
+      .map((line) => line.split(/:\s*(.*)/s))
+      .filter((kv) => kv.length >= 2)
+      .map(([k, v]) => [k.trim(), (v ?? '').trim()]),
+  )
+}
+
+const h2s = (md: string) =>
+  md
+    .split('\n')
+    .filter((line) => line.startsWith('## '))
+    .map((line) => line.slice(3).trim())
+
+describe('every skill', () => {
+  test('there is at least the /work skill', () => {
+    expect(skillDirs).toContain('work')
+  })
+
+  for (const dir of skillDirs) {
+    test(`${dir}: frontmatter names its directory and describes itself`, () => {
+      const fm = frontmatter(readSkill(dir))
+      expect(fm.name).toBe(dir)
+      expect(fm.description?.length ?? 0).toBeGreaterThan(20)
+    })
+  }
+})
+
+describe('forge-* skills keep the frame', () => {
+  for (const dir of skillDirs.filter((d) => d.startsWith('forge-'))) {
+    test(`${dir}: ${FRAME.join(' → ')}, in that order`, () => {
+      const headings = h2s(readSkill(dir))
+      const positions = FRAME.map((h) => headings.indexOf(h))
+      for (const [i, pos] of positions.entries()) expect(pos, `missing "## ${FRAME[i]}"`).toBeGreaterThanOrEqual(0)
+      expect(positions).toEqual([...positions].sort((a, b) => a - b))
+    })
+
+    test(`${dir}: attributes the agent-skills source`, () => {
+      expect(readSkill(dir)).toMatch(/addy-agent-skills \(MIT/)
+    })
+  }
+})
+
+describe('seeded blueprints invoke skills that exist', () => {
+  const sqlFiles = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'))
+
+  test('the migrations directory is where this test thinks it is', () => {
+    expect(sqlFiles.length).toBeGreaterThan(0)
+  })
+
+  for (const file of sqlFiles) {
+    const invoked = [...new Set(readFileSync(path.join(MIGRATIONS, file), 'utf8').match(/\/forge-[a-z-]+/g) ?? [])]
+    if (invoked.length === 0) continue
+    test(`${file}: ${invoked.join(', ')}`, () => {
+      for (const slash of invoked) expect(existsSync(path.join(SKILLS, slash.slice(1), 'SKILL.md')), slash).toBe(true)
+    })
+  }
+})

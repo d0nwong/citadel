@@ -67,6 +67,8 @@ export interface CheckedDraft {
   description: string;
   project: {
     id?: string;
+    /** True when the team has no project by this name yet: File creates it before the issue. */
+    isNew: boolean;
     name: string;
     /** False when no project list could be had — the name is taken on trust and said so. */
     verified: boolean;
@@ -131,6 +133,11 @@ function checkSections(description: string): string | undefined {
  * named team's projects and nothing else; writes nothing at all. `team` is Pensieve's own
  * (Alden or Citadel, CTD-172), not Linear's key for a workspace team in general — an
  * unrecognised one is refused before any project list is read.
+ *
+ * A project the team does not have is not a refusal: the draft is answered with the name
+ * marked `isNew`, and `fileTicket` creates the project on the team before the issue. The
+ * skill files every feature into a project named after it, and the first ticket for a
+ * feature is exactly the one whose project does not exist yet.
  */
 export async function checkDraft(
   input: { description: string; project: string; team?: string; title: string },
@@ -162,19 +169,14 @@ export async function checkDraft(
 
   const lookup = await sources.projects(team.key);
   const match = lookup.projects.find((p) => norm(p.name) === norm(project));
-  if (!match && lookup.source !== "none") {
-    const names = lookup.projects.map((p) => p.name).join(", ");
-    return {
-      error: `"${project}" is not a project on team ${team.name} — its projects are ${names || "none that could be read"}`,
-      ok: false,
-    };
-  }
+  const verified = lookup.source !== "none";
   return {
     draft: {
       description,
       project: {
+        isNew: verified && !match,
         name: match?.name ?? project,
-        verified: Boolean(match),
+        verified,
         ...(match ? { id: match.id } : {}),
       },
       team,

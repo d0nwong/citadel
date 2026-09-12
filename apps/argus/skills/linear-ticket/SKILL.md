@@ -40,7 +40,8 @@ place when a fact changes, and closing is the user's alone.
      `team: "Citadel"` for Pensieve, Argus or Foundry; omit `team` for an alden-portal
      feature.
    - From a terminal: `mcp__linear__save_issue` on the team from step 4, project named
-     after the app or feature when one exists, assignee the user; then
+     after the app or feature, created on the team first when there is none yet, assignee
+     the user; then
      `argus ticket <feature> <P-n> <key>` when a proposal exists, so the ledger has the key.
 
 ## Rules

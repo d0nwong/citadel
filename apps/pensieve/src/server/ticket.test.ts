@@ -154,7 +154,7 @@ describe("C2 — no team named resolves against Alden, the default", () => {
       draft: {
         // Trimmed: the card's textarea and the model's draft both arrive with slack at the ends.
         description: FIVE.trim(),
-        project: { id: "p_usage", name: "Admin - Usage", verified: true },
+        project: { id: "p_usage", isNew: false, name: "Admin - Usage", verified: true },
         team: { key: "ALD", name: "Alden" },
         teamId: "team_ald",
         title: "[FE] Rename the Ask panel to Argus",
@@ -185,15 +185,20 @@ describe("C2 — no team named resolves against Alden, the default", () => {
     );
     expect(r.ok && r.draft.project).toEqual({
       id: "p_alden",
+      isNew: false,
       name: "Alden Portal",
       verified: true,
     });
   });
-  test("a project that is not the team's is refused, and the answer lists the ones that are", async () => {
-    const error = await refuse({ project: "Skunkworks" });
-    expect(error).toBe(
-      '"Skunkworks" is not a project on team Alden — its projects are Alden Portal, Admin - Usage'
-    );
+  test("a project the team does not have yet is accepted as new, for File to create", async () => {
+    const r = await checkDraft(draft({ project: " Skunkworks " }), sources());
+    expect(r.ok && r.draft.project).toEqual({
+      isNew: true,
+      name: "Skunkworks",
+      verified: true,
+    });
+    // The team and assignee still travel: File needs them to create the project.
+    expect(r.ok && r.draft.teamId).toBe("team_ald");
   });
   test("no project named is refused", async () => {
     expect(await refuse({ project: " " })).toBe(
@@ -211,7 +216,7 @@ describe("C1 — a draft naming Citadel resolves against Citadel's projects", ()
     expect(r).toEqual({
       draft: {
         description: FIVE.trim(),
-        project: { id: "p_pensieve", name: "Pensieve", verified: true },
+        project: { id: "p_pensieve", isNew: false, name: "Pensieve", verified: true },
         team: { key: "CTD", name: "Citadel" },
         teamId: "team_ctd",
         title: "[FE] Rename the Ask panel to Argus",
@@ -228,6 +233,7 @@ describe("C1 — a draft naming Citadel resolves against Citadel's projects", ()
     expect(r.ok && r.draft.team).toEqual({ key: "CTD", name: "Citadel" });
     expect(r.ok && r.draft.project).toEqual({
       id: "p_argus",
+      isNew: false,
       name: "Argus",
       verified: true,
     });
@@ -235,11 +241,18 @@ describe("C1 — a draft naming Citadel resolves against Citadel's projects", ()
 });
 
 describe("C3 — a project that exists only on the other team is not matched", () => {
-  test('team Alden naming project "Pensieve" is refused as a project Alden does not have, not matched to Citadel\'s id', async () => {
-    const error = await refuse({ project: "Pensieve", team: "Alden" });
-    expect(error).toBe(
-      '"Pensieve" is not a project on team Alden — its projects are Alden Portal, Admin - Usage'
+  test('team Alden naming project "Pensieve" is a new project on Alden, never matched to Citadel\'s id', async () => {
+    const r = await checkDraft(
+      draft({ project: "Pensieve", team: "Alden" }),
+      sources()
     );
+    expect(r.ok && r.draft.team).toEqual({ key: "ALD", name: "Alden" });
+    expect(r.ok && r.draft.project).toEqual({
+      isNew: true,
+      name: "Pensieve",
+      verified: true,
+    });
+    expect(r.ok && r.draft.teamId).toBe("team_ald");
   });
 });
 
@@ -260,12 +273,15 @@ describe("C4 — a team that is neither Alden nor Citadel is refused", () => {
 });
 
 describe("AC5 — the check with no project list to check against", () => {
-  test("a cached list refuses exactly as a live one does", async () => {
+  test("a cached list answers exactly as a live one does", async () => {
     const src = sources({ source: "cache" });
-    expect(await refuse({ project: "Skunkworks" }, src)).toContain(
-      "is not a project on team Alden"
-    );
-    expect((await checkDraft(draft(), src)).ok).toBe(true);
+    const unknown = await checkDraft(draft({ project: "Skunkworks" }), src);
+    expect(unknown.ok && unknown.draft.project.isNew).toBe(true);
+    const known = await checkDraft(draft(), src);
+    expect(known.ok && known.draft.project).toMatchObject({
+      id: "p_usage",
+      isNew: false,
+    });
   });
   test("no list at all takes the name on trust and says so, rather than refusing", async () => {
     const none: TicketSources = {
@@ -273,7 +289,10 @@ describe("AC5 — the check with no project list to check against", () => {
         Promise.resolve({ projects: [], source: "none" } as ProjectLookup),
     };
     const r = await checkDraft(draft({ project: "Skunkworks" }), none);
+    // Not new either: with no list there is nothing to say it is missing, and File must
+    // not create a project on a guess.
     expect(r.ok && r.draft.project).toEqual({
+      isNew: false,
       name: "Skunkworks",
       verified: false,
     });
