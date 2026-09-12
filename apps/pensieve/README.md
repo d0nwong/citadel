@@ -1,6 +1,6 @@
 # pensieve
 
-The reading room for [argus](https://github.com/d0nwong/argus) — a UI over the
+The reading room for [argus](https://github.com/d0nwong/citadel-data) — a UI over the
 blackboard the sweep maintains, where the feature is the unit: the **board** (what needs
 you, then each feature with something going on this week), a page per **feature** beside
 its docs, the **Unsorted** queue behind them, the per-landing **change journal**, the

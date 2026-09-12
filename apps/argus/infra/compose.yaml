@@ -60,7 +60,7 @@ services:
       BITBUCKET_USERNAME: ${BITBUCKET_USERNAME:-}
       BITBUCKET_TOKEN: ${BITBUCKET_TOKEN:-}
       BITBUCKET_GIT_USERNAME: ${BITBUCKET_GIT_USERNAME:-x-bitbucket-api-token-auth}
-      ARGUS_DATA_REPO: ${ARGUS_DATA_REPO:-https://github.com/d0nwong/argus.git}
+      ARGUS_DATA_REPO: ${ARGUS_DATA_REPO:-https://github.com/d0nwong/citadel-data.git}
       SWEEP_INTERVAL: ${SWEEP_INTERVAL:-900}
       SWEEP_MODEL: ${SWEEP_MODEL:-claude-sonnet-5}
     secrets:

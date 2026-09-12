@@ -11,7 +11,7 @@ unknowns are checked first so a bad answer can still change the plan.
 
 ## Architecture decisions
 
-- **Data stays in `d0nwong/argus`** for step 1. citadel holds code only. The sweep container
+- **Data stays in `d0nwong/citadel-data`** for step 1. citadel holds code only. The sweep container
   clones the data repo into the `argus-data` volume, and Pensieve mounts the same volume.
 - **`ARGUS_ROOT` is the data seam.** It already exists in `scripts/argus/paths.ts`, and step 1
   extends it to `accio`. Pensieve keeps `WORKSPACE_DIR` for the data and gains the argus code

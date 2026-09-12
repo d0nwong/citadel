@@ -173,7 +173,7 @@ See `tasks/plan.md` for the order and the checkpoints.
 
 - [x] **T14: Add the sweep image and service, behind a profile.** (M–L, needs T1)
   - Acceptance: the image has bun, the claude CLI, git and the argus code. On first start,
-    `loop.sh` clones `d0nwong/argus` into `argus-data` and FE/BE into `product` (with
+    `loop.sh` clones `d0nwong/citadel-data` into `argus-data` and FE/BE into `product` (with
     `BITBUCKET_TOKEN`), then loops `flock … claude -p "/sweep"` every 900 seconds and pushes with
     `GH_TOKEN`. The service is under `profiles: [sweep]`.
   - Verify: `just sweep-once` with `argus pull --dry-run` prints a batch, `just up` doesn't
@@ -254,8 +254,20 @@ waits on a `GH_TOKEN`. Criterion 5 is cutover, below.
   - Criterion 6 done 2026-09-12: `just release-dry` proposes one pull request — argus 0.1.0 →
     0.2.0, foundry 1.4.0 → 1.5.0 (continuing from its imported tag), pensieve 0.1.0 → 0.2.0. It
     reads citadel, so it uses gh's token: `.env`'s GH_TOKEN is scoped to the data repo alone.
-  - Left: after 24 hours, check that ticks keep landing in `d0nwong/argus` and that no commit
+  - Left: after 24 hours, check that ticks keep landing in `d0nwong/citadel-data` and that no commit
     appeared that the sweep did not make (criterion 5).
-- [ ] **T19: Archive and trim.** Archive `d0nwong/foundry` and `d0nwong/pensieve` with a
-  pointer README, and delete argus's code from `d0nwong/argus` in one commit.
+- [x] **T19: Archive and trim.** Archive `d0nwong/foundry` and `d0nwong/pensieve` with a
+  pointer README, and delete argus's code from `d0nwong/citadel-data` in one commit.
   - Verify: the sweep still ticks after the trim.
+  - Done 2026-09-12: you archived all three, which made the data repo read-only and the sweep's
+    push fail with a 403 — it is the one live write target of the three. Unarchived it, renamed
+    it `d0nwong/citadel-data` so it reads as data rather than a superseded code repo, and gave
+    it a description and a README pointing at citadel. The trim removed 121 files (the CLIs,
+    skills, evals, infra, tasks, docs, `package.json`, `tsconfig.json`, `.mcp.json`, `CLAUDE.md`,
+    `SPEC.md`) in `b39bcf7`; only `.env.example`, `bun.lock` and `scripts/bootstrap.sh` had no
+    counterpart in citadel, and all three were superseded by design. The container never read
+    any of it: its WORKDIR is `/app/apps/argus` in the image. After the trim `just sweep-once
+    --dry-run` printed "nothing new", `argus validate` passed 26 features, and Pensieve served
+    200. The local checkout stays at `~/git/argus` — the mount, `ARGUS_DATA_DIR` and
+    `WORKSPACE_DIR` all default to it — with `node_modules/`, `.env`, `evals/last-run/` and
+    `queue/` left behind untracked.

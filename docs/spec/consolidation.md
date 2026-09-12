@@ -17,13 +17,13 @@ with the ledger data still in files. When step 1 is done:
 ## Assumptions
 
 1. **Data leaves the code repo now, not in step 2.** Only argus's code comes into citadel. The
-   data (ledgers, arch docs, manifests, `state/`) stays in `d0nwong/argus`, which becomes the
+   data (ledgers, arch docs, manifests, `state/`) stays in `d0nwong/citadel-data`, which becomes the
    data repo. The sweep container clones it into a volume and pushes to it, and Pensieve reads
    the same volume. Step 2 then moves the ledgers from that repo into Postgres. Without this, the
    sweep would commit to citadel every 15 minutes until step 2.
 2. **argus's history is imported code-only.** `git filter-repo --path …` over the code paths
    drops the commits that only touched data, so the "quiet run" commits don't come along. The
-   full history stays in `d0nwong/argus`.
+   full history stays in `d0nwong/citadel-data`.
 3. **argus locates its data through `ARGUS_ROOT`,** which already exists in `scripts/argus/paths.ts` and defaults to argus's own directory so
    today's checkout keeps working. Step 1 extends it to `accio` and points `mcp-headers.ts` at the root `.env`.
 4. **argus owns the infra files because they live under `apps/argus/infra/`.** Root
@@ -62,7 +62,7 @@ citadel/
       infra/              compose.yaml (postgres, foundry-web), postgres/init/, Dockerfile.web
     pensieve/             src/, server.ts, Dockerfile, compose.yaml
 
-d0nwong/argus (data repo, cloned by the sweep into the `argus-data` volume)
+d0nwong/citadel-data (data repo, cloned by the sweep into the `argus-data` volume)
   alden/  foundry/features/  pensieve/features/  state/  .state/
 ```
 
@@ -161,7 +161,7 @@ The old repos keep running until the stack has proven itself. Only one sweep may
 2. Stop the host loop (`bun run sweep` in `~/git/argus`), then push the data repo.
 3. Start the sweep service. Watch it for a day.
 4. Archive `d0nwong/foundry` and `d0nwong/pensieve` (with a README pointing at citadel), and
-   trim `d0nwong/argus` down to data.
+   trim `d0nwong/citadel-data` down to data.
 
 ## Boundaries
 
@@ -187,7 +187,7 @@ The old repos keep running until the stack has proven itself. Only one sweep may
 4. After `just up`, the gateway, postgres and Pensieve are healthy (the sweep waits for
    `just sweep-on` at cutover), and `just foundry` runs Foundry. Pensieve at :3778 shows today's ledgers, Send to Foundry creates a job at
    :3777, and Ask answers a question.
-5. The sweep service finishes a tick and pushes to `d0nwong/argus`, and `~/git/argus` has no new
+5. The sweep service finishes a tick and pushes to `d0nwong/citadel-data`, and `~/git/argus` has no new
    commits for 24 hours after cutover.
 6. A `feat(pensieve):` merge makes release-please propose `pensieve-v0.2.0` and nothing else.
 

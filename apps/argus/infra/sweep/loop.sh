@@ -34,7 +34,7 @@ clone() { # url dir
 }
 
 setup() {
-  clone "${ARGUS_DATA_REPO:-https://github.com/d0nwong/argus.git}" "$DATA"
+  clone "${ARGUS_DATA_REPO:-https://github.com/d0nwong/citadel-data.git}" "$DATA"
   clone "${FE_REPO_URL:-https://bitbucket.org/aldenstudios/alden-portal-fe.git}" "${FE_REPO:-$HOME/git/alden-portal-fe}"
   clone "${BE_REPO_URL:-https://bitbucket.org/aldenstudios/alden-connect-portal-be.git}" "${BE_REPO:-$HOME/git/alden-connect-portal-be}"
 }
