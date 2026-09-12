@@ -12,6 +12,7 @@ import { jobs, repos } from '@/db/schema'
 import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
 import { deleteLogs } from './job-logs'
+import { cancelJob } from './job-store'
 import { handleGetJob, handleListRepos, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX } from './job-api'
 import { ticketBrief } from './linear-link'
 import type { ApiDeps } from './job-api'
@@ -189,6 +190,19 @@ test('ticketId claims once; the second trigger is a 409 naming the holder, and c
   const body = (await second.json()) as { job?: { id: string; status: string } }
   expect(body.job).toEqual({ id: job.id, status: 'queued' })
   expect(claimed.length).toBe(claimsAfterFirst)
+})
+
+test('a cancelled job releases its ticket claim, so the ticket can be triggered again', async () => {
+  const ticketId = `TEST-cancel-${rand}`
+  const first = await handleTriggerJob(post(valid({ ticketId })), deps)
+  expect(first.status).toBe(202)
+  const job = (await first.json()) as Job
+  expect(await cancelJob(job.id)).toBe(true)
+
+  const again = await handleTriggerJob(post(valid({ ticketId })), deps)
+  expect(again.status).toBe(202)
+  const next = (await again.json()) as Job
+  expect(next.id).not.toBe(job.id)
 })
 
 /* ------------------------------------------------------------------ */
