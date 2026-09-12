@@ -232,7 +232,7 @@ waits on a `GH_TOKEN`. Criterion 5 is cutover, below.
 
 ## Phase 7: Cutover (ask before each step)
 
-- [ ] **T18: Cut the sweep over.** In order, one at a time:
+- [x] **T18: Cut the sweep over.** In order, one at a time:
   1. `just auth gh` — a fine-grained GitHub token, contents: write on the data repo alone.
      Without it the sweep commits locally and never pushes.
   2. `just auth bitbucket` — the account's email and a read-only Atlassian API token
@@ -243,9 +243,16 @@ waits on a `GH_TOKEN`. Criterion 5 is cutover, below.
   6. `just up` — gateway, postgres, Pensieve.
   7. `just foundry` — Foundry's web UI on this Mac.
   8. `just sweep-on` — the loop, one tick per SWEEP_INTERVAL against `ARGUS_DATA_DIR`.
-  - Verify: after 24 hours, ticks are visible in `d0nwong/argus`, `~/git/argus` has no commit the
-    sweep did not make, and Pensieve is current (success criterion 5). Then `just release-dry`
-    proposes only what changed (criterion 6).
+  - Done 2026-09-12: both tokens checked first (GitHub push on d0nwong/argus, Bitbucket REST and
+    git). `just link` moved 9 links; `just up` brought the gateway, postgres and Pensieve up in
+    13s over the live data; Foundry runs on the host. The first container tick cloned the product
+    repos, read Slack and both repos, closed A-1 on admin/projects, refreshed six arch docs,
+    validated 26 features, committed `93fd26f` and pushed it. Pensieve renders the result.
+    Commits are authored `argus sweep <sweep@citadel.local>` (`SWEEP_GIT_NAME`/`SWEEP_GIT_EMAIL`
+    change that). `.state/last-api-sync.md` stays modified: `argus commit` stages only ledgers,
+    threads and docs.
+  - Left: after 24 hours, check that ticks keep landing in `d0nwong/argus` and that no commit
+    appeared that the sweep did not make (criterion 5), and run `just release-dry` (criterion 6).
 - [ ] **T19: Archive and trim.** Archive `d0nwong/foundry` and `d0nwong/pensieve` with a
   pointer README, and delete argus's code from `d0nwong/argus` in one commit.
   - Verify: the sweep still ticks after the trim.
