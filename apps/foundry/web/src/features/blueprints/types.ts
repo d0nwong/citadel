@@ -24,6 +24,14 @@ export const TASK_PLACEHOLDER = '{{task}}'
  */
 export const DEFAULT_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000001'
 
+/**
+ * "Spec → QA", seeded by migration 0013 (CTD-65): spec the ticket, test the
+ * spec, implement to green, verify and report — each step a `/forge-*` skill
+ * the image ships. Not the ignite default; a ticket without acceptance
+ * criteria stops it at the first step by design.
+ */
+export const QA_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000003'
+
 export interface BlueprintStep {
   name: string
   model: StepModel

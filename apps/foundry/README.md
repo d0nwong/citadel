@@ -197,8 +197,12 @@ that's the whole point of a sandbox. Pass `--safe` to get normal prompting back.
 
 Forges ship a `/work` skill (`image/skills/work/SKILL.md`): give it a Linear ticket
 and it reads the requirement, plans first, branches from main, verifies against the
-existing code, and finishes with a PR. Skills are re-synced into `~/.claude/skills`
-on every container start, so `foundry recreate` picks up new versions.
+existing code, and finishes with a PR. Five more, `forge-spec` → `forge-plan` →
+`forge-test` → `forge-implement` → `forge-verify`, are the steps of the **Spec → QA**
+blueprint below: each is one role, written for a headless run, adapted from the
+[agent-skills](https://github.com/addyosmani/agent-skills) plugin. Skills are re-synced
+into `~/.claude/skills` on every container start, so `foundry recreate` picks up new
+versions — and a job forge is built fresh, so `foundry build` is what ships a change.
 
 ## Fan-out
 
@@ -347,12 +351,13 @@ job's forge runs `claude -p` once per step, all in one session (`--session-id` t
 **Blueprints** page. A job snapshots the steps it ran, so editing or deleting a
 blueprint never rewrites history.
 
-`just migrate` seeds two, and both are yours to edit:
+`just migrate` seeds three, and all are yours to edit:
 
 | blueprint | steps | for |
 |---|---|---|
 | **Plan → Execute** | plan · fable · high → execute · sonnet | anything. Read and plan first, implement second — what the ignite dialog starts on |
 | **Backfill Tests** | survey · fable · high → write-tests · sonnet → verify · sonnet | tests over logic that already exists: characterise the behaviour, cover it, then check the tests would actually fail on a regression. Production code is off limits, so a bug it turns up is reported rather than fixed |
+| **Spec → QA** | spec · fable · high → plan · fable · high → test · sonnet → implement · sonnet → verify · opus · medium | a ticket with acceptance criteria. Each step is a `/forge-*` skill: write the criteria down as checks, plan and self-review, write one red test per criterion, implement to green, then review on five axes and put a QA report in the PR body. e2e tests are written for the repo's own runner and left to CI. A ticket with no checkable criteria stops at the first step with no changes, on purpose |
 
 The ignite dialog preselects **Plan → Execute** — planning first is the right default
 for a run nobody is watching. It matches on the seeded row's id, not its name, so
