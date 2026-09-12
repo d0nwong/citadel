@@ -179,7 +179,7 @@ export function JobDetailSheet({
                   className={cn(
                     taskCollapsible &&
                       (taskOpen
-                        ? 'scrollbar-none max-h-[30dvh] overflow-y-auto'
+                        ? 'scrollbar-thin max-h-[30dvh] overflow-y-auto'
                         : '[mask-image:linear-gradient(to_bottom,#000_80%,transparent)]'),
                   )}
                 >
@@ -306,7 +306,7 @@ export function JobDetailSheet({
 
             <div
               ref={logRef}
-              className="scrollbar-none min-h-0 flex-1 overflow-y-auto border-t border-hairline bg-iron-950/60 px-5 font-mono text-[11.5px] leading-[1.7] sm:px-6 sm:text-[12px]"
+              className="scrollbar-thin min-h-0 flex-1 overflow-y-auto border-t border-hairline bg-iron-950/60 px-5 font-mono text-[11.5px] leading-[1.7] sm:px-6 sm:text-[12px]"
             >
               {/* Padding lives here, not on the scroller: a sticky header pins
                   below the scroll container's own padding-top, which would leave
