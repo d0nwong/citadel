@@ -56,7 +56,7 @@ Fix in place when the fix is small and certain — a name, a missed null, a tigh
 
 Run the test, typecheck and lint commands from `~/spec.md` after the last edit of Step 2. Record the command and the result for each, in one line. For e2e tests the spec says are CI-run, prove they parse: the typecheck covers `.ts` specs; otherwise the runner's list mode (`playwright test --list`, `cypress` has none — read the file). Do not try to run them; the forge has no browser and no running app.
 
-Then read `git -C /work status --porcelain` once more and confirm every changed file belongs to the change.
+Then read `git -C /work status --porcelain` once more and confirm every changed file belongs to the change. A file the repo's lint-fix script touched and nothing else did — a rewrapped line, a reordered import, in code the plan never named — is reverted with `git checkout -- <file>`, and the report says so: the PR is the change, and a reviewer should not have to reason about a reformatted line in a file the ticket never mentioned.
 
 ## Step 4: Write ~/qa-report.md
 
@@ -115,6 +115,7 @@ End with the report's table and command line, the findings left for the reader w
 - A test left in place that would pass with the production change reverted
 - A PR body with a section left as the template's comment
 - A fix in this step that adds behaviour the spec did not ask for
+- A file in the diff that only the formatter touched, left in
 - A final message that ends on a question
 
 ## Verification
