@@ -23,17 +23,17 @@ auth what *flags:
 start:
     just up
     just foundry-bg
-    just sweep-on
 
 # Stop everything `just start` started; the data volumes stay.
 stop:
     -pkill -f 'vite dev --port 3777'
     just down
 
-# Start the stack, or the services named (the sweep stays off until cutover).
+# Start the stack, the sweep loop included, or only the services named.
 up *services:
     bun scripts/stack.ts preflight
-    docker compose --env-file .env up -d --wait --wait-timeout 120 {{services}}
+    bun scripts/stack.ts preflight-sweep
+    docker compose --env-file .env --profile sweep up -d --wait --wait-timeout 120 {{services}}
 
 # Stop the stack, the sweep included; the data volumes stay. It names the sweep's profile so
 # the sweep container goes down with the network it is attached to, rather than being left
@@ -100,7 +100,7 @@ sweep-once *args:
     bun scripts/stack.ts preflight-sweep "$@"
     docker compose --env-file .env --profile sweep run --rm sweep once "$@"
 
-# Start the sweep loop in the stack (cutover: the host's loop has to be stopped first).
+# Start only the sweep loop (`just up` already starts it with the stack).
 sweep-on:
     bun scripts/stack.ts preflight-sweep
     docker compose --env-file .env --profile sweep up -d --wait sweep

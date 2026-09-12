@@ -41,8 +41,9 @@ services:
       start_period: 5s
 
   sweep:
-    # argus's /sweep every SWEEP_INTERVAL seconds (infra/sweep/loop.sh). Behind a profile, so
-    # `just up` never starts a second writer; `just sweep-on` starts it, at cutover.
+    # argus's /sweep every SWEEP_INTERVAL seconds (infra/sweep/loop.sh). Behind a profile, so a
+    # bare `docker compose up` leaves it off; `just up` names the profile after its preflight
+    # checks that no host loop is already writing.
     profiles: [sweep]
     build:
       context: ../../..
