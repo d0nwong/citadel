@@ -19,14 +19,27 @@ check:
 auth what *flags:
     bun scripts/bootstrap.ts auth {{what}} {{flags}}
 
+# Start everything: the stack, Foundry web on this Mac, and the sweep loop.
+start:
+    just up
+    just foundry-bg
+    just sweep-on
+
+# Stop everything `just start` started; the data volumes stay.
+stop:
+    -pkill -f 'vite dev --port 3777'
+    just down
+
 # Start the stack, or the services named (the sweep stays off until cutover).
 up *services:
     bun scripts/stack.ts preflight
     docker compose --env-file .env up -d --wait --wait-timeout 120 {{services}}
 
-# Stop the stack; the data volumes stay.
+# Stop the stack, the sweep included; the data volumes stay. It names the sweep's profile so
+# the sweep container goes down with the network it is attached to, rather than being left
+# stopped on a network that no longer exists.
 down:
-    docker compose --env-file .env down
+    docker compose --env-file .env --profile sweep down
 
 # What the stack is running.
 ps:
@@ -69,6 +82,18 @@ setup-bb:
 # Foundry web on this Mac (needs just up postgres mcp).
 foundry *args:
     DATABASE_URL="$(bun scripts/stack.ts url)" bun run --filter foundry-web dev "$@"
+
+# The same, detached, logging to .foundry-dev.log; this is what `just start` runs.
+foundry-bg:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if pgrep -f 'vite dev --port 3777' >/dev/null; then
+      echo "foundry web is already on :3777"
+      exit 0
+    fi
+    DATABASE_URL="$(bun scripts/stack.ts url)" nohup bun run --filter foundry-web dev \
+      >.foundry-dev.log 2>&1 &
+    echo "foundry web starting on :3777 (log: .foundry-dev.log)"
 
 # One sweep tick in the stack, the way the loop runs it; --dry-run only pulls and changes nothing.
 sweep-once *args:

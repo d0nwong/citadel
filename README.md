@@ -17,10 +17,15 @@ Pensieve reads it, and writes it through the verbs.
 
 ```sh
 just bootstrap        # host tools, the one .env, dependencies; `just check` changes nothing
-just up               # the stack: the MCP gateway, postgres, Pensieve
-just foundry          # Foundry's web UI on this Mac
+just start            # everything: the stack, Foundry's web UI, the sweep loop
+just stop             # everything back down; the data volumes stay
 just                  # every recipe, with what it does
 ```
+
+`just start` is the three pieces in order, and each runs on its own when you want only one:
+`just up` for the containers (the MCP gateway, postgres, Pensieve), `just foundry` for the web
+UI on this Mac, `just sweep-on` for the loop. The sweep sits behind a compose profile so that
+`just up` alone can never start a second writer on the data repo.
 
 One `.env` at the root holds every key, and `.env.example` lists them.
 `just auth linear|slack|claude|foundry-api|gateway` fills one in without echoing it.

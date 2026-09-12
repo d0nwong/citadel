@@ -90,6 +90,7 @@ reaching the gateway through the published host port.
 just                      # list recipes with their docs
 just bootstrap            # prereqs, .env from .env.example (prompts, mode 600), deps, data clone
 just check                # what bootstrap would do, changing nothing
+just start | stop         # everything, in order; the pieces below run on their own too
 just up | down | logs [svc] | ps
 just auth linear|slack|claude|foundry-api   # write one key into .env
 just migrate              # Foundry's drizzle migrations
