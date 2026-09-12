@@ -204,11 +204,13 @@ blueprint below: each is one role, written for a headless run, adapted from the
 `forge-plan`'s slot in **Bug → Fix** — reproduce, localise, reduce, name the root
 cause — and on its own is what a follow-up job runs on a failed check. `forge-simplify` is
 **Simplify**'s middle step: what a refactor ticket names, removed one change at a time with
-the suite as the oracle. `forge-api` is not a
-step but a lens: the contract checks `forge-plan` and `forge-verify` read when a change
-touches a route, a validation schema, the published API document or a generated client
-type — who consumes it, additive or not, one error shape — and skip when it does not, so a
-frontend-only ticket pays nothing for it. Skills are re-synced
+the suite as the oracle. `forge-api` and `forge-ui` are not
+steps but lenses: checklists `forge-plan` and `forge-verify` read when a change touches a
+contract (a route, a validation schema, the published API document, a generated client
+type — who consumes it, additive or not, one error shape) or UI (a component, a route's
+rendered output, a token file — the repo's shared component over a hand-rolled one, its
+tokens over literals, its design doc's rules, the accessibility floor, the states), and
+skip when it does not, so a ticket that touches neither pays nothing for them. Skills are re-synced
 into `~/.claude/skills` on every container start, so `foundry recreate` picks up new
 versions — and a job forge is built fresh, so `foundry build` is what ships a change.
 

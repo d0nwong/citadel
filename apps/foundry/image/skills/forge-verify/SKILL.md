@@ -46,6 +46,7 @@ Label every finding: **Critical:** (must not merge), unlabelled (required before
 4. **Security** — input validated at the boundary, queries parameterised, no secret in code or log
 5. **Performance** — no N+1, no unbounded fetch, nothing in a hot path the spec did not ask for
 6. **API** — only when the diff touches a contract (a route's params or body, a validation schema, the API document, a generated client type, an exported interface): apply `~/.claude/skills/forge-api/SKILL.md` and carry its one line into the report. A diff touching no contract gets no API row
+7. **UI** — only when the diff touches UI (a component, a route's rendered output, a stylesheet or token file, a story): apply `~/.claude/skills/forge-ui/SKILL.md` — shared component over hand-rolled, tokens over literals, the doc's rules, the accessibility floor, the states — and carry its one line into the report. Its fixes touch only UI files the diff already changed; a diff touching no UI gets no UI row
 
 Lead with what matters; name the move for a structural finding. Fix in place when small and certain; report otherwise. Add no behaviour.
 
@@ -64,6 +65,7 @@ Not covered: <criterion and why>
 Findings fixed here / left for the reader: <one line each, labelled>
 Tests tightened or removed: <name, what it was not catching>
 API: <only when the diff touched a contract>
+UI: <only when the diff touched UI>
 Assumptions carried: <the spec's and the plan's>
 ```
 
@@ -92,7 +94,7 @@ End with the commit subject, the report's table and Commands line, the findings 
 - A criterion with no row, or a report that says "tests pass" with no command and no count
 - A test left that would pass with the change reverted
 - A file only the formatter touched, left in
-- An API row for a diff that touched no contract
+- An API row for a diff that touched no contract, or a UI row for a diff that touched no UI
 
 ## Verification
 
