@@ -251,8 +251,11 @@ waits on a `GH_TOKEN`. Criterion 5 is cutover, below.
     Commits are authored `argus sweep <sweep@citadel.local>` (`SWEEP_GIT_NAME`/`SWEEP_GIT_EMAIL`
     change that). `.state/last-api-sync.md` stays modified: `argus commit` stages only ledgers,
     threads and docs.
+  - Criterion 6 done 2026-09-12: `just release-dry` proposes one pull request — argus 0.1.0 →
+    0.2.0, foundry 1.4.0 → 1.5.0 (continuing from its imported tag), pensieve 0.1.0 → 0.2.0. It
+    reads citadel, so it uses gh's token: `.env`'s GH_TOKEN is scoped to the data repo alone.
   - Left: after 24 hours, check that ticks keep landing in `d0nwong/argus` and that no commit
-    appeared that the sweep did not make (criterion 5), and run `just release-dry` (criterion 6).
+    appeared that the sweep did not make (criterion 5).
 - [ ] **T19: Archive and trim.** Archive `d0nwong/foundry` and `d0nwong/pensieve` with a
   pointer README, and delete argus's code from `d0nwong/argus` in one commit.
   - Verify: the sweep still ticks after the trim.

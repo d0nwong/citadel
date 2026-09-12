@@ -84,11 +84,12 @@ sweep-on:
 sweep-off:
     docker compose --env-file .env --profile sweep stop sweep
 
-# What release-please would propose (needs GH_TOKEN in .env or the environment).
+# What release-please would propose. It reads this repo, so it uses gh's own token — .env's
+# GH_TOKEN is scoped to the data repo alone, for the sweep's push.
 release-dry:
     bunx release-please@17 release-pr --dry-run --repo-url https://github.com/d0nwong/citadel \
       --config-file release-please-config.json --manifest-file .release-please-manifest.json \
-      --token "$(bun -e 'process.stdout.write(process.env.GH_TOKEN ?? "")')"
+      --token "$(gh auth token 2>/dev/null || bun -e 'process.stdout.write(process.env.GH_TOKEN ?? "")')"
 
 # Cutover only: point this machine's argus, accio, foundry and global skills at citadel.
 link *args:
