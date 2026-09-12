@@ -147,7 +147,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
               'Error',
             ),
             '401': errorResponses.unauthorized,
-            '409': jsonResponse('`ticketId` already has a job under a different (or no) idempotency key. The holder is named when it still exists.', 'Conflict'),
+            '409': jsonResponse('`ticketId` already has a job under a different (or no) idempotency key. The holder is named when it still exists. A cancelled job releases its claim, so its ticket can be triggered again.', 'Conflict'),
             '422': jsonResponse(`\`${IDEMPOTENCY_HEADER}\` was already used with a different body. Nothing was queued.`, 'Error'),
             '502': jsonResponse('Linear could not be reached to fetch the `ticketId` before the insert. Nothing was queued; retry with the same idempotency key.', 'Error'),
             '503': jsonResponse(

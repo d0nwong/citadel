@@ -163,7 +163,8 @@ export const jobs = foundry.table(
   (t) => [
     index('jobs_created_at_idx').on(t.createdAt.desc()),
     index('jobs_status_idx').on(t.status),
-    uniqueIndex('jobs_ticket_id_unique').on(t.ticketId),
+    /* The ticket claim: one live job per ticket. A cancelled job has let go. */
+    uniqueIndex('jobs_ticket_id_unique').on(t.ticketId).where(sql`status <> 'cancelled'`),
     uniqueIndex('jobs_idempotency_key_unique').on(t.idempotencyKey),
   ],
 )

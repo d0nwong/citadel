@@ -209,7 +209,8 @@ issue with its own `LINEAR_API_KEY` and composes the brief from its body: `<KEY>
 the ticket is then **claimed in Linear** — assigned to the key's user and moved to the
 team's started state (the one named "In Progress" when there are several) — in claim
 order: the row insert first (the unique `ticket_id` index is the claim, hence the
-`409`), the Linear write second, ignition last. The claim is awaited before the `202` and
+`409`; it excludes cancelled jobs, so cancelling one releases its ticket), the Linear
+write second, ignition last. The claim is awaited before the `202` and
 recorded as a `sys` line in the job's log; if the write fails the job stays queued, the
 failure is an `err` line, and the ticket's state is yours to fix by hand — never a status
 change on the job. The fetch happens *before* the insert, so an unknown `ticketId` (`400`)

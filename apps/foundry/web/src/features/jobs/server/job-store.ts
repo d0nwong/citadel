@@ -6,7 +6,7 @@
  * milliseconds and optional fields rather than nullable timestamptz columns.
  */
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, inArray, lt, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, lt, ne, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobs, repos } from '@/db/schema'
 import { getBlueprintRow, toSnapshot } from '@/features/blueprints/server/blueprint-store'
@@ -143,7 +143,8 @@ export async function lastBaseBranchByRepo(): Promise<Map<string, string>> {
  * Shared insert behind `createJob` and `createJobIdempotent`. With a
  * `ticketId` the insert doubles as the trigger API's claim on the ticket:
  * `jobs_ticket_id_unique` is the arbiter, and losing the race comes back as
- * null rather than an error.
+ * null rather than an error. The index is partial — a cancelled job is no
+ * longer a claim, so its ticket can be triggered again.
  * An idempotency key (LIA-91) rides the same mechanism on
  * `jobs_idempotency_key_unique`: two concurrent first requests with one key
  * insert one row, and the loser is told null so it can re-read the winner.
@@ -217,9 +218,16 @@ export async function createJobIdempotent(input: NewJobInput, ticketId?: string)
   return insertJob(input, ticketId)
 }
 
-/** The job holding a ticket's claim, if any — how the API answers a 409. */
+/**
+ * The job holding a ticket's claim, if any — how the API answers a 409. A
+ * cancelled job has released it (the unique index excludes them), so it is
+ * never the holder even though it keeps its `ticketId` for the record.
+ */
 export async function getJobByTicketId(ticketId: string): Promise<JobRow | undefined> {
-  const [row] = await db.select().from(jobs).where(eq(jobs.ticketId, ticketId))
+  const [row] = await db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.ticketId, ticketId), ne(jobs.status, 'cancelled')))
   return row
 }
 
@@ -307,7 +315,9 @@ export async function followUpJob(sourceId: string): Promise<Job> {
 
 /**
  * No-op unless the job is still open — a settled job keeps its outcome.
- * Returns whether this call made the transition, like `settleJob`.
+ * Returns whether this call made the transition, like `settleJob`. A
+ * cancelled job also releases its ticket claim: `jobs_ticket_id_unique`
+ * excludes cancelled rows, so the ticket can be triggered again.
  */
 export async function cancelJob(id: string): Promise<boolean> {
   const [row] = await db
