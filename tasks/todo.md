@@ -232,13 +232,20 @@ waits on a `GH_TOKEN`. Criterion 5 is cutover, below.
 
 ## Phase 7: Cutover (ask before each step)
 
-- [ ] **T18: Cut the sweep over.** `just link` is written and dry-run checked (9 links: bun's
-  global `argus` link, `~/.local/bin/foundry`, and seven skills; unrelated skills untouched, a
-  real directory of the same name reported rather than overwritten). Needs a `GH_TOKEN` first, or
-  the sweep ticks without pushing. Then Stop the host `bun run sweep`, push `d0nwong/argus`, then
-  `docker compose --profile sweep up -d sweep`.
-  - Verify: after 24 hours, ticks are visible in `d0nwong/argus`, `~/git/argus` has no new
-    commits, and Pensieve is current (success criterion 5).
+- [ ] **T18: Cut the sweep over.** In order, one at a time:
+  1. `just auth gh` — a fine-grained GitHub token, contents: write on the data repo alone.
+     Without it the sweep commits locally and never pushes.
+  2. `just auth bitbucket` — the account's email and a read-only Atlassian API token
+     (`read:repository:bitbucket`, `read:pipeline:bitbucket`) for the product repos and pipelines.
+  3. Stop the host loop if it runs (`pgrep -f 'loop 15m /sweep'`), and push `~/git/argus`.
+  4. Make sure the old containers stay stopped: citadel's stack wants 9090, 5432 and 3778.
+  5. `just link` — the 9 links (dry-run checked: bun's global argus link, foundry, seven skills).
+  6. `just up` — gateway, postgres, Pensieve.
+  7. `just foundry` — Foundry's web UI on this Mac.
+  8. `just sweep-on` — the loop, one tick per SWEEP_INTERVAL against `ARGUS_DATA_DIR`.
+  - Verify: after 24 hours, ticks are visible in `d0nwong/argus`, `~/git/argus` has no commit the
+    sweep did not make, and Pensieve is current (success criterion 5). Then `just release-dry`
+    proposes only what changed (criterion 6).
 - [ ] **T19: Archive and trim.** Archive `d0nwong/foundry` and `d0nwong/pensieve` with a
   pointer README, and delete argus's code from `d0nwong/argus` in one commit.
   - Verify: the sweep still ticks after the trim.
