@@ -46,7 +46,7 @@ A red test goes green by changing the code, with one exception: it asserts somet
 
 ## Step 4: The whole suite, typecheck and lint, once each
 
-Run the three commands from `~/spec.md` once each and fix what they find; a command runs again only after a fix it forced. Whether a failure is pre-existing is under the spec's Assumptions: read it, never stash and rerun. A lint that auto-fixes runs when the repo's own scripts do. Then read `git diff` once as a reviewer: every changed file is one the plan named or a compile error forced; no debug line, no leftover fixture.
+Run the three commands from `~/spec.md` once each and fix what they find; a command runs again only after a fix it forced. Whether a failure is pre-existing is under the spec's Assumptions: read it, never stash and rerun. A full-suite failure in a file the diff does not touch gets exactly one rerun: a rerun that passes makes it a flake, named in the Finish with both results so the next step carries it into the report, and the suite does not run a third time for it; a rerun that fails again is not a flake and is handled as any failure. A lint that auto-fixes runs when the repo's own scripts do. Then read `git diff` once as a reviewer: every changed file is one the plan named or a compile error forced; no debug line, no leftover fixture.
 
 ## Finish
 
