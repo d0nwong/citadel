@@ -38,6 +38,7 @@ import { appendLogs } from './job-logs'
 import * as store from './job-store'
 import { claimTicket, fetchIssue, linearApiKey, ticketBrief } from './linear-link'
 import type { LinearIssue } from './linear-link'
+import { FOLLOW_UPS } from '../types'
 import type { Job, JobDetail, NewJobInput } from '../types'
 
 /** Injectable edges, so the tests need neither ~/.foundry/env, docker nor Linear. */
@@ -204,7 +205,11 @@ export const JobSchema = z.object({
   branch: z.string().describe('The branch the job pushes: `foundry/<slug>-<short id>`.'),
   forge: z.string(),
   blueprint: BlueprintSnapshotSchema.optional().describe('The blueprint that ran, snapshotted — absent for a plain single-step job.'),
-  sourceJobId: z.string().optional().describe("Set when this job addresses review comments on the source job's PR."),
+  sourceJobId: z.string().optional().describe("Set when this job continues the source job's PR — a follow-up; `followUp` says what it answers."),
+  followUp: z
+    .enum(FOLLOW_UPS)
+    .optional()
+    .describe("What a follow-up answers: `review` — the PR's review comments are its task; `check` — a failed check's log is. Absent on a job that is not a follow-up."),
   ticketId: z.string().optional().describe('Linear issue identifier (e.g. LIA-52) when a ticket was claimed for this job.'),
   callbackUrl: z.string().optional().describe('Where the host POSTs the signed `job.settled` event — set by the trigger API only.'),
   status: JobStatusSchema,

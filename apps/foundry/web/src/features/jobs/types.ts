@@ -6,6 +6,13 @@ export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancell
 /** Where the pipeline is. The container owns agent+commit; the host owns the rest. */
 export type JobStep = 'prepare' | 'agent' | 'commit' | 'push' | 'pr' | 'done'
 
+/**
+ * What a follow-up job answers (CTD-170): `review` — the PR's review comments
+ * are its task; `check` — a failed check's log is, triaged by `forge-debug`.
+ */
+export type FollowUp = 'review' | 'check'
+export const FOLLOW_UPS = ['review', 'check'] as const satisfies ReadonlyArray<FollowUp>
+
 export type LogStream = 'sys' | 'out' | 'tool' | 'err'
 
 export interface LogLine {
@@ -24,8 +31,10 @@ export interface Job {
   forge: string
   /** The blueprint that ran, snapshotted — absent for a plain single-step job. */
   blueprint?: BlueprintSnapshot
-  /** Set when this job addresses review comments on the source job's PR. */
+  /** Set when this job continues the source job's PR — see `followUp` for what it answers. */
   sourceJobId?: string
+  /** Which trigger a follow-up answers; absent on a job that is not one. */
+  followUp?: FollowUp
   /** Linear issue identifier (e.g. LIA-52) when the trigger API queued this job from a ticket. */
   ticketId?: string
   /** Where the host POSTs a signed `job.settled` event — set by the trigger API only. */

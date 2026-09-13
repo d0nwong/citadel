@@ -1,9 +1,10 @@
-# Todo: CTD-171 — forge-ui lens
+# Todo: CTD-170 — PR watcher
 
 Plan: `tasks/plan.md`.
 
-- [x] **T1: `forge-ui` skill.** Inventory and doc first; adherence, accessibility floor, states, render anti-patterns; one line back.
-- [x] **T2: Roles read it.** `forge-plan` Step 1 (UI criterion → the lens, inventory in the plan); `forge-verify` Step 3 axis 7 (UI), report line.
-- [x] **T3: Repo notes + README.** Ticket's rules into alden-portal-fe notes where DESIGN.md lacks them.
-- [x] **Checks.** (62 image.) `bun test apps/foundry/image` (lens detected, read by two roles).
-- [ ] **T4: Prove on a job.** AC1 (hand-rolled UI flagged and replaced or listed), AC2 (on-system UI: no findings), AC3 (no non-UI file edited by the lens).
+- [x] **T1: Schema + migrations.** `jobs.follow_up`, `pr_watches`, the "Fix failing check" seed.
+- [x] **T2: PR readers.** GitHub via `gh`, Bitbucket via REST; failed-step logs; review bodies in the comments block.
+- [x] **T3: Watcher.** Tick, transaction, loop, `FOUNDRY_PR_POLL` / `FOUNDRY_PR_RETRIES` / `FOUNDRY_PR_WATCH=0`.
+- [x] **T4: Runner + store.** Check task at preflight; `followUpJob(kind, reason)`; rerun and purge.
+- [x] **T5: UI, docs, tests.** Detail sheet trigger label; web README; watcher, parser and seed tests.
+- [ ] **T6: Prove on a PR.** AC1 (a review launches one job), AC2 (a red check launches one with the log), AC3 (no double launch), AC4 (retries stop and the ledger says so).

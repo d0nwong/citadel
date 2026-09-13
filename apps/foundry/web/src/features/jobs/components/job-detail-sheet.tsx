@@ -161,6 +161,7 @@ export function JobDetailSheet({
                 {job.sourceJobId && (
                   <span className="font-mono text-[11px] text-txt-faint" title={job.sourceJobId}>
                     follow-up of {shortId(job.sourceJobId)}
+                    {job.followUp && ` · ${job.followUp === 'check' ? 'failing check' : 'review'}`}
                   </span>
                 )}
                 {job.callbackUrl && (

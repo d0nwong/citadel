@@ -9,6 +9,7 @@
 import { sql } from 'drizzle-orm'
 import { index, integer, jsonb, pgSchema, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import type { BlueprintSnapshot, BlueprintStep } from '../features/blueprints/types'
+import type { FollowUp } from '../features/jobs/types'
 import type { RepoRef } from '../features/repos/types'
 
 export const foundry = pgSchema('foundry')
@@ -111,6 +112,13 @@ export const jobs = foundry.table(
      */
     sourceJobId: uuid('source_job_id'),
     /**
+     * What a follow-up answers (CTD-170): `review` — the PR's review comments
+     * are its task; `check` — a failed check's log is. Null on a job that is
+     * not a follow-up. The detail sheet's action queues a `review` one; the
+     * PR watcher queues either.
+     */
+    followUp: text('follow_up').$type<FollowUp>(),
+    /**
      * Linear issue identifier (e.g. LIA-52) when the job was queued from a
      * ticket over `POST /api/jobs`. Unique among non-cancelled rows — the
      * insert IS the claim on the ticket, taken before any Linear write; NULL
@@ -173,6 +181,29 @@ export const jobs = foundry.table(
     uniqueIndex('jobs_idempotency_key_unique').on(t.idempotencyKey),
   ],
 )
+
+/**
+ * The PR watcher's memory (CTD-170): one row per pull request a settled job
+ * opened. Not a column on `jobs`, because several jobs share one PR — the root
+ * and every follow-up — and the questions the watcher asks are about the PR:
+ * which review has already launched a job, which head commit's failed checks
+ * have, how many launches are spent. Keyed by URL because that is what the
+ * job rows carry; `job_id` is the root job, for the ledger lines, and has no
+ * FK for the reason `source_job_id` has none.
+ */
+export const prWatches = foundry.table('pr_watches', {
+  prUrl: text('pr_url').primaryKey(),
+  jobId: uuid('job_id').notNull(),
+  /** Reviews submitted at or before this moment are done with — acted on, or older than the PR. */
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull(),
+  /** The head commit whose failed checks already launched a follow-up. */
+  checkedSha: text('checked_sha'),
+  /** Automatic follow-ups launched for this PR, bounded by FOUNDRY_PR_RETRIES. */
+  followUps: integer('follow_ups').notNull().default(0),
+  /** Why watching ended — the PR merged or closed, or the retry budget spent. Null while watching. */
+  stopped: text('stopped'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 /*
  * A job's log lines are deliberately not here (LIA-18). They are append-only,

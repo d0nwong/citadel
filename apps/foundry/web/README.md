@@ -110,6 +110,24 @@ Ignite ─► insert row (queued, with a per-job callback token)
   and hands them to the forge as its task; the workspace checks out origin's tip of
   the PR branch, and the finishing push updates the existing PR instead of opening a
   new one. The container still holds no credentials.
+- The **PR watcher** (`server/pr-watcher.ts`, CTD-170) launches those follow-ups by
+  itself. Once per `FOUNDRY_PR_POLL` seconds (default 60) it reads every open PR a root
+  job opened in the last fortnight — `gh pr view --json` for GitHub, Bitbucket's REST API
+  under `bb`'s stored credentials for Bitbucket — and queues a follow-up on a
+  **submitted review** (commented or changes requested; a pending one is a reviewer
+  mid-thought, an approval asks for nothing) or on **failed checks**, once every check on
+  the head commit has finished. A review follow-up is the job above. A check follow-up
+  (`follow_up = 'check'`) runs the seeded "Fix failing check" blueprint — `/forge-debug`
+  alone — and preflight hands it the failing steps' logs (`gh run view --job
+  --log-failed`, or the Pipelines step logs) instead of comments; a check that went green
+  meanwhile fails preflight with nothing to fix. `pr_watches` remembers, per PR, the
+  newest review answered and the head commit whose checks were, and moves that mark in
+  the transaction that inserts the follow-up, so one review or one red commit never
+  launches two jobs — nor anything while a follow-up is still open on the PR. After
+  `FOUNDRY_PR_RETRIES` automatic follow-ups (default 3) the watch stops with an `err`
+  line on the root job; a merged or closed PR stops it too. Queuing "Address PR comments"
+  by hand starts the count over. `FOUNDRY_PR_WATCH=0` turns it off. It starts with the
+  runner's first reconcile — the first time the ledger is opened after a restart.
 - The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the container's
   server route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
   (`server/job-events.ts`) and hands the pipeline back to the host on commit.
@@ -158,7 +176,8 @@ Ignite ─► insert row (queued, with a per-job callback token)
   restart re-adopts jobs whose containers are still running.
 - Knobs: `FOUNDRY_MAX_JOBS` (default 3), `FOUNDRY_TIMEOUT` (seconds, default 1800),
   `FOUNDRY_CALLBACK_BASE`, `FOUNDRY_BB_REVIEWERS=1` to add Bitbucket default
-  reviewers. Old workspaces: `foundry jobs prune [--days 7]`.
+  reviewers, `FOUNDRY_PR_POLL` (seconds, default 60), `FOUNDRY_PR_RETRIES` (default 3),
+  `FOUNDRY_PR_WATCH=0` to switch the PR watcher off. Old workspaces: `foundry jobs prune [--days 7]`.
 
 ## Trigger a job over HTTP
 

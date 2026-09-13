@@ -1,35 +1,46 @@
-# Plan: forge-ui, the design-language lens (CTD-171, slice 5 of CTD-65)
+# Plan: the PR watcher (CTD-170, slice 6 of CTD-65)
 
-Ticket: CTD-171. Stacked on CTD-175 (PR #13).
+Ticket: CTD-170. Branches from main after CTD-171 (PR #16).
 
 ## Overview
 
-The second lens, in `forge-api`'s shape: read by `forge-plan` when a criterion touches UI
-(before slicing, so the plan builds with the inventory) and by `forge-verify` when the diff
-touches UI (as an axis, findings labelled like the rest). Its sources are the repo's own:
-the component inventory the `ui:list` script prints, the design doc (`DESIGN.md`), and the
-repo notes. It checks design-system adherence (shared component over hand-rolled, tokens
-over literals, the doc's rules), the accessibility floor, empty/loading/error states, and
-the render anti-patterns that need no browser (unbounded lists, missing keys, work in
-render, layout thrash). Not a blueprint step: the ticket's Background supersedes its Scope
-line on that, as the lens pattern did for `forge-api`.
+The follow-up job exists (LIA-40): a row with `source_job_id` checks out the PR branch and is
+handed the PR's review comments as its task. This slice adds the trigger and the second task
+body. A host-side watcher polls every open PR a settled job opened — `gh` for GitHub,
+Bitbucket's REST API with `bb`'s stored credentials for Bitbucket — and launches the
+follow-up itself: on a **submitted review** (never a pending one), with the comments as the
+task as today; on a **failed check** once the checks have settled, with the failing steps'
+logs as the task and `forge-debug` as the one blueprint step, so the log is triaged rather
+than pattern-matched.
 
 ## Architecture decisions
 
-- **Chosen from the diff.** "Touches UI" is defined once in the lens: a component, a
-  route's rendered output, a stylesheet or token file, a story.
-- **The inventory is the repo's, read at run time.** `ui:list` when `package.json` has it;
-  otherwise the shared components directory. A repo with neither gets the doc-only checks
-  and a line saying the inventory was not found.
-- **Fixes stay in UI files.** The lens's fixes in verify are the small kind (a shared
-  component swapped in for a hand-rolled one, a token for a literal), only in the files the
-  diff already touched, never a non-UI file (AC3).
+- **One row per PR, not per job.** `pr_watches` (keyed by PR URL) remembers which review
+  has already launched a job (`reviewed_at`), which head commit's failed checks have
+  (`checked_sha`), how many launches are spent (`follow_ups`) and why watching ended
+  (`stopped`). A job cannot hold this: the root and its follow-ups share the PR.
+- **Dedup is the watermark, written in the same transaction as the follow-up row.** A
+  crash between the two loses a trigger rather than doubling it.
+- **Fresh at launch, like comments.** The watcher decides; the runner's preflight fetches
+  the failing logs when the forge lights. A check that went green meanwhile fails preflight
+  with "nothing to fix" instead of lighting a forge.
+- **Bounded per PR.** `FOUNDRY_PR_RETRIES` (default 3) automatic follow-ups per PR, then
+  the watch stops and the root job's log says so. A manual "Address PR comments" resets it.
+- **Ledger visibility without new statuses.** The follow-up row carries `follow_up`
+  (`review` | `check`), its task label names the trigger, and its first log line says
+  which review or check fired; the root job logs each launch.
+- **Bitbucket has no submitted review.** Every comment is posted on its own, so a new
+  comment is the trigger there; pipelines report as commit statuses, and a failed
+  Bitbucket Pipelines step's log is fetched through the same REST API.
 
 ## Task list
 
-- T1: `forge-ui` skill (lens anatomy, ~1,100 words).
-- T2: `forge-plan` Step 1 reads it for a UI criterion (replacing the bare `ui:list` line);
-  `forge-verify` Step 3 gains the UI axis alongside API.
-- T3: the ticket's gathered rules into alden-portal-fe's repo notes (where DESIGN.md
-  does not already carry them); README paragraph.
-- T4: `foundry build`; prove on one Spec → QA job on an alden UI ticket with criteria.
+- T1: schema — `jobs.follow_up`, `pr_watches`; migration 0017; seed "Fix failing check"
+  (`/forge-debug {{task}}`, one step) as migration 0018.
+- T2: `forge-pr.ts` — PR state readers (`gh pr view --json`, Bitbucket REST), failed-log
+  fetch (`gh run view --job --log-failed`, Pipelines step log), review bodies in comments.
+- T3: `pr-watcher.ts` — the tick, the transaction, the loop; hooked from `ensureReconciled`.
+- T4: runner — preflight composes the check task; launch passes it; store's `followUpJob`
+  takes a kind and a reason; rerun copies the kind; purge drops orphaned watches.
+- T5: UI — the detail sheet names the trigger; README knobs; tests for the tick, the
+  parsers and the seed.

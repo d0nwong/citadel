@@ -6,15 +6,18 @@
  * milliseconds and optional fields rather than nullable timestamptz columns.
  */
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, inArray, lt, ne, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, lt, ne, notExists, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { jobs, repos } from '@/db/schema'
+import { jobs, prWatches, repos } from '@/db/schema'
 import { getBlueprintRow, toSnapshot } from '@/features/blueprints/server/blueprint-store'
+import { CHECK_BLUEPRINT_ID, CHECK_BLUEPRINT_STEPS } from '@/features/blueprints/types'
 import { appendLogs, deleteLogs, readLogs } from './job-logs'
 import { shortId } from '../types'
-import type { Job, JobCursor, JobDetail, JobPage, JobStatus, JobStep, NewJobInput } from '../types'
+import type { FollowUp, Job, JobCursor, JobDetail, JobPage, JobStatus, JobStep, NewJobInput } from '../types'
 
 export type JobRow = typeof jobs.$inferSelect
+/** The handle `db.transaction` hands its callback, or `db` itself — for writes a caller may wrap. */
+export type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 /** Statuses a job can still move out of. Every settle is guarded on these. */
 const OPEN: Array<JobStatus> = ['queued', 'running']
@@ -39,6 +42,7 @@ function toJob(row: JobRow): Job {
     forge: row.forge,
     blueprint: row.blueprint ?? undefined,
     sourceJobId: row.sourceJobId ?? undefined,
+    followUp: row.followUp ?? undefined,
     ticketId: row.ticketId ?? undefined,
     callbackUrl: row.callbackUrl ?? undefined,
     status: row.status,
@@ -267,6 +271,7 @@ export async function rerunJob(sourceId: string): Promise<Job> {
       blueprintId: src.blueprintId,
       blueprint: src.blueprint,
       sourceJobId: src.sourceJobId,
+      followUp: src.sourceJobId ? src.followUp : null,
       prUrl: src.sourceJobId ? src.prUrl : null,
     })
     .returning()
@@ -278,39 +283,71 @@ export async function rerunJob(sourceId: string): Promise<Job> {
   return toJob(row)
 }
 
+/** What each follow-up kind's task label opens with; stripped before re-prefixing a follow-up of a follow-up. */
+const FOLLOW_UP_LABEL: Record<FollowUp, string> = { review: 'Address PR comments', check: 'Fix failing check' }
+const LABEL_PREFIX = /^(Address PR comments|Fix failing check) — /
+
+/**
+ * The follow-up row itself (LIA-40, CTD-170), for the detail sheet's action
+ * and the PR watcher alike. It copies the source's branch *exactly* — updating
+ * a PR means pushing to the branch it was opened from — and its `prUrl`, so
+ * the follow-up stays runnable after the source is purged. Neither the
+ * comments nor the failing log are stored: the runner fetches them fresh at
+ * launch, the way repo notes are read. A `review` follow-up is one bare step;
+ * a `check` one runs the seeded "Fix failing check" blueprint — `forge-debug`
+ * alone — snapshotted like any other, or its built-in step list if the row
+ * has been deleted. `reason` is the follow-up's first log line: which review
+ * or check it answers.
+ */
+export async function insertFollowUp(tx: Db, src: JobRow, kind: FollowUp, reason: string): Promise<Job> {
+  const bp = kind === 'check' ? await getBlueprintRow(CHECK_BLUEPRINT_ID) : undefined
+  const fallback = kind === 'check' ? { id: CHECK_BLUEPRINT_ID, name: 'Fix failing check', steps: CHECK_BLUEPRINT_STEPS } : null
+  const [row] = await tx
+    .insert(jobs)
+    .values({
+      // One prefix, naming this follow-up's trigger — never stacked on an earlier one's.
+      task: `${FOLLOW_UP_LABEL[kind]} — ${src.task.replace(LABEL_PREFIX, '')}`,
+      repo: src.repo,
+      repoId: src.repoId,
+      baseBranch: src.baseBranch,
+      branch: src.branch,
+      forge: src.forge,
+      blueprintId: bp?.id ?? null,
+      blueprint: bp ? toSnapshot(bp) : fallback,
+      sourceJobId: src.sourceJobId ?? src.id,
+      followUp: kind,
+      prUrl: src.prUrl,
+    })
+    .returning()
+
+  const via = row.blueprint ? ` via blueprint "${row.blueprint.name}" (${row.blueprint.steps.length} steps)` : ''
+  await appendLogs(row.id, [{ stream: 'sys', text: `queued on ${row.forge}${via} — ${reason}` }])
+  return toJob(row)
+}
+
 /**
  * Queue a follow-up that addresses review comments on a settled job's PR
- * (LIA-40). The row copies the source's branch *exactly* — updating a PR means
- * pushing to the branch it was opened from — and its `prUrl`, so the follow-up
- * stays runnable after the source is purged. The comments themselves are not
- * stored: the runner fetches them fresh at launch, the way repo notes are read.
- * No blueprint — addressing feedback is a single bare step.
+ * (LIA-40) — the detail sheet's action. Queuing one by hand also restarts the
+ * PR watcher for that PR (CTD-170): its retry count goes back to zero, a
+ * stopped watch resumes, and its review mark moves to now — the person has
+ * read the reviews there are, so the watcher must not answer them a second
+ * time once this job has pushed.
  */
 export async function followUpJob(sourceId: string): Promise<Job> {
   const src = await getJobRow(sourceId)
   if (!src) throw new Error('that job no longer exists')
   if (OPEN.includes(src.status)) throw new Error('that job is still running — wait for its PR first')
   if (!src.prUrl) throw new Error('that job has no pull request to address comments on')
+  const prUrl = src.prUrl
 
-  const [row] = await db
-    .insert(jobs)
-    .values({
-      // Following up on a follow-up keeps its label — no stacked prefixes.
-      task: src.sourceJobId ? src.task : `Address PR comments — ${src.task}`,
-      repo: src.repo,
-      repoId: src.repoId,
-      baseBranch: src.baseBranch,
-      branch: src.branch,
-      forge: src.forge,
-      sourceJobId: src.sourceJobId ?? src.id,
-      prUrl: src.prUrl,
-    })
-    .returning()
-
-  await appendLogs(row.id, [
-    { stream: 'sys', text: `queued on ${row.forge} — addressing PR comments of ${shortId(src.id)}` },
-  ])
-  return toJob(row)
+  return db.transaction(async (tx) => {
+    const now = new Date()
+    await tx
+      .update(prWatches)
+      .set({ followUps: 0, stopped: null, reviewedAt: now, updatedAt: now })
+      .where(eq(prWatches.prUrl, prUrl))
+    return insertFollowUp(tx, src, 'review', `addressing PR comments of ${shortId(src.id)}`)
+  })
 }
 
 /**
@@ -337,6 +374,9 @@ export async function cancelJob(id: string): Promise<boolean> {
 export async function purgeJobs(): Promise<number> {
   const rows = await db.delete(jobs).where(notInArray(jobs.status, OPEN)).returning({ id: jobs.id })
   await deleteLogs(rows.map((r) => r.id))
+  // A watch outlives its jobs only as clutter: with no row left carrying the
+  // PR, nothing would ever be launched for it or read it.
+  await db.delete(prWatches).where(notExists(db.select({ id: jobs.id }).from(jobs).where(eq(jobs.prUrl, prWatches.prUrl))))
   return rows.length
 }
 
