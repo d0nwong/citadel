@@ -247,7 +247,10 @@ this path); the caller decided that by sending it.
 **Context.** Whichever way the task arrived, before the container starts the host appends
 a `## Context` section to what the container is handed (CTD-190); the row's `task` stays
 verbatim. It carries the title and description of every Linear issue the task links
-(a ticket brief's own issue is already the task, so it is skipped), then the contents of
+(a ticket brief's own issue is already the task, so it is skipped); then, when the ticket's
+Linear parent has a filed revision in citadel-data (`ARGUS_DATA_DIR`, default
+`~/git/citadel-data`), that revision's spec and the arch doc of every feature it names
+(CTD-195), read on the host and never mounted, never a ledger; then the contents of
 every repo file the task names in backticks, read from the job's clone at the base commit.
 A partial path or a bare file name counts when exactly one tracked file matches; a path
 that matches nothing is listed as missing. Issues and files are carried whole up to 64 KB,

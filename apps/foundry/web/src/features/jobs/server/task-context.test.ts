@@ -107,7 +107,7 @@ describe('hydrateTask', () => {
     const out = await hydrateTask(task, work, linear())
     expect(out.task.startsWith(`${task}\n\n## Context\n`)).toBe(true)
     expect(out.task).toContain(`### \`${MAPPER}\`\n\`\`\`ts\n${FILES[MAPPER]}\`\`\``)
-    expect(out.log[0]).toEqual({ stream: 'sys', text: expect.stringContaining('0 issue(s) and 1 file(s) added') })
+    expect(out.log[0]).toEqual({ stream: 'sys', text: expect.stringContaining('0 issue(s), 0 spec(s), 0 arch doc(s) and 1 file(s) added') })
   })
 
   test('AC2: a named path absent at the base is listed as missing', async () => {
@@ -180,5 +180,122 @@ describe('hydrateTask', () => {
     const out = await hydrateTask(`See \`${MAPPER}\`.`, path.join(work, 'nowhere'), linear())
     expect(out.task).toBe(`See \`${MAPPER}\`.`)
     expect(out.log.some((l) => l.stream === 'err' && l.text.startsWith("context: could not list the repo's files"))).toBe(true)
+  })
+})
+
+/**
+ * The revision source (CTD-195) against a temp citadel-data: a ticket whose
+ * Linear parent has a filed revision is handed the revision's specs and the
+ * features' arch docs, in that order, before the files; every way of having no
+ * revision adds nothing and says why in one sys line; nothing but the
+ * revision and the arch docs is read.
+ */
+describe('the revision source', () => {
+  let data = ''
+  const SPEC = '---\nfeature: foundry/jobs\nrevised_by: CTD-900\nnext_id: 3\n---\n# Spec: Jobs\n\n## Criteria\n- S-1 — a job runs.\n'
+  const ARCH = '# Jobs — Architecture\n\nThe host clones; the container runs.\n'
+  const put = async (rel: string, body: string) => {
+    await mkdir(path.dirname(path.join(data, rel)), { recursive: true })
+    await writeFile(path.join(data, rel), body)
+  }
+  const rev = (key: string, status: string, features: Array<string>) =>
+    JSON.stringify({ features, key, slug: key.toLowerCase(), status, tickets: [] })
+
+  beforeAll(async () => {
+    data = await mkdtemp(path.join(tmpdir(), 'foundry-data-'))
+    await put('revisions/CTD-900/revision.json', rev('CTD-900', 'filed', ['foundry/jobs', 'foundry/ghost']))
+    await put('revisions/CTD-900/specs/foundry/jobs.md', SPEC)
+    await put('revisions/CTD-800/revision.json', rev('CTD-800', 'draft', ['foundry/jobs']))
+    await put('revisions/CTD-700/revision.json', rev('CTD-700', 'filed', ['../../etc', 'alden/alden-portal/admin/usage']))
+    await put('revisions/CTD-700/specs/alden/alden-portal/admin/usage.md', '# Spec: Usage\n')
+    await put('revisions/CTD-600/revision.json', rev('CTD-600', 'filed', ['foundry/jobs']))
+    await put('revisions/CTD-600/specs/foundry/jobs.md', `# Spec: big\n${'s'.repeat(CONTEXT_CAP)}\n`)
+    await put('foundry/features/jobs/docs/arch.md', ARCH)
+    await put('foundry/features/jobs/ledger.json', '{"secret":"LEDGER-MUST-NOT-LEAK"}')
+    await put('alden/alden-portal/features/admin/usage/docs/arch.md', '# Usage — Architecture\n')
+  })
+  afterAll(async () => {
+    await rm(data, { force: true, recursive: true })
+  })
+
+  /** A Linear that knows each id in `parents`, with that parent (or none), and fails on CTD-503. */
+  const deps = (parents: Record<string, string | undefined>, over: Partial<ContextDeps> = {}, calls: Array<string> = []): ContextDeps => ({
+    dataDir: data,
+    fetchIssue: async (_key, id) => {
+      calls.push(id)
+      if (id === 'CTD-503') {
+        throw new Error('HTTP 503')
+      }
+      if (!(id in parents)) {
+        return null
+      }
+      const parent = parents[id]
+      return { ...issue(id), ...(parent ? { parentKey: parent } : {}) }
+    },
+    linearKey: 'lin_api_test',
+    ...over,
+  })
+  const brief = (id: string, body = `Fix \`${MAPPER}\`.`) => `${id}: title\nhttps://linear.app/acme/issue/${id}/slug\n\n${body}`
+
+  test('AC1: a brief whose parent has a filed revision gets its specs, then its arch docs, before the files', async () => {
+    const calls: Array<string> = []
+    const out = await hydrateTask(brief('CTD-901'), work, deps({ 'CTD-901': 'CTD-900' }, {}, calls))
+    expect(calls).toEqual(['CTD-901'])
+    const spec = out.task.indexOf(`### Spec: foundry/jobs\n\`\`\`md\n${SPEC}\`\`\``)
+    const arch = out.task.indexOf(`### Arch: foundry/jobs\n\`\`\`md\n${ARCH}\`\`\``)
+    const file = out.task.indexOf(`### \`${MAPPER}\``)
+    expect(spec).toBeGreaterThan(0)
+    expect(arch).toBeGreaterThan(spec)
+    expect(file).toBeGreaterThan(arch)
+    expect(out.task).toContain('- Spec: foundry/ghost — revisions/CTD-900 has no spec for it')
+    expect(out.task).toContain('- Arch: foundry/ghost — no arch doc')
+    expect(out.log[0]?.text).toContain('0 issue(s), 1 spec(s), 1 arch doc(s) and 1 file(s) added')
+    expect(out.log).toContainEqual({ stream: 'sys', text: 'context: revisions/CTD-900 — 2 feature(s)' })
+  })
+
+  test('AC1: a task that links the ticket takes its parent from the issue already fetched', async () => {
+    const calls: Array<string> = []
+    const out = await hydrateTask('Implement https://linear.app/acme/issue/CTD-901/slug', work, deps({ 'CTD-901': 'CTD-900' }, {}, calls))
+    expect(calls).toEqual(['CTD-901'])
+    expect(out.task.indexOf('### CTD-901: CTD-901 title')).toBeLessThan(out.task.indexOf('### Spec: foundry/jobs'))
+  })
+
+  test('AC2: no parent, no revision, a draft, no data dir, no key, a failed fetch: nothing added, one sys line says which', async () => {
+    const plain = (id: string) => brief(id, 'No files named.')
+    const cases: Array<[string, ContextDeps, string]> = [
+      ['CTD-902', deps({ 'CTD-902': undefined }), 'context: no revision — CTD-902 has no parent'],
+      ['CTD-903', deps({ 'CTD-903': 'CTD-999' }), 'context: no revision for CTD-999'],
+      ['CTD-801', deps({ 'CTD-801': 'CTD-800' }), 'context: no revision — revisions/CTD-800 is draft, not filed'],
+      ['CTD-901', deps({ 'CTD-901': 'CTD-900' }, { dataDir: '/nowhere/citadel-data' }), 'context: no revision — no citadel-data at /nowhere/citadel-data'],
+      ['CTD-901', deps({ 'CTD-901': 'CTD-900' }, { dataDir: undefined }), 'context: no revision — no ARGUS_DATA_DIR on the host'],
+      ['CTD-901', deps({ 'CTD-901': 'CTD-900' }, { linearKey: undefined }), "context: revision not checked — no Linear key to read CTD-901's parent"],
+      ['CTD-503', deps({}), 'context: revision not checked — CTD-503 not fetched: HTTP 503'],
+    ]
+    for (const [id, d, line] of cases) {
+      const out = await hydrateTask(plain(id), work, d)
+      expect(out.task).toBe(plain(id))
+      expect(out.log).toEqual([{ stream: 'sys', text: line }])
+    }
+  })
+
+  test('AC3: an issue with no parent carries none; a task about no ticket says nothing about revisions', async () => {
+    const out = await hydrateTask('Tidy `docs/notes.md`.', work, deps({}))
+    expect(out.log.some((l) => l.text.includes('revision'))).toBe(false)
+  })
+
+  test('AC5: a key that climbs out of citadel-data is refused, a two-level app resolves, and no ledger is read', async () => {
+    const out = await hydrateTask(brief('CTD-701'), work, deps({ 'CTD-701': 'CTD-700' }))
+    expect(out.task).toContain('### Spec: alden/alden-portal/admin/usage')
+    expect(out.task).toContain('### Arch: alden/alden-portal/admin/usage\n```md\n# Usage — Architecture\n```')
+    expect(out.task).toContain('- `../../etc` — not a feature key')
+    const again = await hydrateTask(brief('CTD-901'), work, deps({ 'CTD-901': 'CTD-900' }))
+    expect(again.task).not.toContain('LEDGER-MUST-NOT-LEAK')
+  })
+
+  test('the cap still cuts whole blocks and never truncates a spec', async () => {
+    const out = await hydrateTask(brief('CTD-601'), work, deps({ 'CTD-601': 'CTD-600' }))
+    expect(out.task).not.toContain('s'.repeat(1000))
+    expect(out.task).toContain('- Spec: foundry/jobs — cut at the 64.0 KB context cap')
+    expect(out.task).toContain('- Arch: foundry/jobs — cut at the 64.0 KB context cap')
   })
 })

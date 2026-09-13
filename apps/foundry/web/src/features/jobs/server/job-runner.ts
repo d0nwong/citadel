@@ -11,6 +11,7 @@
  */
 import { execFile, spawn } from 'node:child_process'
 import { mkdir, readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { repoNotes } from '@/features/repos/server/repo-scan'
@@ -38,6 +39,8 @@ const MAX_JOBS = Number(process.env.FOUNDRY_MAX_JOBS ?? 3)
 const JOB_TIMEOUT = Number(process.env.FOUNDRY_TIMEOUT ?? 1800)
 /** Escape hatch: keep every workspace on disk, even a succeeded job's. */
 const KEEP_WORKSPACES = process.env.FOUNDRY_KEEP_WORKSPACES === '1'
+/** citadel-data, where a revision's spec and a feature's arch doc are read from for a task's context (CTD-195); the container never sees it. */
+const ARGUS_DATA_DIR = process.env.ARGUS_DATA_DIR ?? path.join(homedir(), 'git', 'citadel-data')
 /** Where forge-run.sh lives on the host — bind-mounted, so edits need no image rebuild. */
 const RUNNER_SCRIPT = path.resolve(process.cwd(), '..', 'image', 'forge-run.sh')
 /** foundry's canonical PR template, bind-mounted for the same reason. Bitbucket has no repo template convention, so this keeps PR bodies one shape on every forge. */
@@ -507,7 +510,7 @@ export async function startJob(id: string): Promise<void> {
     let task = brief?.task
     if (brief === undefined) {
       try {
-        const hydrated = await hydrateTask(job.task, work, { fetchIssue, linearKey: await linearApiKey() })
+        const hydrated = await hydrateTask(job.task, work, { dataDir: ARGUS_DATA_DIR, fetchIssue, linearKey: await linearApiKey() })
         await appendLogs(id, hydrated.log)
         task = hydrated.task
       } catch (e) {

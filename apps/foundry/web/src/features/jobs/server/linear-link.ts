@@ -125,6 +125,8 @@ export interface LinearIssue {
   /** description ?? '' — the job brief, all sections. */
   description: string
   teamId: string
+  /** The parent issue's identifier, when it has one — how a job finds the revision it was cut from (CTD-195). */
+  parentKey?: string
 }
 
 /**
@@ -137,11 +139,19 @@ export interface LinearIssue {
 export async function fetchIssue(apiKey: string, identifier: string): Promise<LinearIssue | null> {
   try {
     const found = await gql<{
-      issue: { id: string; identifier: string; title: string; url: string; description: string | null; team: { id: string } } | null
-    }>(apiKey, 'query($id: String!) { issue(id: $id) { id identifier title url description team { id } } }', { id: identifier })
+      issue: {
+        id: string
+        identifier: string
+        title: string
+        url: string
+        description: string | null
+        team: { id: string }
+        parent: { identifier: string } | null
+      } | null
+    }>(apiKey, 'query($id: String!) { issue(id: $id) { id identifier title url description team { id } parent { identifier } } }', { id: identifier })
     if (!found.issue) return null
-    const { description, team, ...rest } = found.issue
-    return { ...rest, description: description ?? '', teamId: team.id }
+    const { description, team, parent, ...rest } = found.issue
+    return { ...rest, description: description ?? '', teamId: team.id, ...(parent ? { parentKey: parent.identifier } : {}) }
   } catch (e) {
     if (/not found/i.test(e instanceof Error ? e.message : String(e))) return null
     throw e
