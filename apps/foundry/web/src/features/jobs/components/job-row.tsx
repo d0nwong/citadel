@@ -10,8 +10,22 @@ import type { Job } from '../types'
 /** How long a job has run, or ran: from its start (else its queueing) to its finish (else now). */
 export const elapsedOf = (job: Job) => (job.finishedAt ?? Date.now()) - (job.startedAt ?? job.createdAt)
 
-/** One job in the ledger's full grid — a root job, the head of its group. */
-export function JobRow({ job, onOpen, index }: { job: Job; onOpen: () => void; index: number }) {
+/**
+ * One job in the ledger's full grid — a root job, the head of its group.
+ * `joined` is set when follow-ups hang below it (CTD-183): the row gives up its
+ * bottom border to the group and starts the tree's rail at its status dot.
+ */
+export function JobRow({
+  job,
+  onOpen,
+  index,
+  joined = false,
+}: {
+  job: Job
+  onOpen: () => void
+  index: number
+  joined?: boolean
+}) {
   const running = job.status === 'running'
 
   return (
@@ -19,7 +33,10 @@ export function JobRow({ job, onOpen, index }: { job: Job; onOpen: () => void; i
       type="button"
       onClick={onOpen}
       style={{ animationDelay: `${Math.min(index, 12) * 26}ms` }}
-      className="group animate-rise-in relative flex w-full flex-col gap-1.5 border-b border-hairline bg-iron-900 px-4 py-3 text-left transition-colors hover:bg-iron-850 lg:grid lg:grid-cols-[128px_minmax(0,1fr)_240px_104px_84px_100px_24px] lg:items-center lg:gap-4 lg:px-6 lg:py-3.5"
+      className={cn(
+        'group animate-rise-in relative flex w-full flex-col gap-1.5 bg-iron-900 px-4 py-3 text-left transition-colors hover:bg-iron-850 lg:grid lg:grid-cols-[128px_minmax(0,1fr)_240px_104px_84px_100px_24px] lg:items-center lg:gap-4 lg:px-6 lg:py-3.5',
+        !joined && 'border-b border-hairline',
+      )}
     >
       <span
         className={cn(
@@ -27,6 +44,13 @@ export function JobRow({ job, onOpen, index }: { job: Job; onOpen: () => void; i
           running && 'scale-y-100',
         )}
       />
+      {joined && (
+        // The rail's first stretch, from the status dot down to the row's edge.
+        <span
+          aria-hidden
+          className="pointer-events-none absolute bottom-0 left-[18.5px] top-[22px] w-px bg-iron-700 lg:left-[26.5px] lg:top-1/2"
+        />
+      )}
       {running && (
         <span className="pointer-events-none absolute inset-y-0 left-0 w-24 overflow-hidden">
           <span className="animate-heat-sweep block h-full w-8 bg-gradient-to-r from-transparent via-ember/10 to-transparent" />
