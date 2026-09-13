@@ -302,6 +302,12 @@ Two things worth knowing:
 Job workspaces accumulate under `~/.foundry/jobs/`; `foundry jobs prune [--days 7]`
 clears old ones. See `web/README.md` for the full pipeline.
 
+Job containers share two named volumes, `foundry-pnpm-store` (pnpm's content-addressed
+store) and `foundry-npm-cache` (npm's cache), so a job's install links packages an earlier
+job already fetched instead of downloading them again; `node_modules` itself stays per
+workspace. `docker volume rm foundry-pnpm-store foundry-npm-cache` clears them, and the
+next job downloads in full.
+
 A job's log is a JSONL file — `~/.foundry/logs/<id>.jsonl`, one `{t, stream, text}`
 record per line, the way Claude Code keeps a session under `~/.claude/projects/`. So
 the sheet's output is also `tail -f`-able, `grep`-able and `jq`-able from a terminal:

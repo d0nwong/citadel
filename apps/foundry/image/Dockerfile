@@ -71,5 +71,12 @@ ENV SHELL=/bin/bash \
     PATH=/home/dev/.npm-global/bin:/home/dev/.local/bin:$PATH \
     IS_SANDBOX=1
 
+# The pnpm store and npm cache at fixed paths, so the named volumes a job
+# container mounts there (job-runner.ts) and pnpm agree whatever the XDG env
+# says. Created here, owned by $USER, so a fresh volume inherits that ownership
+# instead of docker's root-owned mountpoint.
+ENV npm_config_store_dir=/home/dev/.local/share/pnpm/store
+RUN mkdir -p /home/dev/.local/share/pnpm/store /home/dev/.npm
+
 ENTRYPOINT ["/usr/local/bin/box-init"]
 CMD ["sleep", "infinity"]
