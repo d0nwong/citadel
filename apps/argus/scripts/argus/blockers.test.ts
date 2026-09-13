@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { reconcileAll, reconcileLedger } from "./blockers.ts";
 import type { Deploy } from "./deploy.ts";
 import { pipelineFor } from "./deploy.ts";
-import { type Ledger, parseLedger } from "./schema.ts";
+import type { TicketState, TicketStates } from "./linear.ts";
+import { type Evidence, type Ledger, parseLedger } from "./schema.ts";
 import { validateLedger } from "./validate.ts";
 import { readLedger } from "./write.ts";
 
@@ -79,7 +80,7 @@ describe("a ticket with no asks is done once its landing is live", () => {
     l.landings.push(landing("fe", "fe#437", 437, "ALD-45"));
     const r = await reconcileLedger(l, async () => null);
     expect(r.cleared).toEqual(["ALD-45: landed as fe#437 and is live, done"]);
-    expect(r.ledger.tickets[1]!.done).toEqual({ at: "2026-09-12", evidence: [{ kind: "pr", repo: "fe", number: 437, url: expect.stringContaining("437") }] });
+    expect(r.ledger.tickets[1]!.settled).toEqual({ outcome: "done", at: "2026-09-12", evidence: [{ kind: "pr", repo: "fe", number: 437, url: expect.stringContaining("437") }] });
     expect(validateLedger(r.ledger, { prev: l, actor: "model" })).toEqual([]);
     expect((await reconcileLedger(r.ledger, async () => null)).cleared).toEqual([]);
   });
@@ -92,9 +93,9 @@ describe("a ticket with no asks is done once its landing is live", () => {
     // the fixture's deploy predates the merge, so the date falls back to today, as it does for an ask
     const r = await reconcileLedger(l, async () => live, new Date("2026-09-13T10:00:00Z"));
     expect(r.cleared).toEqual(["ALD-46: landed as be#780 and is live, done"]);
-    expect(r.ledger.tickets[1]!.done?.at).toBe("2026-09-13");
-    expect(r.ledger.tickets[2]!.done).toBeUndefined();
-    expect(r.ledger.tickets[0]!.done).toBeUndefined();
+    expect(r.ledger.tickets[1]!.settled?.at).toBe("2026-09-13");
+    expect(r.ledger.tickets[2]!.settled).toBeUndefined();
+    expect(r.ledger.tickets[0]!.settled).toBeUndefined();
   });
   test("a ticket blocker waiting on an ask-less ticket clears in the same run", async () => {
     const l = await valid();
@@ -102,6 +103,45 @@ describe("a ticket with no asks is done once its landing is live", () => {
     l.landings.push(landing("fe", "fe#437", 437, "ALD-40"));
     const r = await reconcileLedger(l, async () => null, new Date("2026-09-13T10:00:00Z"));
     expect(r.cleared).toEqual(["ALD-40: landed as fe#437 and is live, done", "ALD-41: ALD-40 is done"]);
+  });
+});
+
+describe("Linear settles a ticket and the asks it serves", () => {
+  const url = "https://linear.app/x/issue/ALD-52";
+  const linear = (state: TicketState["state"]): TicketStates => (key) =>
+    key === "ALD-52" ? ({ state, at: "2026-09-12T10:00:00Z", name: state === "done" ? "Done" : "Canceled", url } as TicketState) : { state: "unknown" };
+  const withTicket = async () => {
+    const l = await valid();
+    l.asks[1]!.ticket = "ALD-52";
+    l.tickets.push({ key: "ALD-52", title: "[FE] billing fields", asks: ["A-2"], blockers: [], ready: true });
+    return l;
+  };
+  test("Done closes the ticket and its open ask with the ticket as evidence; the result validates and a second run is quiet", async () => {
+    const l = await withTicket();
+    const r = await reconcileLedger(l, async () => null, new Date("2026-09-13T10:00:00Z"), linear("done"));
+    expect(r.cleared).toEqual(["ALD-52: Done in Linear, done", "A-2: ALD-52 is Done, closed"]);
+    const evidence: Evidence[] = [{ kind: "ticket", key: "ALD-52", url }];
+    expect(r.ledger.tickets[1]!.settled).toEqual({ outcome: "done", at: "2026-09-12", evidence });
+    expect(r.ledger.asks[1]!.status).toBe("closed");
+    expect(r.ledger.asks[1]!.history.at(-1)).toEqual({ at: "2026-09-12", status: "closed", evidence });
+    expect(validateLedger(r.ledger, { prev: l, actor: "model" })).toEqual([]);
+    expect((await reconcileLedger(r.ledger, async () => null, undefined, linear("done"))).cleared).toEqual([]);
+  });
+  test("Canceled drops both; open and unknown move nothing", async () => {
+    const l = await withTicket();
+    const r = await reconcileLedger(l, async () => null, undefined, linear("canceled"));
+    expect(r.cleared).toEqual(["ALD-52: Canceled in Linear, dropped", "A-2: ALD-52 is Canceled, dropped"]);
+    expect(r.ledger.tickets[1]!.settled?.outcome).toBe("dropped");
+    expect(r.ledger.asks[1]!.status).toBe("dropped");
+    expect(validateLedger(r.ledger, { prev: l, actor: "model" })).toEqual([]);
+    expect((await reconcileLedger(l, async () => null, undefined, linear("open"))).cleared).toEqual([]);
+    expect((await reconcileLedger(l, async () => null)).cleared).toEqual([]);
+  });
+  test("a settled date before the ask was made falls back to today", async () => {
+    const l = await withTicket();
+    l.asks[1]!.at = "2026-09-13T12:00:00Z";
+    const r = await reconcileLedger(l, async () => null, new Date("2026-09-14T10:00:00Z"), linear("done"));
+    expect(r.ledger.asks[1]!.history.at(-1)!.at).toBe("2026-09-14");
   });
 });
 

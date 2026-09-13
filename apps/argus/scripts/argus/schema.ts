@@ -95,12 +95,15 @@ export type Ticket = {
   ready: boolean;
   sent?: { at: string; repo: string; job?: string }[];
   /**
-   * For a ticket that serves no ask: the landing that carried its key went live. Set by
-   * `reconcile`, the only way such a ticket is ever done. A ticket with asks is done when
-   * they are all settled, and never needs this.
+   * How the ticket finished, set by `reconcile`: `done` when Linear says so or a landing
+   * carrying its key went live, `dropped` when Linear canceled it. The asks it serves are
+   * settled the same way at the same time. A ticket with asks that all closed is done
+   * without this.
    */
-  done?: Cleared;
+  settled?: TicketSettled;
 };
+
+export type TicketSettled = Cleared & { outcome: "done" | "dropped" };
 
 export type Landing = {
   at: string;
@@ -350,9 +353,10 @@ function ticket(v: unknown, path: string): Ticket {
       return { at: str(so, "at", p), repo: str(so, "repo", p), ...(job !== undefined ? { job } : {}) };
     });
   }
-  if (o.done !== undefined) {
-    const d = obj(o.done, `${path}.done`);
-    t.done = { at: str(d, "at", `${path}.done`), evidence: evidenceList(d, "evidence", `${path}.done`) };
+  if (o.settled !== undefined) {
+    const p = `${path}.settled`;
+    const s = obj(o.settled, p);
+    t.settled = { outcome: oneOf(s, "outcome", ["done", "dropped"] as const, p), at: str(s, "at", p), evidence: evidenceList(s, "evidence", p) };
   }
   return t;
 }

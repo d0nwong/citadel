@@ -42,6 +42,7 @@ import {
   type StoryText,
   type Ticket,
   ticketDone,
+  ticketDropped,
 } from "#/lib/ledger";
 import { EvidenceLine, Status } from "./bits";
 
@@ -615,7 +616,7 @@ export function Asks({
   );
 }
 
-/** done once its work is finished, sent once Foundry has it, else ready or blocked */
+/** done or dropped once settled, sent once Foundry has it, else ready or blocked */
 function TicketState({
   ledger,
   ticket: t,
@@ -623,6 +624,9 @@ function TicketState({
   ledger: Ledger;
   ticket: Ticket;
 }) {
+  if (ticketDropped(t)) {
+    return <Tag tone="hold">dropped</Tag>;
+  }
   if (ticketDone(ledger, t)) {
     return <Tag tone="superseded">done</Tag>;
   }

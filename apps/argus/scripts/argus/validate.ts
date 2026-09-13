@@ -92,7 +92,7 @@ function userEvidence(l: Ledger): Map<string, Evidence> {
   });
   l.tickets.forEach((t, i) => {
     t.blockers.forEach((b, j) => b.cleared && walk(b.cleared.evidence, `ledger.tickets[${i}].blockers[${j}].cleared.evidence`));
-    if (t.done) walk(t.done.evidence, `ledger.tickets[${i}].done.evidence`);
+    if (t.settled) walk(t.settled.evidence, `ledger.tickets[${i}].settled.evidence`);
   });
   for (const k of Object.keys(l.story) as (keyof Ledger["story"])[]) walk(l.story[k].evidence, `ledger.story.${k}.evidence`);
   return m;
@@ -178,10 +178,12 @@ export function validateLedger(input: unknown, opts: ValidateOptions = {}): Prob
         noAssumption(b.cleared.evidence, `${path}.blockers[${j}].cleared.evidence`, out);
       }
     });
-    if (t.done) {
-      hasEvidence(t.done.evidence, `${path}.done.evidence`, out);
-      noAssumption(t.done.evidence, `${path}.done.evidence`, out);
-      if (t.asks.length > 0) out.push({ path: `${path}.done`, rule: "a ticket with asks is done through them, not through done" });
+    if (t.settled) {
+      hasEvidence(t.settled.evidence, `${path}.settled.evidence`, out);
+      noAssumption(t.settled.evidence, `${path}.settled.evidence`, out);
+      for (const a of l.asks)
+        if ((t.asks.includes(a.id) || a.ticket === t.key) && a.status !== "closed" && a.status !== "dropped")
+          out.push({ path: `${path}.settled`, rule: `${t.key} is settled but ${a.id} is still ${a.status}` });
     }
     const derived = t.blockers.every((b) => b.cleared !== null);
     if (t.ready !== derived)

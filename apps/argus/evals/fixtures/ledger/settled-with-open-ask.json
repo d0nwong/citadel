@@ -174,7 +174,7 @@
       "key": "ALD-41",
       "title": "[FE] Due header follows the payment term",
       "asks": [
-        "A-1"
+        "A-2"
       ],
       "blockers": [
         {
@@ -208,14 +208,14 @@
         }
       ],
       "ready": false,
-      "done": {
+      "settled": {
+        "outcome": "done",
         "at": "2026-09-12",
         "evidence": [
           {
-            "kind": "pr",
-            "repo": "fe",
-            "number": 437,
-            "url": "https://bitbucket.org/x/pull-requests/437"
+            "kind": "ticket",
+            "key": "ALD-41",
+            "url": "https://linear.app/x/issue/ALD-41"
           }
         ]
       }

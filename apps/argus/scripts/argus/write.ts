@@ -73,6 +73,7 @@ export function describeDiff(prev: Ledger | null, next: Ledger): string[] {
   for (const t of next.tickets) {
     const was = pt.get(t.key);
     if (!was) out.push(`+ ${t.key} ${t.ready ? "ready" : "blocked"}`);
+    else if (!was.settled && t.settled) out.push(`${t.key} ${t.settled.outcome}`);
     else if (was.ready !== t.ready) out.push(`${t.key} ${t.ready ? "ready" : "blocked again"}`);
   }
   const pl = new Set((prev?.landings ?? []).map((l) => l.ref));
