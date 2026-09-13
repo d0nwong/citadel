@@ -1,6 +1,6 @@
 /** The detail beside the map: what the selected box is, what it reads and writes, and the rule it keeps. */
 
-import type { Item } from "./flow.ts";
+import type { BoxData } from "./graph.ts";
 import { Who } from "./nodes.tsx";
 
 function Paths({ label, items }: { label: string; items?: string[] }) {
@@ -21,20 +21,20 @@ function Paths({ label, items }: { label: string; items?: string[] }) {
   );
 }
 
-export function Panel({ item }: { item: Item }) {
+export function Panel({ box }: { box: BoxData }) {
   return (
     <aside aria-live="polite" className="panel">
-      <Who actor={item.actor} />
-      <h2>{item.path ?? item.title}</h2>
-      {item.path && <p className="also">{item.title}</p>}
-      <p>{item.body}</p>
+      <Who actor={box.actor} label={box.who} />
+      <h2>{box.path ?? box.title}</h2>
+      {box.path && <p className="also">{box.title}</p>}
+      <p>{box.body}</p>
       <dl>
-        <Paths items={item.reads} label="Reads" />
-        <Paths items={item.writes} label="Writes" />
-        {item.rule && (
+        <Paths items={box.reads} label="Reads" />
+        <Paths items={box.writes} label="Writes" />
+        {box.rule && (
           <div>
             <dt>Rule</dt>
-            <dd>{item.rule}</dd>
+            <dd>{box.rule}</dd>
           </div>
         )}
       </dl>

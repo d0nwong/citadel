@@ -9,10 +9,11 @@
   --dot: #bfc8d0;
   --edge: #7d8a96;
   --you: #b7791f;
-  --scope: #1f6f8b;
+  --claude: #1f6f8b;
   --argus: #5e7a2a;
   --linear: #5b57a6;
   --foundry: #b4502b;
+  --pensieve: #8a4f7d;
   --sweep: #3f7d5c;
   --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
   --body: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
@@ -30,10 +31,11 @@
     --dot: #26313b;
     --edge: #6f7d8a;
     --you: #e2a94b;
-    --scope: #56aecb;
+    --claude: #56aecb;
     --argus: #9dba5a;
     --linear: #a09cea;
     --foundry: #e98a5f;
+    --pensieve: #d38bc4;
     --sweep: #72c196;
     color-scheme: dark;
   }
@@ -48,10 +50,11 @@
   --dot: #26313b;
   --edge: #6f7d8a;
   --you: #e2a94b;
-  --scope: #56aecb;
+  --claude: #56aecb;
   --argus: #9dba5a;
   --linear: #a09cea;
   --foundry: #e98a5f;
+  --pensieve: #d38bc4;
   --sweep: #72c196;
   color-scheme: dark;
 }
@@ -113,11 +116,60 @@ h1 {
   max-width: 62ch;
   color: var(--muted);
 }
-.aside-head {
+.topbar {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 16px;
+}
+.brand span {
+  color: var(--muted);
+  font-weight: 600;
+}
+.bar-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+}
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tabs a {
+  display: block;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.tabs a:hover {
+  color: var(--ink);
+  background: var(--surface);
+}
+.tabs a[aria-current="page"] {
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.tabs a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
 }
 .legend {
   display: flex;
@@ -181,9 +233,6 @@ h1 {
   outline-offset: 1px;
 }
 @media (max-width: 720px) {
-  .aside-head {
-    align-items: flex-start;
-  }
   .legend {
     justify-content: flex-start;
   }

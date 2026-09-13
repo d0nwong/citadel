@@ -1,8 +1,8 @@
 {
-  "name": "scope-flow",
+  "name": "flows",
   "version": "0.1.0",
   "private": true,
-  "description": "The /scope flow as an interactive React Flow map: a ramble to a filed revision, its jobs, and the fold into a feature's live spec.",
+  "description": "Citadel's core flows as interactive React Flow maps: each flow is data in src/flows/, drawn the same way.",
   "type": "module",
   "scripts": {
     "dev": "vite --port ${PORT:-3779}",

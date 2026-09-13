@@ -2,8 +2,8 @@
 
 import { Handle, type NodeProps, type NodeTypes, Position } from "@xyflow/react";
 import type { CSSProperties } from "react";
-import { type Actor, ACTORS } from "./flow.ts";
-import type { ItemNode } from "./graph.ts";
+import type { BoxNode } from "./graph.ts";
+import { type Actor, ACTORS } from "./model.ts";
 
 const SIDES = [
   ["t", Position.Top],
@@ -21,19 +21,19 @@ function Handles() {
 
 export const tint = (actor: Actor) => ({ "--a": ACTORS[actor].color }) as CSSProperties;
 
-export function Who({ actor }: { actor: Actor }) {
+export function Who({ actor, label }: { actor: Actor; label: string }) {
   return (
     <div className="who" style={tint(actor)}>
       <i />
-      {ACTORS[actor].label}
+      {label}
     </div>
   );
 }
 
-function Step({ data }: NodeProps<ItemNode>) {
+function Step({ data }: NodeProps<BoxNode>) {
   return (
     <div className="box step" style={tint(data.actor)}>
-      <Who actor={data.actor} />
+      <Who actor={data.actor} label={data.who} />
       <b>{data.title}</b>
       <span className="sub">{data.sub}</span>
       <Handles />
@@ -41,7 +41,7 @@ function Step({ data }: NodeProps<ItemNode>) {
   );
 }
 
-function Gate({ data }: NodeProps<ItemNode>) {
+function Gate({ data }: NodeProps<BoxNode>) {
   return (
     <div className="box gate">
       <b>{data.title}</b>
@@ -51,7 +51,7 @@ function Gate({ data }: NodeProps<ItemNode>) {
   );
 }
 
-function File({ data }: NodeProps<ItemNode>) {
+function File({ data }: NodeProps<BoxNode>) {
   return (
     <div className={data.kind === "source" ? "box file source" : "box file"}>
       <div className="path">{data.path}</div>
@@ -61,7 +61,7 @@ function File({ data }: NodeProps<ItemNode>) {
   );
 }
 
-function Phase({ data }: NodeProps<ItemNode>) {
+function Phase({ data }: NodeProps<BoxNode>) {
   return (
     <div className="phase">
       <b>{data.title}</b>
