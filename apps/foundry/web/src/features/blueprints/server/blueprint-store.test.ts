@@ -1,6 +1,6 @@
 /**
  * The seeded skill blueprints — "Spec → QA" (migration 0013), "Bug → Fix"
- * (0014) and "Simplify" (0016) — against the real database: each is there under its fixed id, its
+ * (0014), "Simplify" (0016) and "Spec → PR" (0019) — against the real database: each is there under its fixed id, its
  * steps are ones the editor would accept, its history starts with a `seed`
  * revision, and seeding them did not move the ignite default. Needs the local
  * Postgres from `just up postgres`, migrated (`just migrate`). Reads only;
@@ -14,6 +14,7 @@ import {
   DEFAULT_BLUEPRINT_ID,
   QA_BLUEPRINT_ID,
   SIMPLIFY_BLUEPRINT_ID,
+  SPEC_PR_BLUEPRINT_ID,
 } from '../types'
 import { getBlueprintRow, listRevisions, validate } from './blueprint-store'
 
@@ -21,6 +22,7 @@ const SLASH_SKILL = /^\/forge-[a-z]+\b/
 
 const SEEDED = [
   { id: QA_BLUEPRINT_ID, name: 'Spec → QA', steps: ['spec', 'plan', 'test', 'implement', 'verify'] },
+  { id: SPEC_PR_BLUEPRINT_ID, name: 'Spec → PR', steps: ['spec', 'build', 'verify'] },
   { id: BUG_BLUEPRINT_ID, name: 'Bug → Fix', steps: ['spec', 'debug', 'test', 'implement', 'verify'] },
   { id: SIMPLIFY_BLUEPRINT_ID, name: 'Simplify', steps: ['spec', 'simplify', 'verify'] },
   { id: CHECK_BLUEPRINT_ID, name: 'Fix failing check', steps: ['debug'] },
@@ -72,8 +74,14 @@ test('the simplify blueprint runs spec in refactor mode, so the unchanged suite 
   expect(row?.steps[1].prompt).toMatch(/^\/forge-simplify\b/)
 })
 
+test('the spec → PR blueprint writes the tests red and implements them in one step, with no plan', async () => {
+  const row = await getBlueprintRow(SPEC_PR_BLUEPRINT_ID)
+  expect(row?.steps[1].prompt).toMatch(/^\/forge-test\b/)
+  expect(row?.steps[1].prompt).toContain('~/.claude/skills/forge-implement/SKILL.md')
+})
+
 test('seeding them left the ignite default on "Plan → Execute"', async () => {
   const row = await getBlueprintRow(DEFAULT_BLUEPRINT_ID)
   expect(row?.name).toBe('Plan → Execute')
-  expect(new Set([DEFAULT_BLUEPRINT_ID, QA_BLUEPRINT_ID, BUG_BLUEPRINT_ID, SIMPLIFY_BLUEPRINT_ID]).size).toBe(4)
+  expect(new Set([DEFAULT_BLUEPRINT_ID, QA_BLUEPRINT_ID, BUG_BLUEPRINT_ID, SIMPLIFY_BLUEPRINT_ID, SPEC_PR_BLUEPRINT_ID]).size).toBe(5)
 })

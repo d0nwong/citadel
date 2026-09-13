@@ -17,7 +17,7 @@ Every criterion becomes a test named after it that fails before the change and p
 
 ## Handoff
 
-Reads `~/spec.md` (Criteria, Commands, Assumptions) and `~/plan.md` (`Criteria → code`: where each test belongs). Stops with no edits on a `## Blocked` section. Writes tests, fixtures, factories and test config only. Production code does not change here, even to make a test compile: such a test is written anyway and recorded as does-not-compile-yet.
+Reads `~/spec.md` (Criteria, Commands, Assumptions) and `~/plan.md` when there is one (`Criteria → code`: where each test belongs). Stops with no edits on a `## Blocked` section. Writes tests, fixtures, factories and test config only. Production code does not change here, even to make a test compile: such a test is written anyway and recorded as does-not-compile-yet.
 
 ## Step 1: Find the runner before writing a line
 

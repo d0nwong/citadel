@@ -49,6 +49,13 @@ export const BUG_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000004'
 export const SIMPLIFY_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000005'
 
 /**
+ * "Spec → PR", seeded by migration 0019 (CTD-179): "Spec → QA" without the
+ * plan step — `forge-test` and `forge-implement` run back to back as one step,
+ * then the same verify. For a ticket a person could describe in a sentence.
+ */
+export const SPEC_PR_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000007'
+
+/**
  * "Fix failing check", seeded by migration 0018 (CTD-170): the one step the
  * PR watcher's check follow-up runs — `forge-debug` alone, handed the failing
  * steps' logs as its task, so the failure is reproduced and its cause fixed

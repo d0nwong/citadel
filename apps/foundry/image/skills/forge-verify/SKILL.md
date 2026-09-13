@@ -17,7 +17,7 @@ The reviewer's job, unattended: commit first, read the diff as a stranger, ask o
 
 ## Handoff
 
-Reads the diff against the base plus uncommitted changes, `~/spec.md`, `~/plan.md` (`Not doing`, `Root cause`), and the previous step's final message when there is one. Stops with no edits on a `## Blocked` section. Writes `~/qa-report.md`, `/work/.git/PR_BODY.md` (under `.git/` so the commit sweep cannot pick it up), and small fixes only — a name, a missed null, a tightened assertion.
+Reads the diff against the base plus uncommitted changes, `~/spec.md`, `~/plan.md` when there is one (`Not doing`, `Root cause`), and the previous step's final message when there is one. Stops with no edits on a `## Blocked` section. Writes `~/qa-report.md`, `/work/.git/PR_BODY.md` (under `.git/` so the commit sweep cannot pick it up), and small fixes only — a name, a missed null, a tightened assertion.
 
 ## Step 1: Commit first
 
