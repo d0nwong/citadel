@@ -73,3 +73,22 @@ describe("COMMITTABLE", () => {
       expect(COMMITTABLE.test(p)).toBe(false);
   });
 });
+
+describe("a fold's product.md", () => {
+  test("its deletion is committed; an edit to one is not", async () => {
+    for (const f of ["jobs", "blueprints"]) {
+      mkdirSync(join(ws, `foundry/features/${f}/docs`), { recursive: true });
+      writeFileSync(join(ws, `foundry/features/${f}/docs/product.md`), "# p\n");
+    }
+    Bun.spawnSync(["git", "add", "-A"], { cwd: ws });
+    Bun.spawnSync(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed"], { cwd: ws });
+    rmSync(join(ws, "foundry/features/jobs/docs/product.md"));
+    writeFileSync(join(ws, "foundry/features/blueprints/docs/product.md"), "# edited\n");
+    Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "t"], { cwd: ws });
+    const r = await commitRun("fold", { cwd: ws });
+    expect(r).toMatchObject({ committed: true, files: 1 });
+    expect(sh(["git", "show", "--stat", "--format=", "HEAD"])).toContain("jobs/docs/product.md");
+    expect(sh(["git", "status", "--porcelain"])).toContain("blueprints/docs/product.md");
+  });
+});

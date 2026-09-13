@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { reconcileAll, reconcileLedger } from "./blockers.ts";
 import type { Deploy } from "./deploy.ts";
 import { pipelineFor } from "./deploy.ts";
 import type { TicketState, TicketStates } from "./linear.ts";
-import { type Evidence, type Ledger, parseLedger } from "./schema.ts";
-import { validateLedger } from "./validate.ts";
+import { fileRevision, newRevision, readRevision } from "./revision.ts";
+import { emptyLedger, type Evidence, type Ledger, parseLedger, serializeLedger } from "./schema.ts";
+import { validateLedger, validateSpec } from "./validate.ts";
 import { readLedger } from "./write.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
@@ -183,5 +184,120 @@ describe("pipelineFor", () => {
     expect(await pipelineFor("x/y", "dev", "aaaaaaaaa", { fetch: fetchStub, auth: "Basic x" })).toBeNull();
     expect(await pipelineFor("x/y", "dev", "ffffffff", { fetch: fetchStub, auth: "Basic x" })).toBeNull();
     expect(await pipelineFor("x/y", "dev", "06d27c81", { fetch: fetchStub, auth: null })).toBeUndefined();
+  });
+});
+
+describe("reconcileAll settles revisions (CTD-196)", () => {
+  let ws: string;
+  const T = new Date("2026-09-14T10:00:00Z");
+  const at = (...p: string[]) => join(ws, ...p);
+  const spec = (feature: string) => `---\nfeature: ${feature}\nrevised_by: draft\nnext_id: 2\n---\n# Spec\n\n## Criteria\n- S-1 — a thing is observed.\n\n## Retired\n- none\n`;
+  const done = (key: string): TicketState => ({ state: "done", at: T.toISOString(), name: "Done", url: `https://linear.app/x/${key}` });
+  const canceled: TicketState = { state: "canceled", at: T.toISOString(), name: "Canceled", url: "https://linear.app/x/c" };
+  /** a Linear that answers from the map and records every key it was asked for */
+  const linear = (map: Record<string, TicketState>) => {
+    const asked: string[][] = [];
+    const states = async (keys: string[]): Promise<TicketStates> => {
+      asked.push(keys);
+      return (k) => map[k] ?? { state: "unknown" };
+    };
+    return { asked, states };
+  };
+  async function filed(slug: string, key: string, features: string[]) {
+    await newRevision(slug, { title: slug, features }, { now: T });
+    for (const f of features) {
+      const p = at("revisions", slug, "specs", `${f}.md`);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, spec(f));
+    }
+    await fileRevision(slug, key, ["CTD-999"], { now: T });
+  }
+  beforeEach(() => {
+    ws = mkdtempSync(join(tmpdir(), "argus-fold-"));
+    process.env.ARGUS_ROOT = ws;
+    mkdirSync(at("foundry/features/jobs/docs"), { recursive: true });
+    writeFileSync(at("foundry/features/jobs/docs/product.md"), "# Jobs product\n");
+    writeFileSync(at("foundry/features/jobs/docs/arch.md"), "# Jobs arch\n");
+    mkdirSync(at("alden/alden-portal/features/tasks"), { recursive: true });
+    writeFileSync(at("alden/alden-portal/features/tasks/ledger.json"), serializeLedger(emptyLedger("tasks", "", "2026-09-10T00:00:00.000Z")));
+  });
+  afterEach(() => {
+    delete process.env.ARGUS_ROOT;
+    rmSync(ws, { recursive: true, force: true });
+  });
+
+  test("AC1: a Done parent folds each spec into its feature, retires product.md, and archives as done; a second run writes nothing", async () => {
+    await filed("jobs-rev", "CTD-10", ["foundry/jobs", "alden/alden-portal/tasks"]);
+    const { asked, states } = linear({ "CTD-10": done("CTD-10") });
+    const r = await reconcileAll({ states, now: T });
+    expect(asked[0]).toContain("CTD-10");
+    expect(r).toEqual([
+      expect.objectContaining({
+        feature: "revisions/CTD-10",
+        write: null,
+        cleared: ["CTD-10: Done in Linear — folded into alden/alden-portal/tasks, foundry/jobs; 1 product doc(s) retired; archived as done"],
+      }),
+    ]);
+    const jobs = at("foundry/features/jobs/docs/spec.md");
+    expect(readFileSync(jobs, "utf8")).toContain("revised_by: CTD-10");
+    expect(await validateSpec(jobs, "foundry/jobs")).toEqual([]);
+    expect(existsSync(at("foundry/features/jobs/docs/product.md"))).toBe(false);
+    expect(existsSync(at("foundry/features/jobs/docs/arch.md"))).toBe(true);
+    expect(existsSync(at("alden/alden-portal/features/tasks/docs/spec.md"))).toBe(true);
+    expect(existsSync(at("revisions/CTD-10"))).toBe(false);
+    expect(existsSync(at("revisions/archive/CTD-10/specs/foundry/jobs.md"))).toBe(true);
+    const found = await readRevision("CTD-10");
+    expect(found?.archived).toBe(true);
+    expect(found?.rev).toMatchObject({ status: "done", at: { settled: "2026-09-14" } });
+    expect(found?.rev.evidence.filter((e) => e.kind === "ticket")).toHaveLength(1);
+    const again = linear({ "CTD-10": done("CTD-10") });
+    expect(await reconcileAll({ states: again.states, now: T })).toEqual([]);
+    expect(again.asked[0]).not.toContain("CTD-10");
+  });
+
+  test("AC2: a Canceled parent archives the revision as dropped; no spec is written and product.md stays", async () => {
+    await filed("gone", "CTD-20", ["foundry/jobs"]);
+    const r = await reconcileAll({ states: linear({ "CTD-20": canceled }).states, now: T });
+    expect(r[0]?.cleared).toEqual(["CTD-20: Canceled in Linear — archived as dropped"]);
+    expect((await readRevision("CTD-20"))?.rev).toMatchObject({ status: "dropped", at: { settled: "2026-09-14" } });
+    expect(existsSync(at("foundry/features/jobs/docs/spec.md"))).toBe(false);
+    expect(existsSync(at("foundry/features/jobs/docs/product.md"))).toBe(true);
+  });
+
+  test("AC3: a parent that is open, or that Linear cannot report, leaves the revision byte-for-byte", async () => {
+    await filed("a", "CTD-30", ["foundry/jobs"]);
+    await filed("b", "CTD-40", ["foundry/jobs"]);
+    const before = [readFileSync(at("revisions/CTD-30/revision.json")), readFileSync(at("revisions/CTD-40/revision.json"))];
+    const r = await reconcileAll({ states: linear({ "CTD-30": { state: "open", name: "In Progress", url: "u" } }).states, now: T });
+    expect(r).toEqual([]);
+    expect(readFileSync(at("revisions/CTD-30/revision.json")).equals(before[0]!)).toBe(true);
+    expect(readFileSync(at("revisions/CTD-40/revision.json")).equals(before[1]!)).toBe(true);
+    expect(existsSync(at("foundry/features/jobs/docs/spec.md"))).toBe(false);
+  });
+
+  test("a dry run reports the fold and writes nothing", async () => {
+    await filed("jobs-rev", "CTD-10", ["foundry/jobs"]);
+    const r = await reconcileAll({ states: linear({ "CTD-10": done("CTD-10") }).states, now: T, dryRun: true });
+    expect(r[0]?.cleared[0]).toContain("folded into foundry/jobs; 1 product doc(s) retired");
+    expect(existsSync(at("revisions/CTD-10/revision.json"))).toBe(true);
+    expect(existsSync(at("foundry/features/jobs/docs/product.md"))).toBe(true);
+    expect(existsSync(at("foundry/features/jobs/docs/spec.md"))).toBe(false);
+  });
+
+  test("a run scoped to named features leaves the revisions alone", async () => {
+    await filed("jobs-rev", "CTD-10", ["foundry/jobs"]);
+    const l = linear({ "CTD-10": done("CTD-10") });
+    expect(await reconcileAll({ features: ["tasks"], states: l.states, now: T })).toEqual([]);
+    expect(l.asked[0] ?? []).not.toContain("CTD-10");
+    expect((await readRevision("CTD-10"))?.rev.status).toBe("filed");
+  });
+
+  test("a revision whose feature has gone is reported, writes nothing, and stays filed for the next run", async () => {
+    await filed("jobs-rev", "CTD-10", ["foundry/jobs", "alden/alden-portal/tasks"]);
+    rmSync(at("foundry/features/jobs"), { recursive: true, force: true });
+    const r = await reconcileAll({ states: linear({ "CTD-10": done("CTD-10") }).states, now: T });
+    expect(r[0]?.error).toBe("CTD-10: not settled — foundry/jobs is no longer a feature directory");
+    expect(existsSync(at("alden/alden-portal/features/tasks/docs/spec.md"))).toBe(false);
+    expect((await readRevision("CTD-10"))?.rev.status).toBe("filed");
   });
 });

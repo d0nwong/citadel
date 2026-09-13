@@ -64,7 +64,9 @@ can be named by a revision as `<app>/<dir>`.
    (`skills/sweep/reader.md`, `shapes.md`); code applies and validates the whole.
 5. `argus reconcile` — a landing blocker clears when Bitbucket says the merge deployed. An
    open ticket settles when Linear says Done (its asks close) or Canceled (they drop), or,
-   with no asks, once the landing carrying its key is live. Linear is read, never written.
+   with no asks, once the landing carrying its key is live. A filed revision whose parent
+   is Done folds into its features' `docs/spec.md` (retiring a `product.md`) and moves to
+   `revisions/archive/`; Canceled archives it untouched. Linear is read, never written.
 6. `accio stale` and the `feature-docs` skill for arch docs that drifted.
 7. `argus validate`, commit, promote the cursor.
 

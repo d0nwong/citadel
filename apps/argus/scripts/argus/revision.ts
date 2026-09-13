@@ -10,10 +10,10 @@
  * `archiveRevision` step it ends with is shared from here.
  */
 
-import { mkdir, readdir, rename, stat } from "node:fs/promises";
-import { basename, join, relative } from "node:path";
+import { mkdir, readdir, rename, stat, unlink } from "node:fs/promises";
+import { basename, dirname, join, relative } from "node:path";
 import { splitKey } from "./linear.ts";
-import { archivedRevisionDir, archiveDir, revisionDir, revisionsDir, splitFeatureKey } from "./paths.ts";
+import { archivedRevisionDir, archiveDir, revisionDir, revisionsDir, specDocPath, splitFeatureKey } from "./paths.ts";
 import { type Evidence, parseEvidence, SchemaError } from "./schema.ts";
 import { type Problem, REVISION_STATUSES, type RevisionRecord, validateRevisionRecord, validateSpec, ValidationError } from "./validate.ts";
 
@@ -195,6 +195,72 @@ export async function dropRevision(id: string, reason: string, o: RevisionOption
   };
   const path = await archiveRevision(found.dir, revision, dryRun);
   return { wrote: !dryRun, path, revision, diff: [`${id} ${was} → dropped: ${reason.trim()}`] };
+}
+
+// ---------------------------------------------------------------- settling, by reconcile (CTD-196)
+
+/** a spec's front matter with `revised_by` set to the key, added when missing */
+export function stampRevisedBy(text: string, key: string): string {
+  const m = text.match(/^---\n([\s\S]*?)\n---\n/);
+  if (!m) return `---\nrevised_by: ${key}\n---\n${text}`;
+  const fm = /^revised_by:.*$/m.test(m[1]!) ? m[1]!.replace(/^revised_by:.*$/m, `revised_by: ${key}`) : `${m[1]}\nrevised_by: ${key}`;
+  return `---\n${fm}\n---\n${text.slice(m[0].length)}`;
+}
+
+export type Settled = { key: string; to: "done" | "dropped"; features: string[]; specs: string[]; retired: string[]; path: string };
+
+/** the parent ticket as evidence, once */
+const withTicket = (ev: Evidence[], key: string, url?: string): Evidence[] =>
+  ev.some((e) => e.kind === "ticket" && e.key === key) ? ev : [...ev, { kind: "ticket", key, ...(url ? { url } : {}) }];
+
+const filedKey = (found: Found): string => {
+  const key = found.rev.key;
+  if (!key || found.archived || found.rev.status !== "filed") throw new Error(`${found.rev.slug}: only a filed revision settles`);
+  return key;
+};
+
+/**
+ * A Done parent's revision lands. Every feature it names is resolved before
+ * anything is written; then each spec goes over that feature's `docs/spec.md`
+ * with `revised_by` stamped, a `product.md` still beside it is removed — the
+ * spec is its replacement — and only then is the record written and the
+ * directory moved to the archive. A run that dies part-way leaves the
+ * revision filed, and the next run finishes the same fold.
+ */
+export async function foldRevision(found: Found, o: RevisionOptions & { url?: string } = {}): Promise<Settled> {
+  const { now = new Date(), dryRun = false } = o;
+  const key = filedKey(found);
+  const writes: { feature: string; path: string; text: string; product: string }[] = [];
+  for (const s of await specsIn(found.dir)) {
+    if (!found.rev.features.includes(s.feature)) continue;
+    const split = await splitFeatureKey(s.feature);
+    if (!split) throw new Error(`${s.feature} is no longer a feature directory`);
+    const path = specDocPath(split[1], split[0]);
+    writes.push({ feature: s.feature, path, text: stampRevisedBy(await Bun.file(s.path).text(), key), product: join(dirname(path), "product.md") });
+  }
+  const retired: string[] = [];
+  for (const w of writes) {
+    if (!dryRun) {
+      await mkdir(dirname(w.path), { recursive: true });
+      await Bun.write(w.path, w.text);
+    }
+    if (await exists(w.product)) {
+      if (!dryRun) await unlink(w.product);
+      retired.push(w.product);
+    }
+  }
+  const rev: Revision = { ...found.rev, status: "done", at: { ...found.rev.at, settled: day(now) }, evidence: withTicket(found.rev.evidence, key, o.url) };
+  const path = await archiveRevision(found.dir, rev, dryRun);
+  return { key, to: "done", features: writes.map((w) => w.feature), specs: writes.map((w) => w.path), retired, path };
+}
+
+/** A Canceled parent's revision is archived whole as dropped; no spec is written and no product doc touched. */
+export async function cancelRevision(found: Found, o: RevisionOptions & { url?: string } = {}): Promise<Settled> {
+  const { now = new Date(), dryRun = false } = o;
+  const key = filedKey(found);
+  const rev: Revision = { ...found.rev, status: "dropped", at: { ...found.rev.at, settled: day(now) }, evidence: withTicket(found.rev.evidence, key, o.url) };
+  const path = await archiveRevision(found.dir, rev, dryRun);
+  return { key, to: "dropped", features: [], specs: [], retired: [], path };
 }
 
 // ---------------------------------------------------------------- validate

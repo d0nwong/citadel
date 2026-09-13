@@ -33,10 +33,11 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
 5. **Reconcile.** `argus reconcile`. Landing blockers clear when Bitbucket says the
    merge deployed; ticket blockers when their asks closed. An open ticket settles when
    Linear says Done (closes its asks) or Canceled (drops them), or, with no asks, when a
-   landing carrying its key is live.
+   landing carrying its key is live. A filed revision whose parent is Done folds into its
+   features' `docs/spec.md`; Canceled archives it.
 6. **Docs.** `accio stale`; for each listed feature, the `feature-docs` skill.
 7. **Validate and commit.** `argus validate`, then `argus commit -m "<the first On-you
-   line, or: quiet run>"`. A failing feature is printed and left alone; the rest commits.
+   line, else the first revision reconcile moved, else: quiet run>"`. A failing feature is printed and left alone; the rest commits.
    The cursor is promoted after the commit, so a crashed run replays rather than skips.
 
 ## Rules

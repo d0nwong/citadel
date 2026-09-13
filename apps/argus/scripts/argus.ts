@@ -57,7 +57,7 @@ const USAGE = `argus — the ledger CLI
 
   argus pull [--since <date>] [--no-slack] [--no-landings] [--no-fetch] [--out <dir>]
   argus place <batch-id|path>        the deterministic joins → <batch>.placed.json + state/unplaced.json
-  argus reconcile [<feature>...]     clear the blockers and settle the tickets the facts allow (asks Bitbucket whether a landing deployed, Linear whether a ticket is Done or Canceled)
+  argus reconcile [<feature>...]     clear the blockers and settle the tickets the facts allow (asks Bitbucket whether a landing deployed, Linear whether a ticket is Done or Canceled); a filed revision whose parent is Done folds into its features' specs, Canceled archives it
   argus prompt attribute [<batch>]   the attribution step's prompt over state/unplaced.json
   argus prompt reader <feature> <batch>   the reader's prompt for one feature's slice
   argus patch <feature> <file>|-     apply a reader's patch to the ledger (validated whole)
@@ -225,10 +225,12 @@ const verbs: Record<string, Verb> = {
 
   async reconcile(f) {
     const r = await reconcileAll({ dryRun: f.dryRun, features: f.rest.length ? f.rest : undefined });
-    if (f.json) console.log(JSON.stringify({ ok: true, results: r.map((x) => ({ feature: x.feature, cleared: x.cleared, wrote: x.write?.wrote ?? false })) }));
+    const wrote = (x: (typeof r)[number]) => x.write?.wrote ?? (x.revision ? !f.dryRun : false);
+    if (f.json)
+      console.log(JSON.stringify({ ok: true, results: r.map((x) => ({ feature: x.feature, cleared: x.cleared, wrote: wrote(x), ...(x.revision ? { revision: x.revision } : {}), ...(x.error ? { error: x.error } : {}) })) }));
     else if (!r.length) console.log("nothing to clear");
-    else for (const x of r) console.log(`${x.feature}${f.dryRun ? " (dry run)" : ""}\n  ${x.cleared.join("\n  ")}`);
-    return 0;
+    else for (const x of r) console.log(`${x.feature}${f.dryRun ? " (dry run)" : ""}\n  ${[...x.cleared, ...(x.error ? [x.error] : [])].join("\n  ")}`);
+    return r.some((x) => x.error) ? 1 : 0;
   },
 
   async prompt(f) {

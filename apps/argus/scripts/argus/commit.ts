@@ -20,14 +20,18 @@ async function git(args: string[], cwd = root()): Promise<{ code: number; out: s
 /** what a run may commit: ledgers, arch docs and specs, the revisions, the committed state files, the manifest */
 export const COMMITTABLE = /(^|\/)features\/.*\/(ledger\.json|docs\/arch\.md|docs\/spec\.md)$|^revisions\/|^state\/(threads|unplaced|deploys)\.json$|\/\.doc-workspace\/feature-manifest\.json$/;
 
+/** a product doc a fold removed: committed as a deletion, never as an edit — only a fold touches it */
+export const RETIRED = /(^|\/)features\/.*\/docs\/product\.md$/;
+
 /** changed paths (modified, added, deleted) the run may commit, from git's own view */
 async function changed(cwd: string): Promise<string[]> {
   const st = await git(["status", "--porcelain", "--untracked-files=all"], cwd);
   return st.out
     .split("\n")
     .filter(Boolean)
-    .map((l) => l.slice(3).replace(/^"|"$/g, ""))
-    .filter((p) => COMMITTABLE.test(p));
+    .map((l) => ({ code: l.slice(0, 2), path: l.slice(3).replace(/^"|"$/g, "") }))
+    .filter(({ code, path }) => COMMITTABLE.test(path) || (code.includes("D") && RETIRED.test(path)))
+    .map(({ path }) => path);
 }
 
 export type CommitResult = { committed: boolean; sha?: string; files: number; cursor: "promoted" | "unchanged" | "none" };
