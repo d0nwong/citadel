@@ -68,6 +68,43 @@ describe("a ticket that landed closes its ask", () => {
   });
 });
 
+describe("a ticket with no asks is done once its landing is live", () => {
+  const landing = (repo: "fe" | "be", ref: string, number: number, key: string) => ({
+    at: "2026-09-12T14:20:29Z", repo, ref, number, sha: "e".repeat(40), title: `feat: ${key} rollover`, by: "you",
+    url: `https://bitbucket.org/x/pull-requests/${number}`, asks: [], files: ["src/a.ts"], tickets: [key],
+  });
+  test("a frontend merge marks it done with the PR as evidence; a second run changes nothing", async () => {
+    const l = await valid();
+    l.tickets.push({ key: "ALD-45", title: "[FE] rollover", asks: [], blockers: [], ready: true });
+    l.landings.push(landing("fe", "fe#437", 437, "ALD-45"));
+    const r = await reconcileLedger(l, async () => null);
+    expect(r.cleared).toEqual(["ALD-45: landed as fe#437 and is live, done"]);
+    expect(r.ledger.tickets[1]!.done).toEqual({ at: "2026-09-12", evidence: [{ kind: "pr", repo: "fe", number: 437, url: expect.stringContaining("437") }] });
+    expect(validateLedger(r.ledger, { prev: l, actor: "model" })).toEqual([]);
+    expect((await reconcileLedger(r.ledger, async () => null)).cleared).toEqual([]);
+  });
+  test("a backend merge waits for the deploy; a ticket with asks or without a landing is left alone", async () => {
+    const l = await valid();
+    l.tickets.push({ key: "ALD-46", title: "[BE] rollover", asks: [], blockers: [], ready: true });
+    l.tickets.push({ key: "ALD-48", title: "[BE] nothing landed", asks: [], blockers: [], ready: true });
+    l.landings.push(landing("be", "be#780", 780, "ALD-46"));
+    expect((await reconcileLedger(l, async () => null)).cleared).toEqual([]);
+    // the fixture's deploy predates the merge, so the date falls back to today, as it does for an ask
+    const r = await reconcileLedger(l, async () => live, new Date("2026-09-13T10:00:00Z"));
+    expect(r.cleared).toEqual(["ALD-46: landed as be#780 and is live, done"]);
+    expect(r.ledger.tickets[1]!.done?.at).toBe("2026-09-13");
+    expect(r.ledger.tickets[2]!.done).toBeUndefined();
+    expect(r.ledger.tickets[0]!.done).toBeUndefined();
+  });
+  test("a ticket blocker waiting on an ask-less ticket clears in the same run", async () => {
+    const l = await valid();
+    l.tickets.push({ key: "ALD-40", title: "x", asks: [], blockers: [], ready: true });
+    l.landings.push(landing("fe", "fe#437", 437, "ALD-40"));
+    const r = await reconcileLedger(l, async () => null, new Date("2026-09-13T10:00:00Z"));
+    expect(r.cleared).toEqual(["ALD-40: landed as fe#437 and is live, done", "ALD-41: ALD-40 is done"]);
+  });
+});
+
 describe("reconcileAll", () => {
   let ws: string;
   beforeEach(() => {

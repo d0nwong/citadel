@@ -7,7 +7,9 @@
  * It also closes the loop a ticket opened: an open ask whose ticket's key is on a landing
  * (every Foundry branch carries it) moves to `built` with the PR as evidence, and to
  * `closed` once that landing is live: on the frontend, the base branch is staging, so a
- * merge is live; on the backend, once the dev pipeline succeeded.
+ * merge is live; on the backend, once the dev pipeline succeeded. A ticket that serves no
+ * ask (filed from a gap, not a message) has nothing to close, so the same live landing
+ * marks the ticket itself `done`; that is the only way such a ticket ever finishes.
  */
 
 import type { Deploy } from "./deploy.ts";
@@ -30,8 +32,26 @@ export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new
   const closedAsks = new Set(next.asks.filter((a) => a.status === "closed" || a.status === "dropped").map((a) => a.id));
   const ticketDone = (key: string) => {
     const t = next.tickets.find((x) => x.key === key);
-    return !!t && t.asks.length > 0 && t.asks.every((id) => closedAsks.has(id));
+    return !!t && (t.done !== undefined || (t.asks.length > 0 && t.asks.every((id) => closedAsks.has(id))));
   };
+  const keysOf = (ld: Landing) => ld.tickets ?? ticketKeysIn(ld.title);
+  const evidenceOf = (ld: Landing): Evidence[] =>
+    ld.url && ld.number ? [{ kind: "pr", repo: ld.repo, number: ld.number, url: ld.url }] : [{ kind: "commit", repo: ld.repo, sha: ld.sha }];
+  const liveAt = async (ld: Landing): Promise<string | null> => {
+    if (ld.repo === "fe") return ld.at;
+    const d = await deployed(ld.repo, ld.sha);
+    return d?.result === "SUCCESSFUL" ? d.at : null;
+  };
+  const day0 = day(now.toISOString());
+  for (const t of next.tickets) {
+    if (t.asks.length > 0 || t.done) continue;
+    const ld = next.landings.find((x) => keysOf(x).includes(t.key));
+    if (!ld) continue;
+    const at = await liveAt(ld);
+    if (!at) continue;
+    t.done = { at: day(at) < ld.at.slice(0, 10) ? day0 : day(at), evidence: evidenceOf(ld) };
+    cleared.push(`${t.key}: landed as ${ld.ref} and is live, done`);
+  }
   const clear = async (b: Blocker, owner: string): Promise<void> => {
     if (b.cleared) return;
     if (b.kind === "landing") {
@@ -54,23 +74,21 @@ export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new
   for (const t of next.tickets) for (const b of t.blockers) await clear(b, t.key);
   for (const a of next.asks) for (const b of a.blockers ?? []) await clear(b, a.id);
 
-  const keysOf = (ld: Landing) => ld.tickets ?? ticketKeysIn(ld.title);
-  const day0 = day(now.toISOString());
   for (const a of next.asks) {
     if (!a.ticket || a.status === "closed" || a.status === "dropped") continue;
     const ld = next.landings.find((x) => keysOf(x).includes(a.ticket!));
     if (!ld) continue;
-    const evidence: Evidence[] = ld.url && ld.number ? [{ kind: "pr", repo: ld.repo, number: ld.number, url: ld.url }] : [{ kind: "commit", repo: ld.repo, sha: ld.sha }];
+    const evidence = evidenceOf(ld);
     if (!ld.asks.includes(a.id)) ld.asks.push(a.id);
     if (a.status !== "built" && a.status !== "acknowledged") {
       a.status = "built";
       a.history.push({ at: ld.at.slice(0, 10), status: "built", evidence });
       cleared.push(`${a.id}: ${a.ticket} landed as ${ld.ref}`);
     }
-    const live = ld.repo === "fe" ? { at: ld.at } : await deployed(ld.repo, ld.sha).then((d) => (d?.result === "SUCCESSFUL" ? { at: d.at } : null));
+    const live = await liveAt(ld);
     if (live) {
       a.status = "closed";
-      a.history.push({ at: day(live.at) < ld.at.slice(0, 10) ? day0 : day(live.at), status: "closed", evidence });
+      a.history.push({ at: day(live) < ld.at.slice(0, 10) ? day0 : day(live), status: "closed", evidence });
       cleared.push(`${a.id}: ${a.ticket} is live, closed`);
     }
   }
@@ -88,7 +106,8 @@ export async function reconcileAll(opts: { deployed?: DeployedOf; dryRun?: boole
     if (!l) continue;
     const open = (bs: Blocker[]) => bs.some((b) => !b.cleared);
     const ticketed = l.asks.some((a) => a.ticket && a.status !== "closed" && a.status !== "dropped");
-    if (!ticketed && !l.tickets.some((t) => open(t.blockers)) && !l.asks.some((a) => open(a.blockers ?? []))) continue;
+    const askless = l.tickets.some((t) => t.asks.length === 0 && !t.done);
+    if (!ticketed && !askless && !l.tickets.some((t) => open(t.blockers)) && !l.asks.some((a) => open(a.blockers ?? []))) continue;
     const r = await reconcileLedger(l, deployed, opts.now);
     if (!r.cleared.length) continue;
     const write = await writeLedger(feature, r.ledger, { actor: "model", now: opts.now, dryRun: opts.dryRun });

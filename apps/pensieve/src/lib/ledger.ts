@@ -101,6 +101,8 @@ export type Blocker =
 export interface Ticket {
   asks: string[];
   blockers: Blocker[];
+  /** set by argus's reconcile on a ticket with no asks once its landing went live */
+  done?: Cleared;
   key: string;
   ready: boolean;
   sent?: { at: string; repo: string; job?: string }[];
@@ -170,13 +172,17 @@ export const onYou = (l: Ledger): Ask[] =>
 export const readyAsks = (l: Ledger): Ask[] =>
   l.asks.filter((a) => isOpen(a) && a.ready === true);
 
-/** every ask the ticket serves is closed or dropped: the work behind it is done */
+/**
+ * Every ask the ticket serves is closed or dropped, or, for a ticket that serves none,
+ * reconcile saw its landing go live: the work behind it is done.
+ */
 export const ticketDone = (l: Ledger, t: Ticket): boolean =>
-  t.asks.length > 0 &&
-  t.asks.every((id) => {
-    const a = l.asks.find((x) => x.id === id);
-    return a !== undefined && !isOpen(a);
-  });
+  t.done !== undefined ||
+  (t.asks.length > 0 &&
+    t.asks.every((id) => {
+      const a = l.asks.find((x) => x.id === id);
+      return a !== undefined && !isOpen(a);
+    }));
 
 /**
  * Tickets to pick up: nothing left to wait for, not yet sent to Foundry, and still wanted,

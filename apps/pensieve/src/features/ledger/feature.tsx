@@ -615,7 +615,7 @@ export function Asks({
   );
 }
 
-/** done once its asks are settled, sent once Foundry has it, else ready or blocked */
+/** done once its work is finished, sent once Foundry has it, else ready or blocked */
 function TicketState({
   ledger,
   ticket: t,
@@ -623,11 +623,11 @@ function TicketState({
   ledger: Ledger;
   ticket: Ticket;
 }) {
-  if (t.sent?.length) {
-    return <Tag tone="implemented">sent</Tag>;
-  }
   if (ticketDone(ledger, t)) {
     return <Tag tone="superseded">done</Tag>;
+  }
+  if (t.sent?.length) {
+    return <Tag tone="implemented">sent</Tag>;
   }
   return (
     <Tag tone={t.ready ? "documented" : "decided"}>

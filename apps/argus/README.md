@@ -49,7 +49,8 @@ word "assumption". `argus validate` refuses anything else, and ids are never reu
 3. Attribute — the model places what it would bet on (`skills/sweep/attribute.md`).
 4. Read — one Opus subagent per feature with a slice returns a patch
    (`skills/sweep/reader.md`, `shapes.md`); code applies and validates the whole.
-5. `argus reconcile` — a landing blocker clears when Bitbucket says the merge deployed.
+5. `argus reconcile` — a landing blocker clears when Bitbucket says the merge deployed; a
+   ticket that serves no ask is done once the landing carrying its key is live.
 6. `accio stale` and the `feature-docs` skill for arch docs that drifted.
 7. `argus validate`, commit, promote the cursor.
 

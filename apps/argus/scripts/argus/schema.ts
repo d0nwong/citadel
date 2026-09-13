@@ -94,6 +94,12 @@ export type Ticket = {
   /** derived: every blocker cleared. Written by `write`, never by hand or by the model. */
   ready: boolean;
   sent?: { at: string; repo: string; job?: string }[];
+  /**
+   * For a ticket that serves no ask: the landing that carried its key went live. Set by
+   * `reconcile`, the only way such a ticket is ever done. A ticket with asks is done when
+   * they are all settled, and never needs this.
+   */
+  done?: Cleared;
 };
 
 export type Landing = {
@@ -343,6 +349,10 @@ function ticket(v: unknown, path: string): Ticket {
       const job = optStr(so, "job", p);
       return { at: str(so, "at", p), repo: str(so, "repo", p), ...(job !== undefined ? { job } : {}) };
     });
+  }
+  if (o.done !== undefined) {
+    const d = obj(o.done, `${path}.done`);
+    t.done = { at: str(d, "at", `${path}.done`), evidence: evidenceList(d, "evidence", `${path}.done`) };
   }
   return t;
 }
