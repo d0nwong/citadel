@@ -60,6 +60,7 @@ End with the criteria implemented by slice; the three commands and results, one 
 | "I'll loosen the assertion, the spirit is the same" | The assertion is the criterion. Loosening it reports green on something untested. |
 | "Is that lint error mine? I'll stash and check" | The spec recorded the base state. Read it. |
 | "I'll run the full suite after each slice" | The slice's own test files say the slice is done; the full suite says the change is done, once. |
+| "Second run passed; I need to know whether that flake was mine" | One rerun is the evidence: a failure outside the diff that passes on its rerun is a flake by rule. Name it in the Finish; a third run proves nothing the second did not. |
 
 ## Red Flags
 

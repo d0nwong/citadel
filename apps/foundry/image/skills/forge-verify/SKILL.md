@@ -88,6 +88,7 @@ End with the commit subject, the report's table and Commands line, the findings 
 | "I'll commit once everything is verified" | A timeout before the commit hands the host a sweep commit that fails the title lint. Commit first, amend after. |
 | "LGTM, the diff is clean" | Approval without evidence. A row per criterion, a line per command. |
 | "This might be a minor concern" (about a bug that will ship) | Say what it is and label it. Softening a finding is the same failure as missing it. |
+| "Second run passed; I need to know whether that flake was mine" | One rerun is the evidence: a failure outside the diff that passes on its rerun is a flake by rule. Record it on the `Flaky:` line; a third run proves nothing the second did not. |
 
 ## Red Flags
 
