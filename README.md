@@ -42,7 +42,7 @@ apps/pensieve/       the reading room
 compose.yaml         the stack; each app's compose file is included from here
 justfile             every command
 scripts/             what the recipes call when they outgrow one line
-docs/intent, docs/spec   what was agreed, and the shape it is being built to
+docs/intent, docs/spec   what was agreed, and the shape it is being built to (older work; a revision now lives in citadel-data under revisions/)
 tasks/               the plan and its todo
 ```
 
