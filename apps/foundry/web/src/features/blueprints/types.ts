@@ -25,17 +25,19 @@ export const TASK_PLACEHOLDER = '{{task}}'
 export const DEFAULT_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000001'
 
 /**
- * "Spec → QA", seeded by migration 0013 (CTD-65): spec the ticket, test the
- * spec, implement to green, verify and report — each step a `/forge-*` skill
- * the image ships. Not the ignite default; a ticket without acceptance
- * criteria stops it at the first step by design.
+ * "Spec → QA", seeded by migration 0013 (CTD-65) and cut to three steps by
+ * 0019 (CTD-179): spec the ticket, write its tests red and implement them to
+ * green in one step, verify and report — each step a `/forge-*` skill the
+ * image ships. v1's five steps, with a plan step, stay restorable from its
+ * history. Not the ignite default; a ticket without acceptance criteria stops
+ * it at the first step by design.
  */
 export const QA_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000003'
 
 /**
  * "Bug → Fix", seeded by migration 0014 (CTD-173): the reproduction as the
  * criterion, `forge-debug` to find the root cause and plan its fix, then the
- * same test, implement and verify steps as "Spec → QA". A ticket with neither
+ * test, implement and verify steps "Spec → QA" v1 had. A ticket with neither
  * reproduction steps nor a failing check stops it at the first step.
  */
 export const BUG_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000004'
@@ -47,13 +49,6 @@ export const BUG_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000004'
  * A ticket naming no file and nothing to remove stops it at the first step.
  */
 export const SIMPLIFY_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000005'
-
-/**
- * "Spec → PR", seeded by migration 0019 (CTD-179): "Spec → QA" without the
- * plan step — `forge-test` and `forge-implement` run back to back as one step,
- * then the same verify. For a ticket a person could describe in a sentence.
- */
-export const SPEC_PR_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000007'
 
 /**
  * "Fix failing check", seeded by migration 0018 (CTD-170): the one step the
