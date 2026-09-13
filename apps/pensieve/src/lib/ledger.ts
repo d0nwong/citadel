@@ -104,6 +104,8 @@ export interface Ticket {
   key: string;
   ready: boolean;
   sent?: { at: string; repo: string; job?: string }[];
+  /** how it finished, set by argus's reconcile: Linear said Done or Canceled, or its landing went live */
+  settled?: Cleared & { outcome: "done" | "dropped" };
   title: string;
 }
 
@@ -170,20 +172,30 @@ export const onYou = (l: Ledger): Ask[] =>
 export const readyAsks = (l: Ledger): Ask[] =>
   l.asks.filter((a) => isOpen(a) && a.ready === true);
 
-/** every ask the ticket serves is closed or dropped: the work behind it is done */
+/**
+ * Reconcile settled the ticket done (Linear said so, or its landing went live), or every
+ * ask it serves is closed or dropped: the work behind it is done.
+ */
 export const ticketDone = (l: Ledger, t: Ticket): boolean =>
-  t.asks.length > 0 &&
-  t.asks.every((id) => {
-    const a = l.asks.find((x) => x.id === id);
-    return a !== undefined && !isOpen(a);
-  });
+  t.settled?.outcome === "done" ||
+  (t.asks.length > 0 &&
+    t.asks.every((id) => {
+      const a = l.asks.find((x) => x.id === id);
+      return a !== undefined && !isOpen(a);
+    }));
+
+/** Linear canceled the ticket: not wanted, nothing to pick up */
+export const ticketDropped = (t: Ticket): boolean =>
+  t.settled?.outcome === "dropped";
 
 /**
  * Tickets to pick up: nothing left to wait for, not yet sent to Foundry, and still wanted,
- * meaning the ticket names no asks or at least one of them is open.
+ * meaning nothing settled it and either it names no asks or at least one of them is open.
  */
 export const readyTickets = (l: Ledger): Ticket[] =>
-  l.tickets.filter((t) => t.ready && !t.sent?.length && !ticketDone(l, t));
+  l.tickets.filter(
+    (t) => t.ready && !t.sent?.length && !ticketDone(l, t) && !ticketDropped(t)
+  );
 
 /** `admin/invoicing` → `/features/alden/alden-portal/admin/invoicing` when the app is known */
 export const featureRoute = (app: string, dir: string) =>

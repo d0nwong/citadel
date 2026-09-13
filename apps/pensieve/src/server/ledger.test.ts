@@ -150,4 +150,36 @@ describe("home", () => {
     h = await home(roots, join(root, "state/unplaced.json"));
     expect(h.ready).toEqual([]);
   });
+  test("a ticket with no asks leaves Ready once reconcile marked it done", async () => {
+    const l = await fixture();
+    l.tickets = [
+      {
+        asks: [],
+        blockers: [],
+        key: "ALD-45",
+        ready: true,
+        title: "[FE] rollover",
+      },
+    ];
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
+    let h = await home(roots, join(root, "state/unplaced.json"));
+    expect(h.ready.map((t) => t.key)).toEqual(["ALD-45"]);
+    l.tickets[0].settled = {
+      at: "2026-09-12",
+      evidence: [{ kind: "pr", number: 437, repo: "fe", url: "u" }],
+      outcome: "done",
+    };
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
+    h = await home(roots, join(root, "state/unplaced.json"));
+    expect(h.ready).toEqual([]);
+    // canceled in Linear: dropped, and just as gone from Ready
+    l.tickets[0].settled = {
+      at: "2026-09-12",
+      evidence: [{ key: "ALD-45", kind: "ticket" }],
+      outcome: "dropped",
+    };
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
+    h = await home(roots, join(root, "state/unplaced.json"));
+    expect(h.ready).toEqual([]);
+  });
 });

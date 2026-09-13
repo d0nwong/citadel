@@ -49,7 +49,9 @@ word "assumption". `argus validate` refuses anything else, and ids are never reu
 3. Attribute — the model places what it would bet on (`skills/sweep/attribute.md`).
 4. Read — one Opus subagent per feature with a slice returns a patch
    (`skills/sweep/reader.md`, `shapes.md`); code applies and validates the whole.
-5. `argus reconcile` — a landing blocker clears when Bitbucket says the merge deployed.
+5. `argus reconcile` — a landing blocker clears when Bitbucket says the merge deployed. An
+   open ticket settles when Linear says Done (its asks close) or Canceled (they drop), or,
+   with no asks, once the landing carrying its key is live. Linear is read, never written.
 6. `accio stale` and the `feature-docs` skill for arch docs that drifted.
 7. `argus validate`, commit, promote the cursor.
 
@@ -84,7 +86,8 @@ Both product checkouts must exist (`~/git/alden-portal-fe`, `~/git/alden-connect
 or `FE_REPO` / `BE_REPO`); the run reads them at `origin/*` and never switches a branch. The
 sweep container clones its own copies instead.
 The deploy check reads the credentials `bb` keeps in `~/.bitbucket-rest-cli-config.json`
-(`BITBUCKET_CONFIG` to point elsewhere). Linear and Slack are the MCP servers in `.mcp.json`, both behind the local MCP gateway
+(`BITBUCKET_CONFIG` to point elsewhere); the ticket-state check reads `LINEAR_API_KEY` from
+`.env`, and without it tickets settle only from landings. Linear and Slack are the MCP servers in `.mcp.json`, both behind the local MCP gateway
 (mcp-proxy on :9090, `infra/compose.yaml`, started by `just up mcp`); a
 session presents `MCP_GATEWAY_TOKEN` from `.env`, and the gateway holds the keys.
 
@@ -95,7 +98,7 @@ just sweep-once [--dry-run]   # one tick in the stack; --dry-run only pulls
 just sweep-on                 # the loop: one tick per SWEEP_INTERVAL (900s)
 argus pull                    # the batch, or "nothing new"
 argus place <batch>           # the joins
-argus reconcile               # clear what deployed
+argus reconcile               # clear what deployed, settle what Linear closed
 argus validate                # every ledger and arch doc
 argus show admin/usage        # one ledger
 argus close admin/usage A-7 --reason "..."         # the click verbs, as Pensieve runs them

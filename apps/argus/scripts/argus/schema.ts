@@ -94,7 +94,16 @@ export type Ticket = {
   /** derived: every blocker cleared. Written by `write`, never by hand or by the model. */
   ready: boolean;
   sent?: { at: string; repo: string; job?: string }[];
+  /**
+   * How the ticket finished, set by `reconcile`: `done` when Linear says so or a landing
+   * carrying its key went live, `dropped` when Linear canceled it. The asks it serves are
+   * settled the same way at the same time. A ticket with asks that all closed is done
+   * without this.
+   */
+  settled?: TicketSettled;
 };
+
+export type TicketSettled = Cleared & { outcome: "done" | "dropped" };
 
 export type Landing = {
   at: string;
@@ -343,6 +352,11 @@ function ticket(v: unknown, path: string): Ticket {
       const job = optStr(so, "job", p);
       return { at: str(so, "at", p), repo: str(so, "repo", p), ...(job !== undefined ? { job } : {}) };
     });
+  }
+  if (o.settled !== undefined) {
+    const p = `${path}.settled`;
+    const s = obj(o.settled, p);
+    t.settled = { outcome: oneOf(s, "outcome", ["done", "dropped"] as const, p), at: str(s, "at", p), evidence: evidenceList(s, "evidence", p) };
   }
   return t;
 }

@@ -31,7 +31,9 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
    <batch>`. Save its reply to a file and `argus patch <feature> <file>`. A refusal names
    the path; hand it back to the subagent once with that text, then give up on it.
 5. **Reconcile.** `argus reconcile`. Landing blockers clear when Bitbucket says the
-   merge deployed; ticket blockers when their asks closed.
+   merge deployed; ticket blockers when their asks closed. An open ticket settles when
+   Linear says Done (closes its asks) or Canceled (drops them), or, with no asks, when a
+   landing carrying its key is live.
 6. **Docs.** `accio stale`; for each listed feature, the `feature-docs` skill.
 7. **Validate and commit.** `argus validate`, then `argus commit -m "<the first On-you
    line, or: quiet run>"`. A failing feature is printed and left alone; the rest commits.

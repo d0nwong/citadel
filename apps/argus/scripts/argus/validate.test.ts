@@ -28,6 +28,7 @@ const RULES: Record<string, [path: string, rule: string]> = {
   "unknown-status.json": ["ledger.requirements[0].status", "expected one of"],
   "on-you-written.json": ["ledger.story.on_you", "derived"],
   "blocker-without-cleared.json": ["ledger.tickets[0].blockers[1].cleared", "expected an object or null"],
+  "settled-with-open-ask.json": ["ledger.tickets[0].settled", "A-2 is still asked"],
 };
 
 describe("validateLedger", () => {

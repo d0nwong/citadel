@@ -26,7 +26,9 @@ just                  # every recipe, with what it does
 `just up` for the containers (the MCP gateway, postgres, Pensieve and the sweep loop), and
 `just foundry` for the web UI on this Mac. `just down` stops them all. The sweep sits behind a
 compose profile so a bare `docker compose up` leaves it off; `just up` names the profile after
-its preflight checks that no host loop is already writing to the data repo.
+its preflight checks that no host loop is already writing to the data repo. Pensieve and the
+sweep run from images built off this checkout, so after merging a change to either,
+`just rebuild` rebuilds them and restarts the stack on the new code.
 
 One `.env` at the root holds every key, and `.env.example` lists them.
 `just auth linear|slack|claude|foundry-api|gateway` fills one in without echoing it.
