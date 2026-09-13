@@ -7,7 +7,14 @@
  * nothing here to sweep.
  */
 import { describe, expect, test } from 'bun:test'
-import { BUG_BLUEPRINT_ID, DEFAULT_BLUEPRINT_ID, QA_BLUEPRINT_ID, SIMPLIFY_BLUEPRINT_ID } from '../types'
+import {
+  BUG_BLUEPRINT_ID,
+  CHECK_BLUEPRINT_ID,
+  CHECK_BLUEPRINT_STEPS,
+  DEFAULT_BLUEPRINT_ID,
+  QA_BLUEPRINT_ID,
+  SIMPLIFY_BLUEPRINT_ID,
+} from '../types'
 import { getBlueprintRow, listRevisions, validate } from './blueprint-store'
 
 const SLASH_SKILL = /^\/forge-[a-z]+\b/
@@ -16,7 +23,13 @@ const SEEDED = [
   { id: QA_BLUEPRINT_ID, name: 'Spec → QA', steps: ['spec', 'plan', 'test', 'implement', 'verify'] },
   { id: BUG_BLUEPRINT_ID, name: 'Bug → Fix', steps: ['spec', 'debug', 'test', 'implement', 'verify'] },
   { id: SIMPLIFY_BLUEPRINT_ID, name: 'Simplify', steps: ['spec', 'simplify', 'verify'] },
+  { id: CHECK_BLUEPRINT_ID, name: 'Fix failing check', steps: ['debug'] },
 ]
+
+test('the check blueprint is forge-debug alone, the same step list the store falls back to', async () => {
+  const row = await getBlueprintRow(CHECK_BLUEPRINT_ID)
+  expect(row?.steps).toEqual(CHECK_BLUEPRINT_STEPS)
+})
 
 describe.each(SEEDED)('the seeded "$name" blueprint', ({ id, name, steps }) => {
   test('is seeded with its steps, each invoking a /forge-* skill', async () => {

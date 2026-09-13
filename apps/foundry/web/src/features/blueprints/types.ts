@@ -48,6 +48,18 @@ export const BUG_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000004'
  */
 export const SIMPLIFY_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000005'
 
+/**
+ * "Fix failing check", seeded by migration 0018 (CTD-170): the one step the
+ * PR watcher's check follow-up runs — `forge-debug` alone, handed the failing
+ * steps' logs as its task, so the failure is reproduced and its cause fixed
+ * rather than the log pattern-matched. `CHECK_BLUEPRINT_STEPS` is the same
+ * step list, for a follow-up queued after the row was deleted.
+ */
+export const CHECK_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000006'
+export const CHECK_BLUEPRINT_STEPS: Array<BlueprintStep> = [
+  { name: 'debug', model: 'fable', effort: 'high', prompt: '/forge-debug {{task}}' },
+]
+
 export interface BlueprintStep {
   name: string
   model: StepModel

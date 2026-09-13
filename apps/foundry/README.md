@@ -436,3 +436,9 @@ Review feedback flows back into a forge. A settled job with a PR carries an
 comments with your own `gh`/`bb` credentials, and a fresh forge gets them as its
 task. Its push updates the existing PR — no new PR, no credentials in the container,
 and the comments are read fresh when the forge lights, like repo notes.
+
+You rarely need the button: the host **watches** every PR a job opened and queues the
+follow-up itself when a reviewer submits a review, or — with the failing check's log as
+the task and `forge-debug` as the step — when CI goes red. One review or one red commit
+launches one job; after three automatic follow-ups on a PR (`FOUNDRY_PR_RETRIES`) it
+stops and says so in the job's log. See `web/README.md` for the details.
