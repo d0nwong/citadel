@@ -37,7 +37,20 @@ Every claim carries evidence: a Slack permalink, a PR, a commit, a file and line
 word "assumption". `argus validate` refuses anything else, and ids are never reused.
 
 `docs/arch.md` beside the ledger is how the feature is built, under 250 curated lines;
-`accio sync` writes its generated regions from the code and the OpenAPI spec.
+`accio sync` writes its generated regions from the code and the OpenAPI spec. `docs/spec.md`
+beside it, where one exists, is the feature's spec: numbered criteria `S-n` that are never
+reused, written only when a revision folds.
+
+## The revision
+
+A **revision** is one confirmed piece of work — its intent, the revised spec of every feature
+it touches, and the plan that cuts it into tickets — kept under `revisions/<slug>` while a
+draft and `revisions/<KEY>` once filed on its Linear parent, and under `revisions/archive/`
+once done or dropped. `revision.json` is the record and only the `argus revision` verbs and
+`reconcile` write it; the markdown beside it (`intent.md`, `specs/<app>/<dir>.md`, `plan.md`)
+is the `scope` skill's. Nothing under `revisions/` is ever deleted: the archive is the only
+exit. Every app with a `features/` tree — `alden/alden-portal`, `foundry`, `pensieve`, `argus` —
+can be named by a revision as `<app>/<dir>`.
 
 ## The run
 
@@ -106,6 +119,7 @@ argus confirm admin/usage R-3 --reason "..." [--contradict]
 argus place <message-ts> admin/usage
 argus file admin/usage P-2 · argus ticket admin/usage P-2 ALD-52 · argus sent admin/usage ALD-52 --repo <name> --job <id>
 argus seed --all              # requirement rows from the old rule tables (once)
+argus revision new <slug> --title "…" --feature foundry/jobs   # a draft; then show <slug|KEY> · file <slug> <KEY> --tickets K1,K2 · drop <slug|KEY> --reason "…"
 accio find "status select"    # what backs a thing
 accio stale · accio sync --offline · accio audit
 bun test · bun run typecheck · bun run evals [--model]

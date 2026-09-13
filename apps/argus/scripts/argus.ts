@@ -14,8 +14,9 @@
  */
 
 import { listFeatures, ledgerPath, root } from "./argus/paths.ts";
-import { validateDoc, validateLedger, ValidationError } from "./argus/validate.ts";
-import { archDocPath, isFeature } from "./argus/paths.ts";
+import { validateDoc, validateLedger, validateSpec, ValidationError } from "./argus/validate.ts";
+import { archDocPath, isFeature, listApps, specDocPath } from "./argus/paths.ts";
+import { dropRevision, fileRevision, listRevisions, newRevision, readRevision, validateRevisionDir } from "./argus/revision.ts";
 import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
 import { commitRun } from "./argus/commit.ts";
@@ -73,6 +74,11 @@ const USAGE = `argus — the ledger CLI
   argus sent <feature> <ALD-key> --repo <name> [--job <id>]   record that Pensieve sent it to Foundry
   argus seed <feature>...|--all [--force]  requirement rows from the product doc's BR table
 
+  argus revision new <slug> --title "<t>" --feature <app>/<dir>[,…]   a draft under revisions/<slug>; the scope skill writes beside it
+  argus revision show <slug|KEY>                       the record, from revisions/ or its archive
+  argus revision file <slug> <KEY> --tickets K1,K2,…   the draft is filed on its parent; the directory takes the key
+  argus revision drop <slug|KEY> --reason "<why>"      archived whole as dropped; nothing under revisions/ is ever deleted
+
 flags: --dry-run  --json  --user (the write is a person's, not the model's)
 root: ${root()}`;
 
@@ -102,10 +108,62 @@ const verbs: Record<string, Verb> = {
       const arch = archDocPath(feature);
       if (await Bun.file(arch).exists()) for (const p of await validateDoc(arch)) problems.push({ feature, ...p });
     }
-    if (f.json) console.log(JSON.stringify({ ok: problems.length === 0, checked: features.length, problems }));
+    // the whole checkout: every feature's spec under every app, and every revision with its specs (CTD-192)
+    let checked = features.length;
+    if (!f.rest.length) {
+      for (const app of await listApps())
+        for (const feature of await listFeatures(app)) {
+          const spec = specDocPath(feature, app);
+          if (await Bun.file(spec).exists()) for (const p of await validateSpec(spec, `${app}/${feature}`)) problems.push({ feature: `${app}/${feature}`, ...p });
+        }
+      for (const r of await listRevisions()) {
+        checked++;
+        const name = `revisions/${r.archived ? "archive/" : ""}${r.rev.key ?? r.rev.slug}`;
+        for (const p of await validateRevisionDir(r.dir)) problems.push({ feature: name, ...p });
+      }
+    }
+    if (f.json) console.log(JSON.stringify({ ok: problems.length === 0, checked, problems }));
     else if (problems.length) for (const p of problems) console.error(`${p.feature}: ${p.path}: ${p.rule}`);
-    else console.log(`${features.length} feature${features.length === 1 ? "" : "s"} valid`);
+    else console.log(`${checked} feature${checked === 1 ? "" : "s"} valid`);
     return problems.length ? 1 : 0;
+  },
+
+  async revision(f) {
+    const [sub, a, b] = f.rest;
+    const usage = 'revision new <slug> --title "<t>" --feature <app>/<dir>[,…] | show <slug|KEY> | file <slug> <KEY> --tickets K1,K2,… | drop <slug|KEY> --reason "<why>"';
+    const out = (r: { wrote: boolean; path: string; diff: string[] }) => {
+      if (f.json) console.log(JSON.stringify({ ok: true, wrote: r.wrote, path: r.path, diff: r.diff }));
+      else console.log(`${f.dryRun ? "would write" : "wrote"} ${r.path}\n  ${r.diff.join("\n  ")}`);
+      return 0;
+    };
+    switch (sub) {
+      case "new": {
+        if (!a || !f.opts.title || !f.opts.feature) throw new Usage(usage);
+        const features = f.opts.feature.split(",").map((s) => s.trim()).filter(Boolean);
+        return out(await newRevision(a, { title: f.opts.title, features }, { dryRun: f.dryRun }));
+      }
+      case "show": {
+        if (!a) throw new Usage(usage);
+        const found = await readRevision(a);
+        if (!found) {
+          if (f.json) console.log(JSON.stringify({ ok: false, error: `${a}: no revision under revisions/ or revisions/archive/` }));
+          else console.error(`${a}: no revision under revisions/ or revisions/archive/`);
+          return 1;
+        }
+        console.log(f.json ? JSON.stringify({ ok: true, revision: found.rev, dir: found.dir, archived: found.archived }) : JSON.stringify(found.rev, null, 2));
+        return 0;
+      }
+      case "file": {
+        if (!a || !b || !f.opts.tickets) throw new Usage(usage);
+        return out(await fileRevision(a, b, f.opts.tickets.split(","), { dryRun: f.dryRun, url: f.opts.url }));
+      }
+      case "drop": {
+        if (!a || !f.opts.reason) throw new Usage(usage);
+        return out(await dropRevision(a, f.opts.reason, { dryRun: f.dryRun }));
+      }
+      default:
+        throw new Usage(usage);
+    }
   },
 
   async write(f) {

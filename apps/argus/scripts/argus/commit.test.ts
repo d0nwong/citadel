@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commitRun } from "./commit.ts";
+import { COMMITTABLE, commitRun } from "./commit.ts";
 
 let ws: string;
 const sh = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: ws, stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
@@ -53,5 +53,23 @@ describe("commitRun", () => {
     const r = await commitRun("x", { cwd: ws, dryRun: true });
     expect(r).toMatchObject({ committed: false, files: 1, cursor: "promoted" });
     expect(await Bun.file(join(ws, "state/cursor.next.json")).exists()).toBe(true);
+  });
+});
+
+describe("COMMITTABLE", () => {
+  test("a run may commit ledgers, arch docs, specs, revisions, the committed state and the manifest, and nothing else", () => {
+    for (const p of [
+      "alden/alden-portal/features/tasks/ledger.json",
+      "foundry/features/jobs/docs/arch.md",
+      "foundry/features/jobs/docs/spec.md",
+      "revisions/CTD-192/revision.json",
+      "revisions/CTD-192/specs/foundry/jobs.md",
+      "revisions/archive/CTD-65/plan.md",
+      "state/threads.json",
+      "argus/.doc-workspace/feature-manifest.json",
+    ])
+      expect(COMMITTABLE.test(p)).toBe(true);
+    for (const p of ["foundry/features/jobs/docs/product.md", "state/batches/x.json", "state/cursor.json", "docs/revisions/CTD-192/plan.md", "README.md"])
+      expect(COMMITTABLE.test(p)).toBe(false);
   });
 });

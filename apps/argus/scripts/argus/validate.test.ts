@@ -8,7 +8,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseLedger } from "./schema.ts";
-import { assertLedger, checkStyle, deriveReady, validateDoc, validateLedger, ValidationError } from "./validate.ts";
+import { assertLedger, checkStyle, deriveReady, validateDoc, validateLedger, validateSpecText, ValidationError } from "./validate.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
 const load = (name: string) => Bun.file(`${FIX}${name}`).json();
@@ -133,5 +133,31 @@ describe("validateDoc", () => {
     writeFileSync(short, "---\nid: x\n---\n" + Array.from({ length: 250 }, (_, i) => `line ${i}\n`).join("\n") + "<!-- accio:begin interfaces -->\n" + "generated\n".repeat(400) + "<!-- accio:end interfaces -->\n");
     expect(await validateDoc(long)).toHaveLength(1);
     expect(await validateDoc(short)).toEqual([]);
+  });
+});
+
+describe("validateSpecText (CTD-192)", () => {
+  const spec = (front: string, body: string) => `---\n${front}\n---\n# Spec: x\n\n## Criteria\n${body}\n## Retired\n- none\n`;
+  const good = spec("feature: foundry/jobs\nrevised_by: CTD-1\nnext_id: 3", "- S-1 — a.\n- S-2 — b.\n");
+  test("a spec with unique ids below next_id, under the cap, is clean", () => {
+    expect(validateSpecText(good, "p", "foundry/jobs")).toEqual([]);
+  });
+  test("names the front matter it lacks", () => {
+    expect(validateSpecText("# no front matter\n", "p")).toEqual([{ path: "p", rule: "no front matter" }]);
+    expect(validateSpecText(spec("next_id: 3", "- S-1 — a.\n"), "p").map((p) => p.rule)).toEqual(["front matter names no feature"]);
+    expect(validateSpecText(spec("feature: foundry/jobs", "- S-1 — a.\n"), "p").map((p) => p.rule)).toEqual(["next_id must be a positive integer"]);
+    expect(validateSpecText(spec("feature: foundry/jobs\nnext_id: two", ""), "p").map((p) => p.rule)).toEqual(["next_id must be a positive integer"]);
+  });
+  test("a repeated id, an id at or past next_id, and a retired id count too", () => {
+    const text = spec("feature: foundry/jobs\nnext_id: 3", "- S-1 — a.\n- S-1 — again.\n- S-3 — c.\n").replace("- none", "- S-2 — old — retired by CTD-1\n- S-4 — older — retired by CTD-1");
+    expect(validateSpecText(text, "p").map((p) => p.rule)).toEqual(["S-1 appears twice", "S-3 is at or past next_id 3", "S-4 is at or past next_id 3"]);
+  });
+  test("a criterion-shaped line outside Criteria or Retired is not counted", () => {
+    const text = `${good}\n## Assumptions\n- S-1 to S-2 restate the code.\n`;
+    expect(validateSpecText(text, "p")).toEqual([]);
+  });
+  test("the cap is the arch doc's", () => {
+    const long = spec("feature: foundry/jobs\nnext_id: 2", `- S-1 — a.\n${"filler\n".repeat(260)}`);
+    expect(validateSpecText(long, "p").map((p) => p.rule)).toEqual([expect.stringContaining("over the 250-line cap")]);
   });
 });
