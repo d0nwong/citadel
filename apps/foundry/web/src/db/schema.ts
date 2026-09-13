@@ -160,6 +160,12 @@ export const jobs = foundry.table(
     container: text('container'),
     /** Host path of the job's clone, kept after the job for inspection. */
     workspace: text('workspace'),
+    /**
+     * The commit the workspace stood at before the agent touched it (CTD-187):
+     * the base branch's tip, or a follow-up's PR branch tip. What `baselines`
+     * is keyed by; set once the clone exists.
+     */
+    baseSha: text('base_sha'),
     prUrl: text('pr_url'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp('started_at', { withTimezone: true }),
@@ -204,6 +210,27 @@ export const prWatches = foundry.table('pr_watches', {
   stopped: text('stopped'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+/**
+ * The base state of a commit (CTD-187): install, the suite and the typecheck
+ * as the runner's pre-step ran them on the untouched checkout, before any
+ * model turn. Computed once per repo and sha, then handed to every later job
+ * on the same base as `FOUNDRY_BASELINE`, so no step spends turns on it. The
+ * body is the container's `~/baseline.md` verbatim; `job_id` says which job
+ * measured it, with no FK for the reason `source_job_id` has none.
+ */
+export const baselines = foundry.table(
+  'baselines',
+  {
+    /** The job's `repo.name` — what the events handler has in hand. */
+    repo: text('repo').notNull(),
+    baseSha: text('base_sha').notNull(),
+    body: text('body').notNull(),
+    jobId: uuid('job_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.repo, t.baseSha] })],
+)
 
 /*
  * A job's log lines are deliberately not here (LIA-18). They are append-only,

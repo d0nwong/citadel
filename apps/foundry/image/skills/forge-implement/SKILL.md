@@ -46,7 +46,7 @@ A red test goes green by changing the code, with one exception: it asserts somet
 
 ## Step 4: The whole suite, typecheck and lint, once each
 
-Run the three commands from `~/spec.md` once each and fix what they find; a command runs again only after a fix it forced. Whether a failure is pre-existing is under the spec's Assumptions: read it, never stash and rerun. A full-suite failure in a file the diff does not touch gets exactly one rerun: a rerun that passes makes it a flake, named in the Finish with both results so the next step carries it into the report, and the suite does not run a third time for it; a rerun that fails again is not a flake and is handled as any failure. A lint that auto-fixes runs when the repo's own scripts do. Then read `git diff` once as a reviewer: every changed file is one the plan named or a compile error forced; no debug line, no leftover fixture.
+Run the three commands from `~/spec.md` once each and fix what they find; a command runs again only after a fix it forced. Whether a test or typecheck failure is pre-existing is under the spec's Assumptions, from `~/baseline.md`: read it, never stash and rerun. Lint runs over the changed files only, as the spec's Commands names it, so every line it reports is this run's to fix; no count against the base. A full-suite failure in a file the diff does not touch gets exactly one rerun: a rerun that passes makes it a flake, named in the Finish with both results so the next step carries it into the report, and the suite does not run a third time for it; a rerun that fails again is not a flake and is handled as any failure. A lint that auto-fixes runs when the repo's own scripts do. Then read `git diff` once as a reviewer: every changed file is one the plan named or a compile error forced; no debug line, no leftover fixture.
 
 ## Finish
 
@@ -58,7 +58,7 @@ End with the criteria implemented by slice; the three commands and results, one 
 |---|---|
 | "I'd do it differently from the plan" | The plan was reviewed; the alternative was not. Deviate only where the code forces it, and say so. |
 | "I'll loosen the assertion, the spirit is the same" | The assertion is the criterion. Loosening it reports green on something untested. |
-| "Is that lint error mine? I'll stash and check" | The spec recorded the base state. Read it. |
+| "Is that lint error mine? I'll stash and check" | Lint covers only the changed files, so every line it reports is yours; test and typecheck are read against the base state the spec recorded. |
 | "I'll run the full suite after each slice" | The slice's own test files say the slice is done; the full suite says the change is done, once. |
 | "Second run passed; I need to know whether that flake was mine" | One rerun is the evidence: a failure outside the diff that passes on its rerun is a flake by rule. Name it in the Finish; a third run proves nothing the second did not. |
 

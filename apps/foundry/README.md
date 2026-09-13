@@ -308,6 +308,8 @@ job already fetched instead of downloading them again; `node_modules` itself sta
 workspace. `docker volume rm foundry-pnpm-store foundry-npm-cache` clears them, and the
 next job downloads in full.
 
+Before its first step, a job container installs and runs the repo's test and typecheck scripts once on the untouched checkout, with no model involved, and writes the result to `~/baseline.md` for the steps to read. The host keeps that file in Postgres by repo and base commit and hands it to the next job on the same base, which then only installs.
+
 A job's log is a JSONL file — `~/.foundry/logs/<id>.jsonl`, one `{t, stream, text}`
 record per line, the way Claude Code keeps a session under `~/.claude/projects/`. So
 the sheet's output is also `tail -f`-able, `grep`-able and `jq`-able from a terminal:

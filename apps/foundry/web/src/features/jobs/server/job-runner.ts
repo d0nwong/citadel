@@ -22,6 +22,7 @@ import type { JobRow } from './job-store'
 import { notifyCallback } from './job-webhook'
 import { linearApiKey, linkPrToTicket } from './linear-link'
 import { startPrWatcher } from './pr-watcher'
+import { getBaseline } from './baseline-store'
 import { cleanupWorkspace } from './workspace-cleanup'
 
 const exec = promisify(execFile)
@@ -233,7 +234,7 @@ async function checkBrief(job: JobRow, originUrl: string): Promise<Brief> {
  * objects (cheap) and its `.git` is self-contained. Uncommitted changes in the
  * user's checkout are deliberately excluded.
  */
-async function prepareWorkspace(job: JobRow, originUrl: string): Promise<{ branch: string }> {
+async function prepareWorkspace(job: JobRow, originUrl: string): Promise<{ branch: string; baseSha: string }> {
   const repoPath = job.repo.kind === 'local' ? job.repo.path : ''
   const work = workspaceOf(job.id)
   await mkdir(path.dirname(work), { recursive: true })
@@ -263,7 +264,7 @@ async function prepareWorkspace(job: JobRow, originUrl: string): Promise<{ branc
       throw new Error(`PR branch '${job.branch}' is not on origin — was the PR merged and the branch deleted?`)
     }
     await git(work, ['checkout', '-B', job.branch, 'FETCH_HEAD'])
-    return { branch: job.branch }
+    return { branch: job.branch, baseSha: await git(work, ['rev-parse', 'HEAD']) }
   }
 
   // Branch from origin's tip of the base, not the local checkout's — the local
@@ -296,7 +297,7 @@ async function prepareWorkspace(job: JobRow, originUrl: string): Promise<{ branc
   if (branch !== job.branch) await store.patchJob(job.id, { branch })
 
   await git(work, ['checkout', '-B', branch, startPoint])
-  return { branch }
+  return { branch, baseSha: await git(work, ['rev-parse', 'HEAD']) }
 }
 
 /* ------------------------------------------------------------------ */
@@ -357,7 +358,13 @@ function checkTask(job: JobRow, checks: string): string {
   ].join('\n')
 }
 
-async function launch(job: JobRow, credEnv: Record<string, string>, notes: string, task = job.task): Promise<void> {
+async function launch(
+  job: JobRow,
+  credEnv: Record<string, string>,
+  notes: string,
+  task = job.task,
+  baseline?: string,
+): Promise<void> {
   const name = containerName(job.id)
   const env: Record<string, string> = {
     ...credEnv,
@@ -372,6 +379,9 @@ async function launch(job: JobRow, credEnv: Record<string, string>, notes: strin
     FOUNDRY_REPO_NOTES: notes,
     // Empty for a plain job — the runner then synthesises one bare step.
     FOUNDRY_STEPS: JSON.stringify(job.blueprint?.steps ?? []),
+    // The base state a previous job measured on this same commit (CTD-187);
+    // absent, the runner's pre-step measures it and posts it back.
+    ...(baseline === undefined ? {} : { FOUNDRY_BASELINE: baseline }),
   }
   const args = [
     'run',
@@ -468,7 +478,8 @@ export async function startJob(id: string): Promise<void> {
 
     const work = workspaceOf(id)
     await store.patchJob(id, { workspace: work, container: containerName(id) })
-    const { branch } = await prepareWorkspace(job, originUrl)
+    const { branch, baseSha } = await prepareWorkspace(job, originUrl)
+    await store.patchJob(id, { baseSha })
     await sys(
       id,
       brief === undefined
@@ -478,8 +489,18 @@ export async function startJob(id: string): Promise<void> {
 
     if (notes !== '') await sys(id, `repo notes applied (${notes.length} chars) — see the Repos page`)
 
+    // The base state, measured once per commit: hand it in when a job on this
+    // base already did, else the pre-step measures and posts it.
+    const cached = await getBaseline(job.repo.name, baseSha)
+    await sys(
+      id,
+      cached === undefined
+        ? `baseline: none cached for ${baseSha.slice(0, 7)} — the pre-step measures it`
+        : `baseline: cached for ${baseSha.slice(0, 7)} by job ${cached.jobId.slice(0, 8)} — install only`,
+    )
+
     await store.patchJob(id, { step: 'agent' })
-    await launch({ ...job, branch }, credEnv, notes, brief?.task)
+    await launch({ ...job, branch }, credEnv, notes, brief?.task, cached?.body)
     armWatcher(id)
     await sys(id, `forge lit — ${containerName(id)}`)
   } catch (e) {
