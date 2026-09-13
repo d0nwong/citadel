@@ -77,7 +77,7 @@ it proposes waits under the feature's proposals for File. It never writes Linear
 SPEC.md  tasks/  docs/intent  docs/ideas       the rebuild's spec, plan and why
 scripts/argus.ts  scripts/argus/               the argus CLI and its verbs
 scripts/accio.ts  scripts/accio/               the code-and-docs index
-skills/sweep  ask  feature-docs  linear-ticket  the skills; sweep/reader.md, attribute.md, shapes.md, style.md
+skills/sweep  ask  feature-docs  linear-ticket  scope  the skills; sweep/reader.md, attribute.md, shapes.md, style.md; scope/interview.md, spec.md, plan.md, SHAPES.md
 alden/alden-portal/.doc-workspace/feature-manifest.json
 alden/alden-portal/features/<dir>/ledger.json  docs/arch.md
 pensieve/features  foundry/features             arch docs for the other two apps
