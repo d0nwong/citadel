@@ -22,6 +22,7 @@ import type { JobRow } from './job-store'
 import { notifyCallback } from './job-webhook'
 import { linearApiKey, linkPrToTicket } from './linear-link'
 import { startPrWatcher } from './pr-watcher'
+import { cleanupWorkspace } from './workspace-cleanup'
 
 const exec = promisify(execFile)
 
@@ -33,6 +34,8 @@ const MCP_URL = process.env.FOUNDRY_MCP_URL ?? 'http://host.docker.internal:9090
 const MAX_JOBS = Number(process.env.FOUNDRY_MAX_JOBS ?? 3)
 /** Seconds the agent may run before the container's `timeout` kills it. */
 const JOB_TIMEOUT = Number(process.env.FOUNDRY_TIMEOUT ?? 1800)
+/** Escape hatch: keep every workspace on disk, even a succeeded job's. */
+const KEEP_WORKSPACES = process.env.FOUNDRY_KEEP_WORKSPACES === '1'
 /** Where forge-run.sh lives on the host — bind-mounted, so edits need no image rebuild. */
 const RUNNER_SCRIPT = path.resolve(process.cwd(), '..', 'image', 'forge-run.sh')
 /** foundry's canonical PR template, bind-mounted for the same reason. Bitbucket has no repo template convention, so this keeps PR bodies one shape on every forge. */
@@ -50,11 +53,19 @@ const err = (id: string, text: string) => appendLogs(id, [{ stream: 'err', text 
  * restart's orphan sweep — goes through here, so the completion webhook is a
  * consequence of settling wherever settling happens. Returns whether this
  * call made the transition (the store's guard); the webhook fires only then.
+ * Workspace cleanup rides the same guard, strictly after the transition, so a
+ * caller that lost the race never deletes a path the winner still reports.
  */
 async function settle(id: string, outcome: Parameters<typeof store.settleJob>[1]): Promise<boolean> {
   const settled = await store.settleJob(id, outcome)
-  if (settled) void notifyCallback(id)
-  return settled
+  if (!settled) return false
+  void notifyCallback(id)
+  await cleanupWorkspace(id, outcome.status, {
+    jobsDir: JOBS_DIR,
+    keep: KEEP_WORKSPACES,
+    log: (stream, text) => appendLogs(id, [{ stream, text }]),
+  })
+  return true
 }
 
 async function git(dir: string, args: Array<string>): Promise<string> {
