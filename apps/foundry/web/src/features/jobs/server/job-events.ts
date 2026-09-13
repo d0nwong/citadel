@@ -8,6 +8,7 @@
  */
 import { z } from 'zod'
 import { tokenMatches } from './auth'
+import { putBaseline } from './baseline-store'
 import { appendLogs } from './job-logs'
 import * as store from './job-store'
 import type { LogStream } from '../types'
@@ -32,6 +33,11 @@ export const EventPayloadSchema = z.object({
   sys: z.array(z.string()).optional().describe("The runner's own progress lines."),
   outcome: z.enum(['committed', 'no-changes']).optional().describe('Sent with `step: "commit"`.'),
   exitCode: z.number().int().nonnegative().optional().describe("The agent's exit code, sent with `step: \"commit\"`."),
+  baseline: z
+    .string()
+    .max(65_536)
+    .optional()
+    .describe("The base state the pre-step measured — `~/baseline.md` verbatim — cached by the job's repo and base sha (CTD-187)."),
 })
 
 export type EventPayload = z.output<typeof EventPayloadSchema>
@@ -60,6 +66,7 @@ export async function handleJobEvent(jobId: string, request: Request): Promise<R
   for (const s of payload.sys ?? []) lines.push({ stream: 'sys', text: s })
   for (const s of payload.stderr ?? []) lines.push({ stream: 'err', text: trim(s, 2000) })
   for (const raw of payload.ndjson ?? []) lines.push(...mapClaudeEvent(raw))
+  if (payload.baseline !== undefined) lines.push({ stream: 'sys', text: await cacheBaseline(job, payload.baseline) })
   // A step label is a prefix on the text, not a field: every record in the
   // JSONL stays the same shape, and the sheet reads `[plan] …` the way it reads
   // anything else.
@@ -177,4 +184,15 @@ export function mapClaudeEvent(raw: string): Array<{ stream: LogStream; text: st
     default:
       return []
   }
+}
+
+/**
+ * The base state a pre-step measured, kept for the next job on the same
+ * commit (CTD-187). The runner set `base_sha` once the clone existed; a job
+ * with none — a row from before the column — keeps its file and caches nothing.
+ */
+async function cacheBaseline(job: { id: string; repo: { name: string }; baseSha: string | null }, body: string): Promise<string> {
+  if (job.baseSha === null) return `baseline measured (${body.length} chars) — no base sha on this job, not cached`
+  await putBaseline({ repo: job.repo.name, baseSha: job.baseSha, body, jobId: job.id })
+  return `baseline measured and cached for ${job.repo.name} @ ${job.baseSha.slice(0, 7)} (${body.length} chars)`
 }

@@ -433,7 +433,7 @@ export async function getJobRow(id: string): Promise<JobRow | undefined> {
  */
 export async function patchJob(
   id: string,
-  fields: Partial<Pick<JobRow, 'step' | 'container' | 'workspace' | 'branch' | 'startedAt' | 'exitCode'>>,
+  fields: Partial<Pick<JobRow, 'step' | 'container' | 'workspace' | 'branch' | 'baseSha' | 'startedAt' | 'exitCode'>>,
 ): Promise<void> {
   await db.update(jobs).set(fields).where(eq(jobs.id, id))
 }

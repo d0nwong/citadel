@@ -11,6 +11,8 @@
 #   FOUNDRY_STEPS  — JSON array [{name, model, effort?, prompt}] from a
 #                    blueprint (LIA-25); empty/absent means one bare step.
 #   FOUNDRY_REPO_NOTES — the target repo's standing instructions, if any.
+#   FOUNDRY_BASELINE — ~/baseline.md as a previous job on the same base measured
+#                    it (CTD-187); absent, the pre-step measures and posts it.
 set -uo pipefail   # deliberately no -e: every failure path must still report
 
 : "${FOUNDRY_JOB_ID:?}" "${FOUNDRY_CALLBACK:?}" "${FOUNDRY_TOKEN:?}" "${FOUNDRY_TASK:?}"
@@ -35,6 +37,67 @@ post_line() {
 
 cd /work || { post_line sys "workspace /work is missing"; exit 1; }
 start_rev=$(git rev-parse HEAD 2>/dev/null || echo none)
+
+# ---------------------------------------------------------------- baseline
+# The base state — install, the suite and the typecheck on the untouched
+# checkout — measured once per base commit (CTD-187), here, before any model
+# turn: a step reads ~/baseline.md instead of spending turns on the same
+# commands every job. The host caches the file by repo and sha and hands it
+# back as FOUNDRY_BASELINE; then only install runs, since node_modules is per
+# workspace. Lint is not measured: a step lints the changed files only. The
+# job budget starts here — this is job time, whoever spends it.
+started=$(date +%s)
+BASELINE="$HOME/baseline.md"
+
+# base_run <label> <cmd…>: run under a cap, report one line, and append the
+# entry while BASELINE_APPEND is set — a cache hit keeps the file as handed in.
+BASELINE_APPEND=1
+base_run() {
+  local label=$1; shift
+  local out; out=$(mktemp)
+  local t0; t0=$(date +%s)
+  CI=1 NO_COLOR=1 timeout 900 "$@" >"$out" 2>&1
+  local rc=$?
+  local secs=$(( $(date +%s) - t0 ))
+  local keep=3; [ "$rc" != 0 ] && keep=40
+  [ -n "$BASELINE_APPEND" ] && {
+    printf '## %s\n`%s` — exit %s — %ss\n```\n' "$label" "$*" "$rc" "$secs"
+    grep -v '^[[:space:]]*$' "$out" | tail -n "$keep" | cut -c1-400
+    printf '```\n\n'
+  } >>"$BASELINE"
+  rm -f "$out"
+  post_line sys "baseline: $label — \`$*\` exit $rc in ${secs}s"
+  return "$rc"
+}
+# The package manager from the lockfile, the scripts from package.json.
+pm=""; install=()
+if   [ -f pnpm-lock.yaml ]; then pm=pnpm; install=(pnpm install --frozen-lockfile)
+elif [ -f bun.lock ] || [ -f bun.lockb ]; then pm=bun; install=(bun install --frozen-lockfile)
+elif [ -f yarn.lock ]; then pm=yarn; install=(yarn install --frozen-lockfile)
+elif [ -f package-lock.json ]; then pm=npm; install=(npm ci)
+elif [ -f package.json ]; then pm=npm; install=(npm install)
+fi
+has_script() { jq -e --arg s "$1" '.scripts[$s] // empty' package.json >/dev/null 2>&1; }
+
+if [ -z "$pm" ]; then
+  post_line sys "baseline: no package.json in /work — nothing to install or measure"
+elif [ -n "${FOUNDRY_BASELINE:-}" ]; then
+  printf '%s\n' "$FOUNDRY_BASELINE" >"$BASELINE"
+  post_line sys "baseline: cached for ${start_rev:0:7} — install only"
+  BASELINE_APPEND=""
+  base_run install "${install[@]}"
+else
+  printf '# Base state: %s\n\nInstall, test and typecheck as run on the untouched checkout before any step, each with its exit code and last lines. Read this instead of running them; lint is not here — lint the changed files only.\n\n' "$start_rev" >"$BASELINE"
+  if base_run install "${install[@]}"; then
+    if has_script test; then base_run test "$pm" run test; else printf '## test\nno `test` script in package.json\n\n' >>"$BASELINE"; fi
+    tc=""
+    for s in typecheck build:types check-types type-check tsc; do has_script "$s" && { tc=$s; break; }; done
+    if [ -n "$tc" ]; then base_run typecheck "$pm" run "$tc"; else printf '## typecheck\nno typecheck script in package.json (looked for typecheck, build:types, check-types, type-check, tsc)\n\n' >>"$BASELINE"; fi
+  else
+    printf 'install failed — test and typecheck not run\n' >>"$BASELINE"
+  fi
+  head -c 60000 "$BASELINE" | jq -Rs '{baseline: .}' | post
+fi
 
 # ---------------------------------------------------------------- steps
 # A plain job is a blueprint of one step on the default model — same loop,
@@ -73,7 +136,6 @@ $FOUNDRY_REPO_NOTES"
 fi
 
 agent_exit=0
-started=$(date +%s)
 i=0
 while [ "$i" -lt "$n" ]; do
   step=$(printf '%s' "$steps" | jq -c ".[$i]")

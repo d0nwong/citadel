@@ -27,7 +27,7 @@ A ticket id (`ABC-123`) or a `linear.app` URL is fetched with the `linear` MCP `
 
 ## Step 2: Find the commands, exactly
 
-From `package.json` scripts, the lockfile's package manager, and what CI runs. An e2e runner counts only if it is already configured; otherwise `e2e: none configured`, never a plan to add one. Run test, typecheck and lint once on the untouched checkout and record their state under Assumptions (`bun test 212 pass · typecheck clean · lint: 3 pre-existing errors in src/legacy/`); every later step reads it there instead of rerunning them.
+From `package.json` scripts, the lockfile's package manager, and what CI runs. An e2e runner counts only if it is already configured; otherwise `e2e: none configured`, never a plan to add one. `~/baseline.md`, written before this step, holds install, test and typecheck as run on the untouched checkout, each with its exit code and last lines: record that state under Assumptions (`test 212 pass · typecheck clean`, or the failure the file shows) and run neither; with no file, run the two once and record the same. Lint never runs on the whole tree and no pre-existing count is recorded: Commands names the linter over the files changed since the base sha at the top of `~/baseline.md`, committed or not — with Biome, `{ git diff --name-only --diff-filter=d <sha>; git ls-files --others --exclude-standard; } | xargs -r node_modules/.bin/biome lint --no-errors-on-unmatched`; otherwise the repo's lint script given that same file list.
 
 ## Step 3: Ground every acceptance criterion in the code
 
@@ -68,7 +68,7 @@ repro:   bun test src/features/jobs/server/job-api.test.ts -t "claims the ticket
 - C1 — <state to set up; what is observed. Where: file, symbol.>
 
 ## Commands
-test: <exact>   typecheck: <exact>   lint: <exact>   e2e: <exact, or "none configured">
+test: <exact>   typecheck: <exact>   lint: <exact, over the changed files only>   e2e: <exact, or "none configured">
 repro: <bug only>
 
 ## Out of scope
@@ -108,5 +108,5 @@ End with the Criteria verbatim, the Commands line and the Assumptions — or the
 
 - [ ] Every criterion traces to an AC line, states state and observation, and names where it is satisfied
 - [ ] No AC section, a bug with no reproduction, or a refactor with nothing named, produced `## Blocked`
-- [ ] Test, typecheck and lint ran once on the untouched checkout, state recorded under Assumptions
+- [ ] The base state under Assumptions is `~/baseline.md`'s; no test, typecheck or lint ran here
 - [ ] `~/spec.md` exists and `git -C /work status --porcelain` is empty
