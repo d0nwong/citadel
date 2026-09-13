@@ -1,5 +1,5 @@
 /**
- * The seeded skill blueprints — "Spec → QA" (migration 0013, v2 in 0019), "Bug → Fix"
+ * The seeded skill blueprints — "Spec → QA" (migration 0013, v2 in 0019, v3 in 0020), "Bug → Fix"
  * (0014) and "Simplify" (0016) — against the real database: each is there under its fixed id, its
  * steps are ones the editor would accept, its history starts with a `seed`
  * revision, and seeding them did not move the ignite default. Needs the local
@@ -72,12 +72,19 @@ test('the simplify blueprint runs spec in refactor mode, so the unchanged suite 
   expect(row?.steps[1].prompt).toMatch(/^\/forge-simplify\b/)
 })
 
-test('Spec → QA v2 writes the tests red and implements them in one step, and keeps v1 to restore', async () => {
+test('Spec → QA v3 writes the tests red and implements them in one step, starting from what the session holds, and keeps v1 and v2 to restore', async () => {
   const row = await getBlueprintRow(QA_BLUEPRINT_ID)
   expect(row?.steps[1].prompt).toMatch(/^\/forge-test\b/)
   expect(row?.steps[1].prompt).toContain('~/.claude/skills/forge-implement/SKILL.md')
-  const v1 = (await listRevisions(QA_BLUEPRINT_ID)).find((r) => r.version === 1)
+  // The session is resumed across steps, so the build step is told not to re-read what spec read.
+  expect(row?.steps[1].prompt).toContain('already in this session')
+  const revisions = await listRevisions(QA_BLUEPRINT_ID)
+  const v1 = revisions.find((r) => r.version === 1)
   expect(v1?.steps.map((s) => s.name)).toEqual(['spec', 'plan', 'test', 'implement', 'verify'])
+  const v2 = revisions.find((r) => r.version === 2)
+  expect(v2?.source).toBe('seed')
+  expect(v2?.steps.map((s) => s.name)).toEqual(['spec', 'build', 'verify'])
+  expect(v2?.steps[1].prompt).not.toContain('already in this session')
 })
 
 test('seeding them left the ignite default on "Plan → Execute"', async () => {
