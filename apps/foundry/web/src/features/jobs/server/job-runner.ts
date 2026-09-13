@@ -20,8 +20,9 @@ import { FOUNDRY_HOME, appendLogs } from './job-logs'
 import * as store from './job-store'
 import type { JobRow } from './job-store'
 import { notifyCallback } from './job-webhook'
-import { linearApiKey, linkPrToTicket } from './linear-link'
+import { fetchIssue, linearApiKey, linkPrToTicket } from './linear-link'
 import { startPrWatcher } from './pr-watcher'
+import { hydrateTask } from './task-context'
 import { getBaseline } from './baseline-store'
 import { cleanupWorkspace } from './workspace-cleanup'
 
@@ -500,7 +501,21 @@ export async function startJob(id: string): Promise<void> {
     )
 
     await store.patchJob(id, { step: 'agent' })
-    await launch({ ...job, branch }, credEnv, notes, brief?.task, cached?.body)
+    // What the task names, resolved here where the base commit and the Linear
+    // key both are (CTD-190). Root jobs only: a follow-up's task is a PR's
+    // comments or a check's log, composed above, not a ticket.
+    let task = brief?.task
+    if (brief === undefined) {
+      try {
+        const hydrated = await hydrateTask(job.task, work, { fetchIssue, linearKey: await linearApiKey() })
+        await appendLogs(id, hydrated.log)
+        task = hydrated.task
+      } catch (e) {
+        await err(id, `context: skipped — ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
+
+    await launch({ ...job, branch }, credEnv, notes, task, cached?.body)
     armWatcher(id)
     await sys(id, `forge lit — ${containerName(id)}`)
   } catch (e) {
