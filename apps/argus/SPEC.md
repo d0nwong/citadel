@@ -171,6 +171,35 @@ Global state, under `state/`, gitignored except where noted:
 - `state/unplaced.json` — messages neither `place` nor the sweep could attribute, with
   the feature list each was read against. Pensieve's Unplaced list; a click empties it.
 
+### The revision (CTD-192)
+
+`revisions/<slug|KEY>/revision.json` is one confirmed piece of work: which features it
+touches, which parent ticket carries it and which sub-issues, and where it is in its life.
+Beside it, written by the `scope` skill and never by a verb: `intent.md`, one revised spec
+per feature under `specs/<app>/<dir>.md`, and `plan.md`. A feature's live spec is
+`<app>/features/<dir>/docs/spec.md`, written only when a done revision folds.
+
+```jsonc
+{
+  "slug": "spec-tickets",
+  "key": "CTD-192",                     // absent while a draft
+  "title": "A ramble becomes a spec, and the spec becomes the tickets",
+  "status": "filed",                    // draft | filed | done | dropped
+  "features": ["foundry/jobs", "argus/revisions"],   // <app>/<dir>, as Pensieve addresses a feature
+  "tickets": ["CTD-193", "CTD-194"],    // the sub-issues, in plan order
+  "at": { "drafted": "2026-09-13", "filed": "2026-09-13", "settled": null },
+  "evidence": [ { "kind": "ticket", "key": "CTD-192", "url": "…" } ]
+}
+```
+
+`draft` → `filed` is `argus revision file` (the directory takes the key's name); `filed` →
+`done` is reconcile's fold on a Done parent; either → `dropped` is `argus revision drop` or
+reconcile on a Cancelled parent. Done and dropped revisions move whole to
+`revisions/archive/`; nothing under `revisions/` is deleted. `argus validate` refuses a
+status outside the four, a feature with no directory under an app, a filed revision with no
+key or tickets, and a spec over the arch cap, with a repeated `S-n`, or with an id at or past
+its `next_id`.
+
 ## Commands
 
 `argus` and `accio` are CLIs: `bin` entries in `package.json`, run from citadel's root as
@@ -193,6 +222,12 @@ argus confirm   <feature> <req-id> [--contradict --reason "<why>"]
 argus file      <feature> <proposal-id>   # prints the ticket body; Pensieve files it via Linear and calls `ticket`
 argus ticket    <feature> <proposal-id> <ALD-key>   # records the key on the ask and the ticket list
 argus sent      <feature> <ALD-key> --repo <name> --job <id>   # Pensieve posted the job (it holds the Foundry token); this records it
+
+# the revision (CTD-192): the record only; the scope skill writes the markdown beside it
+argus revision new  <slug> --title "<t>" --feature <app>/<dir>[,…]            # revisions/<slug>/revision.json, status draft
+argus revision show <slug|KEY>                       # the record, from revisions/ or its archive
+argus revision file <slug> <KEY> --tickets K1,K2,…   # draft → filed; the directory is renamed to the key
+argus revision drop <slug|KEY> --reason "<why>"      # → revisions/archive/, status dropped; nothing is deleted
 
 # what is where in the code and docs
 accio find "<words>"                      # feature, files, endpoints for a screen, field or route

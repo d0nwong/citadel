@@ -290,3 +290,79 @@ export async function validateDoc(path: string, max = ARCH_MAX_LINES): Promise<P
   const lines = curatedLines(await Bun.file(path).text());
   return lines > max ? [{ path, rule: `${lines} curated lines, over the ${max}-line cap` }] : [];
 }
+
+// ---------------------------------------------------------------- the feature spec and the revision (CTD-192)
+
+/** a criterion line under `## Criteria` or `## Retired`: `- S-12 — …` */
+const CRITERION = /^- S-(\d+) —/;
+
+/**
+ * The rules on a feature spec, wherever it sits: front matter naming its feature and a
+ * numeric `next_id`; criterion ids unique across Criteria and Retired and all below
+ * `next_id`, so an id is never reused; and the same line cap as the arch doc. `feature`,
+ * when given, is what the front matter must name.
+ */
+export function validateSpecText(text: string, path: string, feature?: string, max = ARCH_MAX_LINES): Problem[] {
+  const out: Problem[] = [];
+  const fm = text.match(/^---\n([\s\S]*?)\n---\n/);
+  if (!fm) return [{ path, rule: "no front matter" }];
+  const field = (k: string) => fm[1]!.match(new RegExp(`^${k}:\\s*(.+?)\\s*$`, "m"))?.[1];
+  const named = field("feature");
+  if (!named) out.push({ path, rule: "front matter names no feature" });
+  else if (feature && named !== feature) out.push({ path, rule: `front matter names ${named}, expected ${feature}` });
+  const nextRaw = field("next_id");
+  const next = nextRaw === undefined ? NaN : Number(nextRaw);
+  if (!Number.isInteger(next) || next < 1) out.push({ path, rule: "next_id must be a positive integer" });
+  const lines = curatedLines(text);
+  if (lines > max) out.push({ path, rule: `${lines} curated lines, over the ${max}-line cap` });
+  const seen = new Set<number>();
+  let section = "";
+  for (const l of text.split("\n")) {
+    const h = l.match(/^## (.+?)\s*$/);
+    if (h) { section = h[1]!; continue; }
+    if (section !== "Criteria" && section !== "Retired") continue;
+    const m = l.match(CRITERION);
+    if (!m) continue;
+    const id = Number(m[1]);
+    if (seen.has(id)) out.push({ path, rule: `S-${id} appears twice` });
+    seen.add(id);
+    if (Number.isInteger(next) && id >= next) out.push({ path, rule: `S-${id} is at or past next_id ${next}` });
+  }
+  return out;
+}
+
+export async function validateSpec(path: string, feature?: string, max = ARCH_MAX_LINES): Promise<Problem[]> {
+  return validateSpecText(await Bun.file(path).text(), path, feature, max);
+}
+
+export const REVISION_STATUSES = ["draft", "filed", "done", "dropped"] as const;
+export type RevisionStatus = (typeof REVISION_STATUSES)[number];
+
+/** the fields a revision record carries; the parser in `revision.ts` builds one, these rules judge it */
+export type RevisionRecord = {
+  slug: string;
+  key?: string;
+  title: string;
+  status: RevisionStatus;
+  features: string[];
+  tickets: string[];
+  at: { drafted: string; filed: string | null; settled: string | null };
+  evidence: Evidence[];
+};
+
+/**
+ * The rules on a parsed revision beyond its shape: every feature it names is a feature
+ * directory under an app, and a revision past `draft` carries its key and, once filed, its
+ * tickets. `knownFeature` answers whether `<app>/<dir>` exists.
+ */
+export async function validateRevisionRecord(r: RevisionRecord, path: string, knownFeature: (key: string) => Promise<boolean>): Promise<Problem[]> {
+  const out: Problem[] = [];
+  if (!r.features.length) out.push({ path: `${path}.features`, rule: "names no feature" });
+  for (const [i, k] of r.features.entries()) if (!(await knownFeature(k))) out.push({ path: `${path}.features[${i}]`, rule: `${k} is not a feature directory under an app` });
+  // a dropped draft never had a key; filed and done revisions always do
+  if (r.status === "filed" || r.status === "done") {
+    if (!r.key) out.push({ path: `${path}.key`, rule: `a ${r.status} revision has a key` });
+    if (!r.tickets.length) out.push({ path: `${path}.tickets`, rule: `a ${r.status} revision names its tickets` });
+  }
+  return out;
+}

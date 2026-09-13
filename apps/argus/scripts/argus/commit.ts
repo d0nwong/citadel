@@ -17,8 +17,8 @@ async function git(args: string[], cwd = root()): Promise<{ code: number; out: s
   return { code: await p.exited, out: out.trimEnd(), err: err.trim() };
 }
 
-/** what a run may commit: ledgers, arch docs, the committed state files, the manifest */
-export const COMMITTABLE = /(^|\/)features\/.*\/(ledger\.json|docs\/arch\.md)$|^state\/(threads|unplaced|deploys)\.json$|\/\.doc-workspace\/feature-manifest\.json$/;
+/** what a run may commit: ledgers, arch docs and specs, the revisions, the committed state files, the manifest */
+export const COMMITTABLE = /(^|\/)features\/.*\/(ledger\.json|docs\/arch\.md|docs\/spec\.md)$|^revisions\/|^state\/(threads|unplaced|deploys)\.json$|\/\.doc-workspace\/feature-manifest\.json$/;
 
 /** changed paths (modified, added, deleted) the run may commit, from git's own view */
 async function changed(cwd: string): Promise<string[]> {

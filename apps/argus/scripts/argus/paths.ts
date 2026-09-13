@@ -20,6 +20,14 @@ export const ledgerPath = (feature: string, app = DEFAULT_APP) => join(featureDi
 export const archDocPath = (feature: string, app = DEFAULT_APP) => join(featureDir(feature, app), "docs/arch.md");
 export const manifestPath = (app = DEFAULT_APP) => join(root(), app, ".doc-workspace/feature-manifest.json");
 
+export const specDocPath = (feature: string, app = DEFAULT_APP) => join(featureDir(feature, app), "docs/spec.md");
+
+/** the revisions (CTD-192): one directory per revision, by slug while a draft and by its parent's key once filed */
+export const revisionsDir = () => join(root(), "revisions");
+export const revisionDir = (slugOrKey: string) => join(revisionsDir(), slugOrKey);
+export const archiveDir = () => join(revisionsDir(), "archive");
+export const archivedRevisionDir = (slugOrKey: string) => join(archiveDir(), slugOrKey);
+
 export const stateDir = () => join(root(), "state");
 export const cursorPath = () => join(stateDir(), "cursor.json");
 export const cursorNextPath = () => join(stateDir(), "cursor.next.json");
@@ -34,6 +42,39 @@ export async function isFeature(feature: string, app = DEFAULT_APP): Promise<boo
   if (!/^[a-z0-9-]+(\/[a-z0-9-]+)?$/.test(feature)) return false;
   const dir = featureDir(feature, app);
   return (await exists(join(dir, "docs"))) || (await exists(join(dir, LEDGER_FILE)));
+}
+
+/**
+ * Every app in the checkout: a directory one or two levels down that holds `features/`,
+ * the way Pensieve discovers them — `alden/alden-portal`, `foundry`, `pensieve`, `argus`.
+ */
+export async function listApps(): Promise<string[]> {
+  const out: string[] = [];
+  const dirs = async (p: string) =>
+    (await readdir(p, { withFileTypes: true }).catch(() => []))
+      .filter((d) => d.isDirectory() && !d.name.startsWith(".") && d.name !== "node_modules")
+      .map((d) => d.name);
+  for (const a of await dirs(root())) {
+    if (await exists(join(root(), a, "features"))) out.push(a);
+    else for (const b of await dirs(join(root(), a))) if (await exists(join(root(), a, b, "features"))) out.push(`${a}/${b}`);
+  }
+  return out.sort();
+}
+
+/**
+ * A feature as Pensieve addresses it, `<app>/<dir>`, split into the app and the feature
+ * under it — `foundry/jobs` → `["foundry", "jobs"]`, `alden/alden-portal/admin/usage` →
+ * `["alden/alden-portal", "admin/usage"]`. Null when no such feature directory exists.
+ */
+export async function splitFeatureKey(key: string): Promise<[app: string, feature: string] | null> {
+  const segs = key.split("/");
+  for (const n of [2, 1]) {
+    if (segs.length <= n) continue;
+    const app = segs.slice(0, n).join("/");
+    const feature = segs.slice(n).join("/");
+    if ((await exists(featuresDir(app))) && (await isFeature(feature, app))) return [app, feature];
+  }
+  return null;
 }
 
 /** every feature directory under the app, nested ones as `parent/child`, sorted */
