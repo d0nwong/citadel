@@ -61,6 +61,7 @@ Lead with what matters; name the move for a structural finding. Fix in place whe
 | C4 | e2e/jobs.spec.ts › "C4: …" | e2e | no — CI runs it | written, typechecks |
 
 Commands: <pending until Step 5>
+Flaky: <test outside the diff that failed once and passed on its one rerun, with both results; or none>
 Not covered: <criterion and why>
 Findings fixed here / left for the reader: <one line each, labelled>
 Tests tightened or removed: <name, what it was not catching>
@@ -69,11 +70,11 @@ UI: <only when the diff touched UI>
 Assumptions carried: <the spec's and the plan's>
 ```
 
-Every criterion has a row. Then `/work/.git/PR_BODY.md`, following the repo's PR template or `/usr/local/share/foundry/pr-template.md`: `Closes <ticket>` when the task named one; a Summary from the plan's `Change`, opening with the `## Root cause` sentence when the plan has one, and for a refactor naming each simplification made and the plan's `Not doing` line for one deliberately left; the Assumptions; the report's table and Commands line under How verified, then the findings left for the reader. One unbroken line per paragraph and bullet. Then `git -C /work add -A && git -C /work commit --amend --no-edit`.
+Every criterion has a row. Then `/work/.git/PR_BODY.md`, following the repo's PR template or `/usr/local/share/foundry/pr-template.md`: `Closes <ticket>` when the task named one; a Summary from the plan's `Change`, opening with the `## Root cause` sentence when the plan has one, and for a refactor naming each simplification made and the plan's `Not doing` line for one deliberately left; the Assumptions; the report's table, Commands line and Flaky line under How verified, then the findings left for the reader. One unbroken line per paragraph and bullet. Then `git -C /work add -A && git -C /work commit --amend --no-edit`.
 
 ## Step 5: Prove it, once
 
-Run test, typecheck and lint from `~/spec.md` once each, after the last edit; again only after a fix one forced. Replace the pending Commands line in both files. CI-run e2e tests are proven to parse (the typecheck, or the runner's list mode), never run. Then `git -C /work status --porcelain`: a file only the formatter touched, in code the plan never named, is reverted with `git checkout -- <file>` and the report says so. Amend once more; the status is empty.
+Run test, typecheck and lint from `~/spec.md` once each, after the last edit; again only after a fix one forced. A full-suite failure in a file the diff does not touch gets exactly one rerun: a rerun that passes makes it a flake, named on the `Flaky:` line in both files with both results, and the suite does not run a third time for it; a rerun that fails again is not a flake and is handled as any failure. Replace the pending Commands line in both files. CI-run e2e tests are proven to parse (the typecheck, or the runner's list mode), never run. Then `git -C /work status --porcelain`: a file only the formatter touched, in code the plan never named, is reverted with `git checkout -- <file>` and the report says so. Amend once more; the status is empty.
 
 ## Finish
 
@@ -87,6 +88,7 @@ End with the commit subject, the report's table and Commands line, the findings 
 | "I'll commit once everything is verified" | A timeout before the commit hands the host a sweep commit that fails the title lint. Commit first, amend after. |
 | "LGTM, the diff is clean" | Approval without evidence. A row per criterion, a line per command. |
 | "This might be a minor concern" (about a bug that will ship) | Say what it is and label it. Softening a finding is the same failure as missing it. |
+| "Second run passed; I need to know whether that flake was mine" | One rerun is the evidence: a failure outside the diff that passes on its rerun is a flake by rule. Record it on the `Flaky:` line; a third run proves nothing the second did not. |
 
 ## Red Flags
 
