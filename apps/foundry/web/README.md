@@ -109,7 +109,11 @@ Ignite ─► insert row (queued, with a per-job callback token)
   `bb pr show <id> true` — `server/forge-pr.ts`), fresh at launch like repo notes,
   and hands them to the forge as its task; the workspace checks out origin's tip of
   the PR branch, and the finishing push updates the existing PR instead of opening a
-  new one. The container still holds no credentials.
+  new one. The container still holds no credentials. In the ledger a follow-up sits
+  under the job whose PR it continues (CTD-183): one row per root job, ordered by the
+  group's newest activity, with a strip that folds its follow-ups away; a status tab
+  matches a group through any of its jobs, and a follow-up whose root was purged stands
+  on its own.
 - The **PR watcher** (`server/pr-watcher.ts`, CTD-170) launches those follow-ups by
   itself. Once per `FOUNDRY_PR_POLL` seconds (default 60) it reads every open PR a root
   job opened in the last fortnight — `gh pr view --json` for GitHub, Bitbucket's REST API

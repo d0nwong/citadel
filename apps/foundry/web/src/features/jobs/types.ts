@@ -61,14 +61,23 @@ export interface JobDetail extends Job {
 /** Display form of a job's uuid — the short prefix, the way git shows hashes. */
 export const shortId = (id: string) => id.slice(0, 8)
 
-/** Keyset cursor for `listJobs` pagination — the last row's sort key. */
+/** Keyset cursor for `listJobs` pagination — the last group's sort key: its latest activity (epoch ms), then its root's id. */
 export interface JobCursor {
-  createdAt: number
+  activity: number
   id: string
 }
 
+/**
+ * One ledger row (CTD-183): a root job — one that is not a follow-up, or
+ * whose root was purged — with the follow-ups that continue its PR, oldest
+ * first. Empty for a job nobody has followed up.
+ */
+export interface JobGroup extends Job {
+  followUps: Array<Job>
+}
+
 export interface JobPage {
-  jobs: Array<Job>
+  jobs: Array<JobGroup>
   nextCursor: JobCursor | null
 }
 
