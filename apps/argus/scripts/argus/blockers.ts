@@ -22,6 +22,7 @@ import { ticketStates, type TicketStates } from "./linear.ts";
 import { listFeatures } from "./paths.ts";
 import { ticketKeysIn } from "./pr-facts.ts";
 import type { Blocker, Evidence, Landing, Ledger, Ticket } from "./schema.ts";
+import { cancelRevision, foldRevision, listRevisions, type Settled } from "./revision.ts";
 import { readLedger, writeLedger, type WriteResult } from "./write.ts";
 
 export type DeployedOf = (repo: "fe" | "be", sha: string) => Promise<Deploy | null>;
@@ -128,7 +129,8 @@ export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new
   return { ledger: next, cleared };
 }
 
-export type ReconcileResult = { feature: string; cleared: string[]; write: WriteResult | null };
+/** one ledger reconciled, or one revision settled (`feature` is then `revisions/<KEY>`) */
+export type ReconcileResult = { feature: string; cleared: string[]; write: WriteResult | null; revision?: Settled; error?: string };
 
 export type ReconcileOptions = {
   deployed?: DeployedOf;
@@ -158,7 +160,11 @@ export async function reconcileAll(opts: ReconcileOptions = {}): Promise<Reconci
     const l = await readLedger(feature);
     if (l && needsReconcile(l)) ledgers.push([feature, l]);
   }
-  const openKeys = [...new Set(ledgers.flatMap(([, l]) => l.tickets.filter((t) => !t.settled).map((t) => t.key)))];
+  // the filed revisions, whose parents settle them — only on a whole run, never one scoped to named features
+  const filed = opts.features ? [] : (await listRevisions()).filter((r) => !r.archived && r.rev.status === "filed" && r.rev.key);
+  const openKeys = [
+    ...new Set([...ledgers.flatMap(([, l]) => l.tickets.filter((t) => !t.settled).map((t) => t.key)), ...filed.map((r) => r.rev.key!)]),
+  ];
   const states = await (opts.states ?? ((keys) => ticketStates(keys, { now: opts.now })))(openKeys);
   const out: ReconcileResult[] = [];
   for (const [feature, l] of ledgers) {
@@ -166,6 +172,25 @@ export async function reconcileAll(opts: ReconcileOptions = {}): Promise<Reconci
     if (!r.cleared.length) continue;
     const write = await writeLedger(feature, r.ledger, { actor: "model", now: opts.now, dryRun: opts.dryRun });
     out.push({ feature, cleared: r.cleared, write });
+  }
+  // a revision follows its parent: Done folds its specs into the features and archives it; Canceled archives it
+  for (const r of filed) {
+    const key = r.rev.key!;
+    const s = states(key);
+    if (s.state !== "done" && s.state !== "canceled") continue;
+    const feature = `revisions/${key}`;
+    try {
+      const o = { now: opts.now, dryRun: opts.dryRun, url: s.url };
+      const settled = s.state === "done" ? await foldRevision(r, o) : await cancelRevision(r, o);
+      const retired = settled.retired.length ? `; ${settled.retired.length} product doc(s) retired` : "";
+      const line =
+        settled.to === "done"
+          ? `${key}: ${s.name} in Linear — folded into ${settled.features.join(", ") || "no spec"}${retired}; archived as done`
+          : `${key}: ${s.name} in Linear — archived as dropped`;
+      out.push({ feature, cleared: [line], write: null, revision: settled });
+    } catch (e) {
+      out.push({ feature, cleared: [], write: null, error: `${key}: not settled — ${(e as Error).message}` });
+    }
   }
   return out;
 }
