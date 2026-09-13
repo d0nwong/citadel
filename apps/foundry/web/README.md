@@ -244,6 +244,17 @@ that omits `instructions` is `503` naming citadel's `.env`; one that supplies th
 — it never judges whether the ticket is ready (no Pending-section or blocked-by check on
 this path); the caller decided that by sending it.
 
+**Context.** Whichever way the task arrived, before the container starts the host appends
+a `## Context` section to what the container is handed (CTD-190); the row's `task` stays
+verbatim. It carries the title and description of every Linear issue the task links
+(a ticket brief's own issue is already the task, so it is skipped), then the contents of
+every repo file the task names in backticks, read from the job's clone at the base commit.
+A partial path or a bare file name counts when exactly one tracked file matches; a path
+that matches nothing is listed as missing. Issues and files are carried whole up to 64 KB,
+and what does not fit is listed as cut, never truncated. No Linear key, or Linear failing,
+means the ids are listed with the reason and an `err` line, never a failed job. Follow-up
+jobs are not hydrated: their task is a PR's comments or a check's log.
+
 **Retries.** Send an `Idempotency-Key` header (1–128 characters, else `400`) and the call is
 safe to repeat: a replay with the same key and the same body answers `200` with the job the
 first call made — its current state, the shape `GET /api/jobs/<id>` returns — and queues
