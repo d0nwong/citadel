@@ -6,7 +6,7 @@
  * milliseconds and optional fields rather than nullable timestamptz columns.
  */
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, inArray, lt, ne, notExists, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, ne, notExists, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobs, prWatches, repos } from '@/db/schema'
 import { getBlueprintRow, toSnapshot } from '@/features/blueprints/server/blueprint-store'
@@ -73,9 +73,26 @@ function branchSlug(task: string): string {
 }
 
 /**
- * Keyset-paginated, newest first. Offset pagination would skip or duplicate
- * rows as new jobs land at the top between polls, so the cursor is the last
- * row's `(createdAt, id)` — `id` tie-breaks same-millisecond inserts.
+ * The outer `jobs` row, spelled out, for the correlated subqueries below.
+ * Drizzle writes a column without its table in a select list, and inside a
+ * subquery over `jobs f` a bare "id" binds to the inner row — which made the
+ * selected activity (the next page's cursor) silently fall back to the root's
+ * own created_at and skip every group a follow-up had moved up.
+ */
+const outer = (column: string) => sql.raw(`"foundry"."jobs"."${column}"`)
+
+/**
+ * The ledger's page (CTD-183): one group per root job — a job that is not a
+ * follow-up, or whose root has been purged (no FK, by design) — carrying the
+ * follow-ups that continue its PR, oldest first. Groups come newest activity
+ * first, activity being the newest `created_at` in the group, so a follow-up
+ * the PR watcher queues on an old job brings that job back to the top.
+ *
+ * Keyset-paginated on `(activity, id)`: offset pagination would skip or repeat
+ * groups as new ones land between polls. Activity is truncated to the
+ * millisecond, so the cursor — epoch ms on the wire — compares exactly. A
+ * status filter keeps a group when its root *or* any follow-up has that
+ * status, so "Forging" finds the old job whose follow-up is running.
  */
 export async function listJobs(opts: {
   cursor?: JobCursor
@@ -83,29 +100,47 @@ export async function listJobs(opts: {
   status?: JobStatus
 }): Promise<JobPage> {
   const { cursor, limit, status } = opts
-  const cursorDate = cursor ? new Date(cursor.createdAt) : undefined
+  const activity = sql<Date>`date_trunc('milliseconds', greatest(${outer('created_at')}, (select max(f.created_at) from ${jobs} f where f.source_job_id = ${outer('id')})))`.mapWith(
+    jobs.createdAt,
+  )
 
   const where = and(
-    status ? eq(jobs.status, status) : undefined,
-    cursorDate
-      ? or(lt(jobs.createdAt, cursorDate), and(eq(jobs.createdAt, cursorDate), lt(jobs.id, cursor!.id)))
+    or(isNull(jobs.sourceJobId), sql`not exists (select 1 from ${jobs} s where s.id = ${outer('source_job_id')})`),
+    status
+      ? or(eq(jobs.status, status), sql`exists (select 1 from ${jobs} f where f.source_job_id = ${outer('id')} and f.status = ${status})`)
+      : undefined,
+    // A malformed cursor reads as "from the top", not as a cast error.
+    cursor && isUuid(cursor.id)
+      ? sql`(${activity}, ${jobs.id}) < (${new Date(cursor.activity).toISOString()}::timestamptz, ${cursor.id}::uuid)`
       : undefined,
   )
 
   const rows = await db
-    .select()
+    .select({ job: jobs, activity })
     .from(jobs)
     .where(where)
-    .orderBy(desc(jobs.createdAt), desc(jobs.id))
+    .orderBy(desc(activity), desc(jobs.id))
     .limit(limit + 1)
 
   const hasMore = rows.length > limit
   const page = hasMore ? rows.slice(0, limit) : rows
-  const last = page[page.length - 1]
 
+  const rootIds = page.map((r) => r.job.id)
+  const followRows =
+    rootIds.length > 0
+      ? await db.select().from(jobs).where(inArray(jobs.sourceJobId, rootIds)).orderBy(asc(jobs.createdAt), asc(jobs.id))
+      : []
+  const byRoot = new Map<string, Array<Job>>()
+  for (const f of followRows) {
+    const list = byRoot.get(f.sourceJobId!)
+    if (list) list.push(toJob(f))
+    else byRoot.set(f.sourceJobId!, [toJob(f)])
+  }
+
+  const last = page.at(-1)
   return {
-    jobs: page.map(toJob),
-    nextCursor: hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null,
+    jobs: page.map(({ job }) => ({ ...toJob(job), followUps: byRoot.get(job.id) ?? [] })),
+    nextCursor: hasMore && last ? { activity: last.activity.getTime(), id: last.job.id } : null,
   }
 }
 

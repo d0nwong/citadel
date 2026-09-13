@@ -71,16 +71,16 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
 export function JobDetailSheet({
   jobId,
   onClose,
-  onRerun,
+  onOpenJob,
 }: {
   jobId: string | null
   onClose: () => void
-  onRerun?: (newJobId: string) => void
+  onOpenJob?: (newJobId: string) => void
 }) {
   const qc = useQueryClient()
   const logRef = useRef<HTMLDivElement>(null)
 
-  const { data: job } = useQuery({
+  const { data: job, isFetched } = useQuery({
     ...jobQueries.detail(jobId!),
     enabled: jobId !== null,
   })
@@ -101,7 +101,7 @@ export function JobDetailSheet({
       toast.success(`Job ${shortId(newJob.id)} queued`, {
         description: `rerun of ${shortId(sourceId)}`,
       })
-      onRerun?.(newJob.id)
+      onOpenJob?.(newJob.id)
     },
   })
 
@@ -113,7 +113,7 @@ export function JobDetailSheet({
       toast.success(`Job ${shortId(newJob.id)} queued`, {
         description: `addressing PR comments of ${shortId(sourceId)}`,
       })
-      onRerun?.(newJob.id)
+      onOpenJob?.(newJob.id)
     },
   })
 
@@ -159,10 +159,16 @@ export function JobDetailSheet({
                 )}
                 <span className="font-mono text-[11px] text-txt-faint" title={job.id}>{shortId(job.id)}</span>
                 {job.sourceJobId && (
-                  <span className="font-mono text-[11px] text-txt-faint" title={job.sourceJobId}>
+                  // The way back up to the group's root (CTD-183), in the same sheet.
+                  <button
+                    type="button"
+                    onClick={() => onOpenJob?.(job.sourceJobId!)}
+                    title={`Open job ${job.sourceJobId}`}
+                    className="font-mono text-[11px] text-txt-faint underline-offset-2 transition-colors hover:text-ember-soft hover:underline"
+                  >
                     follow-up of {shortId(job.sourceJobId)}
                     {job.followUp && ` · ${job.followUp === 'check' ? 'failing check' : 'review'}`}
-                  </span>
+                  </button>
                 )}
                 {job.callbackUrl && (
                   <span className="font-mono text-[11px] text-txt-faint" title={job.callbackUrl}>
@@ -378,6 +384,15 @@ export function JobDetailSheet({
               </div>
             </div>
           </>
+        )}
+        {/* A parent can be purged while its follow-ups stay, so "follow-up of …" may lead nowhere. */}
+        {jobId !== null && isFetched && !job && (
+          <SheetHeader className="space-y-2 px-5 pt-6 text-left sm:px-6">
+            <SheetTitle className="text-[16px] font-semibold tracking-tight">Job not found</SheetTitle>
+            <SheetDescription className="font-mono text-[12px] text-txt-faint">
+              {shortId(jobId)} is no longer in the ledger — it was purged.
+            </SheetDescription>
+          </SheetHeader>
         )}
       </SheetContent>
     </Sheet>
