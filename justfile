@@ -35,6 +35,13 @@ up *services:
     bun scripts/stack.ts preflight-sweep
     docker compose --env-file .env --profile sweep up -d --wait --wait-timeout 120 {{services}}
 
+# Rebuild the images the stack builds (Pensieve, the sweep) and restart on them; run after a merge.
+rebuild *services:
+    bun scripts/stack.ts preflight
+    bun scripts/stack.ts preflight-sweep
+    docker compose --env-file .env --profile sweep build --pull {{services}}
+    docker compose --env-file .env --profile sweep up -d --force-recreate --wait --wait-timeout 120 {{services}}
+
 # Stop the stack, the sweep included; the data volumes stay. It names the sweep's profile so
 # the sweep container goes down with the network it is attached to, rather than being left
 # stopped on a network that no longer exists.
