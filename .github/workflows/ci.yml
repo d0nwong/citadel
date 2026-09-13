@@ -34,8 +34,12 @@ jobs:
         run: bun run --filter pensieve typecheck
       - name: typecheck foundry-web
         run: bun run --filter foundry-web typecheck
+      - name: typecheck flows
+        run: bun run --filter flows typecheck
       - name: test the recipes' scripts
         run: bun test ./scripts/
+      - name: test flows
+        run: bun run --filter flows test
       - name: test argus
         # The tests that read argus's data skip without it; the rest run.
         run: bun run --filter argus test

@@ -1,0 +1,27 @@
+{
+  "name": "flows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Citadel's core flows as interactive React Flow maps: each flow is data in src/flows/, drawn the same way.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port ${PORT:-3779}",
+    "build": "vite build",
+    "preview": "vite preview --port ${PORT:-3779}",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.11.6",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
+  }
+}
