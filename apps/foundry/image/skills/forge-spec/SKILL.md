@@ -23,7 +23,7 @@ Reads the task text, the repo, and the repo notes in the system prompt. Writes e
 
 ## Step 1: Read the requirement
 
-A ticket id (`ABC-123`) or a `linear.app` URL is fetched with the `linear` MCP `get_issue`: the description is the requirement. A linked Slack thread is read with the `slack` tools when they exist; when they do not, the gap is an assumption, not a guess. Quote the ticket's own words in the Objective.
+A ticket id (`ABC-123`) or a `linear.app` URL is fetched with the `linear` MCP `get_issue`: the description is the requirement. A linked Slack thread is read with the `slack` tools when they exist; when they do not, the gap is an assumption, not a guess. Quote the ticket's own words in the Objective. A `### Spec: <feature>` block in the task's Context is that feature's reviewed spec and `### Arch: <feature>` its arch doc: read both before the code.
 
 ## Step 2: Find the commands, exactly
 
@@ -31,7 +31,7 @@ From `package.json` scripts, the lockfile's package manager, and what CI runs. A
 
 ## Step 3: Ground every acceptance criterion in the code
 
-Keep the ticket's numbering as `C1…`. For each, find where in the code it would be satisfied and reword it as a check: the state to set up, what must be observed, the file and symbol.
+Keep the ticket's numbering as `C1…`; an AC that cites `(spec S-n)` takes that criterion's wording from the Spec block and keeps the id beside its own, `C2 (S-35) — …`. For each, find where in the code it would be satisfied and reword it as a check: the state to set up, what must be observed, the file and symbol.
 
 ```
 Ticket says:   "Users should be able to filter the job list by status."
