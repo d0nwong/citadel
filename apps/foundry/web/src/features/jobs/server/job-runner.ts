@@ -40,6 +40,14 @@ const KEEP_WORKSPACES = process.env.FOUNDRY_KEEP_WORKSPACES === '1'
 const RUNNER_SCRIPT = path.resolve(process.cwd(), '..', 'image', 'forge-run.sh')
 /** foundry's canonical PR template, bind-mounted for the same reason. Bitbucket has no repo template convention, so this keeps PR bodies one shape on every forge. */
 const PR_TEMPLATE = path.resolve(process.cwd(), '..', 'image', 'pr-template.md')
+/**
+ * pnpm's content-addressed store and npm's cache on named volumes every job
+ * container shares: an install links what an earlier job already fetched.
+ * Both are built for concurrent writers. `docker volume rm` either to start
+ * over; the next job downloads in full. The paths are the image's (Dockerfile).
+ */
+const PNPM_STORE_VOLUME = 'foundry-pnpm-store:/home/dev/.local/share/pnpm/store'
+const NPM_CACHE_VOLUME = 'foundry-npm-cache:/home/dev/.npm'
 
 const containerName = (jobId: string) => `foundry-${jobId}`
 const workspaceOf = (jobId: string) => path.join(JOBS_DIR, jobId, 'work')
@@ -378,6 +386,10 @@ async function launch(job: JobRow, credEnv: Record<string, string>, notes: strin
     `${RUNNER_SCRIPT}:/usr/local/bin/forge-run:ro`,
     '-v',
     `${PR_TEMPLATE}:/usr/local/share/foundry/pr-template.md:ro`,
+    '-v',
+    PNPM_STORE_VOLUME,
+    '-v',
+    NPM_CACHE_VOLUME,
     ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
     IMAGE,
     'forge-run',
