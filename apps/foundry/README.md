@@ -198,8 +198,9 @@ that's the whole point of a sandbox. Pass `--safe` to get normal prompting back.
 Forges ship a `/work` skill (`image/skills/work/SKILL.md`): give it a Linear ticket
 and it reads the requirement, plans first, branches from main, verifies against the
 existing code, and finishes with a PR. Five more, `forge-spec` → `forge-plan` →
-`forge-test` → `forge-implement` → `forge-verify`, are the steps of the **Spec → QA**
-blueprint below: each is one role, written for a headless run, adapted from the
+`forge-test` → `forge-implement` → `forge-verify`, were the steps of the **Spec → QA**
+blueprint below until its v2 ran test and implement as one step and dropped the plan (v1
+is restorable): each is one role, written for a headless run, adapted from the
 [agent-skills](https://github.com/addyosmani/agent-skills) plugin. `forge-debug` takes
 `forge-plan`'s slot in **Bug → Fix** — reproduce, localise, reduce, name the root
 cause — and on its own is what a follow-up job runs on a failed check. `forge-simplify` is
@@ -367,8 +368,8 @@ blueprint never rewrites history.
 |---|---|---|
 | **Plan → Execute** | plan · fable · high → execute · sonnet | anything. Read and plan first, implement second — what the ignite dialog starts on |
 | **Backfill Tests** | survey · fable · high → write-tests · sonnet → verify · sonnet | tests over logic that already exists: characterise the behaviour, cover it, then check the tests would actually fail on a regression. Production code is off limits, so a bug it turns up is reported rather than fixed |
-| **Spec → QA** | spec · fable · high → plan · fable · high → test · sonnet → implement · sonnet → verify · opus · medium | a ticket with acceptance criteria. Each step is a `/forge-*` skill: write the criteria down as checks, plan and self-review, write one red test per criterion, implement to green, then review on five axes and put a QA report in the PR body. e2e tests are written for the repo's own runner and left to CI. A ticket with no checkable criteria stops at the first step with no changes, on purpose |
-| **Bug → Fix** | spec · fable · high → debug · fable · high → test · sonnet → implement · sonnet → verify · opus · medium | a ticket with reproduction steps or a failing check. The reproduction is the criterion; `forge-debug` reproduces it, localises and reduces it, and writes the plan with the root cause first; then the same test, implement and verify steps as Spec → QA, so the first test is the reproduction seen red, and the PR body opens with the root cause. A ticket with neither steps nor a failing check stops at the first step, naming what is missing |
+| **Spec → QA** | spec · fable · high → build · sonnet → verify · opus · medium | a ticket with acceptance criteria. Each step is a `/forge-*` skill: write the criteria down as checks; write one red test per criterion and implement them to green in the same step; then review on five axes and put a QA report in the PR body. e2e tests are written for the repo's own runner and left to CI. A ticket with no checkable criteria stops at the first step with no changes, on purpose. v1 had a separate plan step (spec → plan → test → implement → verify); Restore v1 in the editor's history brings it back |
+| **Bug → Fix** | spec · fable · high → debug · fable · high → test · sonnet → implement · sonnet → verify · opus · medium | a ticket with reproduction steps or a failing check. The reproduction is the criterion; `forge-debug` reproduces it, localises and reduces it, and writes the plan with the root cause first; then the test, implement and verify steps Spec → QA v1 had, so the first test is the reproduction seen red, and the PR body opens with the root cause. A ticket with neither steps nor a failing check stops at the first step, naming what is missing |
 | **Simplify** | spec · fable · high → simplify · sonnet → verify · opus · medium | a refactor ticket naming files and what to remove. The criteria are the unchanged suite (same pass count, no test file changed) and one observable per named simplification; `forge-simplify` checks why each piece exists before touching it, makes one change at a time with the suite as the oracle, and leaves unmade anything that would need a test to change; the PR body names each simplification made and one deliberately left. A ticket naming no file and nothing to remove stops at the first step |
 
 The ignite dialog preselects **Plan → Execute** — planning first is the right default

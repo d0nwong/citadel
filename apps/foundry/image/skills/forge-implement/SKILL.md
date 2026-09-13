@@ -1,6 +1,6 @@
 ---
 name: forge-implement
-description: Implements ~/plan.md one slice at a time until every red test for its criteria is green, then runs the suite, typecheck and lint once each. Use when ~/plan.md exists and the tests for its criteria are red.
+description: Implements ~/plan.md — or, with none, ~/spec.md's criteria — one slice at a time until every red test is green, then runs the suite, typecheck and lint once each. Use when the tests for ~/spec.md's criteria are red.
 ---
 
 # forge-implement — the plan, to green
@@ -11,17 +11,17 @@ The spec says what, the plan says where, the tests say when it is done. Write th
 
 ## When to Use
 
-- `~/plan.md` exists and the tests for its criteria are red
+- The tests for `~/spec.md`'s criteria are red; `~/plan.md`, when there is one, says where and in what order
 
-**When NOT to use:** no `~/plan.md`; no red and no does-not-compile-yet tests (nothing to implement — say so and stop).
+**When NOT to use:** no `~/spec.md`; no red and no does-not-compile-yet tests (nothing to implement — say so and stop).
 
 ## Handoff
 
-Reads `~/plan.md` (`Change`, `Criteria → code`, `Order`, `Not doing`), `~/spec.md` (Commands, Assumptions) and the red list in the previous step's final message when this session has one. Stops with no edits on a `## Blocked` section. Writes production code; changes a test only under Step 3, never deletes, skips or weakens one.
+Reads `~/plan.md` when there is one (`Change`, `Criteria → code`, `Order`, `Not doing`), `~/spec.md` (Commands, Assumptions) and the red list in the previous step's final message when this session has one. Stops with no edits on a `## Blocked` section. Writes production code; changes a test only under Step 3, never deletes, skips or weakens one.
 
 ## Step 1: Start from the red list
 
-Run the spec's test command once: the failures must match the red list, same names, same reasons. A test red for another reason, or not on the list, is understood first and recorded in the Finish. Then follow the plan's `Order`; do not re-plan.
+Run the spec's test command once: the failures must match the red list, same names, same reasons. A test red for another reason, or not on the list, is understood first and recorded in the Finish. Then follow the plan's `Order`; do not re-plan. With no plan, the criteria in order and the files their tests exercise stand in for it wherever this skill says "the plan".
 
 ## Step 2: One slice at a time
 
