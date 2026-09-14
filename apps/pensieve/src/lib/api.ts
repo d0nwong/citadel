@@ -20,6 +20,7 @@ import type {
 import type { FoundryJob, FoundryRepo } from "#/server/foundry";
 import type { Home, LedgerRef, PipelineCard } from "#/server/ledger";
 import type { Json } from "#/server/workspace";
+import type { WorktreeDiscardCounts } from "#/server/worktrees";
 
 const trimmed = (v: string) => v.trim();
 
@@ -195,6 +196,17 @@ export const deleteConversation = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<ConversationSummary[]> => {
     const ask = await import("#/server/ask");
     return ask.deleteConversation(data);
+  });
+
+/**
+ * What Delete discards beyond the file (CTD-223, S-44): `null` in container mode, or before a
+ * conversation's first question has cut its worktrees — Delete's confirm shows this plainly.
+ */
+export const getConversationDiscard = createServerFn({ method: "GET" })
+  .validator(threadId)
+  .handler(async ({ data }): Promise<WorktreeDiscardCounts | null> => {
+    const ask = await import("#/server/ask");
+    return ask.conversationDiscardCounts(data);
   });
 
 /**

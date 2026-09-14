@@ -19,7 +19,12 @@ import {
   DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu";
 import { newThreadId } from "#/features/ask";
-import { deleteConversation, listConversations } from "#/lib/api";
+import { discardMessage } from "#/features/ask/lib/discard-message";
+import {
+  deleteConversation,
+  getConversationDiscard,
+  listConversations,
+} from "#/lib/api";
 import { prettyStamp } from "#/lib/utils";
 
 export const Route = createFileRoute("/ask/")({
@@ -35,11 +40,10 @@ function AskListPage() {
   const start = () =>
     navigate({ to: "/ask/$id", params: { id: newThreadId() } });
   const remove = async (threadId: string) => {
+    const discard = await getConversationDiscard({ data: threadId });
     if (
       // biome-ignore lint/suspicious/noAlert: a native confirm is the intended guard for delete
-      !window.confirm(
-        "Delete this conversation? Its file under PENSIEVE_HOME is removed."
-      )
+      !window.confirm(discardMessage(discard))
     ) {
       return;
     }

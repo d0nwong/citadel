@@ -76,15 +76,18 @@ export const branchOf = (threadId: string) => `ask/${threadId}`;
 export const hasWorktrees = (paths: WorktreePaths): Promise<boolean> =>
   exists(paths.citadel);
 
+/** Written by `writeLocalArgusSettings`, relative to the citadel worktree — ours, not the run's work. */
+const LOCAL_ARGUS_SETTINGS = "apps/argus/.claude/settings.local.json";
+
 /**
  * Disables argus's gateway MCP servers for this worktree (S-50): `apps/argus/.claude/settings.json`
  * carries `enabledMcpjsonServers`, which this beats as the `'local'` setting source.
  */
 async function writeLocalArgusSettings(citadelWorktree: string): Promise<void> {
-  const dir = join(citadelWorktree, "apps/argus/.claude");
-  await mkdir(dir, { recursive: true });
+  const file = join(citadelWorktree, LOCAL_ARGUS_SETTINGS);
+  await mkdir(join(file, ".."), { recursive: true });
   await writeFile(
-    join(dir, "settings.local.json"),
+    file,
     `${JSON.stringify({ disabledMcpjsonServers: ["linear", "slack"] }, null, 2)}\n`,
     "utf8"
   );
@@ -146,6 +149,53 @@ export async function rebaseOntoMain(worktree: string): Promise<RebaseResult> {
 export interface EnsureWorktreesResult extends WorktreePaths {
   /** Files this call's rebase left mid-conflict — empty on a first question or a clean rebase. */
   conflict: string[];
+}
+
+async function countLines(cwd: string, args: string[]): Promise<number> {
+  const out = await git(cwd, args);
+  return out.split("\n").filter((l) => l.trim()).length;
+}
+
+async function countCommits(cwd: string, range: string): Promise<number> {
+  const out = await git(cwd, ["rev-list", "--count", range]);
+  return Number.parseInt(out.trim(), 10);
+}
+
+export interface WorktreeDiscardCounts {
+  /** The citadel worktree — commits and a push are what Finish/PR would have kept (S-43, S-44). */
+  citadel: { uncommitted: number; unpushed: number };
+  /** The citadel-data worktree — landed on main only by Finish, not yet built (S-44). */
+  citadelData: { uncommitted: number; unmerged: number };
+}
+
+/**
+ * What Delete (and, later, Finish) discards in a conversation's worktrees (S-43, S-44):
+ * `unpushed` counts commits ahead of `origin/main` rather than `@{u}`, so it does not depend
+ * on `branch.autoSetupMerge`; `unmerged` counts citadel-data's branch ahead of its own local
+ * `main`, which the sweep commits to and the worktree's branch never pushes. The settings file
+ * `writeLocalArgusSettings` put there is not counted — nothing the run did is lost with it.
+ */
+export async function discardCounts(
+  paths: WorktreePaths
+): Promise<WorktreeDiscardCounts> {
+  const [citadelUncommitted, citadelUnpushed, dataUncommitted, dataUnmerged] =
+    await Promise.all([
+      countLines(paths.citadel, [
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--",
+        ".",
+        `:!${LOCAL_ARGUS_SETTINGS}`,
+      ]),
+      countCommits(paths.citadel, "origin/main..HEAD"),
+      countLines(paths.citadelData, ["status", "--porcelain"]),
+      countCommits(paths.citadelData, "main..HEAD"),
+    ]);
+  return {
+    citadel: { uncommitted: citadelUncommitted, unpushed: citadelUnpushed },
+    citadelData: { uncommitted: dataUncommitted, unmerged: dataUnmerged },
+  };
 }
 
 /**
@@ -212,16 +262,22 @@ export async function fastForwardMain(
 
 /**
  * Remove both of a conversation's worktrees and delete `ask/<id>` from both live checkouts
- * (S-48) — the last step of Finish, once citadel-data has landed on main. `--force` discards
- * whatever the citadel worktree's code changes leave behind (uncommitted or not pushed): a code
- * change leaves only as the PR the user already asked for (S-40); `-D` because that branch,
- * even when pushed, was never merged into the *local* checkout. A pushed citadel branch and its
- * PR live on the remote and are untouched by removing the local ref.
+ * (S-48) — the last step of Finish, once citadel-data has landed on main, and Delete's other
+ * half (S-44, CTD-223), discarding whatever `discardCounts` counted. `--force` discards
+ * whatever the citadel worktree's code changes leave behind (uncommitted, not pushed, or
+ * mid-conflict-rebase): a code change leaves only as the PR the user already asked for (S-40);
+ * `-D` because that branch, even when pushed, was never merged into the *local* checkout. A
+ * pushed citadel branch and its PR live on the remote and are untouched by removing the local
+ * ref. A no-op when the conversation never got worktrees, so a container-mode or fresh thread
+ * costs nothing.
  */
 export async function removeWorktrees(
   paths: WorktreePaths,
   opts: { citadelDataDir: string; citadelDir: string; threadId: string }
 ): Promise<void> {
+  if (!(await hasWorktrees(paths))) {
+    return;
+  }
   const branch = branchOf(opts.threadId);
   await git(opts.citadelDir, ["worktree", "remove", "--force", paths.citadel]);
   await git(opts.citadelDir, ["branch", "-D", branch]);

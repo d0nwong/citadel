@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -1441,6 +1442,163 @@ describe("CTD-221 — local Ask conversations run in their own worktrees, rebase
       )
     );
     expect(adapter.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
+  });
+});
+
+describe("CTD-223 — Delete removes a local conversation's worktrees and says what it discards", () => {
+  test("conversationDiscardCounts is null before a thread has worktrees, and in container mode", async () => {
+    const worktreesDir = await scratch();
+    expect(
+      await ask.conversationDiscardCounts("never-asked", {
+        env: { PENSIEVE_RUNNER: "local" },
+        worktreesDir,
+      })
+    ).toBeNull();
+    expect(
+      await ask.conversationDiscardCounts("wt-count", {
+        env: { PENSIEVE_RUNNER: "container" },
+        worktreesDir,
+      })
+    ).toBeNull();
+  });
+
+  test("counts the citadel worktree's uncommitted and unpushed changes, and citadel-data's uncommitted files and commits not on main", async () => {
+    const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const adapter = new FakeClaude({ sessionId: "s1" });
+    await collect(
+      askStream(
+        { messages: [user("where does it stand")], threadId: "wt-count" },
+        {
+          adapter,
+          citadelDataDir,
+          citadelDir,
+          env: { PENSIEVE_RUNNER: "local" },
+          middleware: [],
+          status: available,
+          store,
+          worktreesDir,
+        }
+      )
+    );
+    const paths = {
+      citadel: join(worktreesDir, "wt-count", "citadel"),
+      citadelData: join(worktreesDir, "wt-count", "citadel-data"),
+    };
+    // citadel: one committed (unpushed) change, plus one untracked (uncommitted) file.
+    await commitFile(paths.citadel, "NOTES.md", "notes\n", "wip");
+    await writeFile(join(paths.citadel, "scratch.md"), "scratch\n");
+    // citadel-data: one committed change ahead of main (unmerged), plus one untracked file.
+    await commitFile(paths.citadelData, "draft.json", "{}\n", "draft");
+    await writeFile(join(paths.citadelData, "scratch.json"), "{}\n");
+
+    const counts = await ask.conversationDiscardCounts("wt-count", {
+      env: { PENSIEVE_RUNNER: "local" },
+      worktreesDir,
+    });
+    expect(counts).toEqual({
+      citadel: { uncommitted: 1, unpushed: 1 },
+      citadelData: { uncommitted: 1, unmerged: 1 },
+    });
+  });
+
+  test("deleteConversation removes the worktrees and branch before the file, in local mode", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    const worktreesDir = await scratch();
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const adapter = new FakeClaude({ sessionId: "s1" });
+    await collect(
+      askStream(
+        { messages: [user("where does it stand")], threadId: "wt-del" },
+        {
+          adapter,
+          citadelDataDir,
+          citadelDir,
+          env: { PENSIEVE_RUNNER: "local" },
+          middleware: [],
+          status: available,
+          store,
+          worktreesDir,
+        }
+      )
+    );
+    const paths = {
+      citadel: join(worktreesDir, "wt-del", "citadel"),
+      citadelData: join(worktreesDir, "wt-del", "citadel-data"),
+    };
+    expect(existsSync(paths.citadel)).toBe(true);
+
+    await ask.deleteConversation("wt-del", store, {
+      citadelDataDir,
+      citadelDir,
+      env: { PENSIEVE_RUNNER: "local" },
+      worktreesDir,
+    });
+
+    expect(existsSync(paths.citadel)).toBe(false);
+    expect(existsSync(paths.citadelData)).toBe(false);
+    expect(
+      execFileSync(
+        "git",
+        ["-C", citadelDir, "branch", "--list", "ask/wt-del"],
+        { encoding: "utf8" }
+      ).trim()
+    ).toBe("");
+    expect(
+      execFileSync(
+        "git",
+        ["-C", citadelDataDir, "branch", "--list", "ask/wt-del"],
+        { encoding: "utf8" }
+      ).trim()
+    ).toBe("");
+    expect(await readdir(dir)).not.toContain(fileNameOf("wt-del"));
+  });
+
+  test("deleteConversation in container mode leaves worktrees untouched, and removing a thread with none is quiet", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    const worktreesDir = await scratch();
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const adapter = new FakeClaude({ sessionId: "s1" });
+    await collect(
+      askStream(
+        { messages: [user("where does it stand")], threadId: "wt-cont" },
+        {
+          adapter,
+          citadelDataDir,
+          citadelDir,
+          env: { PENSIEVE_RUNNER: "local" },
+          middleware: [],
+          status: available,
+          store,
+          worktreesDir,
+        }
+      )
+    );
+    const paths = { citadel: join(worktreesDir, "wt-cont", "citadel") };
+
+    await ask.deleteConversation("wt-cont", store, {
+      citadelDataDir,
+      citadelDir,
+      env: { PENSIEVE_RUNNER: "container" },
+      worktreesDir,
+    });
+
+    expect(existsSync(paths.citadel)).toBe(true);
+    expect(await readdir(dir)).not.toContain(fileNameOf("wt-cont"));
+
+    // A thread that never got worktrees at all: no git call, no error.
+    await ask.deleteConversation("no-such-thread", store, {
+      citadelDataDir,
+      citadelDir,
+      env: { PENSIEVE_RUNNER: "local" },
+      worktreesDir,
+    });
   });
 });
 

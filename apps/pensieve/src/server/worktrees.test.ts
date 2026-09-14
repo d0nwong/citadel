@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   branchOf,
   commitAll,
+  discardCounts,
   ensureWorktrees,
   fastForwardMain,
   hasWorktrees,
@@ -225,6 +226,89 @@ describe("CTD-221 AC3 / AC4 — a later question rebases citadel-data onto main;
     expect(git(second.citadelData, "status", "--porcelain=v1")).toContain(
       "ledger.json"
     );
+  });
+});
+
+describe("CTD-223 — discardCounts and removeWorktrees", () => {
+  test("discardCounts counts citadel's uncommitted and unpushed changes, and citadel-data's uncommitted files and commits not on main", async () => {
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    const { citadel, citadelData } = await ensureWorktrees({
+      citadelDataDir,
+      citadelDir,
+      threadId: "conv-5",
+      worktreesDir,
+    });
+
+    expect(await discardCounts({ citadel, citadelData })).toEqual({
+      citadel: { uncommitted: 0, unpushed: 0 },
+      citadelData: { uncommitted: 0, unmerged: 0 },
+    });
+
+    await commitFile(citadel, "NOTES.md", "wip\n", "wip");
+    await writeFile(join(citadel, "scratch.md"), "scratch\n");
+    await commitFile(citadelData, "draft.json", "{}\n", "draft");
+    await writeFile(join(citadelData, "scratch.json"), "{}\n");
+
+    expect(await discardCounts({ citadel, citadelData })).toEqual({
+      citadel: { uncommitted: 1, unpushed: 1 },
+      citadelData: { uncommitted: 1, unmerged: 1 },
+    });
+  });
+
+  test("removeWorktrees deletes both worktrees and their shared branch, even mid-conflict-rebase", async () => {
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    const paths = await ensureWorktrees({
+      citadelDataDir,
+      citadelDir,
+      threadId: "conv-6",
+      worktreesDir,
+    });
+    // Leave the citadel-data worktree mid-conflict, and a dirty file in citadel — removeWorktrees
+    // still discards both (Delete discards, it does not save).
+    await commitFile(
+      paths.citadelData,
+      "ledger.json",
+      '{"from":"worktree"}\n',
+      "worktree edit"
+    );
+    await commitFile(
+      citadelDataDir,
+      "ledger.json",
+      '{"from":"main"}\n',
+      "main edit"
+    );
+    await ensureWorktrees({
+      citadelDataDir,
+      citadelDir,
+      threadId: "conv-6",
+      worktreesDir,
+    });
+    await writeFile(join(paths.citadel, "dirty.md"), "dirty\n");
+
+    await removeWorktrees(paths, {
+      citadelDataDir,
+      citadelDir,
+      threadId: "conv-6",
+    });
+
+    expect(await hasWorktrees(paths)).toBe(false);
+    expect(git(citadelDir, "branch", "--list", "ask/conv-6")).toBe("");
+    expect(git(citadelDataDir, "branch", "--list", "ask/conv-6")).toBe("");
+  });
+
+  test("removeWorktrees is quiet when the thread never got worktrees", async () => {
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    await removeWorktrees(worktreePaths(worktreesDir, "never-asked"), {
+      citadelDataDir,
+      citadelDir,
+      threadId: "never-asked",
+    });
   });
 });
 
