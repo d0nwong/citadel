@@ -674,6 +674,27 @@ export const FEATURE_KEY = "feature";
 export const MODE_KEY = "mode";
 
 /**
+ * Is this run a `/scope` one, and is it the run that records it? The stored mode wins,
+ * the way the feature does; a thread with none is decided by its first user turn.
+ */
+export const scopeModeOf = (stored: unknown, firstTurn: string) => {
+  const record = stored === null && isScopeRequest(firstTurn);
+  return { on: stored === "scope" || record, record };
+};
+
+/** The adapter overrides and system prompts for a run: the scope skill's, or Ask's. */
+const runSetup = (scope: boolean, feature: string | undefined) =>
+  scope
+    ? { adapter: SCOPE_ADAPTER_CONFIG, systemPrompts: [SCOPE_SYSTEM_PROMPT] }
+    : {
+        adapter: {},
+        systemPrompts: [
+          ASK_SYSTEM_PROMPT,
+          ...(feature ? [featurePrompt(feature)] : []),
+        ],
+      };
+
+/**
  * Where a filed ticket lives: `metadata[<threadId>]["ticket:<toolCallId>"]`. One key per
  * proposal, which is what makes File idempotent per card (LIA-113 AC3): a second click, or
  * a click after a reload replayed the tool part, answers the issue the first press filed
@@ -998,10 +1019,11 @@ export async function* askStream(
       await metadata.get(input.threadId, FEATURE_KEY),
       input.feature
     );
-    const storedMode = await metadata.get(input.threadId, MODE_KEY);
-    const scope =
-      storedMode === "scope" ||
-      (storedMode === null && isScopeRequest(firstTurn));
+    const scope = scopeModeOf(
+      await metadata.get(input.threadId, MODE_KEY),
+      firstTurn
+    );
+    const setup = runSetup(scope.on, feature);
     const harness = harnessLog();
     let lastError: LastError | undefined;
     const recordError = async (message: string, code: string | undefined) => {
@@ -1068,7 +1090,7 @@ export async function* askStream(
         ) {
           await metadata.set(input.threadId, FEATURE_KEY, input.feature);
         }
-        if (scope && storedMode === null) {
+        if (scope.record) {
           await metadata.set(input.threadId, MODE_KEY, "scope");
         }
       },
@@ -1086,7 +1108,7 @@ export async function* askStream(
     const stream = chat({
       abortController: opts.abortController,
       adapter: finishedIsFinished(
-        opts.adapter ?? askAdapter(scope ? SCOPE_ADAPTER_CONFIG : {}),
+        opts.adapter ?? askAdapter(setup.adapter),
         late
       ),
       // Each tool's `execute` runs here, in this process, through the adapter's MCP bridge —
@@ -1100,9 +1122,7 @@ export async function* askStream(
       middleware,
       modelOptions: { authMode: mode, ...(sessionId ? { sessionId } : {}) },
       runId,
-      systemPrompts: scope
-        ? [SCOPE_SYSTEM_PROMPT]
-        : [ASK_SYSTEM_PROMPT, ...(feature ? [featurePrompt(feature)] : [])],
+      systemPrompts: setup.systemPrompts,
       threadId: input.threadId,
       tools: [proposeDecisionTool, proposeTicketTool],
     });
