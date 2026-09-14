@@ -2,6 +2,7 @@
 # the workspace's lockfile installs it and argus's code comes along.
 services:
   pensieve:
+    profiles: [pensieve]
     build:
       context: ../..
       dockerfile: apps/pensieve/Dockerfile
