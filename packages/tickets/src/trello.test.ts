@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { TRELLO_BOARD_ID, trelloGet, trelloTicketStates } from "./trello.ts";
+import { TRELLO_BOARD_ID, trelloGet, trelloListOpen, trelloTicketStates } from "./trello.ts";
 
 const now = new Date("2026-09-14T10:00:00Z");
 
@@ -42,10 +42,11 @@ const TEN_CARDS = [
 ];
 
 /** a fetch stub over one board; records every URL asked for */
-function fakeFetch(board: { cards: unknown[]; lists: unknown[]; checklists?: unknown[] }, calls: string[] = []) {
+function fakeFetch(board: { cards: unknown[]; lists: unknown[]; checklists?: unknown[]; me?: { id: string } }, calls: string[] = []) {
   return (async (url: string | URL) => {
     const u = String(url);
     calls.push(u);
+    if (u.includes("/members/me")) return new Response(JSON.stringify(board.me ?? { id: "u1" }));
     if (u.includes("/checklists?")) return new Response(JSON.stringify(board.checklists ?? []));
     if (u.includes("/cards?")) return new Response(JSON.stringify(board.cards));
     if (u.includes("/lists?")) return new Response(JSON.stringify(board.lists));
@@ -206,5 +207,31 @@ describe("trelloGet", () => {
       { fetch: fakeFetch(board([{ idCard: "cParent", checkItems: [{ name: "AP-207" }] }, { idCard: "cOther", checkItems: [{ name: "AP-207" }] }])), trelloKey: "k", trelloToken: "t", now },
     );
     expect(two?.parentKey).toBeUndefined();
+  });
+});
+
+describe("trelloListOpen", () => {
+  test("Deployed and Feature not a bug are excluded; every other card comes back open, no parent computed", async () => {
+    const calls: string[] = [];
+    const tickets = await trelloListOpen({ fetch: fakeFetch({ cards: TEN_CARDS, lists: TEN_LISTS }, calls), trelloKey: "k", trelloToken: "t", now });
+    expect(tickets.map((t) => t.key).sort()).toEqual(["AP-101", "AP-102", "AP-103", "AP-104", "AP-105", "AP-106", "AP-107", "AP-110"]);
+    expect(tickets.every((t) => t.parentKey === undefined)).toBe(true);
+    expect(calls.some((c) => c.includes("/checklists?"))).toBe(false);
+    expect(calls.some((c) => c.includes("/members/me"))).toBe(false);
+  });
+
+  test("--unassigned keeps only cards with no member; --mine keeps only the viewer's", async () => {
+    const cards = [card("c101", 101, "L-pipe", { idMembers: [] }), card("c102", 102, "L-pipe", { idMembers: ["u1"] }), card("c103", 103, "L-pipe", { idMembers: ["u2"] })];
+    const unassigned = await trelloListOpen({ fetch: fakeFetch({ cards, lists: TEN_LISTS }), trelloKey: "k", trelloToken: "t", now, unassigned: true });
+    expect(unassigned.map((t) => t.key)).toEqual(["AP-101"]);
+    const calls: string[] = [];
+    const mine = await trelloListOpen({ fetch: fakeFetch({ cards, lists: TEN_LISTS, me: { id: "u1" } }, calls), trelloKey: "k", trelloToken: "t", now, mine: true });
+    expect(mine.map((t) => t.key)).toEqual(["AP-102"]);
+    expect(calls.some((c) => c.includes("/members/me"))).toBe(true);
+  });
+
+  test("no credential throws, naming the missing variable", async () => {
+    await expect(trelloListOpen({ trelloKey: null, trelloToken: "t" })).rejects.toThrow("TRELLO_API_KEY");
+    await expect(trelloListOpen({ trelloKey: "k", trelloToken: null })).rejects.toThrow("TRELLO_TOKEN");
   });
 });

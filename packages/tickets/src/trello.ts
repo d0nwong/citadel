@@ -6,7 +6,10 @@
  * In Progress, Testing, Staging and Ready for Agent are started. A list the map does not
  * know is left `open` with that list's own name and no `stage`, reported once. `get` also
  * answers the card's parent: the one card whose checklist item names or links this card's
- * key; none, or more than one, is no parent.
+ * key; none, or more than one, is no parent. `listOpen` (CTD-200) answers every card not on
+ * Deployed or Feature not a bug, filtered for `--mine`/`--unassigned` against `idMembers`
+ * and `GET /1/members/me`; it does not compute a parent — that is `get`'s one checklist
+ * read per card, not the list's.
  *
  * A card's number is `idShort` when Trello answers one, else the number its own `url` shows
  * (`/c/<short>/207-…`) — `trello-cli --get-all-cards` was seen to answer `idShort: null`, so
@@ -14,16 +17,18 @@
  *
  * Auth: `TRELLO_API_KEY` and `TRELLO_TOKEN` from the environment, read fresh per call, sent
  * as query parameters as Trello's own REST API expects. Without either, `states` answers
- * `unknown` for every `AP` key and names the missing variable on stderr once; `get` throws,
- * naming it, since a caller asking for one ticket has nothing to fall back to. Read-only:
- * nothing here writes Trello.
+ * `unknown` for every `AP` key and names the missing variable on stderr once; `get` and
+ * `listOpen` throw, naming it, since a caller asking for one ticket or the open list has
+ * nothing to fall back to. Read-only: nothing here writes Trello.
  */
 
 import { splitKey } from "./key.ts";
-import type { Stage, Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
+import type { ListOpenOptions, Stage, Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
 
 export const TRELLO_API_URL = "https://api.trello.com/1";
 export const TRELLO_BOARD_ID = "6a20ed52a8d9725b59ceb3bb";
+export const TRELLO_BOARD_NAME = "Alden SWE Ticketing System";
+export const TRELLO_PIPELINE_LIST = "Pipeline";
 
 /** the list each state maps to, keyed by the list's own name, lowercased */
 export const TRELLO_LISTS: Record<string, "done" | "canceled" | Stage> = {
@@ -81,6 +86,14 @@ async function boardChecklists(opts: TrelloOptions, key: string, token: string):
   const res = await f(url);
   if (!res.ok) throw new Error(`trello: ${res.status}`);
   return (await res.json()) as TrelloChecklist[];
+}
+
+async function trelloViewer(opts: TrelloOptions, key: string, token: string): Promise<{ id: string }> {
+  const f = opts.fetch ?? fetch;
+  const url = trelloUrl("/members/me", { fields: "id" }, key, token);
+  const res = await f(url);
+  if (!res.ok) throw new Error(`trello: ${res.status}`);
+  return (await res.json()) as { id: string };
 }
 
 const NUMBER_IN_URL = /\/c\/[^/]+\/(\d+)(?:-|$)/;
@@ -203,17 +216,53 @@ export async function trelloGet(key: string, opts: TrelloOptions = {}): Promise<
   };
 }
 
+/**
+ * The Alden board's open cards (Deployed and Feature not a bug excluded) as `Ticket`s
+ * (CTD-200). `--team` is the router's own business — only `AP` ever reaches here, and the
+ * board is Trello's only "team" — so it is otherwise ignored. `--unassigned` and `--mine`
+ * filter on `idMembers` against `GET /1/members/me`, read only when `--mine` is asked for.
+ * No parent is computed here (that is one checklist read per card, and `get` already
+ * answers it) — this is the list, not the detail. Throws, naming the missing variable,
+ * when a credential is not set: a caller asking for the open list has nothing to fall
+ * back to.
+ */
+export async function trelloListOpen(opts: TrelloOptions & ListOpenOptions = {}): Promise<Ticket[]> {
+  const apiKey = keyOf(opts);
+  const token = tokenOf(opts);
+  const missing = missingCredential(apiKey, token);
+  if (missing) throw new Error(missing);
+  const now = opts.now ?? new Date();
+  const [cards, lists, viewer] = await Promise.all([
+    boardCards(opts, apiKey!, token!),
+    boardLists(opts, apiKey!, token!),
+    opts.mine ? trelloViewer(opts, apiKey!, token!) : Promise.resolve(null),
+  ]);
+  const nameOfList = new Map(lists.map((l) => [l.id, l.name]));
+  const out: Ticket[] = [];
+  for (const card of cards) {
+    const n = cardNumber(card);
+    if (n === null) continue;
+    const listName = nameOfList.get(card.idList) ?? `list ${card.idList}`;
+    const state = cardState(card, listName, now);
+    if (state.state !== "open") continue;
+    if (opts.unassigned && card.idMembers.length > 0) continue;
+    if (opts.mine && !card.idMembers.includes(viewer!.id)) continue;
+    out.push({ key: `AP-${n}`, title: card.name, url: card.shortUrl, description: card.desc ?? "", state });
+  }
+  return out;
+}
+
 const notImplemented = (verb: string): never => {
   throw new Error(`tickets: Trello's "${verb}" is not implemented yet`);
 };
 
-/** the Trello adapter as a `TicketProvider`; only `get` and `states` are implemented (CTD-199) */
+/** the Trello adapter as a `TicketProvider`; `get`, `states` and `listOpen` are implemented (CTD-198, CTD-199, CTD-200) */
 export function trelloProvider(opts: TrelloOptions = {}): TicketProvider {
   return {
     name: "trello",
     get: (key) => trelloGet(key, opts),
     states: (keys) => trelloTicketStates(keys, opts),
-    listOpen: () => notImplemented("listOpen"),
+    listOpen: (listOpts) => trelloListOpen({ ...opts, ...listOpts }),
     create: () => notImplemented("create"),
     update: () => notImplemented("update"),
     claim: () => notImplemented("claim"),

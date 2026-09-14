@@ -23,9 +23,10 @@ describe("file", () => {
     expect(projectNameFor("meetings")).toBe("Meetings");
     expect(projectNameFor("entities-meetings")).toBe("Entities Meetings");
   });
-  test("the draft carries the proposal's title and body, the team and the project", async () => {
+  test("the draft carries the proposal's title and body, and the Alden board's destination", async () => {
     const d = await draftFor("admin/invoicing", "P-1");
-    expect(d).toMatchObject({ team: "ALD", project: "Admin - Invoicing", title: "[FE] Payment term on the billing profile", asks: ["A-2"] });
+    expect(d).toMatchObject({ provider: "trello", board: "Alden SWE Ticketing System", list: "Pipeline", label: "Admin - Invoicing", title: "[FE] Payment term on the billing profile", asks: ["A-2"] });
+    expect(d.assignee).toBeUndefined();
     expect(d.body.startsWith("## Summary")).toBe(true);
   });
   test("an unknown proposal is refused", async () => {

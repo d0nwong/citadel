@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { providerNameFor, splitKey } from "./key.ts";
+import { providerNameFor, providerNameForTeam, splitKey } from "./key.ts";
 
 describe("splitKey", () => {
   test("a key splits into team and number; anything else is null", () => {
@@ -19,5 +19,14 @@ describe("providerNameFor", () => {
   test("a team no provider owns, and anything that is not a ticket key, route nowhere", () => {
     expect(providerNameFor("LIA-1")).toBeNull();
     expect(providerNameFor("fe#437")).toBeNull();
+  });
+});
+
+describe("providerNameForTeam", () => {
+  test("the same table, keyed by a bare team — no ticket number to split off", () => {
+    expect(providerNameForTeam("ALD")).toBe("linear");
+    expect(providerNameForTeam("CTD")).toBe("linear");
+    expect(providerNameForTeam("AP")).toBe("trello");
+    expect(providerNameForTeam("LIA")).toBeNull();
   });
 });

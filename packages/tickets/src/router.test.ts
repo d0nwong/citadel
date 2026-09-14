@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
-import { claimTicket, getTicket, ticketStates } from "./router.ts";
+import { claimTicket, getTicket, listOpenTickets, ticketStates } from "./router.ts";
 
 /** a fake provider that answers from a map and records every batch it was asked for, and every claim */
 function fakeProvider(name: string, states: Record<string, TicketState>, tickets: Record<string, Ticket> = {}): TicketProvider & { asked: string[][]; claimed: Array<[string, string | undefined]> } {
@@ -87,6 +87,55 @@ describe("ticketStates", () => {
     const s = await ticketStates([], { providers: { linear } });
     expect(linear.asked).toEqual([]);
     expect(s("ALD-1")).toEqual({ state: "unknown" });
+  });
+});
+
+describe("listOpenTickets", () => {
+  const openProvider = (name: string, tickets: Ticket[], fail?: string): TicketProvider & { asked: unknown[] } => {
+    const asked: unknown[] = [];
+    return {
+      ...fakeProvider(name, {}),
+      asked,
+      async listOpen(opts) {
+        asked.push(opts ?? {});
+        if (fail) throw new Error(fail);
+        return tickets;
+      },
+    };
+  };
+  const ticket = (key: string, provider: string): Ticket => ({ key, title: key, url: "u", description: "", state: { state: "open", name: "Todo", url: "u", provider } });
+
+  test("--team routes to the one provider that team names, and passes the options through", async () => {
+    const linear = openProvider("linear", [ticket("CTD-1", "linear")]);
+    const trello = openProvider("trello", [ticket("AP-1", "trello")]);
+    const out = await listOpenTickets({ team: "CTD", mine: true, providers: { linear, trello } });
+    expect(out).toEqual([ticket("CTD-1", "linear")]);
+    expect(linear.asked).toEqual([{ team: "CTD", mine: true, providers: { linear, trello } }]);
+    expect(trello.asked).toEqual([]);
+  });
+
+  test("--team propagates that one provider's throw rather than falling back", async () => {
+    const linear = openProvider("linear", [], "LINEAR_API_KEY is not set");
+    await expect(listOpenTickets({ team: "ALD", providers: { linear } })).rejects.toThrow("LINEAR_API_KEY");
+  });
+
+  test("an unknown team, or one this run has no provider for, throws by name", async () => {
+    await expect(listOpenTickets({ team: "LIA", providers: {} })).rejects.toThrow("LIA: not a known team");
+    await expect(listOpenTickets({ team: "AP", providers: {} })).rejects.toThrow("AP: no trello provider registered");
+  });
+
+  test("no team asks every registered provider and merges the answers", async () => {
+    const linear = openProvider("linear", [ticket("CTD-1", "linear")]);
+    const trello = openProvider("trello", [ticket("AP-1", "trello")]);
+    const out = await listOpenTickets({ providers: { linear, trello } });
+    expect(out.map((t) => t.key).sort()).toEqual(["AP-1", "CTD-1"]);
+  });
+
+  test("no team: a provider that throws is skipped, the other's list still comes back", async () => {
+    const linear = openProvider("linear", [ticket("CTD-1", "linear")]);
+    const trello = openProvider("trello", [], "TRELLO_API_KEY is not set");
+    const out = await listOpenTickets({ providers: { linear, trello } });
+    expect(out).toEqual([ticket("CTD-1", "linear")]);
   });
 });
 

@@ -3,12 +3,13 @@
  * provider is asked once per run for only the keys it owns, and the answers are merged into
  * one lookup. A key no provider owns, a provider this run has none registered for, or a
  * provider whose read throws all leave that ticket `unknown` — the other provider's tickets
- * still settle, and this never writes anything (spec S-7).
+ * still settle, and this never writes anything (spec S-7). `listOpenTickets` (CTD-200) does
+ * the same for the open-ticket list, routed by a bare team key instead of a ticket key.
  */
 
-import { providerNameFor } from "./key.ts";
+import { providerNameFor, providerNameForTeam } from "./key.ts";
 import { linearProvider, type LinearOptions } from "./linear.ts";
-import type { Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
+import type { ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
 import { trelloProvider, type TrelloOptions } from "./trello.ts";
 
 export type TicketRouterOptions = LinearOptions &
@@ -60,6 +61,35 @@ export async function getTicket(key: string, opts: TicketRouterOptions = {}): Pr
   const provider = providersFor(opts)[name];
   if (!provider) return null;
   return provider.get(key);
+}
+
+/**
+ * The open tickets (CTD-200): with `opts.team` set, asks only the one provider that team
+ * names — like `getTicket`, a single-provider request, so a missing credential or an
+ * unknown team propagates as a throw rather than an empty list. With no team, asks every
+ * registered provider and merges what came back; a provider that throws (no credential, a
+ * failed request) is logged and skipped, the same graceful-degrade `ticketStates` gives a
+ * batch of keys (spec S-7) — the point of not scoping to one team is to see everything
+ * that is actually reachable, not to demand every provider be configured.
+ */
+export async function listOpenTickets(opts: TicketRouterOptions & ListOpenOptions = {}): Promise<Ticket[]> {
+  const providers = providersFor(opts);
+  if (opts.team) {
+    const name = providerNameForTeam(opts.team);
+    if (!name) throw new Error(`${opts.team}: not a known team`);
+    const provider = providers[name];
+    if (!provider) throw new Error(`${opts.team}: no ${name} provider registered`);
+    return provider.listOpen(opts);
+  }
+  const out: Ticket[] = [];
+  for (const [name, provider] of Object.entries(providers)) {
+    try {
+      out.push(...(await provider.listOpen(opts)));
+    } catch (e) {
+      console.error(`tickets: could not list ${name} tickets — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return out;
 }
 
 /**
