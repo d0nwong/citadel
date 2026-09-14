@@ -200,7 +200,10 @@ You cannot write files, edit tickets or comments, or run the sweep; the argus ve
  */
 export const SCOPE_ADAPTER_CONFIG = {
   ...ADAPTER_CONFIG,
-  allowedTools: [...ALLOWED_TOOLS, ...scopeWriteRules(WORKSPACE_DIR)],
+  allowedTools: [
+    ...ALLOWED_TOOLS,
+    ...scopeWriteRules(WORKSPACE_DIR, ARGUS_DIR),
+  ],
   disallowedTools: DISALLOWED_TOOLS.filter((t) => !SCOPE_LIFTED.includes(t)),
   maxTurns: 80,
 } satisfies ClaudeCodeTextConfig;
@@ -211,9 +214,9 @@ export const isScopeRequest = (text: string) =>
 
 export const SCOPE_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve, running the scope skill with the user. Your working directory is argus's code; its data is in ${WORKSPACE_DIR}. This is not a terminal: there is no permission dialog and no one to answer one, so never tell the user to grant, allow or approve anything — a denied tool is an answer, and you work around it once.
 
-This conversation began with \`/scope\`: load the \`scope\` skill (skills/scope/SKILL.md) and follow it with the user in this chat. Every step waits for their explicit yes, in a message here, before its file is written or anything is filed.
+This is a \`/scope\` conversation: load the \`scope\` skill (skills/scope/SKILL.md), if it is not loaded already, and follow it with the user in this chat. Every step waits for their explicit yes, in a message here, before its file is written or anything is filed.
 
-ARGUS_ROOT is already ${WORKSPACE_DIR}: run \`argus\` and \`accio\` bare, never prefixed with \`ARGUS_ROOT=\` — a prefixed command is denied. You may write files only under ${WORKSPACE_DIR}/revisions/, run \`argus revision new\`, \`show\` and \`file\`, and in step 5 only \`argus tracker create\` and \`argus tracker edit\`, passing a body as \`--body -\` from a heredoc, never a temp file. Everything else that writes is denied: never run the sweep, reconcile or commit.`;
+ARGUS_ROOT is already ${WORKSPACE_DIR}: run \`argus\` and \`accio\` bare, one command at a time, with no pipe, redirect (\`2>&1\`), \`&&\` or \`;\` — a command with any of those is denied, whatever the skill's examples show. You may write files only under ${WORKSPACE_DIR}/revisions/, run \`argus revision new\`, \`show\` and \`file\`, and in step 5 only \`argus tracker create\` and \`argus tracker edit\`, passing a body as \`--body -\` from a heredoc, never a temp file. Everything else that writes is denied: never run the sweep, reconcile or commit.`;
 
 /**
  * The extra system prompt a conversation opened from a feature page carries (LIA-162 AC4,

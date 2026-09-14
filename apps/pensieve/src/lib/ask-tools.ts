@@ -86,16 +86,41 @@ export const TRACKER_WRITE_RULES = (["create", "edit"] as const).flatMap(
  */
 const REVISION_VERBS = ["new", "show", "file"] as const;
 
-export const scopeWriteRules = (workspace: string): string[] => [
+/**
+ * Each write verb in every spelling a scope run types: bare, as the skill's `ARGUS_ROOT=<data>`
+ * prefix (the skill's examples carry it, and the model follows them over the prompt), and
+ * through the script's absolute path. A rule is a literal prefix, so every spelling still ends
+ * in exactly that verb; pipes and redirects stay denied.
+ */
+const writeVerbRules = (verbs: string[], workspace: string, argusDir: string) =>
+  verbs.flatMap((cmd) =>
+    [
+      `argus ${cmd}`,
+      `bun scripts/argus.ts ${cmd}`,
+      `bun run argus ${cmd}`,
+      `bun ${argusDir}/scripts/argus.ts ${cmd}`,
+    ].flatMap((c) => [`Bash(${c}:*)`, `Bash(ARGUS_ROOT=${workspace} ${c}:*)`])
+  );
+
+export const scopeWriteRules = (
+  workspace: string,
+  argusDir = "/app/apps/argus"
+): string[] => [
   // `//` makes a permission path absolute
   `Edit(/${workspace}/revisions/**)`,
   `Write(/${workspace}/revisions/**)`,
-  ...REVISION_VERBS.flatMap((v) => [
-    `Bash(argus revision ${v}:*)`,
-    `Bash(bun scripts/argus.ts revision ${v}:*)`,
-    `Bash(bun run argus revision ${v}:*)`,
+  ...new Set([
+    ...writeVerbRules(
+      [
+        ...REVISION_VERBS.map((v) => `revision ${v}`),
+        "tracker create",
+        "tracker edit",
+      ],
+      workspace,
+      argusDir
+    ),
+    ...TRACKER_WRITE_RULES,
   ]),
-  ...TRACKER_WRITE_RULES,
 ];
 
 /** The denied names a `/scope` run lifts: its path-scoped Edit/Write and the tracker writes stand in for them. */

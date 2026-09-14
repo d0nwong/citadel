@@ -18,7 +18,7 @@ import type { ClaudeCodeTextProviderOptions } from "@tanstack/ai-claude-code";
 import { SESSION_ID_EVENT } from "@tanstack/ai-claude-code";
 import { runPersistenceConformance } from "@tanstack/ai-persistence/testkit";
 import type { AskStatus, ConversationFile } from "./ask";
-import { WORKSPACE_DIR } from "./workspace";
+import { ARGUS_DIR, WORKSPACE_DIR } from "./workspace";
 
 // Ask's default store lives under PENSIEVE_HOME; point it at a scratch dir before the module loads.
 const HOME = await mkdtemp(join(tmpdir(), "pensieve-home-"));
@@ -1036,7 +1036,22 @@ describe("/scope — a conversation that runs the scope skill", () => {
     expect(allowed).toContain(`Write(/${WORKSPACE_DIR}/revisions/**)`);
     for (const v of ["new", "show", "file"]) {
       expect(allowed).toContain(`Bash(argus revision ${v}:*)`);
+      // The spellings the scope skill leads a run to type (d870b7bd was denied on both).
+      expect(allowed).toContain(
+        `Bash(ARGUS_ROOT=${WORKSPACE_DIR} bun scripts/argus.ts revision ${v}:*)`
+      );
+      expect(allowed).toContain(
+        `Bash(ARGUS_ROOT=${WORKSPACE_DIR} bun ${ARGUS_DIR}/scripts/argus.ts revision ${v}:*)`
+      );
     }
+    // Only those verbs: no prefixed rule reaches a verb outside the scope writes.
+    expect(
+      allowed.filter(
+        (t) =>
+          t.startsWith("Bash(ARGUS_ROOT=") &&
+          !/ (revision (new|show|file)|tracker (create|edit)):\*\)$/.test(t)
+      )
+    ).toEqual([]);
     expect(allowed.some((t) => t.startsWith("Bash(argus revision drop"))).toBe(
       false
     );
@@ -1074,7 +1089,7 @@ describe("/scope — a conversation that runs the scope skill", () => {
     for (const re of [
       /skills\/scope\/SKILL\.md/,
       /explicit yes, in a message here/,
-      /never prefixed with `ARGUS_ROOT=`/,
+      /no pipe, redirect/,
       /`--body -` from a heredoc/,
       /never run the sweep, reconcile or commit/,
     ]) {
