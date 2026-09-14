@@ -19,16 +19,18 @@ check:
 auth what *flags:
     bun scripts/bootstrap.ts auth {{what}} {{flags}}
 
-# Start everything: the stack, Foundry web on this Mac, and the sweep loop.
+# Start everything: the stack, Foundry web on this Mac, local Pensieve, and the sweep loop.
 start:
     just up
     just foundry-bg
+    just pensieve-bg
     just tailscale-up
 
 # Stop everything `just start` started; the data volumes stay.
 stop:
     -just tailscale-down
     -pkill -f 'vite dev --port 3777'
+    -kill $(lsof -tnP -iTCP:"${PENSIEVE_PORT:-3778}" -sTCP:LISTEN) 2>/dev/null
     just down
 
 # Serve Pensieve (https :443) and Foundry (https :8443) on this machine's tailnet name.
@@ -126,6 +128,26 @@ foundry-bg:
     DATABASE_URL="$(bun scripts/stack.ts url)" nohup bun run --filter foundry-web dev \
       >.foundry-dev.log 2>&1 &
     echo "foundry web starting on :3777 (log: .foundry-dev.log)"
+
+# Local Pensieve with bun in the background, logging to .pensieve.log; this is what
+# `just start` runs. Skips when something is already listening on the Pensieve port
+# (bun's own command line is too common to pgrep for, unlike foundry's vite one above).
+pensieve-bg:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    port="${PENSIEVE_PORT:-3778}"
+    if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+      echo "pensieve is already on :$port"
+      exit 0
+    fi
+    root="$(pwd)"
+    cd apps/pensieve
+    if [[ ! -f dist/server/server.js ]]; then
+      bun run build
+    fi
+    PORT="$port" nohup scripts/root-env.sh bun server.ts \
+      >"$root/.pensieve.log" 2>&1 &
+    echo "pensieve starting on :$port (log: .pensieve.log)"
 
 # One sweep tick in the stack, the way the loop runs it; --dry-run only pulls and changes nothing.
 sweep-once *args:
