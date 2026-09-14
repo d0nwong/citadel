@@ -46,11 +46,11 @@ const DOT_SLASH = /^\.\//
 const EXTENSION = /\.([A-Za-z0-9]+)$/
 /** A glob, a placeholder or a template: a pattern, never one file. */
 const PATTERN = /[*?{}<>$|]/
-/** The ticket brief's head (`ticketBrief`): its own issue is already the task. */
-const BRIEF_HEAD = /^([A-Z][A-Z0-9]*-\d+): .*\nhttps:\/\/linear\.app\//
+/** The ticket brief's head (`ticketBrief`): its own ticket is already the task, whichever provider its url is on. */
+const BRIEF_HEAD = /^([A-Z][A-Z0-9]*-\d+): .*\nhttps:\/\/\S+\n/
 /** Git's own test for a binary file: a NUL in the first 8000 bytes. */
 const BINARY_PROBE = 8000
-/** A Linear key, the only thing a revision's directory is named after once filed. */
+/** A ticket key, the only thing a revision's directory is named after once filed. */
 const TICKET_KEY = /^[A-Z][A-Z0-9]*-\d+$/
 /** One segment of a feature key — `foundry`, `alden-portal`, `admin` — never `..` or empty. */
 const SEGMENT = /^[a-z0-9][a-z0-9-]*$/
@@ -109,7 +109,7 @@ export function namedFiles(task: string): { paths: Array<string>; names: Array<s
   return { names: [...names], paths: [...paths] }
 }
 
-/** The Linear issues a task links, less the brief's own issue when the task is a ticket brief. */
+/** The tickets a task links, less the brief's own ticket when the task is a ticket brief. */
 export function linkedIssueIds(task: string): Array<string> {
   const own = BRIEF_HEAD.exec(task)?.[1]
   return ticketIdsInTask(task).filter((id) => id !== own)
@@ -229,9 +229,9 @@ export async function revisionBlocks(parentKey: string, dataDir: string): Promis
 }
 
 /**
- * The ticket the task is about — the brief's own, else the first linked issue
- * Linear knows — and the revision its parent carries. The own issue is not in
- * `known` (issues skips it), so it is fetched here, once, for its parent.
+ * The ticket the task is about — the brief's own, else the first linked ticket
+ * its tracker knows — and the revision its parent carries. The own ticket is
+ * not in `known` (issues skips it), so it is fetched here, once, for its parent.
  */
 async function revisionSource(
   own: string | undefined,
