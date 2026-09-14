@@ -57,4 +57,18 @@ describe('readCredentials', () => {
   test('with no file (a container) the environment supplies the credentials, and nothing else of it', async () => {
     expect(await readCredentials(path.join(root, 'absent'), { PATH: '/bin', SLACK_TOKEN: 'xoxp' })).toEqual({ SLACK_TOKEN: 'xoxp' })
   })
+
+  // CTD-203 AC1 — TRELLO_API_KEY and TRELLO_TOKEN are read the way LINEAR_API_KEY already is.
+  test('reads both Trello keys from the file, and a rewritten value is what the next read answers', async () => {
+    const file = path.join(root, 'trello')
+    await writeFile(file, 'TRELLO_API_KEY=key-1\nTRELLO_TOKEN=tok-1\n')
+    expect(await readCredentials(file, {})).toEqual({ TRELLO_API_KEY: 'key-1', TRELLO_TOKEN: 'tok-1' })
+
+    await writeFile(file, 'TRELLO_API_KEY=key-1\nTRELLO_TOKEN=tok-2\n')
+    expect(await readCredentials(file, {})).toEqual({ TRELLO_API_KEY: 'key-1', TRELLO_TOKEN: 'tok-2' })
+  })
+
+  test('an environment-only TRELLO_TOKEN is read too, as in a container', async () => {
+    expect(await readCredentials(path.join(root, 'absent'), { TRELLO_TOKEN: 'tok-env' })).toEqual({ TRELLO_TOKEN: 'tok-env' })
+  })
 })
