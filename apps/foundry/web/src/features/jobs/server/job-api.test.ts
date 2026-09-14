@@ -1,64 +1,63 @@
 /**
  * The trigger API against the real store and database, with the three edges
- * that would touch the world stubbed: the token (no env file), Linear (no
- * key, no network) and ignition (no docker). Needs the local Postgres from
- * `just up postgres`. Rows are keyed TEST-… / a TEST repo path and swept below.
+ * that would touch the world stubbed: the token (no env file), the tickets
+ * package (no key, no network) and ignition (no docker). Needs the local
+ * Postgres from `just up postgres`. Rows are keyed TEST-… / a TEST repo path
+ * and swept below.
  */
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
+import { MissingCredentialError } from '@citadel/tickets'
+import type { Ticket } from '@citadel/tickets'
 import { eq, like } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobs, repos } from '@/db/schema'
 import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
 import { deleteLogs } from './job-logs'
-import { handleGetJob, handleListRepos, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX } from './job-api'
+import { handleGetJob, handleListRepos, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX, ticketBrief } from './job-api'
 import { cancelJob, getJob } from './job-store'
-import { ticketBrief } from './linear-link'
 import type { ApiDeps } from './job-api'
-import type { LinearIssue } from './linear-link'
 import type { Job, LogLine } from '../types'
 
 const rand = randomUUID().slice(0, 8)
 const REPO_PATH = `/tmp/foundry-test-${rand}/api-repo`
 const REPO_NAME = 'api-repo'
 const SECRET = `test-secret-${rand}`
-const LINEAR_KEY = `lin_api_test_${rand}`
 
 /**
- * The stubbed Linear: every TEST- id is a known issue except the two suffixes
- * below, which stand in for an id Linear does not know and a Linear that is
- * down. `claimFails` flips the claim mutation into a throw for AC6.
+ * The stubbed tickets package: every TEST- id is a known ticket except the
+ * two suffixes below, which stand in for an id no provider knows and a
+ * provider that is unreachable. `claimFails` flips the claim into a throw
+ * for AC6.
  */
 const UNKNOWN = `TEST-${rand}-UNKNOWN`
 const DOWN = `TEST-${rand}-DOWN`
-const issueFor = (identifier: string): LinearIssue => ({
-  id: `uuid-${identifier}`,
-  identifier,
+const issueFor = (identifier: string): Ticket => ({
+  key: identifier,
   title: 'do the thing',
   url: `https://linear.app/liamai/issue/${identifier}/slug`,
   description: '## Summary\n\nEvery detail here.',
-  teamId: 'team-1',
+  state: { state: 'open', name: 'In Progress', url: `https://linear.app/liamai/issue/${identifier}/slug` },
 })
 let claimFails = false
 /** Claims and ignitions in the order they happened — the claim must come first. */
 const trace: Array<string> = []
-const claimed: Array<{ key: string; id: string; teamId: string }> = []
+const claimed: Array<string> = []
 
 const ignited: Array<string> = []
 const deps: ApiDeps = {
   token: async () => SECRET,
-  linearKey: async () => LINEAR_KEY,
-  linear: {
-    fetchIssue: async (_key, identifier) => {
+  tickets: {
+    get: async (identifier) => {
       if (identifier === UNKNOWN) return null
       if (identifier === DOWN) throw new Error('fetch failed')
       return issueFor(identifier)
     },
-    claimTicket: async (key, issue) => {
+    claim: async (key) => {
       if (claimFails) throw new Error('issueUpdate refused')
-      claimed.push({ key, id: issue.id, teamId: issue.teamId })
-      trace.push(`claim ${issue.id}`)
+      claimed.push(key)
+      trace.push(`claim ${key}`)
     },
   },
   ignite: async (id) => {
@@ -67,7 +66,10 @@ const deps: ApiDeps = {
   },
 }
 /** The same deps with no LINEAR_API_KEY configured. */
-const noLinear: ApiDeps = { ...deps, linearKey: async () => undefined }
+const noLinear: ApiDeps = {
+  ...deps,
+  tickets: { ...deps.tickets, get: async () => { throw new MissingCredentialError('LINEAR_API_KEY') } },
+}
 
 const logsOf = async (id: string) =>
   ((await (await handleGetJob(id, get(id, '?logs=1'), deps)).json()) as { logs: Array<LogLine> }).logs
@@ -248,7 +250,7 @@ test('CTD-176 C3: two concurrent first triggers for one ticketId still insert ex
 /* LIA-92 — the brief and the Linear claim from a ticketId             */
 /* ------------------------------------------------------------------ */
 
-test('LIA-92 AC1/AC2 — ticketId without instructions composes the brief, claims the ticket in Linear, then ignites', async () => {
+test('LIA-92 AC1/AC2 — ticketId without instructions composes the brief, claims the ticket, then ignites', async () => {
   const ticketId = `TEST-${rand}-A1`
   const res = await handleTriggerJob(post({ repo: REPO_NAME, ticketId, baseBranch: 'main' }), deps)
   expect(res.status).toBe(202)
@@ -260,23 +262,23 @@ test('LIA-92 AC1/AC2 — ticketId without instructions composes the brief, claim
   expect(job.ticketId).toBe(ticketId)
   expect(job.status).toBe('queued')
 
-  // The claim used the host key and the issue's uuid/team, and came before ignition.
-  expect(claimed).toContainEqual({ key: LINEAR_KEY, id: `uuid-${ticketId}`, teamId: 'team-1' })
-  expect(trace.indexOf(`claim uuid-${ticketId}`)).toBeLessThan(trace.indexOf(`ignite ${job.id}`))
+  // The claim came before ignition.
+  expect(claimed).toContain(ticketId)
+  expect(trace.indexOf(`claim ${ticketId}`)).toBeLessThan(trace.indexOf(`ignite ${job.id}`))
 
   const logs = await logsOf(job.id)
   expect(logs.some((l) => l.stream === 'sys' && /queued on orbstack .* — claim for /.test(l.text))).toBe(true)
-  expect(logs.some((l) => l.stream === 'sys' && l.text.includes(`claimed ${ticketId} in Linear`))).toBe(true)
+  expect(logs.some((l) => l.stream === 'sys' && l.text.includes(`claimed ${ticketId} —`))).toBe(true)
 })
 
-test('LIA-92 AC3 — ticketId with instructions keeps the instructions as task and still claims in Linear', async () => {
+test('LIA-92 AC3 — ticketId with instructions keeps the instructions as task and still claims the ticket', async () => {
   const ticketId = `TEST-${rand}-A3`
   const res = await handleTriggerJob(post(valid({ ticketId })), deps)
   expect(res.status).toBe(202)
   const job = (await res.json()) as Job
   expect(job.task).toBe(valid().instructions)
-  expect(claimed).toContainEqual({ key: LINEAR_KEY, id: `uuid-${ticketId}`, teamId: 'team-1' })
-  expect((await logsOf(job.id)).some((l) => l.stream === 'sys' && l.text.includes(`claimed ${ticketId} in Linear`))).toBe(true)
+  expect(claimed).toContain(ticketId)
+  expect((await logsOf(job.id)).some((l) => l.stream === 'sys' && l.text.includes(`claimed ${ticketId} —`))).toBe(true)
 })
 
 test('LIA-92 AC4 — no LINEAR_API_KEY: 503 without instructions; 202 with them, the skipped claim logged as err', async () => {
@@ -295,9 +297,9 @@ test('LIA-92 AC4 — no LINEAR_API_KEY: 503 without instructions; 202 with them,
   const job = (await accepted.json()) as Job
   expect(job.task).toBe(valid().instructions)
   expect(ignited).toContain(job.id)
-  expect(claimed.some((c) => c.id === `uuid-${ticketId}`)).toBe(false)
+  expect(claimed).not.toContain(ticketId)
   const logs = await logsOf(job.id)
-  expect(logs.some((l) => l.stream === 'err' && l.text.includes(`Linear claim for ${ticketId} skipped`) && l.text.includes('no LINEAR_API_KEY in the citadel .env'))).toBe(true)
+  expect(logs.some((l) => l.stream === 'err' && l.text.includes(`claim for ${ticketId} skipped`) && l.text.includes('no LINEAR_API_KEY in the citadel .env'))).toBe(true)
 })
 
 test('LIA-92 AC5 — a ticketId Linear does not know is a 400 naming it, and inserts nothing', async () => {
@@ -312,15 +314,15 @@ test('LIA-92 AC5 — a ticketId Linear does not know is a 400 naming it, and ins
   expect(ignited.length).toBe(ignitedBefore)
 })
 
-test('LIA-92 — Linear unreachable while fetching the ticket is a 502, and inserts nothing', async () => {
+test('LIA-92 — the provider unreachable while fetching the ticket is a 502, and inserts nothing', async () => {
   const before = await rowCount()
   const res = await handleTriggerJob(post({ repo: REPO_NAME, ticketId: DOWN }), deps)
   expect(res.status).toBe(502)
-  expect(((await res.json()) as { error: string }).error).toMatch(/^Linear: fetch failed/)
+  expect(((await res.json()) as { error: string }).error).toBe(`ticket ${DOWN} could not be fetched: fetch failed`)
   expect(await rowCount()).toBe(before)
 })
 
-test('LIA-92 AC6 — a Linear claim that fails after the insert leaves the job queued, answers 202, logs err', async () => {
+test('LIA-92 AC6 — a claim that fails after the insert leaves the job queued, answers 202, logs err', async () => {
   const ticketId = `TEST-${rand}-A6`
   claimFails = true
   try {
@@ -333,7 +335,7 @@ test('LIA-92 AC6 — a Linear claim that fails after the insert leaves the job q
     const [row] = await db.select().from(jobs).where(eq(jobs.id, job.id))
     expect(row?.status).toBe('queued')
     const logs = await logsOf(job.id)
-    expect(logs.some((l) => l.stream === 'err' && l.text.includes(`Linear claim for ${ticketId} failed: issueUpdate refused`))).toBe(true)
+    expect(logs.some((l) => l.stream === 'err' && l.text.includes(`claim for ${ticketId} failed: issueUpdate refused`))).toBe(true)
   } finally {
     claimFails = false
   }

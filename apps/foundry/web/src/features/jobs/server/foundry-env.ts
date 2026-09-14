@@ -62,3 +62,24 @@ export async function readCredentials(
 }
 
 export const readFoundryEnv = (): Promise<Record<string, string>> => readCredentials(ENV_FILE)
+
+/**
+ * The container's whole environment (CTD-204's AC1): the Claude credential and, when
+ * configured, the MCP gateway token — and nothing else of `cred`, no matter what else it
+ * carries (`LINEAR_API_KEY`, `TRELLO_API_KEY`, `TRELLO_TOKEN`, or a git/GitHub/Bitbucket/
+ * database credential sitting in the same `.env`). Reaches Linear or Trello only by proxy
+ * through the gateway, never directly — `FOUNDRY_MCP_SERVERS` narrows what box-init
+ * registers there. Pure, so it is tested without docker or a database.
+ */
+export function forgeEnv(cred: Record<string, string>, mcpUrl: string): Record<string, string> {
+  const env: Record<string, string> = {}
+  if (cred.CLAUDE_CODE_OAUTH_TOKEN) env.CLAUDE_CODE_OAUTH_TOKEN = cred.CLAUDE_CODE_OAUTH_TOKEN
+  else if (cred.ANTHROPIC_API_KEY) env.ANTHROPIC_API_KEY = cred.ANTHROPIC_API_KEY
+  else throw new Error('no Claude credential for the forge — run: foundry auth')
+  if (cred.MCP_GATEWAY_TOKEN) {
+    env.FOUNDRY_MCP_TOKEN = cred.MCP_GATEWAY_TOKEN
+    env.FOUNDRY_MCP_URL = mcpUrl
+    env.FOUNDRY_MCP_SERVERS = cred.FOUNDRY_MCP_SERVERS || 'linear,slack'
+  }
+  return env
+}

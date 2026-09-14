@@ -17,17 +17,20 @@
  * key with a different body is refused. Callers are services and a cockpit
  * that retries on timeout, so one intent must never queue two jobs.
  *
- * A `ticketId` alone is enough (LIA-92): the host fetches the Linear issue
- * with its own key, composes the brief from its body, and — once the row
- * exists — claims the ticket in Linear (assignee + In Progress). The order is
+ * A `ticketId` alone is enough (LIA-92): the host fetches the ticket through
+ * the tickets package (CTD-204), composes the brief from its body, and —
+ * once the row exists — claims it there (assignee + started). The order is
  * the invariant: row insert (the unique `ticket_id` index IS the claim), then
- * the Linear write, then ignition. A Linear write that fails costs an `err`
- * line, never the job. Foundry only fetches and composes here; it never judges
- * whether the ticket is ready — the caller decided that by sending it.
+ * the provider write, then ignition. A provider write that fails costs an
+ * `err` line, never the job. Foundry only fetches and composes here; it
+ * never judges whether the ticket is ready — the caller decided that by
+ * sending it.
  */
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import { MissingCredentialError } from '@citadel/tickets'
+import type { Ticket } from '@citadel/tickets'
 import { z } from 'zod'
 import { DEFAULT_BLUEPRINT_ID, STEP_EFFORTS, STEP_MODELS } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
@@ -36,32 +39,35 @@ import { tilde } from '@/features/repos/types'
 import { apiToken, tokenMatches } from './auth'
 import { appendLogs } from './job-logs'
 import * as store from './job-store'
-import { claimTicket, fetchIssue, linearApiKey, ticketBrief } from './linear-link'
-import type { LinearIssue } from './linear-link'
+import { hostTickets } from './tickets'
+import type { HostTickets } from './tickets'
 import { FOLLOW_UPS } from '../types'
 import type { Job, JobDetail, NewJobInput } from '../types'
 
-/** Injectable edges, so the tests need neither ~/.foundry/env, docker nor Linear. */
+/** Injectable edges, so the tests need neither ~/.foundry/env, docker nor the network. */
 export interface ApiDeps {
   token: () => Promise<string | undefined>
-  /** The host's LINEAR_API_KEY, read fresh per request; undefined means Linear is not configured. */
-  linearKey: () => Promise<string | undefined>
-  linear: {
-    fetchIssue: (apiKey: string, identifier: string) => Promise<LinearIssue | null>
-    claimTicket: (apiKey: string, issue: Pick<LinearIssue, 'id' | 'teamId'>) => Promise<void>
-  }
+  tickets: HostTickets
   ignite: (jobId: string) => Promise<void>
 }
 
 const realDeps = (): ApiDeps => ({
   token: apiToken,
-  linearKey: linearApiKey,
-  linear: { fetchIssue, claimTicket },
+  tickets: hostTickets,
   ignite: async (id) => {
     const { startJob } = await import('./job-runner')
     return startJob(id)
   },
 })
+
+/**
+ * The ticket IS the job brief: every section, behind the key, title and URL.
+ * `branchSlug` and the PR↔ticket linker both key off the leading identifier
+ * for free.
+ */
+export function ticketBrief(ticket: Pick<Ticket, 'key' | 'title' | 'url' | 'description'>): string {
+  return `${ticket.key}: ${ticket.title}\n${ticket.url}\n\n${ticket.description}`
+}
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -370,32 +376,34 @@ export async function handleTriggerJob(request: Request, deps: ApiDeps = realDep
     throw e
   }
 
-  // The ticket is fetched BEFORE the insert, so an id Linear does not know
-  // (or a Linear that cannot be reached) inserts nothing — there would be no
-  // brief to run and no issue to claim. The claim itself waits until after.
-  let ticket: { key: string; issue: LinearIssue } | undefined
+  // The ticket is fetched BEFORE the insert, so an id no provider knows (or
+  // one that cannot be reached) inserts nothing — there would be no brief to
+  // run and no ticket to claim. The claim itself waits until after.
+  let ticket: Ticket | undefined
+  // Set only on the missing-credential path with instructions in hand — the
+  // one way `ticket` stays undefined without already having returned.
+  let missingCredential: string | undefined
   if (payload.ticketId) {
-    const key = await deps.linearKey()
-    if (!key) {
-      if (payload.instructions === undefined) {
-        return json(503, { error: 'Linear not configured — no LINEAR_API_KEY in the citadel .env or the environment, or send instructions' })
+    try {
+      const found = await deps.tickets.get(payload.ticketId)
+      if (!found) return json(400, { error: `ticket ${payload.ticketId} is not a known ticket` })
+      ticket = found
+    } catch (e) {
+      if (e instanceof MissingCredentialError) {
+        if (payload.instructions === undefined) {
+          return json(503, { error: `no ${e.variable} in the citadel .env or the environment, or send instructions` })
+        }
+        // Instructions in hand, the job can run; the claim is logged as skipped below.
+        missingCredential = e.variable
+      } else {
+        return json(502, { error: `ticket ${payload.ticketId} could not be fetched: ${e instanceof Error ? e.message : String(e)}` })
       }
-      // Instructions in hand, the job can run; the claim is logged as skipped below.
-    } else {
-      let issue: LinearIssue | null
-      try {
-        issue = await deps.linear.fetchIssue(key, payload.ticketId)
-      } catch (e) {
-        return json(502, { error: `Linear: ${e instanceof Error ? e.message : String(e)}` })
-      }
-      if (!issue) return json(400, { error: `ticket ${payload.ticketId} is not a Linear issue` })
-      ticket = { key, issue }
     }
   }
 
   // The schema guarantees instructions or a ticketId; without instructions,
   // the 503 above guarantees the ticket was fetched.
-  const task = payload.instructions ?? (ticket ? ticketBrief(ticket.issue) : undefined)
+  const task = payload.instructions ?? (ticket ? ticketBrief(ticket) : undefined)
   if (task === undefined) throw new Error('unreachable: no instructions and no fetched ticket to compose them from')
 
   const job = await store.createJobIdempotent({ ...base, task }, payload.ticketId)
@@ -415,11 +423,12 @@ export async function handleTriggerJob(request: Request, deps: ApiDeps = realDep
     })
   }
 
-  // Only now — the row is the claim — mirror it to Linear, before ignition
-  // and awaited, so the 202 tells the truth about the ticket. A failed write
-  // leaves the queued row standing with an `err` line: the job is what the
-  // caller asked for, the Linear state is a courtesy they can fix by hand.
-  if (payload.ticketId) await mirrorClaim(deps, job.id, payload.ticketId, ticket)
+  // Only now — the row is the claim — mirror it to the provider, before
+  // ignition and awaited, so the 202 tells the truth about the ticket. A
+  // failed write leaves the queued row standing with an `err` line: the job
+  // is what the caller asked for, the provider's state is a courtesy they
+  // can fix by hand.
+  if (payload.ticketId) await mirrorClaim(deps, job.id, payload.ticketId, ticket !== undefined, missingCredential)
 
   // Fire and forget, exactly as the ignite dialog does: the row is the
   // answer, and the runner's cap/pump take it from here. Only the request
@@ -428,25 +437,26 @@ export async function handleTriggerJob(request: Request, deps: ApiDeps = realDep
   return json(202, job)
 }
 
-/** Assign + In Progress on Linear for a ticket the row just claimed, or a log line saying why not. */
+/** Assign + start, on the provider the key names, for a ticket the row just claimed, or a log line saying why not. */
 async function mirrorClaim(
   deps: ApiDeps,
   jobId: string,
   ticketId: string,
-  ticket: { key: string; issue: LinearIssue } | undefined,
+  claimable: boolean,
+  missingCredential: string | undefined,
 ): Promise<void> {
-  if (!ticket) {
+  if (!claimable) {
     await appendLogs(jobId, [
-      { stream: 'err', text: `Linear claim for ${ticketId} skipped — no LINEAR_API_KEY in the citadel .env or the environment` },
+      { stream: 'err', text: `claim for ${ticketId} skipped — no ${missingCredential} in the citadel .env or the environment` },
     ])
     return
   }
   try {
-    await deps.linear.claimTicket(ticket.key, ticket.issue)
-    await appendLogs(jobId, [{ stream: 'sys', text: `claimed ${ticketId} in Linear — assigned to you, moved to In Progress` }])
+    await deps.tickets.claim(ticketId)
+    await appendLogs(jobId, [{ stream: 'sys', text: `claimed ${ticketId} — assigned to you, started` }])
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    await appendLogs(jobId, [{ stream: 'err', text: `Linear claim for ${ticketId} failed: ${msg} — job stays queued` }])
+    await appendLogs(jobId, [{ stream: 'err', text: `claim for ${ticketId} failed: ${msg} — job stays queued` }])
   }
 }
 
