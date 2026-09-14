@@ -8,10 +8,17 @@
  * conflict is left in the worktree, named, for the run itself to resolve (`ask.ts`'s
  * `conflictPrompt`). `ask.ts` calls `ensureWorktrees` and stays the run; every `git` call
  * lives here.
+ *
+ * CTD-226: the first question also writes `apps/argus/.claude/settings.local.json` into the
+ * fresh citadel worktree, disabling the gateway MCP servers `apps/argus/.claude/settings.json`
+ * (`enabledMcpjsonServers`) approves project-wide — `LOCAL_ADAPTER_CONFIG`'s `settingSources`
+ * (`ask.ts`) loads it as the `'local'` source, which wins, so a local run gets the operator's
+ * own MCP servers and not argus's gateway ones (S-50). The file sits only in this worktree,
+ * never in the live checkout.
  */
 
 import { execFile } from "node:child_process";
-import { stat } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -63,6 +70,20 @@ export const branchOf = (threadId: string) => `ask/${threadId}`;
 export const hasWorktrees = (paths: WorktreePaths): Promise<boolean> =>
   exists(paths.citadel);
 
+/**
+ * Disables argus's gateway MCP servers for this worktree (S-50): `apps/argus/.claude/settings.json`
+ * carries `enabledMcpjsonServers`, which this beats as the `'local'` setting source.
+ */
+async function writeLocalArgusSettings(citadelWorktree: string): Promise<void> {
+  const dir = join(citadelWorktree, "apps/argus/.claude");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "settings.local.json"),
+    `${JSON.stringify({ disabledMcpjsonServers: ["linear", "slack"] }, null, 2)}\n`,
+    "utf8"
+  );
+}
+
 async function createWorktrees(
   paths: WorktreePaths,
   opts: { citadelDataDir: string; citadelDir: string; threadId: string }
@@ -77,6 +98,7 @@ async function createWorktrees(
     paths.citadel,
     "origin/main",
   ]);
+  await writeLocalArgusSettings(paths.citadel);
   await git(opts.citadelDataDir, [
     "worktree",
     "add",

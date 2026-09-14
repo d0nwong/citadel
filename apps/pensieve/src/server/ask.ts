@@ -204,13 +204,23 @@ export const ADAPTER_CONFIG = {
  * container's lists rather than leaving them in place. `cwd` stays `/workspace`: the sandbox
  * (below) is pinned to `ARGUS_DIR` regardless of mode, so `/workspace` already resolves to
  * argus's own directory in the live checkout — the same directory a literal path would name.
+ *
+ * CTD-226: `'local'` is added to `settingSources` so `--setting-sources` also loads
+ * `<citadel worktree>/apps/argus/.claude/settings.local.json`, which `worktrees.ts` writes
+ * alongside the citadel worktree with `disabledMcpjsonServers: ["linear", "slack"]` — that
+ * beats the project's `enabledMcpjsonServers` (`apps/argus/.claude/settings.json`), so argus's
+ * gateway servers never load and the conversation gets only the operator's own MCP servers
+ * and plugins, the ones a terminal session on the host has (S-50). `maxTurns` is `undefined`
+ * so no `--max-turns` reaches the CLI at all (`adapters/text.js`'s `buildArgv` only pushes the
+ * flag when it is set): a local run, including `/scope`, has no turn cap (S-51).
  */
 export const LOCAL_ADAPTER_CONFIG = {
   ...ADAPTER_CONFIG,
   allowedTools: undefined,
   disallowedTools: undefined,
+  maxTurns: undefined,
   permissionMode: "bypassPermissions",
-  settingSources: ["user", "project"],
+  settingSources: ["user", "project", "local"],
 } satisfies ClaudeCodeTextConfig;
 
 // Once per process, so the value the running server uses is on record (a dev server keeps
@@ -269,12 +279,12 @@ export const SCOPE_ADAPTER_CONFIG = {
 
 /**
  * Local mode's `/scope` config (CTD-219): local mode already has no allowlist to lift, so a
- * scope run there just keeps `LOCAL_ADAPTER_CONFIG` and asks for the same longer turn budget
- * a container scope run gets — a local `/scope` sandboxed again would be the one surprise.
+ * scope run there just keeps `LOCAL_ADAPTER_CONFIG` as is — a local `/scope` sandboxed again
+ * would be the one surprise. Unlike the container scope config it does not widen `maxTurns`
+ * to 80: local mode has no turn cap at all (CTD-226, S-51), a scope run included.
  */
 export const LOCAL_SCOPE_ADAPTER_CONFIG = {
   ...LOCAL_ADAPTER_CONFIG,
-  maxTurns: 80,
 } satisfies ClaudeCodeTextConfig;
 
 /** A `/scope` first turn, with or without arguments. */

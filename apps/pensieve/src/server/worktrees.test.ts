@@ -96,6 +96,17 @@ describe("CTD-221 AC2 — the first question creates both worktrees on ask/<id>"
       "{}\n"
     );
 
+    // CTD-226 S-50: the fresh citadel worktree disables argus's gateway MCP servers, so a
+    // local run's settingSources ('local') picks up the operator's own instead.
+    expect(
+      JSON.parse(
+        await readFile(
+          join(paths.citadel, "apps/argus/.claude/settings.local.json"),
+          "utf8"
+        )
+      )
+    ).toEqual({ disabledMcpjsonServers: ["linear", "slack"] });
+
     // The live checkouts are untouched: the worktree is a separate directory.
     expect(git(citadelDir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
     expect(git(citadelDataDir, "rev-parse", "--abbrev-ref", "HEAD")).toBe(

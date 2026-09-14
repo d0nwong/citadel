@@ -1168,30 +1168,36 @@ describe("CTD-219 — the run mode: container keeps the sandbox, local runs free
 
   test("the local adapter config drops the allowlist and denials, and runs bypassPermissions with the operator's settings", () => {
     expect(LOCAL_ADAPTER_CONFIG.permissionMode).toBe("bypassPermissions");
-    expect(LOCAL_ADAPTER_CONFIG.settingSources).toEqual(["user", "project"]);
+    expect(LOCAL_ADAPTER_CONFIG.settingSources).toEqual([
+      "user",
+      "project",
+      "local",
+    ]);
     expect(LOCAL_ADAPTER_CONFIG.allowedTools).toBeUndefined();
     expect(LOCAL_ADAPTER_CONFIG.disallowedTools).toBeUndefined();
-    // Everything else — the checkouts' data dir, the working directory, the turn cap —
-    // is unchanged from the container config.
+    // Everything else — the checkouts' data dir, the working directory — is unchanged from
+    // the container config; the turn cap is dropped entirely (CTD-226, S-51).
     expect(LOCAL_ADAPTER_CONFIG.addDirs).toEqual(ADAPTER_CONFIG.addDirs);
     expect(LOCAL_ADAPTER_CONFIG.cwd).toBe(ADAPTER_CONFIG.cwd);
     expect(LOCAL_ADAPTER_CONFIG.env).toEqual(ADAPTER_CONFIG.env);
-    expect(LOCAL_ADAPTER_CONFIG.maxTurns).toBe(ADAPTER_CONFIG.maxTurns);
+    expect(LOCAL_ADAPTER_CONFIG.maxTurns).toBeUndefined();
     // Container mode itself is untouched by adding local mode (AC8).
     expect(ADAPTER_CONFIG.permissionMode).toBe("default");
     expect(ADAPTER_CONFIG.settingSources).toEqual(["project"]);
+    expect(ADAPTER_CONFIG.maxTurns).toBe(40);
   });
 
-  test("a local /scope run keeps the local config and only widens the turn cap", () => {
-    expect(LOCAL_SCOPE_ADAPTER_CONFIG.maxTurns).toBe(80);
+  test("a local /scope run keeps the local config, with no turn cap either (CTD-226)", () => {
+    expect(LOCAL_SCOPE_ADAPTER_CONFIG.maxTurns).toBeUndefined();
     expect(LOCAL_SCOPE_ADAPTER_CONFIG.permissionMode).toBe("bypassPermissions");
     expect(LOCAL_SCOPE_ADAPTER_CONFIG.settingSources).toEqual([
       "user",
       "project",
+      "local",
     ]);
     expect(LOCAL_SCOPE_ADAPTER_CONFIG.allowedTools).toBeUndefined();
     expect(LOCAL_SCOPE_ADAPTER_CONFIG.disallowedTools).toBeUndefined();
-    // Container /scope keeps its own allowlist and denials, unaffected (AC8).
+    // Container /scope keeps its own allowlist, denials and 80-turn cap, unaffected (AC8).
     expect(SCOPE_ADAPTER_CONFIG.maxTurns).toBe(80);
     expect(SCOPE_ADAPTER_CONFIG.permissionMode).toBe("default");
   });
