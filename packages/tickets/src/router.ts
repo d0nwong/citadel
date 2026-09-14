@@ -9,16 +9,18 @@
 import { providerNameFor } from "./key.ts";
 import { linearProvider, type LinearOptions } from "./linear.ts";
 import type { Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
+import { trelloProvider, type TrelloOptions } from "./trello.ts";
 
-export type TicketRouterOptions = LinearOptions & {
-  /** override the provider registry — tests inject fakes here instead of a real Linear */
-  providers?: Record<string, TicketProvider>;
-  /** override the prefix → provider map — tests only; production always uses `providerNameFor` */
-  routeKey?: (key: string) => string | null;
-};
+export type TicketRouterOptions = LinearOptions &
+  TrelloOptions & {
+    /** override the provider registry — tests inject fakes here instead of a real Linear or Trello */
+    providers?: Record<string, TicketProvider>;
+    /** override the prefix → provider map — tests only; production always uses `providerNameFor` */
+    routeKey?: (key: string) => string | null;
+  };
 
 const providersFor = (opts: TicketRouterOptions): Record<string, TicketProvider> =>
-  opts.providers ?? { linear: linearProvider(opts) };
+  opts.providers ?? { linear: linearProvider(opts), trello: trelloProvider(opts) };
 
 const groupByProvider = (keys: string[], routeKey: (key: string) => string | null): Map<string, string[]> => {
   const byProvider = new Map<string, string[]>();

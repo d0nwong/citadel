@@ -11,10 +11,11 @@ export function splitKey(key: string): [team: string, number: number] | null {
   return m ? [m[1]!, Number(m[2])] : null;
 }
 
-/** the provider each team key routes to; `AP` joins this for Trello in ticket 2 */
+/** the provider each team key routes to (CTD-199: `AP` is the Alden Trello board) */
 const PROVIDER_BY_TEAM: Record<string, string> = {
   ALD: "linear",
   CTD: "linear",
+  AP: "trello",
 };
 
 /** the provider that owns a key, or null when it is not a ticket key or no provider claims its team */

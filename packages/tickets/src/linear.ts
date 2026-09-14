@@ -49,9 +49,9 @@ export function stateOf(n: Node, now: Date): TicketState {
   const name = n.state?.name ?? "";
   const type = n.state?.type ?? "";
   const assignee = n.assignee ? { id: n.assignee.id } : undefined;
-  if (type === "completed") return { state: "done", at: n.completedAt ?? now.toISOString(), name, url: n.url, assignee };
-  if (type === "canceled") return { state: "canceled", at: n.canceledAt ?? now.toISOString(), name, url: n.url, assignee };
-  return { state: "open", name, url: n.url, assignee };
+  if (type === "completed") return { state: "done", at: n.completedAt ?? now.toISOString(), name, url: n.url, provider: "linear", assignee };
+  if (type === "canceled") return { state: "canceled", at: n.canceledAt ?? now.toISOString(), name, url: n.url, provider: "linear", assignee };
+  return { state: "open", name, url: n.url, provider: "linear", assignee };
 }
 
 /**

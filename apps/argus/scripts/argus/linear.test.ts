@@ -17,9 +17,9 @@ describe("splitKey and stateOf", () => {
     expect(splitKey("ald-45")).toBeNull();
   });
   test("the state's type decides; completedAt and canceledAt date it, else now", () => {
-    expect(stateOf(node("ALD-1", "completed", { completedAt: "2026-09-12T01:00:00Z" }), now)).toEqual({ state: "done", at: "2026-09-12T01:00:00Z", name: "Done", url: "https://linear.app/x/issue/ALD-1" });
-    expect(stateOf(node("ALD-2", "canceled", { canceledAt: null }), now)).toEqual({ state: "canceled", at: now.toISOString(), name: "Canceled", url: "https://linear.app/x/issue/ALD-2" });
-    expect(stateOf(node("ALD-3", "started"), now)).toEqual({ state: "open", name: "In Progress", url: "https://linear.app/x/issue/ALD-3" });
+    expect(stateOf(node("ALD-1", "completed", { completedAt: "2026-09-12T01:00:00Z" }), now)).toEqual({ state: "done", at: "2026-09-12T01:00:00Z", name: "Done", url: "https://linear.app/x/issue/ALD-1", provider: "linear" });
+    expect(stateOf(node("ALD-2", "canceled", { canceledAt: null }), now)).toEqual({ state: "canceled", at: now.toISOString(), name: "Canceled", url: "https://linear.app/x/issue/ALD-2", provider: "linear" });
+    expect(stateOf(node("ALD-3", "started"), now)).toEqual({ state: "open", name: "In Progress", url: "https://linear.app/x/issue/ALD-3", provider: "linear" });
   });
 });
 
@@ -37,7 +37,7 @@ describe("ticketStates", () => {
       [LINEAR_API_URL, "k", { team: "ALD", numbers: [45, 47, 99] }],
       [LINEAR_API_URL, "k", { team: "CTD", numbers: [9] }],
     ]);
-    expect(s("ALD-45")).toEqual({ state: "done", at: "2026-09-12T01:00:00Z", name: "Done", url: "https://linear.app/x/issue/ALD-45" });
+    expect(s("ALD-45")).toEqual({ state: "done", at: "2026-09-12T01:00:00Z", name: "Done", url: "https://linear.app/x/issue/ALD-45", provider: "linear" });
     expect(s("ALD-47").state).toBe("open");
     expect(s("CTD-9").state).toBe("canceled");
     expect(s("ALD-99")).toEqual({ state: "unknown" });
