@@ -1,21 +1,85 @@
 /**
- * Node-only. The checks behind a drafted Linear issue, in one place: what `propose_ticket`
- * asks before it answers a proposal, and what `fileTicket` asks again before it writes
- * (LIA-113).
+ * Node-only. The checks behind a drafted ticket, in one place: what `propose_ticket` asks
+ * before it answers a proposal, and what `fileTicket` asks again before it writes (LIA-113,
+ * CTD-207). Also the team table itself (CTD-172, CTD-207): which of Pensieve's two teams a
+ * draft names, and which provider — Linear or the Alden Trello board — that team routes to.
  *
  * One set of checks means one set of error strings — the sentence Argus reports when a
  * draft is refused is the sentence the card would show for the same draft. Nothing here
- * writes: `createIssue` keeps the write, the tool keeps nothing.
+ * writes: `@citadel/tickets`' `createTicket` keeps the write, the tool keeps nothing.
  *
  * The reader is injected (`TicketSources`) rather than imported at the call site, so a test
- * can hand it a project list without a credential or a cache file on disk — `bun test`
+ * can hand it a project/label list without a credential or a cache file on disk — `bun test`
  * shares one module registry across files, so an env override there would leak. This is
  * `verdict.ts`'s arrangement, for the same reason.
  */
 
+import { providerNameForTeam, trelloLabels } from "@citadel/tickets";
 import { listLedgers } from "./ledger";
-import type { ProjectLookup, Team } from "./linear";
-import { knownProjects, TEAMS, teamFor } from "./linear";
+import { knownProjects, linearConfig } from "./linear";
+
+/**
+ * The teams Pensieve can file into (CTD-172, CTD-207). Alden is first because it is the
+ * default when a draft names none. `key` is the token `@citadel/tickets`' `createTicket`
+ * routes on — `AP` for the Alden Trello board, `CTD` for the Citadel Linear team; Alden's
+ * new-ticket destination moved off the Linear `ALD` team onto Trello with this revision, so
+ * this key is no longer a Linear team key at all.
+ */
+export const TEAMS = [
+  { key: "AP", name: "Alden" },
+  { key: "CTD", name: "Citadel" },
+] as const;
+
+export type Team = (typeof TEAMS)[number];
+
+const [DEFAULT_TEAM] = TEAMS;
+
+/**
+ * The named team, matched by key or name case-insensitively; the default (Alden) when
+ * nothing is named; `undefined` when the name is neither team Pensieve knows.
+ */
+export function teamFor(named?: string): Team | undefined {
+  const trimmed = named?.trim();
+  if (!trimmed) {
+    return DEFAULT_TEAM;
+  }
+  const norm = trimmed.toLowerCase();
+  return TEAMS.find(
+    (t) => t.key.toLowerCase() === norm || t.name.toLowerCase() === norm
+  );
+}
+
+/** the vars `TRELLO_API_KEY`/`TRELLO_TOKEN` name when unset, as `trello.ts`'s own check words it */
+function missingTrelloVars(): string | undefined {
+  const missing = [
+    !process.env.TRELLO_API_KEY?.trim() && "TRELLO_API_KEY",
+    !process.env.TRELLO_TOKEN?.trim() && "TRELLO_TOKEN",
+  ].filter((x): x is string => !!x);
+  return missing.length
+    ? `${missing.join(" and ")} ${missing.length > 1 ? "are" : "is"} not set`
+    : undefined;
+}
+
+/**
+ * Is the credential the team's own provider needs set — the per-provider version of AC1's
+ * 503 (spec S-11). Citadel routes to Linear, so this is `linearConfig()` unchanged; Alden
+ * routes to the Alden Trello board, so this checks `TRELLO_API_KEY`/`TRELLO_TOKEN` directly.
+ */
+export function providerConfigFor(team: Team): {
+  configured: boolean;
+  reason?: string;
+} {
+  if (providerNameForTeam(team.key) !== "trello") {
+    return linearConfig();
+  }
+  const missing = missingTrelloVars();
+  return missing
+    ? {
+        configured: false,
+        reason: `${missing} — run \`just auth trello\` to write it to the repo root .env`,
+      }
+    : { configured: true };
+}
 
 /** The `linear-ticket` skill's Title rule. AC4 refuses a title *over* this. */
 export const TITLE_MAX = 80;
@@ -40,16 +104,42 @@ const PENDING_AFTER = "Acceptance Criteria";
 
 const SECTION_LIST = REQUIRED_SECTIONS.join(", ");
 
-/** Where the checks read from. Defaults to Linear, with its on-disk cache behind it. */
-export interface TicketSources {
-  /** The feature dirs a ticket can be recorded on. Absent: the feature is not checked. */
-  features?: () => Promise<string[]>;
-  projects: (teamKey: string) => Promise<ProjectLookup>;
+/** The named team's known project (Linear) or label (Trello) names, however they were come by. */
+export interface CatalogLookup {
+  names: string[];
+  /** False when no list could be had — the name is taken on trust and said so. */
+  verified: boolean;
 }
 
-export const linearSources = (): TicketSources => ({
+/** Where the checks read from. Defaults to each team's own provider, Linear's cached on disk. */
+export interface TicketSources {
+  catalog: (team: Team) => Promise<CatalogLookup>;
+  /** The feature dirs a ticket can be recorded on. Absent: the feature is not checked. */
+  features?: () => Promise<string[]>;
+}
+
+/** the label the Alden board already has, or the empty, unverified list when they cannot be read */
+async function trelloCatalog(): Promise<CatalogLookup> {
+  try {
+    const labels = await trelloLabels();
+    return { names: labels.map((l) => l.name), verified: true };
+  } catch {
+    return { names: [], verified: false };
+  }
+}
+
+export const ticketSources = (): TicketSources => ({
+  catalog: async (team) => {
+    if (providerNameForTeam(team.key) === "trello") {
+      return trelloCatalog();
+    }
+    const lookup = await knownProjects(fetch, team.key);
+    return {
+      names: lookup.projects.map((p) => p.name),
+      verified: lookup.source !== "none",
+    };
+  },
   features: async () => (await listLedgers()).ledgers.map((l) => l.dir),
-  projects: (teamKey) => knownProjects(fetch, teamKey),
 });
 
 /** A `## ` heading anywhere in the body, whitespace collapsed. Top-level: never built in a loop. */
@@ -72,18 +162,15 @@ export interface CheckedDraft {
   /** The feature dir the user confirmed, whose ledger File records the ticket on. */
   feature?: string;
   project: {
-    id?: string;
-    /** True when the team has no project by this name yet: File creates it before the issue. */
+    /** True when the team has no project/label by this name yet: File creates it first. */
     isNew: boolean;
     name: string;
-    /** False when no project list could be had — the name is taken on trust and said so. */
+    /** False when no list could be had — the name is taken on trust and said so. */
     verified: boolean;
   };
-  /** The team the draft resolved to — Alden when none was named (CTD-172). */
+  /** The team the draft resolved to — Alden when none was named (CTD-172, CTD-207). */
   team: Team;
-  teamId?: string;
   title: string;
-  viewerId?: string;
 }
 
 export type DraftCheck =
@@ -136,14 +223,15 @@ function checkSections(description: string): string | undefined {
 
 /**
  * Check a drafted issue and answer it resolved, or say why there is no proposal. Reads the
- * named team's projects and nothing else; writes nothing at all. `team` is Pensieve's own
- * (Alden or Citadel, CTD-172), not Linear's key for a workspace team in general — an
- * unrecognised one is refused before any project list is read.
+ * named team's project/label catalog and nothing else; writes nothing at all. `team` is
+ * Pensieve's own (Alden or Citadel, CTD-172), not a Linear key for a workspace team in
+ * general — an unrecognised one is refused before any catalog is read.
  *
- * A project the team does not have is not a refusal: the draft is answered with the name
- * marked `isNew`, and `fileTicket` creates the project on the team before the issue. The
- * skill files every feature into a project named after it, and the first ticket for a
- * feature is exactly the one whose project does not exist yet.
+ * A project/label the team does not have is not a refusal: the draft is answered with the
+ * name marked `isNew`, and `@citadel/tickets`' `createTicket` makes it on the team before
+ * the issue/card. The skill files every feature into a project (or, on Alden, a label) named
+ * after it, and the first ticket for a feature is exactly the one whose project does not
+ * exist yet.
  */
 export async function checkDraft(
   input: {
@@ -153,7 +241,7 @@ export async function checkDraft(
     team?: string;
     title: string;
   },
-  sources: TicketSources = linearSources()
+  sources: TicketSources = ticketSources()
 ): Promise<DraftCheck> {
   const title = trimmed(input.title);
   const description = trimmed(input.description);
@@ -190,23 +278,19 @@ export async function checkDraft(
     }
   }
 
-  const lookup = await sources.projects(team.key);
-  const match = lookup.projects.find((p) => norm(p.name) === norm(project));
-  const verified = lookup.source !== "none";
+  const catalog = await sources.catalog(team);
+  const match = catalog.names.find((name) => norm(name) === norm(project));
   return {
     draft: {
       description,
       project: {
-        isNew: verified && !match,
-        name: match?.name ?? project,
-        verified,
-        ...(match ? { id: match.id } : {}),
+        isNew: catalog.verified && !match,
+        name: match ?? project,
+        verified: catalog.verified,
       },
       team,
       title,
       ...(feature ? { feature } : {}),
-      ...(lookup.teamId ? { teamId: lookup.teamId } : {}),
-      ...(lookup.viewerId ? { viewerId: lookup.viewerId } : {}),
     },
     ok: true,
   };

@@ -32,13 +32,12 @@ interface Proposal {
   description: string;
   /** The feature dir confirmed in the chat, whose ledger File records the ticket on. */
   feature?: string;
-  /** True when the team has no project by this name yet: File creates it before the issue. */
+  /** True when the team has no project/label by this name yet: File creates it first. */
   isNew: boolean;
   project: string;
-  projectId?: string;
   team: string;
   title: string;
-  /** False when no project list could be read — the card says the project is unverified. */
+  /** False when no project/label list could be read — the card says it is unverified. */
   verified: boolean;
 }
 type Answer =
@@ -83,7 +82,6 @@ export function parseAnswer(output: unknown): Answer {
       feature: str(p.feature),
       isNew: p.isNew === true,
       project: str(p.project) ?? "",
-      projectId: str(p.projectId),
       team: str(p.team) ?? "Alden",
       title,
       verified: p.verified === true,
@@ -145,7 +143,10 @@ function Proposed({
 
   const key = ["ask-ticket", threadId, toolCallId];
   const q = useQuery({
-    queryFn: () => getFiledTicket({ data: { threadId, toolCallId } }),
+    queryFn: () =>
+      getFiledTicket({
+        data: { team: proposal.team, threadId, toolCallId },
+      }),
     queryKey: key,
   });
 

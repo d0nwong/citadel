@@ -1,42 +1,36 @@
 import { describe, expect, test } from "bun:test";
-import type { ProjectLookup } from "./linear";
-import type { TicketSources } from "./ticket";
+import { linearConfig } from "./linear";
+import type { CatalogLookup, TicketSources } from "./ticket";
 import {
   checkDraft,
   headingsOf,
   PENDING_SECTION,
+  providerConfigFor,
   REQUIRED_SECTIONS,
+  TEAMS,
   TITLE_MAX,
 } from "./ticket";
 
-/** Each known team's projects, as `knownProjects(fetch, teamKey)` would answer them. */
-const PROJECTS: Record<string, { id: string; name: string }[]> = {
-  ALD: [
-    { id: "p_alden", name: "Alden Portal" },
-    { id: "p_usage", name: "Admin - Usage" },
-  ],
-  CTD: [
-    { id: "p_pensieve", name: "Pensieve" },
-    { id: "p_argus", name: "Argus" },
-  ],
+/** Each known team's project/label names, as `catalog(team)` would answer them. */
+const CATALOG: Record<string, string[]> = {
+  AP: ["Alden Portal", "Admin - Usage"],
+  CTD: ["Pensieve", "Argus"],
 };
 
-/** The named team's projects, without a credential in sight. */
-const lookup = (
+/** The named team's catalog, without a credential in sight. */
+const catalogFor = (
   teamKey: string,
-  over: Partial<ProjectLookup> = {}
-): ProjectLookup => ({
-  projects: PROJECTS[teamKey] ?? [],
-  source: "live",
-  teamId: `team_${teamKey.toLowerCase()}`,
-  viewerId: "user_liam",
+  over: Partial<CatalogLookup> = {}
+): CatalogLookup => ({
+  names: CATALOG[teamKey] ?? [],
+  verified: true,
   ...over,
 });
 
 // No default for the key: the check has to ask for a team, and a fake that quietly
 // substituted one would pass whether or not it was asked for the right list.
-const sources = (over: Partial<ProjectLookup> = {}): TicketSources => ({
-  projects: (teamKey) => Promise.resolve(lookup(teamKey, over)),
+const sources = (over: Partial<CatalogLookup> = {}): TicketSources => ({
+  catalog: (team) => Promise.resolve(catalogFor(team.key, over)),
 });
 
 /** A body carrying the sections named, in the order given. */
@@ -170,22 +164,19 @@ describe("AC4 — Pending, the sixth section", () => {
 });
 
 describe("C2 — no team named resolves against Alden, the default", () => {
-  test("a match carries its id, the team and the assignee through", async () => {
+  test("a match carries its name, the team and the verified flag through", async () => {
     const r = await checkDraft(draft({ project: "Admin - Usage" }), sources());
     expect(r).toEqual({
       draft: {
         // Trimmed: the card's textarea and the model's draft both arrive with slack at the ends.
         description: FIVE.trim(),
         project: {
-          id: "p_usage",
           isNew: false,
           name: "Admin - Usage",
           verified: true,
         },
-        team: { key: "ALD", name: "Alden" },
-        teamId: "team_ald",
+        team: { key: "AP", name: "Alden" },
         title: "[FE] Rename the Ask panel to Argus",
-        viewerId: "user_liam",
       },
       ok: true,
     });
@@ -196,7 +187,7 @@ describe("C2 — no team named resolves against Alden, the default", () => {
       sources()
     );
     expect(named.ok && named.draft.team).toEqual({
-      key: "ALD",
+      key: "AP",
       name: "Alden",
     });
     const unnamed = await checkDraft(
@@ -205,13 +196,16 @@ describe("C2 — no team named resolves against Alden, the default", () => {
     );
     expect(named).toEqual(unnamed);
   });
-  test("the name is matched case-insensitively and answered in Linear's spelling", async () => {
+  test("naming the board's own key (AP) resolves the same as the name", async () => {
+    const r = await checkDraft(draft({ team: "AP" }), sources());
+    expect(r.ok && r.draft.team).toEqual({ key: "AP", name: "Alden" });
+  });
+  test("the name is matched case-insensitively and answered in the catalog's spelling", async () => {
     const r = await checkDraft(
       draft({ project: "  alden portal " }),
       sources()
     );
     expect(r.ok && r.draft.project).toEqual({
-      id: "p_alden",
       isNew: false,
       name: "Alden Portal",
       verified: true,
@@ -224,8 +218,6 @@ describe("C2 — no team named resolves against Alden, the default", () => {
       name: "Skunkworks",
       verified: true,
     });
-    // The team and assignee still travel: File needs them to create the project.
-    expect(r.ok && r.draft.teamId).toBe("team_ald");
   });
   test("no project named is refused", async () => {
     expect(await refuse({ project: " " })).toBe(
@@ -234,8 +226,8 @@ describe("C2 — no team named resolves against Alden, the default", () => {
   });
 });
 
-describe("C1 — a draft naming Citadel resolves against Citadel's projects", () => {
-  test("a match on the named team carries Citadel's id, team and assignee through", async () => {
+describe("C1 — a draft naming Citadel resolves against Citadel's catalog", () => {
+  test("a match on the named team carries Citadel's name and catalog through", async () => {
     const r = await checkDraft(
       draft({ project: "Pensieve", team: "Citadel" }),
       sources()
@@ -244,15 +236,12 @@ describe("C1 — a draft naming Citadel resolves against Citadel's projects", ()
       draft: {
         description: FIVE.trim(),
         project: {
-          id: "p_pensieve",
           isNew: false,
           name: "Pensieve",
           verified: true,
         },
         team: { key: "CTD", name: "Citadel" },
-        teamId: "team_ctd",
         title: "[FE] Rename the Ask panel to Argus",
-        viewerId: "user_liam",
       },
       ok: true,
     });
@@ -264,7 +253,6 @@ describe("C1 — a draft naming Citadel resolves against Citadel's projects", ()
     );
     expect(r.ok && r.draft.team).toEqual({ key: "CTD", name: "Citadel" });
     expect(r.ok && r.draft.project).toEqual({
-      id: "p_argus",
       isNew: false,
       name: "Argus",
       verified: true,
@@ -273,28 +261,27 @@ describe("C1 — a draft naming Citadel resolves against Citadel's projects", ()
 });
 
 describe("C3 — a project that exists only on the other team is not matched", () => {
-  test('team Alden naming project "Pensieve" is a new project on Alden, never matched to Citadel\'s id', async () => {
+  test('team Alden naming project "Pensieve" is a new project on Alden, never matched to Citadel\'s', async () => {
     const r = await checkDraft(
       draft({ project: "Pensieve", team: "Alden" }),
       sources()
     );
-    expect(r.ok && r.draft.team).toEqual({ key: "ALD", name: "Alden" });
+    expect(r.ok && r.draft.team).toEqual({ key: "AP", name: "Alden" });
     expect(r.ok && r.draft.project).toEqual({
       isNew: true,
       name: "Pensieve",
       verified: true,
     });
-    expect(r.ok && r.draft.teamId).toBe("team_ald");
   });
 });
 
 describe("C4 — a team that is neither Alden nor Citadel is refused", () => {
-  test("the error names the unknown team, and no project list is read", async () => {
+  test("the error names the unknown team, and no catalog is read", async () => {
     let calledWith: string | undefined;
     const src: TicketSources = {
-      projects: (teamKey) => {
-        calledWith = teamKey;
-        return Promise.resolve(lookup(teamKey));
+      catalog: (team) => {
+        calledWith = team.key;
+        return Promise.resolve(catalogFor(team.key));
       },
     };
     const r = await checkDraft(draft({ team: "Skunkworks" }), src);
@@ -304,37 +291,33 @@ describe("C4 — a team that is neither Alden nor Citadel is refused", () => {
   });
 });
 
-describe("AC5 — the check with no project list to check against", () => {
+describe("AC5 — the check with no catalog to check against", () => {
   test("a cached list answers exactly as a live one does", async () => {
-    const src = sources({ source: "cache" });
+    const src = sources({ verified: true });
     const unknown = await checkDraft(draft({ project: "Skunkworks" }), src);
     expect(unknown.ok && unknown.draft.project.isNew).toBe(true);
     const known = await checkDraft(draft(), src);
     expect(known.ok && known.draft.project).toMatchObject({
-      id: "p_usage",
       isNew: false,
+      name: "Admin - Usage",
     });
   });
   test("no list at all takes the name on trust and says so, rather than refusing", async () => {
     const none: TicketSources = {
-      projects: () =>
-        Promise.resolve({ projects: [], source: "none" } as ProjectLookup),
+      catalog: () => Promise.resolve({ names: [], verified: false }),
     };
     const r = await checkDraft(draft({ project: "Skunkworks" }), none);
     // Not new either: with no list there is nothing to say it is missing, and File must
-    // not create a project on a guess.
+    // not create a project/label on a guess.
     expect(r.ok && r.draft.project).toEqual({
       isNew: false,
       name: "Skunkworks",
       verified: false,
     });
-    // Nothing to file with: `fileTicket` refuses on the missing team rather than guessing.
-    expect(r.ok && r.draft.teamId).toBeUndefined();
   });
   test("the title and section checks are unchanged with no list", async () => {
     const none: TicketSources = {
-      projects: () =>
-        Promise.resolve({ projects: [], source: "none" } as ProjectLookup),
+      catalog: () => Promise.resolve({ names: [], verified: false }),
     };
     expect(await refuse({ title: "x".repeat(TITLE_MAX + 1) }, none)).toContain(
       "the format's limit is"
@@ -342,5 +325,39 @@ describe("AC5 — the check with no project list to check against", () => {
     expect(
       await refuse({ description: bodyOf(REQUIRED_SECTIONS.slice(1)) }, none)
     ).toContain('no "## Summary" heading');
+  });
+});
+
+const [ALDEN, CITADEL] = TEAMS;
+
+describe("providerConfigFor — which credential a team's provider needs", () => {
+  test("Citadel routes to Linear, so it is linearConfig() exactly", () => {
+    expect(providerConfigFor(CITADEL)).toEqual(linearConfig());
+  });
+
+  test("Alden routes to Trello, checking TRELLO_API_KEY and TRELLO_TOKEN directly", () => {
+    const alden = ALDEN;
+    const savedKey = process.env.TRELLO_API_KEY;
+    const savedToken = process.env.TRELLO_TOKEN;
+    try {
+      process.env.TRELLO_API_KEY = "";
+      process.env.TRELLO_TOKEN = "";
+      const missing = providerConfigFor(alden);
+      expect(missing.configured).toBe(false);
+      expect(missing.reason).toContain("TRELLO_API_KEY and TRELLO_TOKEN");
+      expect(missing.reason).toContain("just auth trello");
+
+      process.env.TRELLO_API_KEY = "k";
+      process.env.TRELLO_TOKEN = "t";
+      expect(providerConfigFor(alden)).toEqual({ configured: true });
+
+      process.env.TRELLO_API_KEY = "k";
+      process.env.TRELLO_TOKEN = "";
+      expect(providerConfigFor(alden).reason).toContain("TRELLO_TOKEN");
+      expect(providerConfigFor(alden).reason).not.toContain("TRELLO_API_KEY");
+    } finally {
+      process.env.TRELLO_API_KEY = savedKey;
+      process.env.TRELLO_TOKEN = savedToken;
+    }
   });
 });

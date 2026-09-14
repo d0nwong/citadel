@@ -1,8 +1,10 @@
 /**
  * The server functions the pages call. Reads come from the workspace (the ledgers, the
  * arch docs, Ask's conversations); every write to the argus checkout goes through
- * `server/argus.ts`, which runs one `argus` verb, and the two writes that leave the app
- * go to Linear (a ticket) and Foundry (a job). Nothing here touches a ledger directly.
+ * `server/argus.ts`, which runs one `argus` verb, and the two writes that leave the app go
+ * to a ticket provider — Linear or, for an alden-portal feature, the Alden Trello board
+ * (CTD-207), through `@citadel/tickets` — and to Foundry (a job). Nothing here touches a
+ * ledger directly.
  */
 
 import type { UIMessage } from "@tanstack/ai";
@@ -17,7 +19,6 @@ import type {
 } from "#/server/ask";
 import type { FoundryJob, FoundryRepo } from "#/server/foundry";
 import type { Home, LedgerRef, PipelineCard } from "#/server/ledger";
-import type { LinearConfig } from "#/server/linear";
 import type { Json } from "#/server/workspace";
 
 const trimmed = (v: string) => v.trim();
@@ -198,9 +199,15 @@ export const deleteConversation = createServerFn({ method: "POST" })
 
 // ── filing a ticket: the other write path ──────────────────────────────────────
 
+/** Is File available — the credential of whichever provider the draft's team routes to. */
+export interface TicketConfig {
+  configured: boolean;
+  reason?: string;
+}
+
 /** The card's two questions in one read: may File be pressed, and was it already? */
 export interface TicketPage {
-  config: LinearConfig;
+  config: TicketConfig;
   issue: FiledTicket | null;
 }
 
@@ -210,15 +217,18 @@ const toolCallId = z.string().min(1).max(256);
  * What the ticket card asks on mount. It never trusts its own replayed tool output for
  * whether the issue exists: a tool part is stored with the conversation and replayed on
  * every reload, so the record in the thread's metadata is the truth (AC3), and
- * `config.configured` is the one branch behind File's disabled state (AC5).
+ * `config.configured` is the one branch behind File's disabled state (AC5). `team` is the
+ * proposal's own team, so the credential named is the one the draft would actually file on
+ * (AC1) rather than always Linear's.
  */
 export const getFiledTicket = createServerFn({ method: "GET" })
-  .validator(z.object({ threadId, toolCallId }))
+  .validator(z.object({ team: z.string().optional(), threadId, toolCallId }))
   .handler(async ({ data }): Promise<TicketPage> => {
     const ask = await import("#/server/ask");
-    const linear = await import("#/server/linear");
+    const ticket = await import("#/server/ticket");
+    const team = ticket.teamFor(data.team) ?? ticket.TEAMS[0];
     const [config, issue] = await Promise.all([
-      linear.linearConfig(),
+      ticket.providerConfigFor(team),
       ask.readFiledTicket(ask.askStore, data.threadId, data.toolCallId),
     ]);
     return { config, issue: issue ?? null };
@@ -238,12 +248,13 @@ const filing = new Map<string, Promise<FileTicketResult>>();
 const trimmedText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
 /**
- * File the drafted issue the card is showing. Exactly one `issueCreate` on the draft's team
- * (Alden when the card names none, CTD-172), in the card's project, assigned to the key's
- * owner, with no labels; the issue is recorded under the thread's `ticket:<toolCallId>` key,
- * and a repeat answers that record rather than creating a second issue (AC3). A project the
- * team does not have yet is created first, on the team, by name — one `projectCreate` ahead
- * of the `issueCreate`.
+ * File the drafted ticket the card is showing, on whichever provider the draft's team
+ * routes to — Linear for Citadel, the Alden Trello board for Alden (CTD-207) — through
+ * `@citadel/tickets`' `createTicket`, which creates a missing project or label itself; the
+ * ticket is recorded under the thread's `ticket:<toolCallId>` key, and a repeat answers that
+ * record rather than filing a second one (AC3). Citadel is always assigned to Liam (spec
+ * S-19); Alden defaults unassigned, taking the picker's board-member id when one is sent
+ * (spec S-21).
  *
  * The draft is re-checked here rather than trusted: the card's title and body are editable,
  * so what is filed is not what `propose_ticket` approved.
@@ -280,6 +291,8 @@ async function recordFiled(
 export const fileTicket = createServerFn({ method: "POST" })
   .validator(
     z.object({
+      /** A board member's id — the picker's own choice (ticket 11); absent files unassigned. */
+      assignee: z.string().optional(),
       description: z.string(),
       feature: z.string().optional(),
       project: z.string(),
@@ -305,7 +318,7 @@ export const fileTicket = createServerFn({ method: "POST" })
       return running;
     }
     const task = (async (): Promise<FileTicketResult> => {
-      const linear = await import("#/server/linear");
+      const tickets = await import("@citadel/tickets");
       const ticket = await import("#/server/ticket");
       const check = await ticket.checkDraft({
         description: trimmedText(data.description),
@@ -317,50 +330,41 @@ export const fileTicket = createServerFn({ method: "POST" })
       if (!check.ok) {
         return { error: check.error, ok: false };
       }
-      const config = linear.linearConfig();
+      const { draft } = check;
+      const config = ticket.providerConfigFor(draft.team);
       if (!config.configured) {
         return {
-          error: config.reason ?? "LINEAR_API_KEY is not set",
+          error: config.reason ?? "the ticket provider is not configured",
           ok: false,
           status: 503,
         };
       }
-      const { draft } = check;
-      if (!draft.teamId) {
-        return {
-          error: `team ${draft.team.name} could not be read from Linear — the key may not reach it`,
-          ok: false,
-          status: 503,
-        };
-      }
+      const assignee = trimmedText(data.assignee);
       let issue: FiledTicket;
       try {
-        let projectId = draft.project.id;
-        if (draft.project.isNew) {
-          const project = await linear.createProject({
-            name: draft.project.name,
-            teamId: draft.teamId,
-          });
-          projectId = project.id;
-        }
-        const made = await linear.createIssue({
+        const made = await tickets.createTicket({
+          assigneeId: draft.team.key === "CTD" ? "me" : assignee || undefined,
           description: draft.description,
-          teamId: draft.teamId,
+          project: draft.project.name,
+          team: draft.team.key,
           title: draft.title,
-          ...(projectId ? { projectId } : {}),
-          ...(draft.viewerId ? { assigneeId: draft.viewerId } : {}),
         });
         issue = {
-          ...made,
           at: new Date().toISOString(),
+          id: made.key,
+          identifier: made.key,
           title: draft.title,
+          url: made.url,
           ...(draft.feature ? { feature: draft.feature } : {}),
         };
       } catch (e) {
-        if (e instanceof linear.LinearError) {
-          return { error: e.message, ok: false, status: e.status };
+        if (e instanceof tickets.MissingCredentialError) {
+          return { error: `${e.variable} is not set`, ok: false, status: 503 };
         }
-        throw e;
+        return {
+          error: e instanceof Error ? e.message : String(e),
+          ok: false,
+        };
       }
       await ask.writeFiledTicket(
         ask.askStore,
@@ -373,6 +377,36 @@ export const fileTicket = createServerFn({ method: "POST" })
     filing.set(key, task);
     return task;
   });
+
+/** The Alden board's own members, and whether Trello is configured — the assignee picker's read (ticket 11). */
+export interface AldenBoardMembers {
+  configured: boolean;
+  members: Array<{ id: string; name: string }>;
+  reason?: string;
+}
+
+/** `GET /1/boards/{id}/members` through `@citadel/tickets`, for an alden-portal draft's assignee picker. */
+export const getAldenBoardMembers = createServerFn({ method: "GET" }).handler(
+  async (): Promise<AldenBoardMembers> => {
+    const tickets = await import("@citadel/tickets");
+    try {
+      const members = await tickets.trelloMembers();
+      return {
+        configured: true,
+        members: members.map((m) => ({
+          id: m.id,
+          name: m.fullName || m.username,
+        })),
+      };
+    } catch (e) {
+      return {
+        configured: false,
+        members: [],
+        reason: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }
+);
 
 // ── the board, a feature, and the triage queue (LIA-160, CTD-167) ──────────────
 
@@ -598,10 +632,11 @@ export type FileProposalResult =
   | { error: string; ok: false; status?: number };
 
 /**
- * File a proposal from a feature's ledger: `argus file` says what the ticket is and where
- * it goes (the Alden team, the project named after the feature), Linear creates it with
- * the viewer as assignee, and `argus ticket` writes the key onto the ledger. The one
- * place a ledger proposal reaches Linear.
+ * File a proposal from a feature's ledger: `argus file` says what the card is and where it
+ * goes — the Alden board's Pipeline list, the label named after the feature (`argus file`
+ * is alden-portal only; a Citadel ticket never reaches it) — `@citadel/tickets`' `createTicket`
+ * makes the card, and `argus ticket` writes the key onto the ledger. The one place a ledger
+ * proposal reaches a ticket provider.
  */
 export const fileProposal = createServerFn({ method: "POST" })
   .validator((input: { dir: string; proposal: string }) => ({
@@ -610,70 +645,55 @@ export const fileProposal = createServerFn({ method: "POST" })
   }))
   .handler(async ({ data }): Promise<FileProposalResult> => {
     const a = await import("#/server/argus");
-    const linear = await import("#/server/linear");
+    const tickets = await import("@citadel/tickets");
+    const ticket = await import("#/server/ticket");
     const draft = await a.argus<{
       title: string;
       body: string;
-      team: string;
-      project: string;
+      label: string;
+      assignee?: string;
     }>("file", [data.dir, data.proposal]);
     if (!draft.ok) {
       return { error: a.argusNote(draft) ?? "argus refused", ok: false };
     }
-    const config = linear.linearConfig();
+    const config = ticket.providerConfigFor(ticket.TEAMS[0]);
     if (!config.configured) {
       return {
-        error: config.reason ?? "LINEAR_API_KEY is not set",
+        error: config.reason ?? "the Alden board is not configured",
         ok: false,
         status: 503,
       };
     }
-    const lookup = await linear.knownProjects(fetch, draft.team);
-    if (!lookup.teamId) {
-      return {
-        error: `team ${draft.team} could not be read from Linear`,
-        ok: false,
-        status: 503,
-      };
-    }
-    const norm = (s: string) =>
-      s
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, " ")
-        .trim();
-    const project = lookup.projects.find(
-      (p) => norm(p.name) === norm(draft.project)
-    );
-    let made: { identifier: string; url: string };
+    let made: { key: string; url: string };
     try {
-      made = await linear.createIssue({
+      made = await tickets.createTicket({
+        assigneeId: draft.assignee,
         description: draft.body,
-        teamId: lookup.teamId,
+        project: draft.label,
+        team: "AP",
         title: draft.title,
-        ...(project ? { projectId: project.id } : {}),
-        ...(lookup.viewerId ? { assigneeId: lookup.viewerId } : {}),
       });
     } catch (e) {
-      if (e instanceof linear.LinearError) {
-        return { error: e.message, ok: false, status: e.status };
+      if (e instanceof tickets.MissingCredentialError) {
+        return { error: `${e.variable} is not set`, ok: false, status: 503 };
       }
-      throw e;
+      return { error: e instanceof Error ? e.message : String(e), ok: false };
     }
     const recorded = await a.argus("ticket", [
       data.dir,
       data.proposal,
-      made.identifier,
+      made.key,
     ]);
     if (!recorded.ok) {
       return {
-        error: `${made.identifier} was filed, but the ledger did not take it: ${a.argusNote(recorded)}`,
+        error: `${made.key} was filed, but the ledger did not take it: ${a.argusNote(recorded)}`,
         ok: false,
       };
     }
     return {
-      key: made.identifier,
+      key: made.key,
       ok: true,
-      project: project?.name ?? null,
+      project: draft.label,
       url: made.url,
     };
   });
@@ -771,11 +791,11 @@ export const dropAsk = createServerFn({ method: "POST" })
   });
 
 /**
- * Ticket: file an ask straight into Linear. `argus file <dir> <A-n>` hands back the reader's
- * proposal covering the ask (and refuses when there is none), Linear creates the issue in
- * the feature's project with the viewer as assignee, and `argus ticket <dir> <A-n> <key>`
- * puts the key on the ask, the ticket on the ledger with the ask's open blockers, and spends
- * the proposal.
+ * Ticket: file an ask straight onto the Alden board. `argus file <dir> <A-n>` hands back the
+ * reader's proposal covering the ask (and refuses when there is none) as a card in the
+ * Pipeline list with the feature's label, `@citadel/tickets`' `createTicket` makes it, and
+ * `argus ticket <dir> <A-n> <key>` puts the key on the ask, the ticket on the ledger with the
+ * ask's open blockers, and spends the proposal.
  */
 export const fileAsk = createServerFn({ method: "POST" })
   .validator((input: { dir: string; ask: string }) => ({
@@ -784,72 +804,57 @@ export const fileAsk = createServerFn({ method: "POST" })
   }))
   .handler(async ({ data }): Promise<FileProposalResult> => {
     const a = await import("#/server/argus");
-    const linear = await import("#/server/linear");
+    const tickets = await import("@citadel/tickets");
+    const ticket = await import("#/server/ticket");
     const draft = await a.argus<{
       title: string;
       body: string;
-      team: string;
-      project: string;
+      label: string;
+      assignee?: string;
     }>("file", [data.dir, data.ask]);
     if (!draft.ok) {
       return { error: a.argusNote(draft) ?? "argus refused", ok: false };
     }
-    const config = linear.linearConfig();
+    const config = ticket.providerConfigFor(ticket.TEAMS[0]);
     if (!config.configured) {
       return {
-        error: config.reason ?? "LINEAR_API_KEY is not set",
+        error: config.reason ?? "the Alden board is not configured",
         ok: false,
         status: 503,
       };
     }
-    const lookup = await linear.knownProjects(fetch, draft.team);
-    if (!lookup.teamId) {
-      return {
-        error: `team ${draft.team} could not be read from Linear`,
-        ok: false,
-        status: 503,
-      };
-    }
-    const norm = (s: string) =>
-      s
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, " ")
-        .trim();
-    const project = lookup.projects.find(
-      (p) => norm(p.name) === norm(draft.project)
-    );
-    let made: { identifier: string; url: string };
+    let made: { key: string; url: string };
     try {
-      made = await linear.createIssue({
+      made = await tickets.createTicket({
+        assigneeId: draft.assignee,
         description: draft.body,
-        teamId: lookup.teamId,
+        project: draft.label,
+        team: "AP",
         title: draft.title,
-        ...(project ? { projectId: project.id } : {}),
-        ...(lookup.viewerId ? { assigneeId: lookup.viewerId } : {}),
       });
     } catch (e) {
-      if (e instanceof linear.LinearError) {
-        return { error: e.message, ok: false, status: e.status };
+      if (e instanceof tickets.MissingCredentialError) {
+        return { error: `${e.variable} is not set`, ok: false, status: 503 };
       }
-      throw e;
+      return { error: e instanceof Error ? e.message : String(e), ok: false };
     }
     const recorded = await a.argus("ticket", [
       data.dir,
       data.ask,
-      made.identifier,
+      made.key,
       "--title",
       draft.title,
     ]);
     if (!recorded.ok) {
       return {
-        error: `${made.identifier} was filed, but the ledger did not take it: ${a.argusNote(recorded)}`,
+        error: `${made.key} was filed, but the ledger did not take it: ${a.argusNote(recorded)}`,
         ok: false,
       };
     }
     return {
-      key: made.identifier,
+      key: made.key,
       ok: true,
-      project: project?.name ?? null,
+      project: draft.label,
       url: made.url,
     };
   });

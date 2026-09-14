@@ -41,11 +41,13 @@ export {
   trelloClaim,
   trelloCreate,
   trelloGet,
+  trelloLabels,
   trelloLink,
   trelloListOpen,
+  trelloMembers,
   trelloProvider,
   trelloTicketStates,
   trelloUpdate,
   trelloViewerId,
 } from "./trello.ts";
-export type { TrelloOptions } from "./trello.ts";
+export type { TrelloMember, TrelloOptions } from "./trello.ts";

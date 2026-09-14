@@ -9,7 +9,6 @@ import { describe, expect, test } from "bun:test";
 import type { Ledger, Unplaced } from "../lib/ledger";
 import { proposeDecision, proposeTicket } from "./ask-tools.server";
 import type { LedgerRef } from "./ledger";
-import type { ProjectLookup } from "./linear";
 import type { TicketSources } from "./ticket";
 import { REQUIRED_SECTIONS } from "./ticket";
 
@@ -184,24 +183,22 @@ const TICKET_BODY = REQUIRED_SECTIONS.map(
   (h) => `## ${h}\n\nsomething about ${h}.\n`
 ).join("\n");
 
-/** Each known team's projects, without a credential or a cache file in sight. */
-const TICKET_PROJECTS: Record<string, { id: string; name: string }[]> = {
-  ALD: [{ id: "p_usage", name: "Admin - Usage" }],
-  CTD: [{ id: "p_pensieve", name: "Pensieve" }],
+/** Each known team's project/label names, without a credential or a cache file in sight. */
+const TICKET_CATALOG: Record<string, string[]> = {
+  AP: ["Admin - Usage"],
+  CTD: ["Pensieve"],
 };
 
 const ticketSources = (): TicketSources => ({
-  projects: (teamKey) =>
+  catalog: (team) =>
     Promise.resolve({
-      projects: TICKET_PROJECTS[teamKey] ?? [],
-      source: "live",
-      teamId: `team_${teamKey.toLowerCase()}`,
-      viewerId: "user_liam",
-    } satisfies ProjectLookup),
+      names: TICKET_CATALOG[team.key] ?? [],
+      verified: true,
+    }),
 });
 
 describe("propose_ticket", () => {
-  test("C1: a draft naming Citadel proposes a Citadel card with the project's id", async () => {
+  test("C1: a draft naming Citadel proposes a Citadel card with the project verified", async () => {
     const out = await proposeTicket(
       {
         description: TICKET_BODY,
@@ -216,7 +213,6 @@ describe("propose_ticket", () => {
       ok: true,
       proposal: {
         project: "Pensieve",
-        projectId: "p_pensieve",
         team: "Citadel",
         verified: true,
       },
@@ -237,7 +233,6 @@ describe("propose_ticket", () => {
       ok: true,
       proposal: {
         project: "Admin - Usage",
-        projectId: "p_usage",
         team: "Alden",
         verified: true,
       },

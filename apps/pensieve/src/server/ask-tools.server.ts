@@ -250,13 +250,12 @@ const ticketProposal = z.object({
   description: z.string(),
   /** The ledger File records the ticket on; absent when it has none. */
   feature: z.string().optional(),
-  /** True when the team has no project by this name yet: File creates it before the issue. */
+  /** True when the team has no project/label by this name yet: File creates it first. */
   isNew: z.boolean(),
   project: z.string(),
-  projectId: z.string().optional(),
   team: z.string(),
   title: z.string(),
-  /** False when no project list could be read — the card says the project is unverified. */
+  /** False when no project/label list could be read — the card says it is unverified. */
   verified: z.boolean(),
 });
 
@@ -313,7 +312,6 @@ export async function proposeTicket(
       team: draft.team.name,
       title: draft.title,
       verified: draft.project.verified,
-      ...(draft.project.id ? { projectId: draft.project.id } : {}),
       ...(draft.feature ? { feature: draft.feature } : {}),
     },
   };
