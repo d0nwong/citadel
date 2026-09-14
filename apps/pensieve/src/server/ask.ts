@@ -74,8 +74,10 @@ import {
   gitReadRules,
   HARNESS_WRITE_TOOLS,
   LINEAR_WRITE_TOOLS,
+  SCOPE_LIFTED,
   SLACK_READ_TOOLS,
   SLACK_WRITE_TOOLS,
+  scopeWriteRules,
   TRACKER_WRITE_RULES,
 } from "../lib/ask-tools";
 
@@ -188,6 +190,30 @@ To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
 You cannot write files, edit tickets or comments, or run the sweep; the argus verbs that write are denied. To change the record — close an ask, confirm or contradict a requirement, place an unplaced message — call \`propose_decision\` once as the ask skill's Correcting section says; the user confirms it on the card, so never say it is done. To open a ticket, draft it per the linear-ticket skill, confirm its feature with the user (none for Citadel apps), then call \`propose_ticket\` once with it; say the draft is ready, never that it is filed.`;
+
+/**
+ * A conversation whose first turn starts `/scope` runs the scope skill (CTD-192's Ask
+ * slice): Ask's reads, plus writes under `revisions/`, the revision verbs and the tracker
+ * writes for filing. The skill's own gate — the user's yes in the chat before each step's
+ * write — is the approval; Ask's other conversations stay read-only. Longer turn budget: a
+ * grounding pass reads a feature's spec, arch doc and ledger before the first question.
+ */
+export const SCOPE_ADAPTER_CONFIG = {
+  ...ADAPTER_CONFIG,
+  allowedTools: [...ALLOWED_TOOLS, ...scopeWriteRules(WORKSPACE_DIR)],
+  disallowedTools: DISALLOWED_TOOLS.filter((t) => !SCOPE_LIFTED.includes(t)),
+  maxTurns: 80,
+} satisfies ClaudeCodeTextConfig;
+
+/** A `/scope` first turn, with or without arguments. */
+export const isScopeRequest = (text: string) =>
+  /^\/scope(\s|$)/.test(text.trim());
+
+export const SCOPE_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve, running the scope skill with the user. Your working directory is argus's code; its data is in ${WORKSPACE_DIR}. This is not a terminal: there is no permission dialog and no one to answer one, so never tell the user to grant, allow or approve anything — a denied tool is an answer, and you work around it once.
+
+This conversation began with \`/scope\`: load the \`scope\` skill (skills/scope/SKILL.md) and follow it with the user in this chat. Every step waits for their explicit yes, in a message here, before its file is written or anything is filed.
+
+ARGUS_ROOT is already ${WORKSPACE_DIR}: run \`argus\` and \`accio\` bare, never prefixed with \`ARGUS_ROOT=\` — a prefixed command is denied. You may write files only under ${WORKSPACE_DIR}/revisions/, run \`argus revision new\`, \`show\` and \`file\`, and in step 5 only \`argus tracker create\` and \`argus tracker edit\`, passing a body as \`--body -\` from a heredoc, never a temp file. Everything else that writes is denied: never run the sweep, reconcile or commit.`;
 
 /**
  * The extra system prompt a conversation opened from a feature page carries (LIA-162 AC4,
@@ -644,6 +670,30 @@ export const SESSION_KEY = "sessionId";
  */
 export const FEATURE_KEY = "feature";
 
+/** `"scope"` on a conversation whose first turn was `/scope`, written once, like the feature. */
+export const MODE_KEY = "mode";
+
+/**
+ * Is this run a `/scope` one, and is it the run that records it? The stored mode wins,
+ * the way the feature does; a thread with none is decided by its first user turn.
+ */
+export const scopeModeOf = (stored: unknown, firstTurn: string) => {
+  const record = stored === null && isScopeRequest(firstTurn);
+  return { on: stored === "scope" || record, record };
+};
+
+/** The adapter overrides and system prompts for a run: the scope skill's, or Ask's. */
+const runSetup = (scope: boolean, feature: string | undefined) =>
+  scope
+    ? { adapter: SCOPE_ADAPTER_CONFIG, systemPrompts: [SCOPE_SYSTEM_PROMPT] }
+    : {
+        adapter: {},
+        systemPrompts: [
+          ASK_SYSTEM_PROMPT,
+          ...(feature ? [featurePrompt(feature)] : []),
+        ],
+      };
+
 /**
  * Where a filed ticket lives: `metadata[<threadId>]["ticket:<toolCallId>"]`. One key per
  * proposal, which is what makes File idempotent per card (LIA-113 AC3): a second click, or
@@ -947,10 +997,13 @@ export async function* askStream(
   const release = await acquireThread(input.threadId);
   try {
     const sessionId = await readSessionId(store, input.threadId);
+    const modelMessages = convertMessagesToModelMessages(input.messages);
+    let firstTurn = titleOf(modelMessages);
     if (input.messages.length === 0) {
       const stored = await store.persistence.stores.messages.loadThread(
         input.threadId
       );
+      firstTurn = titleOf(stored);
       if (stored.at(-1)?.role !== "user") {
         yield* errorChunks(
           input.threadId,
@@ -966,6 +1019,11 @@ export async function* askStream(
       await metadata.get(input.threadId, FEATURE_KEY),
       input.feature
     );
+    const scope = scopeModeOf(
+      await metadata.get(input.threadId, MODE_KEY),
+      firstTurn
+    );
+    const setup = runSetup(scope.on, feature);
     const harness = harnessLog();
     let lastError: LastError | undefined;
     const recordError = async (message: string, code: string | undefined) => {
@@ -1032,6 +1090,9 @@ export async function* askStream(
         ) {
           await metadata.set(input.threadId, FEATURE_KEY, input.feature);
         }
+        if (scope.record) {
+          await metadata.set(input.threadId, MODE_KEY, "scope");
+        }
       },
     });
     const middleware: ChatMiddleware[] = [
@@ -1046,7 +1107,10 @@ export async function* askStream(
       );
     const stream = chat({
       abortController: opts.abortController,
-      adapter: finishedIsFinished(opts.adapter ?? askAdapter(), late),
+      adapter: finishedIsFinished(
+        opts.adapter ?? askAdapter(setup.adapter),
+        late
+      ),
       // Each tool's `execute` runs here, in this process, through the adapter's MCP bridge —
       // which is provisioned only because `tools` below is non-empty (LIA-111).
       context: {
@@ -1054,14 +1118,11 @@ export async function* askStream(
         ...(feature ? { feature } : {}),
       },
       debug: harness.debug,
-      messages: convertMessagesToModelMessages(input.messages),
+      messages: modelMessages,
       middleware,
       modelOptions: { authMode: mode, ...(sessionId ? { sessionId } : {}) },
       runId,
-      systemPrompts: [
-        ASK_SYSTEM_PROMPT,
-        ...(feature ? [featurePrompt(feature)] : []),
-      ],
+      systemPrompts: setup.systemPrompts,
       threadId: input.threadId,
       tools: [proposeDecisionTool, proposeTicketTool],
     });

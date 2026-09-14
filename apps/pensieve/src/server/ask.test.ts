@@ -45,6 +45,9 @@ const {
   readFiledTicket,
   ticketKey,
   writeFiledTicket,
+  isScopeRequest,
+  SCOPE_ADAPTER_CONFIG,
+  SCOPE_SYSTEM_PROMPT,
 } = ask;
 const {
   BASE_TOOLS,
@@ -867,6 +870,110 @@ describe("LIA-104 — the system prompt", () => {
       )
     );
     expect(adapter.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
+  });
+});
+
+describe("/scope — a conversation that runs the scope skill", () => {
+  test("a first turn starting /scope is one; the word elsewhere is not", () => {
+    expect(isScopeRequest("/scope https://trello.com/c/x")).toBe(true);
+    expect(isScopeRequest("  /scope")).toBe(true);
+    expect(isScopeRequest("/scoped")).toBe(false);
+    expect(isScopeRequest("please /scope this")).toBe(false);
+  });
+
+  test("it runs with the scope prompt, is remembered on the thread, and later turns keep it", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    const adapter = new FakeClaude({ sessionId: "sc1" });
+    await collect(
+      askStream(
+        {
+          messages: [user("/scope add bulk delete to incoming drafts")],
+          threadId: "sc1",
+        },
+        { adapter, middleware: [], status: available, store }
+      )
+    );
+    expect(adapter.calls[0].systemPrompts).toEqual([SCOPE_SYSTEM_PROMPT]);
+    expect((await readJson(dir, "sc1")).metadata.mode).toBe("scope");
+
+    // The second turn ("yes") does not start /scope; the thread is still a scope run.
+    await collect(
+      askStream(
+        {
+          messages: [
+            user("/scope add bulk delete to incoming drafts"),
+            user("yes"),
+          ],
+          threadId: "sc1",
+        },
+        { adapter, middleware: [], status: available, store }
+      )
+    );
+    expect(adapter.calls[1].systemPrompts).toEqual([SCOPE_SYSTEM_PROMPT]);
+  });
+
+  test("an ordinary question stays Ask: no mode stored, the Ask prompt", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    const adapter = new FakeClaude({ sessionId: "sc2" });
+    await collect(
+      askStream(
+        { messages: [user("what is on me")], threadId: "sc2" },
+        { adapter, middleware: [], status: available, store }
+      )
+    );
+    expect(adapter.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
+    expect((await readJson(dir, "sc2")).metadata.mode).toBeUndefined();
+  });
+
+  test("it may write under revisions/ and file through the tracker; nothing else that Ask denies is lifted", () => {
+    const allowed = SCOPE_ADAPTER_CONFIG.allowedTools;
+    const denied = SCOPE_ADAPTER_CONFIG.disallowedTools;
+    expect(allowed).toContain(`Edit(/${WORKSPACE_DIR}/revisions/**)`);
+    expect(allowed).toContain(`Write(/${WORKSPACE_DIR}/revisions/**)`);
+    for (const v of ["new", "show", "file"]) {
+      expect(allowed).toContain(`Bash(argus revision ${v}:*)`);
+    }
+    expect(allowed.some((t) => t.startsWith("Bash(argus revision drop"))).toBe(
+      false
+    );
+    for (const t of TRACKER_WRITE_RULES) {
+      expect(allowed).toContain(t);
+      expect(denied).not.toContain(t);
+    }
+    // A bare Edit or Write would outrank the path rules: both leave the denied list.
+    expect(denied).not.toContain("Edit");
+    expect(denied).not.toContain("Write");
+    // Everything else Ask denies, a scope run denies too.
+    for (const t of [
+      "MultiEdit",
+      "WebFetch",
+      "Task",
+      ...ACCIO_WRITE_VERBS,
+      ...LINEAR_WRITE_TOOLS,
+      ...SLACK_WRITE_TOOLS,
+    ]) {
+      expect(denied).toContain(t);
+    }
+    expect(allowed.filter((t) => denied.includes(t))).toEqual([]);
+    // Ask itself is unchanged.
+    expect(ADAPTER_CONFIG.disallowedTools).toContain("Write");
+    expect(
+      ADAPTER_CONFIG.allowedTools.some((t) => t.includes("revisions"))
+    ).toBe(false);
+  });
+
+  test("the prompt names the skill, the chat yes, the bare verbs and the stdin body", () => {
+    for (const re of [
+      /skills\/scope\/SKILL\.md/,
+      /explicit yes, in a message here/,
+      /never prefixed with `ARGUS_ROOT=`/,
+      /`--body -` from a heredoc/,
+      /never run the sweep, reconcile or commit/,
+    ]) {
+      expect(SCOPE_SYSTEM_PROMPT).toMatch(re);
+    }
   });
 });
 

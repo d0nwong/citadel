@@ -75,6 +75,33 @@ export const TRACKER_WRITE_RULES = (["create", "edit"] as const).flatMap(
   ]
 );
 
+/**
+ * What a `/scope` conversation may write on top of Ask's reads: files under the data's
+ * `revisions/` and nowhere else, the revision verbs that make and file one (never `drop`),
+ * and — for step 5 — `argus tracker create` and `edit`. The skill waits for the user's yes
+ * in the chat before each; these rules only say where a write may land.
+ */
+const REVISION_VERBS = ["new", "show", "file"] as const;
+
+export const scopeWriteRules = (workspace: string): string[] => [
+  // `//` makes a permission path absolute
+  `Edit(/${workspace}/revisions/**)`,
+  `Write(/${workspace}/revisions/**)`,
+  ...REVISION_VERBS.flatMap((v) => [
+    `Bash(argus revision ${v}:*)`,
+    `Bash(bun scripts/argus.ts revision ${v}:*)`,
+    `Bash(bun run argus revision ${v}:*)`,
+  ]),
+  ...TRACKER_WRITE_RULES,
+];
+
+/** The denied names a `/scope` run lifts: its path-scoped Edit/Write and the tracker writes stand in for them. */
+export const SCOPE_LIFTED: readonly string[] = [
+  "Edit",
+  "Write",
+  ...TRACKER_WRITE_RULES,
+];
+
 /** Harness tools that write or reach the network. Never even reach the permission check. */
 export const HARNESS_WRITE_TOOLS = [
   "Edit",
