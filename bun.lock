@@ -12,6 +12,9 @@
         "argus": "./scripts/argus.ts",
         "accio": "./scripts/accio.ts",
       },
+      "dependencies": {
+        "@citadel/tickets": "workspace:*",
+      },
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "typescript": "~5.9.3",
@@ -136,6 +139,14 @@
         "vite": "^8.0.0",
       },
     },
+    "packages/tickets": {
+      "name": "@citadel/tickets",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "typescript": "~5.9.3",
+      },
+    },
   },
   "packages": {
     "@ag-ui/core": ["@ag-ui/core@0.1.1-canary.beta.0", "", { "peerDependencies": { "zod": "^3.25.18 || ^4.0.0" }, "optionalPeers": ["zod"] }, "sha512-zcP3RH5p3HJTZ0kyQxNOL1blnVFTDpaShitR7UMS/thwFdl48V6CAG+WQBcYEu/dfa8mKonRez88N0Ok+nEI+w=="],
@@ -189,6 +200,8 @@
     "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.5.12", "", { "os": "win32", "cpu": "arm64" }, "sha512-b9vtoZFsuZt1pdjNwJvXl0f+BpayRzV008uS2+JpmwIKdSE2qdu4A/l04FESwLoou5g2E/Qlec0xwJydZplH+A=="],
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.12", "", { "os": "win32", "cpu": "x64" }, "sha512-B1R/l+CwEpKFSuqiwePzPNRk1EiJN8kc0UhdafNz6MZN9v5OFP9HYP1irptvWzHrwVI4blVNGMbxc5zt70m3IA=="],
+
+    "@citadel/tickets": ["@citadel/tickets@workspace:packages/tickets"],
 
     "@clack/core": ["@clack/core@1.5.0", "", { "dependencies": { "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-zNikCcd8BbcEvzzG1sbXFrRHFk5kHPrpwZwksPvf9qyQO1Teb7JaXaOAxXZei9nZLDW0gaZawiuTCji88bTBhw=="],
 

@@ -28,6 +28,8 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
+      - name: typecheck tickets
+        run: bun run --filter '@citadel/tickets' typecheck
       - name: typecheck argus
         run: bun run --filter argus typecheck
       - name: typecheck pensieve
@@ -38,6 +40,8 @@ jobs:
         run: bun run --filter flows typecheck
       - name: test the recipes' scripts
         run: bun test ./scripts/
+      - name: test tickets
+        run: bun run --filter '@citadel/tickets' test
       - name: test flows
         run: bun run --filter flows test
       - name: test argus

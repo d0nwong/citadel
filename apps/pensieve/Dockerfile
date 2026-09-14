@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 # Built from citadel's root (compose's context is ../..): the workspace's one bun.lock
 # installs it, and argus's code comes along, because Pensieve runs argus's verbs and Ask
-# works in argus's directory.
+# works in argus's directory — argus's own dependencies (the tickets package included,
+# CTD-198) come with it.
 FROM oven/bun:1.4 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
@@ -9,9 +10,11 @@ COPY apps/argus/package.json apps/argus/
 COPY apps/foundry/package.json apps/foundry/
 COPY apps/foundry/web/package.json apps/foundry/web/
 COPY apps/pensieve/package.json apps/pensieve/
+COPY packages/tickets/package.json packages/tickets/
 RUN bun install --frozen-lockfile
 COPY apps/argus apps/argus
 COPY apps/pensieve apps/pensieve
+COPY packages/tickets packages/tickets
 RUN cd apps/pensieve && bun run build
 
 FROM oven/bun:1.4-slim
@@ -31,6 +34,7 @@ WORKDIR /app
 COPY --from=build /app/package.json /app/bun.lock ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/argus apps/argus
+COPY --from=build /app/packages/tickets packages/tickets
 COPY --from=build /app/apps/pensieve/package.json apps/pensieve/
 COPY --from=build /app/apps/pensieve/node_modules apps/pensieve/node_modules
 COPY --from=build /app/apps/pensieve/dist apps/pensieve/dist
