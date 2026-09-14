@@ -28,6 +28,12 @@
  * Auth is decided per request: `ANTHROPIC_API_KEY` in the environment means `'api-key'`
  * (the container); otherwise `'host'` — the machine's `claude login`. With neither,
  * `askStatus()` says so and `askStream()` answers a RUN_ERROR chunk instead of spawning.
+ *
+ * `finishConversation` (CTD-222) is local mode's other way of ending a turn at the data: it
+ * commits everything in the conversation's citadel-data worktree, rebases it onto main —
+ * resolving a conflict with one more Claude turn, reusing `askStream` — fast-forwards the live
+ * checkout's main onto it, and then removes both worktrees and both local branches. A code
+ * change still leaves only as the PR the user asked for.
  */
 
 import { execFile } from "node:child_process";
@@ -103,9 +109,13 @@ import type {
   WorktreePaths,
 } from "./worktrees";
 import {
+  branchOf,
+  commitAll,
   discardCounts,
   ensureWorktrees,
+  fastForwardMain,
   hasWorktrees,
+  rebaseOntoMain,
   removeWorktrees,
   worktreePaths,
 } from "./worktrees";
@@ -1533,13 +1543,138 @@ export async function deleteConversation(
   > = {}
 ): Promise<ConversationSummary[]> {
   if (runMode(opts.env ?? process.env) === "local") {
-    await removeWorktrees({
-      citadelDataDir: opts.citadelDataDir ?? WORKSPACE_DIR,
-      citadelDir: opts.citadelDir ?? CITADEL_DIR,
-      threadId,
-      worktreesDir: opts.worktreesDir ?? WORKTREES_DIR,
-    });
+    await removeWorktrees(
+      worktreePaths(opts.worktreesDir ?? WORKTREES_DIR, threadId),
+      {
+        citadelDataDir: opts.citadelDataDir ?? WORKSPACE_DIR,
+        citadelDir: opts.citadelDir ?? CITADEL_DIR,
+        threadId,
+      }
+    );
   }
   await store.remove(threadId);
   return store.list();
+}
+
+// ── Finish (CTD-222) ─────────────────────────────────────────────────────────────
+
+export interface FinishConversationOptions {
+  adapter?: AnyTextAdapter;
+  /** Local mode only: citadel-data's repo root, cut from its local `main`. Defaults to `WORKSPACE_DIR`. */
+  citadelDataDir?: string;
+  /** Local mode only: citadel's repo root, cut from `origin/main`. Defaults to `CITADEL_DIR`. */
+  citadelDir?: string;
+  env?: NodeJS.ProcessEnv;
+  middleware?: ChatMiddleware[];
+  status?: () => Promise<AskStatus>;
+  store?: ConversationStore;
+  /** Local mode only: where a conversation's worktrees live. Defaults to `WORKTREES_DIR`. */
+  worktreesDir?: string;
+}
+
+/**
+ * The synthetic question Finish's rebase conflict becomes (S-42): run through `askStream`
+ * exactly like a real question, so it streams into the thread, updates the session id, and
+ * the reply — naming the files it resolved — is what the thread shows.
+ */
+const finishConflictQuestion = (
+  worktree: string,
+  files: string[]
+): UIMessage => ({
+  id: `finish_${randomBytes(8).toString("hex")}`,
+  parts: [
+    {
+      content: `Finish is landing this conversation's data on main.\n\n${conflictPrompt(worktree, files)}`,
+      type: "text",
+    },
+  ],
+  role: "user",
+});
+
+/**
+ * One askStream turn asking the session to resolve the citadel-data worktree's current rebase
+ * conflict. Reuses the run path a real question takes — including `localWorktrees`' own
+ * rebase-and-conflict check, so the run's system prompt carries the same instructions — and is
+ * subject to the one-run-per-thread lock like any other turn, which is why `finishConversation`
+ * drops its own lock before calling this and re-takes it after.
+ *
+ * A RUN_ERROR here (no credential, the turn itself failing) never resolves the conflict, so
+ * `finishConversation`'s loop would otherwise call this again on the very same conflict
+ * forever; raising instead stops Finish and surfaces why.
+ */
+async function resolveConflictTurn(
+  threadId: string,
+  worktree: string,
+  files: string[],
+  opts: FinishConversationOptions
+): Promise<void> {
+  const stream = askStream(
+    { messages: [finishConflictQuestion(worktree, files)], threadId },
+    opts
+  );
+  let error: string | undefined;
+  for await (const chunk of stream) {
+    if (chunk.type === EventType.RUN_ERROR) {
+      error = chunk.message;
+    }
+  }
+  if (error) {
+    throw new Error(`Finish's conflict-resolution turn failed: ${error}`);
+  }
+}
+
+/**
+ * Land a local-mode conversation's citadel-data worktree on main (S-41): commit everything in
+ * it, committed or not, rebase onto main — resolving a conflict with one Claude turn (S-42) —
+ * then fast-forward the live checkout's main onto the branch, rebasing again rather than
+ * merging when live main raced ahead in between (S-49). Once it lands, remove both worktrees
+ * and both local branches (S-48); a pushed citadel branch and its PR are untouched.
+ * Idempotent: a conversation with no worktrees — never started locally, or already finished —
+ * is a no-op, the same shape as `deleteConversation` removing a file that is not there.
+ *
+ * Takes the thread lock so a run and a Finish never overlap (`acquireThread`), except while the
+ * conflict turn itself runs — that turn takes the lock on its own, so `finishConversation`
+ * drops it first and re-takes it once the turn is done.
+ */
+export async function finishConversation(
+  threadId: string,
+  opts: FinishConversationOptions = {}
+): Promise<void> {
+  const citadelDir = opts.citadelDir ?? CITADEL_DIR;
+  const citadelDataDir = opts.citadelDataDir ?? WORKSPACE_DIR;
+  const worktreesDir = opts.worktreesDir ?? WORKTREES_DIR;
+  const paths = worktreePaths(worktreesDir, threadId);
+
+  let release = await acquireThread(threadId);
+  try {
+    if (!(await hasWorktrees(paths))) {
+      return;
+    }
+    await commitAll(paths.citadelData, `ask/${threadId}: finish`);
+    const branch = branchOf(threadId);
+    for (;;) {
+      const { conflict } = await rebaseOntoMain(paths.citadelData);
+      if (conflict.length > 0) {
+        release();
+        try {
+          await resolveConflictTurn(
+            threadId,
+            paths.citadelData,
+            conflict,
+            opts
+          );
+        } finally {
+          release = await acquireThread(threadId);
+        }
+        continue;
+      }
+      if (await fastForwardMain(citadelDataDir, branch)) {
+        break;
+      }
+      // Live main moved between the rebase and the fast-forward (S-49) — rebase again.
+    }
+    await removeWorktrees(paths, { citadelDataDir, citadelDir, threadId });
+  } finally {
+    release();
+  }
 }

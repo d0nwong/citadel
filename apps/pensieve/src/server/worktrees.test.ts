@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   branchOf,
+  commitAll,
   discardCounts,
   ensureWorktrees,
+  fastForwardMain,
   hasWorktrees,
   removeWorktrees,
   worktreePaths,
@@ -287,11 +289,10 @@ describe("CTD-223 — discardCounts and removeWorktrees", () => {
     });
     await writeFile(join(paths.citadel, "dirty.md"), "dirty\n");
 
-    await removeWorktrees({
+    await removeWorktrees(paths, {
       citadelDataDir,
       citadelDir,
       threadId: "conv-6",
-      worktreesDir,
     });
 
     expect(await hasWorktrees(paths)).toBe(false);
@@ -303,11 +304,105 @@ describe("CTD-223 — discardCounts and removeWorktrees", () => {
     const { dir: citadelDir } = await makeCitadelRepo();
     const citadelDataDir = await makeCitadelDataRepo();
     const worktreesDir = await scratch("worktrees-root-");
-    await removeWorktrees({
+    await removeWorktrees(worktreePaths(worktreesDir, "never-asked"), {
       citadelDataDir,
       citadelDir,
       threadId: "never-asked",
+    });
+  });
+});
+
+describe("CTD-222 — the git steps behind Finish", () => {
+  test("commitAll stages and commits everything, tracked or not; a no-op once there is nothing left", async () => {
+    const dir = await makeCitadelDataRepo();
+    await mkdir(join(dir, "nested"), { recursive: true });
+    await writeFile(join(dir, "nested/new.json"), "{}\n");
+    await commitAll(dir, "ask finish");
+    expect(git(dir, "log", "-1", "--format=%s")).toBe("ask finish");
+    expect(git(dir, "status", "--porcelain")).toBe("");
+
+    const sha = git(dir, "rev-parse", "HEAD");
+    await commitAll(dir, "nothing to commit here");
+    expect(git(dir, "rev-parse", "HEAD")).toBe(sha);
+  });
+
+  test("fastForwardMain lands the branch on live main when it is a fast-forward", async () => {
+    const live = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    const { citadelData } = worktreePaths(worktreesDir, "ff-1");
+    execFileSync(
+      "git",
+      ["worktree", "add", "-b", "ask/ff-1", citadelData, "main"],
+      { cwd: live }
+    );
+    await commitFile(citadelData, "a.json", "{}\n", "worktree commit");
+
+    expect(await fastForwardMain(live, "ask/ff-1")).toBe(true);
+    expect(git(live, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+    expect(git(live, "show", "main:a.json")).toBe("{}");
+  });
+
+  test("fastForwardMain refuses, without merging, when live main has moved past the branch's base (S-49)", async () => {
+    const live = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    const { citadelData } = worktreePaths(worktreesDir, "ff-2");
+    execFileSync(
+      "git",
+      ["worktree", "add", "-b", "ask/ff-2", citadelData, "main"],
+      { cwd: live }
+    );
+    // Live main moves ahead of the branch's base after the worktree was cut …
+    await commitFile(live, "sweep.json", "{}\n", "sweep tick");
+    // … which is what makes the branch's own commit no longer a fast-forward of it.
+    await commitFile(citadelData, "a.json", "{}\n", "worktree commit");
+
+    expect(await fastForwardMain(live, "ask/ff-2")).toBe(false);
+    expect(git(live, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+    expect(git(live, "log", "-1", "--format=%s")).toBe("sweep tick");
+  });
+
+  test("removeWorktrees removes both worktrees and deletes ask/<id> from both live checkouts", async () => {
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    const paths = worktreePaths(worktreesDir, "rm-1");
+    await ensureWorktrees({
+      citadelDataDir,
+      citadelDir,
+      threadId: "rm-1",
       worktreesDir,
     });
+
+    await removeWorktrees(paths, {
+      citadelDataDir,
+      citadelDir,
+      threadId: "rm-1",
+    });
+
+    expect(await hasWorktrees(paths)).toBe(false);
+    expect(git(citadelDir, "branch", "--list", "ask/rm-1")).toBe("");
+    expect(git(citadelDataDir, "branch", "--list", "ask/rm-1")).toBe("");
+  });
+
+  test("removeWorktrees discards the citadel worktree's uncommitted changes rather than refusing", async () => {
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    const paths = worktreePaths(worktreesDir, "rm-2");
+    const result = await ensureWorktrees({
+      citadelDataDir,
+      citadelDir,
+      threadId: "rm-2",
+      worktreesDir,
+    });
+    await writeFile(join(result.citadel, "SCRATCH.md"), "uncommitted\n");
+
+    await removeWorktrees(paths, {
+      citadelDataDir,
+      citadelDir,
+      threadId: "rm-2",
+    });
+
+    expect(await hasWorktrees(paths)).toBe(false);
   });
 });
