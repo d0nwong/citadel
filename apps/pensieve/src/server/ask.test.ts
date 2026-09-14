@@ -6,6 +6,7 @@ import {
   readdir,
   readFile,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -69,6 +70,7 @@ const {
   conflictPrompt,
   worktreeAdapterOverrides,
   worktreeSandboxMiddleware,
+  finishConversation,
 } = ask;
 const {
   BASE_TOOLS,
@@ -127,6 +129,15 @@ async function makeCitadelDataRepo(): Promise<string> {
   await commitFile(dir, "ledger.json", "{}\n", "init");
   return dir;
 }
+
+const pathExists = (p: string) =>
+  stat(p).then(
+    () => true,
+    () => false
+  );
+
+const gitOut = (dir: string, ...args: string[]) =>
+  execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" }).trim();
 const user = (
   text: string,
   id = `u_${Math.random().toString(36).slice(2)}`
@@ -1936,5 +1947,241 @@ describe("Ask with argus's code and data apart", () => {
     expect(ADAPTER_CONFIG.allowedTools).toContain(
       `Bash(git -C ${WORKSPACE_DIR} log:*)`
     );
+  });
+});
+
+describe("CTD-222 — Finish lands a local conversation's data on main and removes its worktrees", () => {
+  /** Every question and Finish call in these tests runs local mode against scratch checkouts. */
+  const localOpts = (extra: Record<string, unknown> = {}) => ({
+    env: { PENSIEVE_RUNNER: "local" },
+    middleware: [],
+    status: available,
+    ...extra,
+  });
+
+  test("finishConversation on a conversation with no worktrees is a no-op", async () => {
+    const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    await expect(
+      finishConversation("never-local", localOpts({ store, worktreesDir }))
+    ).resolves.toBeUndefined();
+  });
+
+  test("AC1 (S-41) — every change in the citadel-data worktree, committed or not, lands on main, and main's own commits since the branch was cut are kept", async () => {
+    const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+
+    await collect(
+      askStream(
+        { messages: [user("start")], threadId: "fin-1" },
+        localOpts({
+          adapter: new FakeClaude({ sessionId: "s1" }),
+          citadelDataDir,
+          citadelDir,
+          store,
+          worktreesDir,
+        })
+      )
+    );
+    const citadelData = join(worktreesDir, "fin-1", "citadel-data");
+
+    // The session wrote a revision but never committed it.
+    await writeFile(join(citadelData, "revision.json"), '{"scope":"x"}\n');
+    // Main moved on its own since the branch was cut — a sweep tick.
+    await commitFile(citadelDataDir, "other.json", "{}\n", "sweep tick");
+
+    await finishConversation(
+      "fin-1",
+      localOpts({ citadelDataDir, citadelDir, store, worktreesDir })
+    );
+
+    expect(gitOut(citadelDataDir, "show", "main:revision.json")).toBe(
+      '{"scope":"x"}'
+    );
+    expect(gitOut(citadelDataDir, "show", "main:other.json")).toBe("{}");
+    expect(gitOut(citadelDataDir, "show", "main:ledger.json")).toBe("{}");
+  });
+
+  test("AC4 (S-48) — both worktrees and both local branches are gone; a pushed citadel branch and its PR stay", async () => {
+    const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    const { dir: citadelDir, origin } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+
+    await collect(
+      askStream(
+        { messages: [user("start")], threadId: "fin-4" },
+        localOpts({
+          adapter: new FakeClaude({ sessionId: "s1" }),
+          citadelDataDir,
+          citadelDir,
+          store,
+          worktreesDir,
+        })
+      )
+    );
+    const citadel = join(worktreesDir, "fin-4", "citadel");
+    const citadelData = join(worktreesDir, "fin-4", "citadel-data");
+    // A code change the user asked to ship (S-40): pushed to origin as its own branch.
+    execFileSync("git", ["push", "--quiet", "origin", "ask/fin-4"], {
+      cwd: citadel,
+    });
+
+    await finishConversation(
+      "fin-4",
+      localOpts({ citadelDataDir, citadelDir, store, worktreesDir })
+    );
+
+    expect(await pathExists(citadel)).toBe(false);
+    expect(await pathExists(citadelData)).toBe(false);
+    expect(gitOut(citadelDir, "branch", "--list", "ask/fin-4")).toBe("");
+    expect(gitOut(citadelDataDir, "branch", "--list", "ask/fin-4")).toBe("");
+    // The pushed branch on origin is untouched — only the local ref was removed.
+    expect(gitOut(origin, "branch", "--list", "ask/fin-4")).toContain(
+      "ask/fin-4"
+    );
+  });
+
+  test("AC2 + AC3 (S-42, S-49) — a rebase conflict is resolved by one Claude turn, named in the thread, and Finish rebases again when main moved on before the fast-forward", async () => {
+    const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+
+    await collect(
+      askStream(
+        { messages: [user("start")], threadId: "fin-2" },
+        localOpts({
+          adapter: new FakeClaude({ sessionId: "s1" }),
+          citadelDataDir,
+          citadelDir,
+          store,
+          worktreesDir,
+        })
+      )
+    );
+    const citadelData = join(worktreesDir, "fin-2", "citadel-data");
+    // The worktree's own branch and live main both edit ledger.json — a rebase collision.
+    await commitFile(
+      citadelData,
+      "ledger.json",
+      '{"from":"worktree"}\n',
+      "worktree edit"
+    );
+    await commitFile(
+      citadelDataDir,
+      "ledger.json",
+      '{"from":"main"}\n',
+      "main edit"
+    );
+
+    const resolver = new FakeClaude({
+      onCall: async () => {
+        // What the session does to resolve: write the merge, stage it, continue the rebase —
+        // and, to prove AC3 too, main moves again while it works (a sweep tick mid-Finish).
+        await writeFile(
+          join(citadelData, "ledger.json"),
+          '{"from":"resolved"}\n'
+        );
+        execFileSync("git", ["-C", citadelData, "add", "ledger.json"]);
+        execFileSync("git", ["-C", citadelData, "rebase", "--continue"], {
+          env: { ...process.env, EDITOR: "true", GIT_EDITOR: "true" },
+        });
+        await commitFile(
+          citadelDataDir,
+          "during-fix.json",
+          "{}\n",
+          "sweep tick mid-finish"
+        );
+      },
+      reply: "Resolved ledger.json",
+      sessionId: "s1",
+    });
+
+    await finishConversation(
+      "fin-2",
+      localOpts({
+        adapter: resolver,
+        citadelDataDir,
+        citadelDir,
+        store,
+        worktreesDir,
+      })
+    );
+
+    expect(resolver.calls).toHaveLength(1);
+    // The conflict resolution landed, and the commit the sweep made mid-Finish is kept too —
+    // the retried rebase (S-49) picked it up rather than the fast-forward failing or merging.
+    expect(gitOut(citadelDataDir, "show", "main:ledger.json")).toBe(
+      '{"from":"resolved"}'
+    );
+    expect(gitOut(citadelDataDir, "show", "main:during-fix.json")).toBe("{}");
+
+    const conv = await getConversation("fin-2", store);
+    expect(JSON.stringify(conv?.messages)).toContain("Resolved ledger.json");
+  });
+
+  test("a conflict-resolution turn that errors raises rather than retrying the same conflict forever", async () => {
+    const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+
+    await collect(
+      askStream(
+        { messages: [user("start")], threadId: "fin-5" },
+        localOpts({
+          adapter: new FakeClaude({ sessionId: "s1" }),
+          citadelDataDir,
+          citadelDir,
+          store,
+          worktreesDir,
+        })
+      )
+    );
+    const citadelData = join(worktreesDir, "fin-5", "citadel-data");
+    await commitFile(
+      citadelData,
+      "ledger.json",
+      '{"from":"worktree"}\n',
+      "worktree edit"
+    );
+    await commitFile(
+      citadelDataDir,
+      "ledger.json",
+      '{"from":"main"}\n',
+      "main edit"
+    );
+
+    let statusCalls = 0;
+    const unavailable = (): Promise<AskStatus> => {
+      statusCalls += 1;
+      return Promise.resolve({
+        available: false,
+        claudePath: null,
+        probe: { loggedIn: false },
+        reason: "no credential",
+      });
+    };
+    const neverCalled = new FakeClaude({ sessionId: "s1" });
+
+    await expect(
+      finishConversation(
+        "fin-5",
+        localOpts({
+          adapter: neverCalled,
+          citadelDataDir,
+          citadelDir,
+          status: unavailable,
+          store,
+          worktreesDir,
+        })
+      )
+    ).rejects.toThrow(/no credential/);
+    // One attempt, not an infinite retry against the same unresolved conflict.
+    expect(statusCalls).toBe(1);
+    expect(neverCalled.calls).toHaveLength(0);
   });
 });
