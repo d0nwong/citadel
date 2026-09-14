@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { TRELLO_BOARD_ID, trelloGet, trelloListOpen, trelloTicketStates } from "./trello.ts";
+import { TRELLO_BOARD_ID, trelloGet, trelloListOpen, trelloTicketStates, trelloViewerId } from "./trello.ts";
 
 const now = new Date("2026-09-14T10:00:00Z");
 
@@ -233,5 +233,25 @@ describe("trelloListOpen", () => {
   test("no credential throws, naming the missing variable", async () => {
     await expect(trelloListOpen({ trelloKey: null, trelloToken: "t" })).rejects.toThrow("TRELLO_API_KEY");
     await expect(trelloListOpen({ trelloKey: "k", trelloToken: null })).rejects.toThrow("TRELLO_TOKEN");
+  });
+});
+
+describe("trelloViewerId", () => {
+  test("the credential's own member id", async () => {
+    const id = await trelloViewerId({ fetch: fakeFetch({ cards: [], lists: [], me: { id: "u1" } }), trelloKey: "k", trelloToken: "t" });
+    expect(id).toBe("u1");
+  });
+
+  test("no credential answers null without asking Trello", async () => {
+    const calls: string[] = [];
+    const id = await trelloViewerId({ fetch: fakeFetch({ cards: [], lists: [] }, calls), trelloKey: null, trelloToken: "t" });
+    expect(id).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  test("an unreachable board answers null rather than throwing", async () => {
+    const failing = (async () => new Response("nope", { status: 500 })) as unknown as typeof fetch;
+    const id = await trelloViewerId({ fetch: failing, trelloKey: "k", trelloToken: "t" });
+    expect(id).toBeNull();
   });
 });

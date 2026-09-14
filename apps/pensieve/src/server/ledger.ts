@@ -10,6 +10,7 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { TicketState, TicketStates } from "@citadel/tickets";
 import {
   type Ask,
   type Ledger,
@@ -117,9 +118,63 @@ export interface HomeAsk extends Ask {
   feature: string;
 }
 export interface HomeTicket extends Ticket {
+  /** set only when its provider could not say who it is assigned to (AC4) */
+  assignee?: "unknown";
   dir: string;
   feature: string;
 }
+
+/** Liam's own id on each provider — whose tickets and Pipeline cards are his to work on. */
+export interface LiamIds {
+  linear?: string | null;
+  trello?: string | null;
+}
+
+/** one card on the Alden board's Pipeline or High Priority Pipeline list */
+export interface PipelineCard {
+  highPriority: boolean;
+  key: string;
+  state: TicketState;
+  title: string;
+}
+
+const PROVIDER_LIAM_ID = (
+  state: TicketState,
+  liam: LiamIds
+): string | null | undefined => {
+  if (state.state === "unknown") {
+    return;
+  }
+  if (state.provider === "linear") {
+    return liam.linear;
+  }
+  if (state.provider === "trello") {
+    return liam.trello;
+  }
+};
+
+/**
+ * Liam's or nobody's is `"keep"`; someone else's is `"drop"` (AC2); a state its provider
+ * could not answer for, or whose owner we could not confirm, is `"unknown"` — kept, but
+ * shown as unknown rather than hidden on a guess (AC4).
+ */
+function assigneeVerdict(
+  state: TicketState,
+  liam: LiamIds
+): "keep" | "drop" | "unknown" {
+  if (state.state === "unknown") {
+    return "unknown";
+  }
+  if (!state.assignee) {
+    return "keep";
+  }
+  const mine = PROVIDER_LIAM_ID(state, liam);
+  if (!mine) {
+    return "unknown";
+  }
+  return state.assignee.id === mine ? "keep" : "drop";
+}
+
 export interface FeatureSummary {
   as_of: string;
   dir: string;
@@ -146,11 +201,21 @@ export interface Home {
   unplaced: Unplaced[];
 }
 
-/** the home page: what is on you across features, what is ready, what nobody could place */
+/**
+ * The home page: what is on you across features, what is ready, what nobody could place.
+ * `states` is every ready ticket's and every filed ticket's live state and assignee, read
+ * once by the caller through the tickets package (AC1, AC2, AC4); `liam` is his own id on
+ * each provider, so a ticket assigned to someone else is left off Ready to work on; a
+ * revision's parent card has already been left out of `pipelineCards` by the caller
+ * (AC3) — this just de-duplicates by key and orders High Priority Pipeline first.
+ */
 export async function home(
   roots?: AppRoot[],
   unplacedFile?: string,
-  filed: HomeFiledTicket[] = []
+  filed: HomeFiledTicket[] = [],
+  states: TicketStates = () => ({ state: "unknown" }),
+  liam: LiamIds = {},
+  pipelineCards: PipelineCard[] = []
 ): Promise<Home> {
   const { ledgers, problems } = await listLedgers(roots);
   const onYouAll: HomeAsk[] = [];
@@ -166,7 +231,16 @@ export async function home(
       readyAsksAll.push({ ...a, dir, feature });
     }
     for (const t of readyTickets(ledger)) {
-      ready.push({ ...t, dir, feature });
+      const verdict = assigneeVerdict(states(t.key), liam);
+      if (verdict === "drop") {
+        continue;
+      }
+      ready.push({
+        ...t,
+        dir,
+        feature,
+        ...(verdict === "unknown" ? { assignee: "unknown" as const } : {}),
+      });
     }
     features.push({
       as_of: ledger.as_of,
@@ -186,6 +260,30 @@ export async function home(
   const onLedger = new Set(
     ledgers.flatMap(({ ledger }) => ledger.tickets.map((t) => t.key))
   );
+  const readyKeys = new Set(ready.map((t) => t.key));
+  const orderedCards = [...pipelineCards].sort(
+    (a, b) => Number(b.highPriority) - Number(a.highPriority)
+  );
+  for (const card of orderedCards) {
+    if (readyKeys.has(card.key)) {
+      continue;
+    }
+    const verdict = assigneeVerdict(card.state, liam);
+    if (verdict === "drop") {
+      continue;
+    }
+    readyKeys.add(card.key);
+    ready.push({
+      asks: [],
+      blockers: [],
+      dir: "",
+      feature: "",
+      key: card.key,
+      ready: true,
+      title: card.title,
+      ...(verdict === "unknown" ? { assignee: "unknown" as const } : {}),
+    });
+  }
   return {
     features,
     filed: filed.filter((t) => !onLedger.has(t.identifier)),

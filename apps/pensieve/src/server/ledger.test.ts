@@ -9,7 +9,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { TicketStates } from "@citadel/tickets";
 import type { Ledger } from "#/lib/ledger";
+import type { PipelineCard } from "./ledger";
 import { home, listLedgers, readLedger, readUnplaced } from "./ledger";
 import type { AppRoot } from "./workspace";
 
@@ -200,5 +202,177 @@ describe("home", () => {
     await put(`${APP}/features/admin/invoicing/ledger.json`, l);
     h = await home(roots, join(root, "state/unplaced.json"));
     expect(h.ready).toEqual([]);
+  });
+
+  /** ALD-41, ready, with every blocker cleared (mirrors the fixture's own ready-ticket test) */
+  const readyFixture = async (): Promise<Ledger> => {
+    const l = await fixture();
+    for (const b of l.tickets[0].blockers) {
+      b.cleared = { at: "2026-09-11", evidence: [{ kind: "slack", url: "u" }] };
+    }
+    l.tickets[0].ready = true;
+    l.tickets[0].asks = ["A-2"];
+    return l;
+  };
+
+  test("AC2: a ticket assigned to someone else is dropped from Ready to work on", async () => {
+    await put(
+      `${APP}/features/admin/invoicing/ledger.json`,
+      await readyFixture()
+    );
+    const states: TicketStates = (key) =>
+      key === "ALD-41"
+        ? {
+            assignee: { id: "someone-else" },
+            name: "In Progress",
+            provider: "linear",
+            state: "open",
+            url: "u",
+          }
+        : { state: "unknown" };
+    const h = await home(roots, join(root, "state/unplaced.json"), [], states, {
+      linear: "liam-linear-id",
+    });
+    expect(h.ready).toEqual([]);
+  });
+
+  test("AC2: Liam's own ticket and one assigned to nobody both stay", async () => {
+    await put(
+      `${APP}/features/admin/invoicing/ledger.json`,
+      await readyFixture()
+    );
+    const mine: TicketStates = () => ({
+      assignee: { id: "liam-linear-id" },
+      name: "Backlog",
+      provider: "linear",
+      state: "open",
+      url: "u",
+    });
+    const h1 = await home(roots, join(root, "state/unplaced.json"), [], mine, {
+      linear: "liam-linear-id",
+    });
+    expect(h1.ready.map((t) => t.key)).toEqual(["ALD-41"]);
+    expect(h1.ready[0]?.assignee).toBeUndefined();
+
+    const nobody: TicketStates = () => ({
+      name: "Backlog",
+      provider: "linear",
+      state: "open",
+      url: "u",
+    });
+    const h2 = await home(
+      roots,
+      join(root, "state/unplaced.json"),
+      [],
+      nobody,
+      {
+        linear: "liam-linear-id",
+      }
+    );
+    expect(h2.ready.map((t) => t.key)).toEqual(["ALD-41"]);
+  });
+
+  test("AC4: a state its provider could not answer for is kept, its assignee shown as unknown", async () => {
+    await put(
+      `${APP}/features/admin/invoicing/ledger.json`,
+      await readyFixture()
+    );
+    const h = await home(roots, join(root, "state/unplaced.json"));
+    expect(h.ready.map((t) => [t.key, t.assignee])).toEqual([
+      ["ALD-41", "unknown"],
+    ]);
+  });
+
+  test("AC4: an assignee present but Liam's own id unconfirmed is shown as unknown, not dropped", async () => {
+    await put(
+      `${APP}/features/admin/invoicing/ledger.json`,
+      await readyFixture()
+    );
+    const states: TicketStates = () => ({
+      assignee: { id: "whoever" },
+      name: "Backlog",
+      provider: "linear",
+      state: "open",
+      url: "u",
+    });
+    const h = await home(roots, join(root, "state/unplaced.json"), [], states);
+    expect(h.ready.map((t) => [t.key, t.assignee])).toEqual([
+      ["ALD-41", "unknown"],
+    ]);
+  });
+
+  describe("Pipeline cards", () => {
+    const card = (over: Partial<PipelineCard> = {}): PipelineCard => ({
+      highPriority: false,
+      key: "AP-10",
+      state: { name: "Pipeline", provider: "trello", state: "open", url: "u" },
+      title: "a Pipeline card",
+      ...over,
+    });
+
+    test("AC3: adds Pipeline and High Priority Pipeline cards, High Priority first", async () => {
+      const cards = [
+        card({ key: "AP-10", title: "regular" }),
+        card({
+          highPriority: true,
+          key: "AP-11",
+          state: {
+            name: "High Priority Pipeline",
+            provider: "trello",
+            state: "open",
+            url: "u",
+          },
+          title: "urgent",
+        }),
+      ];
+      const h = await home(
+        roots,
+        join(root, "state/unplaced.json"),
+        [],
+        undefined,
+        {},
+        cards
+      );
+      expect(h.ready.map((t) => t.key)).toEqual(["AP-11", "AP-10"]);
+    });
+
+    test("AC3: a card already tracked by a ledger is not added twice", async () => {
+      await put(
+        `${APP}/features/admin/invoicing/ledger.json`,
+        await readyFixture()
+      );
+      const h = await home(
+        roots,
+        join(root, "state/unplaced.json"),
+        [],
+        undefined,
+        {},
+        [card({ key: "ALD-41", title: "duplicate" })]
+      );
+      expect(h.ready.map((t) => t.key)).toEqual(["ALD-41"]);
+      expect(h.ready[0]?.title).not.toBe("duplicate");
+    });
+
+    test("a Pipeline card assigned to someone else is dropped, like any other ticket", async () => {
+      const h = await home(
+        roots,
+        join(root, "state/unplaced.json"),
+        [],
+        undefined,
+        { trello: "liam-trello-id" },
+        [
+          card({
+            state: {
+              assignee: { id: "someone-else" },
+              name: "Pipeline",
+              provider: "trello",
+              state: "open",
+              url: "u",
+            },
+          }),
+        ]
+      );
+      expect(h.ready).toEqual([]);
+    });
   });
 });
