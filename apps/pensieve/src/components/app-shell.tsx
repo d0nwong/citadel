@@ -432,7 +432,8 @@ function Breadcrumb() {
             {last ? (
               <span
                 aria-current="page"
-                className="truncate rounded-md bg-muted px-2 py-1 font-medium text-foreground"
+                className="max-w-[min(40ch,50vw)] truncate rounded-md bg-muted px-2 py-1 font-medium text-foreground"
+                title={c.label}
               >
                 {c.label}
               </span>

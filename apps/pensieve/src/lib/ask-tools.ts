@@ -49,6 +49,9 @@ export const BASE_TOOLS = [
   "Grep",
   "Glob",
   "Skill",
+  // The open web, read-only: a link in a question, or docs the answer needs.
+  "WebFetch",
+  "WebSearch",
   "Bash(git log:*)",
   "Bash(git show:*)",
   "Bash(bun run accio:*)",
@@ -102,14 +105,12 @@ export const SCOPE_LIFTED: readonly string[] = [
   ...TRACKER_WRITE_RULES,
 ];
 
-/** Harness tools that write or reach the network. Never even reach the permission check. */
+/** Harness tools that write. Never even reach the permission check. */
 export const HARNESS_WRITE_TOOLS = [
   "Edit",
   "Write",
   "MultiEdit",
   "NotebookEdit",
-  "WebFetch",
-  "WebSearch",
   "Task",
 ] as const;
 

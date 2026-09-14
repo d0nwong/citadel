@@ -1012,7 +1012,6 @@ describe("/scope — a conversation that runs the scope skill", () => {
     // Everything else Ask denies, a scope run denies too.
     for (const t of [
       "MultiEdit",
-      "WebFetch",
       "Task",
       ...ACCIO_WRITE_VERBS,
       ...LINEAR_WRITE_TOOLS,
@@ -1021,8 +1020,13 @@ describe("/scope — a conversation that runs the scope skill", () => {
       expect(denied).toContain(t);
     }
     expect(allowed.filter((t) => denied.includes(t))).toEqual([]);
-    // Ask itself is unchanged.
+    // Ask itself is unchanged, and both read the web (S-30).
     expect(ADAPTER_CONFIG.disallowedTools).toContain("Write");
+    for (const t of ["WebFetch", "WebSearch"]) {
+      expect(ADAPTER_CONFIG.allowedTools).toContain(t);
+      expect(allowed).toContain(t);
+      expect(denied).not.toContain(t);
+    }
     expect(
       ADAPTER_CONFIG.allowedTools.some((t) => t.includes("revisions"))
     ).toBe(false);
