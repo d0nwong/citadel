@@ -142,6 +142,74 @@ export interface EnsureWorktreesResult extends WorktreePaths {
   conflict: string[];
 }
 
+async function countLines(cwd: string, args: string[]): Promise<number> {
+  const out = await git(cwd, args);
+  return out.split("\n").filter((l) => l.trim()).length;
+}
+
+async function countCommits(cwd: string, range: string): Promise<number> {
+  const out = await git(cwd, ["rev-list", "--count", range]);
+  return Number.parseInt(out.trim(), 10);
+}
+
+export interface WorktreeDiscardCounts {
+  /** The citadel worktree — commits and a push are what Finish/PR would have kept (S-43, S-44). */
+  citadel: { uncommitted: number; unpushed: number };
+  /** The citadel-data worktree — landed on main only by Finish, not yet built (S-44). */
+  citadelData: { uncommitted: number; unmerged: number };
+}
+
+/**
+ * What Delete (and, later, Finish) discards in a conversation's worktrees (S-43, S-44):
+ * `unpushed` counts commits ahead of `origin/main` rather than `@{u}`, so it does not depend
+ * on `branch.autoSetupMerge`; `unmerged` counts citadel-data's branch ahead of its own local
+ * `main`, which the sweep commits to and the worktree's branch never pushes.
+ */
+export async function discardCounts(
+  paths: WorktreePaths
+): Promise<WorktreeDiscardCounts> {
+  const [citadelUncommitted, citadelUnpushed, dataUncommitted, dataUnmerged] =
+    await Promise.all([
+      countLines(paths.citadel, ["status", "--porcelain"]),
+      countCommits(paths.citadel, "origin/main..HEAD"),
+      countLines(paths.citadelData, ["status", "--porcelain"]),
+      countCommits(paths.citadelData, "main..HEAD"),
+    ]);
+  return {
+    citadel: { uncommitted: citadelUncommitted, unpushed: citadelUnpushed },
+    citadelData: { uncommitted: dataUncommitted, unmerged: dataUnmerged },
+  };
+}
+
+/**
+ * Delete's other half (S-44): removes both worktrees and their shared `ask/<id>` branch,
+ * discarding whatever `discardCounts` counted — a no-op when the conversation never got past
+ * its first question (no worktrees yet), so a container-mode or fresh thread costs nothing.
+ * `--force` removes a worktree that is dirty or mid-conflict-rebase; `branch -D` force-deletes
+ * an unmerged branch — both intended here, since Delete discards, it does not save.
+ */
+export async function removeWorktrees(opts: {
+  citadelDataDir: string;
+  citadelDir: string;
+  threadId: string;
+  worktreesDir: string;
+}): Promise<void> {
+  const paths = worktreePaths(opts.worktreesDir, opts.threadId);
+  if (!(await hasWorktrees(paths))) {
+    return;
+  }
+  const branch = branchOf(opts.threadId);
+  await git(opts.citadelDir, ["worktree", "remove", "--force", paths.citadel]);
+  await git(opts.citadelDir, ["branch", "-D", branch]);
+  await git(opts.citadelDataDir, [
+    "worktree",
+    "remove",
+    "--force",
+    paths.citadelData,
+  ]);
+  await git(opts.citadelDataDir, ["branch", "-D", branch]);
+}
+
 /**
  * The worktree step between `acquireThread` and `runSetup` (S-33, S-36): the first question on
  * a thread creates both worktrees on branch `ask/<id>`; every later one rebases the

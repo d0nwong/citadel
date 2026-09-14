@@ -97,8 +97,18 @@ const isFeature = (v: unknown): v is string =>
 
 import { proposeDecisionTool, proposeTicketTool } from "./ask-tools.server";
 import { ARGUS_DIR, CITADEL_DIR, WORKSPACE_DIR } from "./workspace";
-import type { EnsureWorktreesResult, WorktreePaths } from "./worktrees";
-import { ensureWorktrees } from "./worktrees";
+import type {
+  EnsureWorktreesResult,
+  WorktreeDiscardCounts,
+  WorktreePaths,
+} from "./worktrees";
+import {
+  discardCounts,
+  ensureWorktrees,
+  hasWorktrees,
+  removeWorktrees,
+  worktreePaths,
+} from "./worktrees";
 
 // ── configuration ──────────────────────────────────────────────────────────────
 
@@ -901,6 +911,22 @@ function localWorktrees(
   });
 }
 
+/**
+ * What Delete discards beyond the conversation file (CTD-223, S-44): local mode only, and
+ * only once the conversation has worktrees — `null` in container mode, or before its first
+ * question has cut them, since there is nothing there to discard.
+ */
+export async function conversationDiscardCounts(
+  threadId: string,
+  opts: Pick<AskRunOptions, "env" | "worktreesDir"> = {}
+): Promise<WorktreeDiscardCounts | null> {
+  if (runMode(opts.env ?? process.env) !== "local") {
+    return null;
+  }
+  const paths = worktreePaths(opts.worktreesDir ?? WORKTREES_DIR, threadId);
+  return (await hasWorktrees(paths)) ? discardCounts(paths) : null;
+}
+
 /** The run's sandbox: the conversation's citadel worktree once it has one, the live checkout otherwise. */
 const sandboxFor = (
   worktrees: EnsureWorktreesResult | undefined
@@ -1492,11 +1518,28 @@ export async function getConversation(
 
 export const listConversations = (store = askStore) => store.list();
 
-/** Remove that one file; answer the remaining list. */
+/**
+ * Remove that one file; answer the remaining list. In local mode the conversation's worktrees
+ * and their shared `ask/<id>` branch go first (S-44, CTD-223) — `removeWorktrees` is a no-op
+ * when the thread never got past its first question, so container mode and a fresh thread
+ * cost nothing extra here.
+ */
 export async function deleteConversation(
   threadId: string,
-  store = askStore
+  store = askStore,
+  opts: Pick<
+    AskRunOptions,
+    "citadelDataDir" | "citadelDir" | "env" | "worktreesDir"
+  > = {}
 ): Promise<ConversationSummary[]> {
+  if (runMode(opts.env ?? process.env) === "local") {
+    await removeWorktrees({
+      citadelDataDir: opts.citadelDataDir ?? WORKSPACE_DIR,
+      citadelDir: opts.citadelDir ?? CITADEL_DIR,
+      threadId,
+      worktreesDir: opts.worktreesDir ?? WORKTREES_DIR,
+    });
+  }
   await store.remove(threadId);
   return store.list();
 }
