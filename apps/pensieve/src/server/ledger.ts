@@ -19,6 +19,7 @@ import {
   type Ticket,
   type Unplaced,
 } from "#/lib/ledger";
+import type { FiledTicketRow } from "./ask";
 import { type AppRoot, listApps, WORKSPACE_DIR } from "./workspace";
 
 export const LEDGER_FILE = "ledger.json";
@@ -131,8 +132,12 @@ export interface FeatureSummary {
   summary: string;
 }
 
+/** a ticket filed from Ask with no ledger, still open on Linear */
+export type HomeFiledTicket = FiledTicketRow;
+
 export interface Home {
   features: FeatureSummary[];
+  filed: HomeFiledTicket[];
   onYou: HomeAsk[];
   problems: LedgerProblem[];
   ready: HomeTicket[];
@@ -144,7 +149,8 @@ export interface Home {
 /** the home page: what is on you across features, what is ready, what nobody could place */
 export async function home(
   roots?: AppRoot[],
-  unplacedFile?: string
+  unplacedFile?: string,
+  filed: HomeFiledTicket[] = []
 ): Promise<Home> {
   const { ledgers, problems } = await listLedgers(roots);
   const onYouAll: HomeAsk[] = [];
@@ -177,8 +183,12 @@ export async function home(
     });
   }
   onYouAll.sort((a, b) => a.at.localeCompare(b.at));
+  const onLedger = new Set(
+    ledgers.flatMap(({ ledger }) => ledger.tickets.map((t) => t.key))
+  );
   return {
     features,
+    filed: filed.filter((t) => !onLedger.has(t.identifier)),
     onYou: onYouAll,
     problems,
     ready,

@@ -61,6 +61,28 @@ const refuse = async (
   return r.ok ? "" : r.error;
 };
 
+describe("the feature confirmed in the chat", () => {
+  const withFeatures = (): TicketSources => ({
+    ...sources(),
+    features: () => Promise.resolve(["admin/usage", "tasks"]),
+  });
+  test("a known feature rides on the draft; an unknown one is refused", async () => {
+    const r = await checkDraft(
+      draft({ feature: "admin/usage" }),
+      withFeatures()
+    );
+    expect(r.ok && r.draft.feature).toBe("admin/usage");
+    expect(
+      await refuse({ feature: "admin/clientz" }, withFeatures())
+    ).toContain('"admin/clientz" is not a feature with a ledger');
+  });
+  test("a draft with no feature is answered with none", async () => {
+    const r = await checkDraft(draft(), withFeatures());
+    expect(r.ok).toBe(true);
+    expect(r.ok ? r.draft.feature : "refused").toBeUndefined();
+  });
+});
+
 describe("AC4 — the title", () => {
   test("a title at the limit passes and one character over is refused, with its length", async () => {
     const at = "x".repeat(TITLE_MAX);
@@ -154,7 +176,12 @@ describe("C2 — no team named resolves against Alden, the default", () => {
       draft: {
         // Trimmed: the card's textarea and the model's draft both arrive with slack at the ends.
         description: FIVE.trim(),
-        project: { id: "p_usage", isNew: false, name: "Admin - Usage", verified: true },
+        project: {
+          id: "p_usage",
+          isNew: false,
+          name: "Admin - Usage",
+          verified: true,
+        },
         team: { key: "ALD", name: "Alden" },
         teamId: "team_ald",
         title: "[FE] Rename the Ask panel to Argus",
@@ -216,7 +243,12 @@ describe("C1 — a draft naming Citadel resolves against Citadel's projects", ()
     expect(r).toEqual({
       draft: {
         description: FIVE.trim(),
-        project: { id: "p_pensieve", isNew: false, name: "Pensieve", verified: true },
+        project: {
+          id: "p_pensieve",
+          isNew: false,
+          name: "Pensieve",
+          verified: true,
+        },
         team: { key: "CTD", name: "Citadel" },
         teamId: "team_ctd",
         title: "[FE] Rename the Ask panel to Argus",

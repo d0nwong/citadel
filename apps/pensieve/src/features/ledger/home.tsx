@@ -40,7 +40,7 @@ import {
 } from "#/lib/api";
 import type { Unplaced } from "#/lib/ledger";
 import type { FoundryRepo } from "#/server/foundry";
-import type { HomeAsk, HomeTicket } from "#/server/ledger";
+import type { HomeAsk, HomeFiledTicket, HomeTicket } from "#/server/ledger";
 import { FeatureName, Status } from "./bits";
 import { MoveForm } from "./feature";
 
@@ -210,13 +210,16 @@ export function NeedsMe({
 export function Ready({
   tickets,
   asks,
+  filed = [],
   send,
 }: {
   tickets: HomeTicket[];
   asks: HomeAsk[];
+  /** filed from Ask with no ledger: no Send, since Send records on a ledger */
+  filed?: HomeFiledTicket[];
   send: SendOptions;
 }) {
-  if (tickets.length === 0 && asks.length === 0) {
+  if (tickets.length === 0 && asks.length === 0 && filed.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
         Nothing is waiting on a landing or an answer that has since arrived.
@@ -252,6 +255,28 @@ export function Ready({
       ))}
       {tickets.map((t) => (
         <TicketRow key={`${t.feature}/${t.key}`} row={t} send={send} />
+      ))}
+      {filed.map((t) => (
+        <li
+          className="border-border border-b py-3 last:border-b-0"
+          key={t.identifier}
+        >
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <Tag tone="documented">ready</Tag>
+            <a
+              className="text-muted-foreground text-xs hover:underline"
+              href={`/ask/${t.threadId}`}
+            >
+              filed from Ask
+            </a>
+            <span className="ml-auto">
+              <TicketLink ticket={t.identifier} />
+            </span>
+          </div>
+          <p className="mt-1 text-[15px] text-foreground leading-relaxed">
+            {t.title ?? t.identifier}
+          </p>
+        </li>
       ))}
     </ul>
   );

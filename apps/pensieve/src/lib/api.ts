@@ -225,7 +225,7 @@ export const getFiledTicket = createServerFn({ method: "GET" })
   });
 
 export type FileTicketResult =
-  | { ok: true; issue: FiledTicket; replay?: boolean }
+  | { ok: true; issue: FiledTicket; replay?: boolean; note?: string }
   | { ok: false; status?: number; error: string };
 
 /**
@@ -248,10 +248,40 @@ const trimmedText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
  * The draft is re-checked here rather than trusted: the card's title and body are editable,
  * so what is filed is not what `propose_ticket` approved.
  */
+/**
+ * After File: on the confirmed feature's ledger the ticket shows in Home's Ready with Send
+ * (`argus ticket <dir> <key> --title`). With no feature, Home reads it back from the
+ * thread's record instead. A ledger that refuses it still leaves the issue filed.
+ */
+async function recordFiled(
+  issue: FiledTicket,
+  feature: string | undefined,
+  title: string
+): Promise<FileTicketResult> {
+  if (!feature) {
+    return { issue, ok: true };
+  }
+  const a = await import("#/server/argus");
+  const recorded = await a.argus("ticket", [
+    feature,
+    issue.identifier,
+    "--title",
+    title,
+  ]);
+  return recorded.ok
+    ? { issue, ok: true }
+    : {
+        issue,
+        note: `${issue.identifier} was filed, but the ledger did not take it: ${a.argusNote(recorded)}`,
+        ok: true,
+      };
+}
+
 export const fileTicket = createServerFn({ method: "POST" })
   .validator(
     z.object({
       description: z.string(),
+      feature: z.string().optional(),
       project: z.string(),
       team: z.string().optional(),
       threadId,
@@ -279,6 +309,7 @@ export const fileTicket = createServerFn({ method: "POST" })
       const ticket = await import("#/server/ticket");
       const check = await ticket.checkDraft({
         description: trimmedText(data.description),
+        feature: trimmedText(data.feature),
         project: trimmedText(data.project),
         team: trimmedText(data.team),
         title: trimmedText(data.title),
@@ -319,7 +350,12 @@ export const fileTicket = createServerFn({ method: "POST" })
           ...(projectId ? { projectId } : {}),
           ...(draft.viewerId ? { assigneeId: draft.viewerId } : {}),
         });
-        issue = { ...made, at: new Date().toISOString() };
+        issue = {
+          ...made,
+          at: new Date().toISOString(),
+          title: draft.title,
+          ...(draft.feature ? { feature: draft.feature } : {}),
+        };
       } catch (e) {
         if (e instanceof linear.LinearError) {
           return { error: e.message, ok: false, status: e.status };
@@ -332,7 +368,7 @@ export const fileTicket = createServerFn({ method: "POST" })
         data.toolCallId,
         issue
       );
-      return { issue, ok: true };
+      return recordFiled(issue, draft.feature, draft.title);
     })().finally(() => filing.delete(key));
     filing.set(key, task);
     return task;
@@ -344,7 +380,17 @@ export const fileTicket = createServerFn({ method: "POST" })
 export const getHome = createServerFn({ method: "GET" }).handler(
   async (): Promise<Home> => {
     const l = await import("#/server/ledger");
-    return l.home();
+    const ask = await import("#/server/ask");
+    const linear = await import("#/server/linear");
+    // Tickets filed from Ask with no feature have no ledger; Linear says when they are done.
+    const loose = (await ask.listFiledTickets()).filter((t) => !t.feature);
+    const states = await linear.issueStates(
+      loose.map((t) => t.id).filter(Boolean)
+    );
+    const open = loose.filter(
+      (t) => !["completed", "canceled"].includes(states.types[t.id] ?? "")
+    );
+    return l.home(undefined, undefined, open);
   }
 );
 

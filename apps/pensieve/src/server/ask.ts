@@ -187,7 +187,7 @@ To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
-You cannot write files, edit tickets or comments, or run the sweep; the argus verbs that write are denied. To change the record — close an ask, confirm or contradict a requirement, place an unplaced message — call \`propose_decision\` once as the ask skill's Correcting section says; the user confirms it on the card, so never say it is done. To open a ticket, draft it per the linear-ticket skill and call \`propose_ticket\` once; say the draft is ready, never that it is filed.`;
+You cannot write files, edit tickets or comments, or run the sweep; the argus verbs that write are denied. To change the record — close an ask, confirm or contradict a requirement, place an unplaced message — call \`propose_decision\` once as the ask skill's Correcting section says; the user confirms it on the card, so never say it is done. To open a ticket, draft it per the linear-ticket skill, confirm its feature with the user (none for Citadel apps), then call \`propose_ticket\` once with it; say the draft is ready, never that it is filed.`;
 
 /**
  * The extra system prompt a conversation opened from a feature page carries (LIA-162 AC4,
@@ -655,8 +655,12 @@ export const ticketKey = (toolCallId: string) => `ticket:${toolCallId}`;
 /** What a press of File recorded: the issue Linear made, and when. */
 export interface FiledTicket {
   at: string;
+  /** the feature dir the user confirmed; absent for a Citadel ticket, which has no ledger */
+  feature?: string;
   id: string;
   identifier: string;
+  /** absent on tickets filed before titles were kept; Home shows the identifier instead */
+  title?: string;
   url: string;
 }
 
@@ -671,6 +675,8 @@ const asFiledTicket = (v: unknown): FiledTicket | undefined => {
         id: typeof t.id === "string" ? t.id : "",
         identifier: t.identifier,
         url: t.url,
+        ...(typeof t.title === "string" ? { title: t.title } : {}),
+        ...(isFeature(t.feature) ? { feature: t.feature } : {}),
       }
     : undefined;
 };
@@ -695,6 +701,28 @@ export const writeFiledTicket = (
     ticketKey(toolCallId),
     ticket
   );
+
+/** A ticket File recorded, with the thread it was filed from. */
+export interface FiledTicketRow extends FiledTicket {
+  threadId: string;
+}
+
+/** Every ticket filed from Ask, across threads — what Home lists for tickets with no ledger. */
+export async function listFiledTickets(
+  store: ConversationStore = askStore
+): Promise<FiledTicketRow[]> {
+  const out: FiledTicketRow[] = [];
+  for (const { threadId } of await store.list()) {
+    const f = await store.read(threadId);
+    for (const [k, v] of Object.entries(f?.metadata ?? {})) {
+      const t = k.startsWith("ticket:") ? asFiledTicket(v) : undefined;
+      if (t) {
+        out.push({ ...t, threadId });
+      }
+    }
+  }
+  return out;
+}
 
 export const readSessionId = async (
   store: ConversationStore,

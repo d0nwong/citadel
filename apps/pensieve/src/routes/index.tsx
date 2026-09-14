@@ -44,7 +44,12 @@ function HomePage() {
           <h2 className="mb-1 border-border border-b pb-1 font-semibold text-[15px]">
             Ready to work on
           </h2>
-          <Ready asks={h.readyAsks} send={h.send} tickets={h.ready} />
+          <Ready
+            asks={h.readyAsks}
+            filed={h.filed}
+            send={h.send}
+            tickets={h.ready}
+          />
         </section>
         <section>
           <h2 className="mb-1 border-border border-b pb-1 font-semibold text-[15px]">
