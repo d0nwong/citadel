@@ -74,7 +74,9 @@ export type PlaceResult = { placed: boolean; feature: string; thread: string | n
  * An unplaced message goes to a feature. The thread root is remembered so the rest of the
  * thread never asks again, the entry and its replies leave the unplaced list, and the
  * feature gets a ledger if it had none. What the message *means* for the ledger is the
- * reader's job on the next run; this verb only says where it belongs.
+ * reader's job on the next run; this verb only says where it belongs. A landing is
+ * remembered under its ref, so the next pull, which brings it back until a ledger lists
+ * it, slices it to the feature instead of asking again.
  */
 export async function placeMessage(id: string, feature: string, o: VerbOptions = {}): Promise<PlaceResult> {
   const now = o.now ?? new Date();
@@ -82,7 +84,7 @@ export async function placeMessage(id: string, feature: string, o: VerbOptions =
   const unplaced = await readUnplaced();
   const entry = unplaced.find((u) => u.id === id);
   if (!entry) throw new Error(`${id}: not in the unplaced list`);
-  const thread = entry.thread ?? (entry.kind === "message" ? entry.id : null);
+  const thread = entry.thread ?? entry.id;
   if (o.dryRun) return { placed: false, feature, thread, ledger: null };
 
   if (thread) {
@@ -102,14 +104,14 @@ export type DismissResult = { dismissed: boolean; thread: string | null; removed
 /**
  * An unplaced message is nobody's. It and its thread leave the unplaced list, and the
  * thread is recorded as belonging to no feature, so a later reply in it is dropped by
- * `place` rather than offered again. A landing has no thread and is only removed.
+ * `place` rather than offered again. A landing is recorded the same way under its ref.
  */
 export async function dismissMessage(id: string, o: VerbOptions = {}): Promise<DismissResult> {
   const now = o.now ?? new Date();
   const unplaced = await readUnplaced();
   const entry = unplaced.find((u) => u.id === id);
   if (!entry) throw new Error(`${id}: not in the unplaced list`);
-  const thread = entry.thread ?? (entry.kind === "message" ? entry.id : null);
+  const thread = entry.thread ?? entry.id;
   const keep = unplaced.filter((u) => u.id !== id && !(thread && (u.thread === thread || u.id === thread)));
   if (o.dryRun) return { dismissed: false, thread, removed: unplaced.length - keep.length };
   if (thread) {

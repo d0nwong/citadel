@@ -91,11 +91,12 @@ describe("place", () => {
     expect((await readUnplaced()).map((u) => u.id)).toEqual(["1789000000.000003", "fe#430"]);
     expect((await readThreads())["1789000000.000001"]?.feature).toBe("admin/invoicing");
   });
-  test("a landing has no thread and opens no second ledger", async () => {
+  test("a landing is remembered under its ref and opens no second ledger", async () => {
     const r = await placeMessage("fe#430", "admin/invoicing", { now: T0 });
-    expect(r.thread).toBeNull();
+    expect(r.thread).toBe("fe#430");
     expect(r.ledger).toBeNull();
-    expect(await readThreads()).toEqual({});
+    expect(await readThreads()).toEqual({ "fe#430": { feature: "admin/invoicing", by: "user", at: T0.toISOString() } });
+    expect((await readUnplaced()).map((u) => u.id)).not.toContain("fe#430");
   });
   test("refuses an unknown id or feature and changes nothing", async () => {
     await expect(placeMessage("nope", "tasks")).rejects.toThrow("not in the unplaced list");
@@ -110,12 +111,12 @@ describe("place", () => {
     expect(await readThreads()).toEqual({ "1789000000.000001": { feature: null, by: "user", at: T0.toISOString() } });
     await expect(dismissMessage("1789000000.000001")).rejects.toThrow("not in the unplaced list");
   });
-  test("dismissing a reply dismisses its thread; a landing has no thread; a dry run changes nothing", async () => {
+  test("dismissing a reply dismisses its thread; a landing is dismissed under its ref; a dry run changes nothing", async () => {
     await dismissMessage("1789000000.000002", { now: T0 });
     expect((await readThreads())["1789000000.000001"]?.feature).toBeNull();
     const l = await dismissMessage("fe#430", { now: T0 });
-    expect(l).toEqual({ dismissed: true, thread: null, removed: 1 });
-    expect(Object.keys(await readThreads())).toEqual(["1789000000.000001"]);
+    expect(l).toEqual({ dismissed: true, thread: "fe#430", removed: 1 });
+    expect((await readThreads())["fe#430"]?.feature).toBeNull();
     const d = await dismissMessage("1789000000.000003", { dryRun: true });
     expect(d.dismissed).toBe(false);
     expect((await readUnplaced()).map((u) => u.id)).toEqual(["1789000000.000003"]);

@@ -56,6 +56,16 @@ describe("placeBatch", () => {
     expect(p.unplaced[0]?.candidates).toEqual(["admin/usage", "tasks"]);
   });
 
+  test("an unmapped landing the user placed is sliced to that feature; one they dismissed is dropped", () => {
+    const threads = {
+      "be#780": { feature: "tasks", by: "user" as const, at: NOW.toISOString() },
+      "fe#431": { feature: null, by: "user" as const, at: NOW.toISOString() },
+    };
+    const p = placeBatch(flat([], [landing("be", 780, []), landing("fe", 431, []), landing("fe", 432, [])]), ledgers, threads, features, NOW);
+    expect(p.slices.get("tasks")?.landings.map((l) => l.ref)).toEqual(["be#780"]);
+    expect(p.unplaced.map((u) => u.id)).toEqual(["fe#432"]);
+  });
+
   test("a known thread places its replies; a new root by ticket key or PR ref is learned", () => {
     const b = flat([
       msg("1", "anything", "1"),

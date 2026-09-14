@@ -122,9 +122,14 @@ export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: 
       if (u.id === (u.thread ?? u.id) && !threads[u.id]) learned[u.id] = { feature: f, by: "sweep", at };
     }
   }
-  for (const l of batch.landings)
-    if (!l.features.length)
+  // an unmapped landing the user placed or dismissed is remembered under its ref
+  for (const l of batch.landings) {
+    if (l.features.length) continue;
+    const told = threads[l.ref];
+    if (told?.feature) slice(told.feature).landings.push(l);
+    else if (!told)
       unplaced.push({ id: l.ref, kind: "landing", by: l.by, at: l.date, text: `${l.title}\n${l.files.join("\n")}`, url: l.url ?? "", candidates: [], batch: batch.id });
+  }
 
   const active = [...slices.keys()].sort();
   for (const u of unplaced) u.candidates = active.length ? active : features;
