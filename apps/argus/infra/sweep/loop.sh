@@ -44,7 +44,10 @@ tick() {
     bun scripts/argus.ts pull --dry-run
     return
   fi
-  claude -p "/sweep" --model "${SWEEP_MODEL:-claude-sonnet-5}" --dangerously-skip-permissions
+  # stream-json prints each event as it happens, so `just logs sweep` shows a tick live rather
+  # than only its final answer.
+  claude -p "/sweep" --model "${SWEEP_MODEL:-claude-sonnet-5}" --dangerously-skip-permissions \
+    --output-format stream-json --verbose
   if [ -s /run/secrets/gh_token ]; then
     git -C "$DATA" push --quiet origin HEAD || say "push failed; the next tick retries"
   fi
