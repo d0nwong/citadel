@@ -92,12 +92,12 @@ import { ARGUS_DIR, WORKSPACE_DIR } from "./workspace";
 
 /** Ask's own state directory — the only place this feature writes. */
 export const PENSIEVE_HOME = resolve(
-  process.env.PENSIEVE_HOME || join(homedir(), ".pensieve")
+  process.env.PENSIEVE_HOME || join(homedir(), ".pensieve"),
 );
 export const CONVERSATIONS_DIR = join(PENSIEVE_HOME, "conversations");
 
 /** The claude binary's own model alias; the CLI resolves it. */
-export const MODEL = "sonnet";
+export const MODEL = "opus";
 
 /**
  * The product checkouts the `ask` skill reads at their landed refs (`git -C <repo> show
@@ -174,7 +174,7 @@ export const ADAPTER_CONFIG = {
 // an old module loaded across edits; the 08:48 run on 2026-09-06 ran with 12 while the
 // source said 40).
 console.log(
-  `[ask] claude-code · model ${MODEL} · maxTurns ${ADAPTER_CONFIG.maxTurns} · permissionMode ${ADAPTER_CONFIG.permissionMode} · ${ALLOWED_TOOLS.length} allowed · ${DISALLOWED_TOOLS.length} disallowed · checkouts ${CHECKOUTS.join(", ")}`
+  `[ask] claude-code · model ${MODEL} · maxTurns ${ADAPTER_CONFIG.maxTurns} · permissionMode ${ADAPTER_CONFIG.permissionMode} · ${ALLOWED_TOOLS.length} allowed · ${DISALLOWED_TOOLS.length} disallowed · checkouts ${CHECKOUTS.join(", ")}`,
 );
 
 /**
@@ -315,7 +315,7 @@ export const claudeLoginProbe: LoginProbe = () =>
         } catch {
           done(null);
         }
-      }
+      },
     );
   });
 
@@ -334,7 +334,7 @@ export const claudePathProbe = (): Promise<string | null> => {
       (err, stdout) => {
         const p = String(stdout ?? "").trim();
         done(!err && p ? p : null);
-      }
+      },
     );
   });
   return claudePathCache;
@@ -353,7 +353,7 @@ export async function askStatus(
     probe?: LoginProbe;
     claudePath?: string | null;
     now?: number;
-  } = {}
+  } = {},
 ): Promise<AskStatus> {
   const mode = authMode(opts.env ?? process.env);
   const claudePath =
@@ -397,7 +397,7 @@ export async function askStatus(
  */
 export function diagnosisLine(
   status: AskStatus,
-  mode: AuthMode = status.available ? status.authMode : "host"
+  mode: AuthMode = status.available ? status.authMode : "host",
 ): string {
   const said =
     status.probe.loggedIn === null
@@ -465,7 +465,7 @@ const textOf = (content: ModelMessage["content"]): string =>
       ? content
       : content
           .map((p) =>
-            p.type === "text" && typeof p.content === "string" ? p.content : ""
+            p.type === "text" && typeof p.content === "string" ? p.content : "",
           )
           .join("");
 
@@ -474,6 +474,53 @@ export const titleOf = (messages: ModelMessage[]): string =>
   textOf(messages.find((m) => m.role === "user")?.content ?? null)
     .replace(/\s+/g, " ")
     .trim();
+
+/** Where a thread's short name lives, once Haiku has written one: `metadata[<threadId>].title`. */
+export const TITLE_KEY = "title";
+
+const storedTitleOf = (metadata: Record<string, unknown>) => {
+  const t = metadata[TITLE_KEY];
+  return typeof t === "string" && t ? t : undefined;
+};
+
+const TITLE_PROMPT =
+  "Name this conversation in 3 to 6 words, sentence case, no quotes or trailing punctuation. Reply with the name only.";
+const TITLE_INPUT_MAX = 2000;
+const TITLE_MAX = 80;
+
+/** Haiku's reply, made one clean line; empty is null. */
+export const cleanTitle = (reply: string): string | null => {
+  const line = (reply.trim().split("\n")[0] ?? "")
+    .replace(/^["'`]+|["'`.]+$/g, "")
+    .trim()
+    .slice(0, TITLE_MAX)
+    .trim();
+  return line || null;
+};
+
+/**
+ * A short name for a conversation from its first turn: one `claude -p` on Haiku. Advisory,
+ * like the login probe: an error, a timeout or an empty reply is null and the list keeps
+ * showing the first turn.
+ */
+export const nameConversation = (firstTurn: string): Promise<string | null> =>
+  new Promise((done) => {
+    execFile(
+      "claude",
+      [
+        "-p",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "1",
+        "--output-format",
+        "text",
+        `${TITLE_PROMPT}\n\n${firstTurn.slice(0, TITLE_INPUT_MAX)}`,
+      ],
+      { env: process.env, timeout: 30_000 },
+      (err, stdout) => done(err ? null : cleanTitle(String(stdout))),
+    );
+  });
 
 function parseFile(text: string): ConversationFile | null {
   let v: unknown;
@@ -512,7 +559,7 @@ export function conversationStore(dir = CONVERSATIONS_DIR): ConversationStore {
     const next = prev.then(fn, fn);
     chains.set(
       id,
-      next.catch(() => undefined)
+      next.catch(() => undefined),
     );
     void next.finally(() => {
       if (chains.get(id) === next) {
@@ -532,13 +579,13 @@ export function conversationStore(dir = CONVERSATIONS_DIR): ConversationStore {
 
   async function writeAtomic(
     id: string,
-    file: ConversationFile
+    file: ConversationFile,
   ): Promise<void> {
     const target = pathOf(id);
     await mkdir(dirname(target), { recursive: true });
     const tmp = join(
       dirname(target),
-      `.${basename(target)}.${randomBytes(6).toString("hex")}.tmp`
+      `.${basename(target)}.${randomBytes(6).toString("hex")}.tmp`,
     );
     try {
       await writeFile(tmp, `${JSON.stringify(file, null, 2)}\n`, "utf8");
@@ -552,7 +599,7 @@ export function conversationStore(dir = CONVERSATIONS_DIR): ConversationStore {
   /** Read, patch, write — under the per-file chain. */
   const update = (
     id: string,
-    patch: (current: ConversationFile) => ConversationFile
+    patch: (current: ConversationFile) => ConversationFile,
   ) =>
     serial(id, async () => {
       const now = new Date().toISOString();
@@ -600,7 +647,7 @@ export function conversationStore(dir = CONVERSATIONS_DIR): ConversationStore {
     set(namespace, key, value) {
       if (value === null || value === undefined) {
         throw new TypeError(
-          `metadata.set(${namespace}, ${key}): value is nullish — use delete()`
+          `metadata.set(${namespace}, ${key}): value is nullish — use delete()`,
         );
       }
       return update(namespace, (f) => ({
@@ -629,7 +676,7 @@ export function conversationStore(dir = CONVERSATIONS_DIR): ConversationStore {
         if (!f) {
           continue;
         }
-        const title = titleOf(f.messages);
+        const title = storedTitleOf(f.metadata) ?? titleOf(f.messages);
         if (!title) {
           continue;
         }
@@ -640,7 +687,7 @@ export function conversationStore(dir = CONVERSATIONS_DIR): ConversationStore {
           ? 1
           : a.updatedAt > b.updatedAt
             ? -1
-            : a.threadId.localeCompare(b.threadId)
+            : a.threadId.localeCompare(b.threadId),
       );
     },
     persistence: defineAIPersistence({ stores: { messages, metadata } }),
@@ -734,22 +781,25 @@ const asFiledTicket = (v: unknown): FiledTicket | undefined => {
 export const readFiledTicket = async (
   store: ConversationStore,
   threadId: string,
-  toolCallId: string
+  toolCallId: string,
 ): Promise<FiledTicket | undefined> =>
   asFiledTicket(
-    await store.persistence.stores.metadata.get(threadId, ticketKey(toolCallId))
+    await store.persistence.stores.metadata.get(
+      threadId,
+      ticketKey(toolCallId),
+    ),
   );
 
 export const writeFiledTicket = (
   store: ConversationStore,
   threadId: string,
   toolCallId: string,
-  ticket: FiledTicket
+  ticket: FiledTicket,
 ): Promise<void> =>
   store.persistence.stores.metadata.set(
     threadId,
     ticketKey(toolCallId),
-    ticket
+    ticket,
   );
 
 /** A ticket File recorded, with the thread it was filed from. */
@@ -759,7 +809,7 @@ export interface FiledTicketRow extends FiledTicket {
 
 /** Every ticket filed from Ask, across threads — what Home lists for tickets with no ledger. */
 export async function listFiledTickets(
-  store: ConversationStore = askStore
+  store: ConversationStore = askStore,
 ): Promise<FiledTicketRow[]> {
   const out: FiledTicketRow[] = [];
   for (const { threadId } of await store.list()) {
@@ -776,7 +826,7 @@ export async function listFiledTickets(
 
 export const readSessionId = async (
   store: ConversationStore,
-  threadId: string
+  threadId: string,
 ): Promise<string | undefined> => {
   const v = await store.persistence.stores.metadata.get(threadId, SESSION_KEY);
   return typeof v === "string" && v ? v : undefined;
@@ -803,6 +853,8 @@ export interface AskRunOptions {
   env?: NodeJS.ProcessEnv;
   /** Middleware ahead of persistence; the sandbox by default. Tests pass `[]` with a fake adapter. */
   middleware?: ChatMiddleware[];
+  /** Names a new thread; `nameConversation` on a real run, none with a test's fake adapter. */
+  name?: (firstTurn: string) => Promise<string | null>;
   status?: () => Promise<AskStatus>;
   store?: ConversationStore;
 }
@@ -837,7 +889,7 @@ async function acquireThread(threadId: string): Promise<() => void> {
  */
 export function featureOf(
   stored: unknown,
-  asked: string | undefined
+  asked: string | undefined,
 ): string | undefined {
   if (isFeature(stored)) {
     return stored;
@@ -849,7 +901,7 @@ const errorChunks = (
   threadId: string,
   runId: string,
   message: string,
-  code: string
+  code: string,
 ): StreamChunk[] => [
   { runId, threadId, timestamp: Date.now(), type: EventType.RUN_STARTED },
   {
@@ -935,7 +987,7 @@ function harnessLog(): { debug: DebugOption; lines: string[] } {
  */
 export function finishedIsFinished<A extends AnyTextAdapter>(
   adapter: A,
-  late: (what: unknown) => void
+  late: (what: unknown) => void,
 ): A {
   const chatStream = async function* (options: Parameters<A["chatStream"]>[0]) {
     let finished = false;
@@ -978,9 +1030,10 @@ export function finishedIsFinished<A extends AnyTextAdapter>(
  */
 export async function* askStream(
   input: AskInput,
-  opts: AskRunOptions = {}
+  opts: AskRunOptions = {},
 ): AsyncIterable<StreamChunk> {
   const store = opts.store ?? askStore;
+  const name = opts.name ?? (opts.adapter ? undefined : nameConversation);
   const runId = input.runId ?? `run_${randomBytes(8).toString("hex")}`;
   const status = await (opts.status ?? askStatus)();
   if (!status.available) {
@@ -988,7 +1041,7 @@ export async function* askStream(
       input.threadId,
       runId,
       `${status.reason}\n${diagnosisLine(status)}`,
-      "ASK_UNAVAILABLE"
+      "ASK_UNAVAILABLE",
     );
     return;
   }
@@ -1001,7 +1054,7 @@ export async function* askStream(
     let firstTurn = titleOf(modelMessages);
     if (input.messages.length === 0) {
       const stored = await store.persistence.stores.messages.loadThread(
-        input.threadId
+        input.threadId,
       );
       firstTurn = titleOf(stored);
       if (stored.at(-1)?.role !== "user") {
@@ -1009,7 +1062,7 @@ export async function* askStream(
           input.threadId,
           runId,
           "nothing to continue — the stored conversation has no unanswered question; send the full transcript with the new one",
-          "ASK_NOTHING_TO_CONTINUE"
+          "ASK_NOTHING_TO_CONTINUE",
         );
         return;
       }
@@ -1017,11 +1070,11 @@ export async function* askStream(
     const { metadata } = store.persistence.stores;
     const feature = featureOf(
       await metadata.get(input.threadId, FEATURE_KEY),
-      input.feature
+      input.feature,
     );
     const scope = scopeModeOf(
       await metadata.get(input.threadId, MODE_KEY),
-      firstTurn
+      firstTurn,
     );
     const setup = runSetup(scope.on, feature);
     const harness = harnessLog();
@@ -1039,7 +1092,7 @@ export async function* askStream(
       await metadata.set(input.threadId, LAST_ERROR_KEY, lastError);
       if (harness.lines.length) {
         console.warn(
-          `[ask] ${input.threadId}: the harness printed, before the error —\n${harness.lines.join("\n")}`
+          `[ask] ${input.threadId}: the harness printed, before the error —\n${harness.lines.join("\n")}`,
         );
       }
       return full;
@@ -1070,7 +1123,7 @@ export async function* askStream(
         if (!lastError) {
           await recordError(
             errorMessageOf(info.error),
-            errorCodeOf(info.error)
+            errorCodeOf(info.error),
           );
         }
       },
@@ -1093,6 +1146,22 @@ export async function* askStream(
         if (scope.record) {
           await metadata.set(input.threadId, MODE_KEY, "scope");
         }
+        // Named alongside the answer, never awaited: a slow or failed name never holds the run.
+        if (
+          name &&
+          firstTurn &&
+          (await metadata.get(input.threadId, TITLE_KEY)) === null
+        ) {
+          void name(firstTurn)
+            .then((title) =>
+              title
+                ? metadata.set(input.threadId, TITLE_KEY, title)
+                : undefined,
+            )
+            .catch((e: unknown) =>
+              console.warn(`[ask] ${input.threadId}: naming failed —`, e),
+            );
+        }
       },
     });
     const middleware: ChatMiddleware[] = [
@@ -1103,13 +1172,13 @@ export async function* askStream(
     const late = (what: unknown) =>
       console.warn(
         `[ask] ${input.threadId}: the run finished, then the agent process failed —`,
-        what
+        what,
       );
     const stream = chat({
       abortController: opts.abortController,
       adapter: finishedIsFinished(
         opts.adapter ?? askAdapter(setup.adapter),
-        late
+        late,
       ),
       // Each tool's `execute` runs here, in this process, through the adapter's MCP bridge —
       // which is provisioned only because `tools` below is non-empty (LIA-111).
@@ -1155,6 +1224,8 @@ export interface Conversation {
   messages: UIMessage[];
   sessionId?: string;
   threadId: string;
+  /** Haiku's short name for it, once written; the page falls back to the first turn. */
+  title?: string;
   updatedAt: string;
 }
 
@@ -1175,7 +1246,7 @@ const lastErrorOf = (v: unknown): LastError | undefined => {
 
 export async function getConversation(
   threadId: string,
-  store = askStore
+  store = askStore,
 ): Promise<Conversation | null> {
   const f = await store.read(threadId);
   if (!f) {
@@ -1184,9 +1255,11 @@ export async function getConversation(
   const sessionId = f.metadata[SESSION_KEY];
   const lastError = lastErrorOf(f.metadata[LAST_ERROR_KEY]);
   const feature = f.metadata[FEATURE_KEY];
+  const title = storedTitleOf(f.metadata);
   return {
     messages: modelMessagesToUIMessages(f.messages),
     threadId: f.threadId,
+    ...(title ? { title } : {}),
     ...(isFeature(feature) ? { feature } : {}),
     ...(typeof sessionId === "string" && sessionId ? { sessionId } : {}),
     ...(f.metadata[FINISH_REASON_KEY] === "length"
@@ -1203,7 +1276,7 @@ export const listConversations = (store = askStore) => store.list();
 /** Remove that one file; answer the remaining list. */
 export async function deleteConversation(
   threadId: string,
-  store = askStore
+  store = askStore,
 ): Promise<ConversationSummary[]> {
   await store.remove(threadId);
   return store.list();
