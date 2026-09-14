@@ -1,8 +1,9 @@
 /**
  * Node-only. The credentials, as `KEY=value` lines in citadel's one `.env` at the repo root
  * (gitignored, mode 600): the Claude credential, the MCP gateway token, the trigger-API
- * bearer and the upstream keys (LINEAR_API_KEY, SLACK_TOKEN). Read fresh by every caller (a
- * job launch, a scan tick, an API request), so a new value takes effect without a restart.
+ * bearer and the upstream keys (LINEAR_API_KEY, SLACK_TOKEN, TRELLO_API_KEY, TRELLO_TOKEN).
+ * Read fresh by every caller (a job launch, a scan tick, an API request), so a new value
+ * takes effect without a restart.
  * In a container there is no file: the same keys arrive as environment variables, and a key
  * the file lacks comes from there.
  */
@@ -41,6 +42,8 @@ export const CREDENTIAL_KEYS = [
   'FOUNDRY_API_TOKEN',
   'LINEAR_API_KEY',
   'SLACK_TOKEN',
+  'TRELLO_API_KEY',
+  'TRELLO_TOKEN',
 ] as const
 
 /** The file's values over the environment's, for the keys Foundry reads. */
