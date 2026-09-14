@@ -23,11 +23,33 @@ auth what *flags:
 start:
     just up
     just foundry-bg
+    just tailscale-up
 
 # Stop everything `just start` started; the data volumes stay.
 stop:
+    -just tailscale-down
     -pkill -f 'vite dev --port 3777'
     just down
+
+# Serve Pensieve (https :443) and Foundry (https :8443) on this machine's tailnet name.
+# Skipped, not failed, when tailscale is missing or not logged in.
+tailscale-up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v tailscale >/dev/null || ! tailscale status >/dev/null 2>&1; then
+      echo "tailscale is not running; skipping tailnet serve"
+      exit 0
+    fi
+    tailscale serve --bg --https=443 "http://localhost:${PENSIEVE_PORT:-3778}"
+    tailscale serve --bg --https=8443 http://localhost:3777
+    host="$(tailscale status --json | bun -e 'console.log(JSON.parse(await Bun.stdin.text()).Self.DNSName.replace(/\.$/, ""))')"
+    echo "pensieve: https://$host"
+    echo "foundry:  https://$host:8443"
+
+# Take down the two tailnet serves `tailscale-up` added; other serves stay.
+tailscale-down:
+    -tailscale serve --https=443 off
+    -tailscale serve --https=8443 off
 
 # Start the stack, the sweep loop included, or only the services named.
 up *services:
