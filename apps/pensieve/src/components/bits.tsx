@@ -124,14 +124,26 @@ export function Fact({
   );
 }
 
-export function TicketLink({ ticket }: { ticket?: string }) {
+const ALDEN_KEY_RE = /^AP-\d+$/;
+
+/**
+ * A ticket key, linked to where it lives: an `AP` key to its Trello card, given the
+ * provider's own `url` (there is no way to build a Trello card's url from its number
+ * alone), everything else to its Linear issue. An `AP` key with no `url` on hand is shown
+ * plain rather than pointed at a Linear issue it is not.
+ */
+export function TicketLink({ ticket, url }: { ticket?: string; url?: string }) {
   if (!ticket || ticket === "null") {
     return <span className="text-subtle">unattributed</span>;
+  }
+  const href = ALDEN_KEY_RE.test(ticket) ? url : `${LINEAR_ISSUE}${ticket}`;
+  if (!href) {
+    return <span className="mono text-foreground">{ticket}</span>;
   }
   return (
     <a
       className="mono text-primary hover:underline"
-      href={`${LINEAR_ISSUE}${ticket}`}
+      href={href}
       rel="noreferrer"
       target="_blank"
     >

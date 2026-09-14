@@ -122,6 +122,8 @@ export interface HomeTicket extends Ticket {
   assignee?: "unknown";
   dir: string;
   feature: string;
+  /** the provider's own url, read alongside its state; unset when that read failed */
+  url?: string;
 }
 
 /** Liam's own id on each provider — whose tickets and Pipeline cards are his to work on. */
@@ -158,6 +160,10 @@ const PROVIDER_LIAM_ID = (
  * could not answer for, or whose owner we could not confirm, is `"unknown"` — kept, but
  * shown as unknown rather than hidden on a guess (AC4).
  */
+/** the provider's own url, read alongside its state; unset when that read failed (AC3) */
+const stateUrl = (state: TicketState): string | undefined =>
+  state.state === "unknown" ? undefined : state.url;
+
 function assigneeVerdict(
   state: TicketState,
   liam: LiamIds
@@ -231,7 +237,8 @@ export async function home(
       readyAsksAll.push({ ...a, dir, feature });
     }
     for (const t of readyTickets(ledger)) {
-      const verdict = assigneeVerdict(states(t.key), liam);
+      const state = states(t.key);
+      const verdict = assigneeVerdict(state, liam);
       if (verdict === "drop") {
         continue;
       }
@@ -239,6 +246,7 @@ export async function home(
         ...t,
         dir,
         feature,
+        url: stateUrl(state),
         ...(verdict === "unknown" ? { assignee: "unknown" as const } : {}),
       });
     }
@@ -281,6 +289,7 @@ export async function home(
       key: card.key,
       ready: true,
       title: card.title,
+      url: stateUrl(card.state),
       ...(verdict === "unknown" ? { assignee: "unknown" as const } : {}),
     });
   }

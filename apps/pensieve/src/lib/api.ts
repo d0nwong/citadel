@@ -10,7 +10,7 @@
 import type { UIMessage } from "@tanstack/ai";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { REPO_REQUIRED } from "#/lib/send";
+import { isSendable, REPO_REQUIRED } from "#/lib/send";
 import type {
   AskStatus,
   Conversation,
@@ -699,13 +699,26 @@ export const fileProposal = createServerFn({ method: "POST" })
   });
 
 export type SendReadyResult =
-  | { ok: true; job: { id: string; url: string }; replay: boolean }
+  | {
+      ok: true;
+      job: { id: string; url: string };
+      replay: boolean;
+      /** the Ready for Agent move failed; the send still went through (AC4) */
+      note?: string;
+    }
   | { error: string; ok: false; status?: number };
 
 /**
  * Send a ready ticket to Foundry: `POST /api/jobs` with the ticket as the idempotency key,
  * then `argus sent` records the job on the ledger. Pensieve posts because it holds the
  * Foundry token and the client; argus keeps the record.
+ *
+ * An `AP` card is refused when its list is neither Pipeline nor High Priority Pipeline — the
+ * board's own answer for "nobody has started it" — and an unanswered board lets the send
+ * through rather than blocking on it (AC2). A refusal that passes moves the card to Ready
+ * for Agent before Foundry is asked, so it is waiting there when ticket 8's claim looks for
+ * it; a move that fails does not stop the send, and is reported back on the row instead
+ * (AC4).
  */
 export const sendReady = createServerFn({ method: "POST" })
   .validator((input: { dir: string; ticket: string; repo: string }) => ({
@@ -719,6 +732,31 @@ export const sendReady = createServerFn({ method: "POST" })
     }
     const fd = await import("#/server/foundry");
     const a = await import("#/server/argus");
+    const tickets = await import("@citadel/tickets");
+
+    let note: string | undefined;
+    if (tickets.providerNameFor(data.ticket) === "trello") {
+      const states = await tickets.ticketStates([data.ticket]);
+      const state = states(data.ticket);
+      if (
+        state.state === "done" ||
+        state.state === "canceled" ||
+        (state.state === "open" && !isSendable(state.stage))
+      ) {
+        return {
+          error: `${data.ticket} is ${state.name} — Foundry takes a ticket nobody has started`,
+          ok: false,
+        };
+      }
+      try {
+        await tickets.updateTicket(data.ticket, {
+          state: tickets.TRELLO_READY_FOR_AGENT_LIST,
+        });
+      } catch (e) {
+        note = `${data.ticket} could not be moved to Ready for Agent — ${e instanceof Error ? e.message : String(e)}`;
+      }
+    }
+
     let job: FoundryJob;
     let replay: boolean;
     try {
@@ -747,7 +785,12 @@ export const sendReady = createServerFn({ method: "POST" })
         ok: false,
       };
     }
-    return { job: { id: job.id, url: fd.jobUrl(job.id) }, ok: true, replay };
+    return {
+      job: { id: job.id, url: fd.jobUrl(job.id) },
+      ok: true,
+      replay,
+      ...(note ? { note } : {}),
+    };
   });
 
 /** What Send needs on the home page: whether Foundry is reachable and the repos it tracks. */

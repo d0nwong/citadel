@@ -56,6 +56,8 @@ export const TRELLO_BOARD_NAME = "Alden SWE Ticketing System";
 export const TRELLO_PIPELINE_LIST = "Pipeline";
 /** the list `claim` moves a card onto (CTD-205 AC1) */
 export const TRELLO_IN_PROGRESS_LIST = "In Progress";
+/** the list a Send moves a card onto before Foundry claims it (CTD-211 AC4) */
+export const TRELLO_READY_FOR_AGENT_LIST = "Ready for Agent";
 /** the checklist a parent card gets when it has none yet (CTD-201 AC3) */
 export const TRELLO_CHECKLIST_NAME = "Tickets";
 

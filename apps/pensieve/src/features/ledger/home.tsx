@@ -69,7 +69,7 @@ function AskRow({ ask, features }: { ask: HomeAsk; features: string[] }) {
         <FeatureName dir={ask.dir} feature={ask.feature} />
         {key && (
           <span className="ml-auto">
-            <TicketLink ticket={key} />
+            <TicketLink ticket={key} url={filed?.url} />
           </span>
         )}
       </div>
@@ -270,7 +270,7 @@ export function Ready({
               filed from Ask
             </a>
             <span className="ml-auto">
-              <TicketLink ticket={t.identifier} />
+              <TicketLink ticket={t.identifier} url={t.url} />
             </span>
           </div>
           <p className="mt-1 text-[15px] text-foreground leading-relaxed">
@@ -293,6 +293,7 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
   const [repo, setRepo] = useState("");
   const { busy, commit, error } = useCommit<SendReadyResult>();
   const [job, setJob] = useState<{ id: string; url: string } | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const sent = row.sent?.at(-1);
   return (
     <li className="border-border border-b py-3 last:border-b-0">
@@ -304,13 +305,14 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
         )}
         <FeatureName dir={row.dir} feature={row.feature} />
         <span className="ml-auto">
-          <TicketLink ticket={row.key} />
+          <TicketLink ticket={row.key} url={row.url} />
         </span>
       </div>
       <p className="mt-1 text-[15px] text-foreground leading-relaxed">
         {row.title}
       </p>
       {job && <JobLine id={job.id} url={job.url} />}
+      {note && <p className="mt-1 text-st-hold text-xs">{note}</p>}
       {!(sent || job || open) && (
         <div className="mt-2 flex flex-wrap gap-1">
           {send.configured ? (
@@ -340,6 +342,7 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
                 sendReady({ data: { dir: row.dir, repo, ticket: row.key } }),
               (v) => {
                 setJob(v.job);
+                setNote(v.note ?? null);
                 setOpen(false);
               }
             );
