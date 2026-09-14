@@ -19,9 +19,14 @@ check:
 auth what *flags:
     bun scripts/bootstrap.ts auth {{what}} {{flags}}
 
-# Start everything: the stack, Foundry web on this Mac, local Pensieve, and the sweep loop.
+# Start everything from what is checked out now: stop the host processes, install, rebuild
+# the stack's images and Pensieve from scratch, then start the stack, Foundry web, local
+# Pensieve and the sweep loop — so nothing ever runs on a build older than the code.
 start:
-    just up
+    -pkill -f 'vite dev --port 3777'
+    -kill $(lsof -tnP -iTCP:"${PENSIEVE_PORT:-3778}" -sTCP:LISTEN) 2>/dev/null
+    bun install
+    just rebuild
     just foundry-bg
     just pensieve-bg
     just tailscale-up
@@ -131,7 +136,8 @@ foundry-bg:
 
 # Local Pensieve with bun in the background, logging to .pensieve.log; this is what
 # `just start` runs. Skips when something is already listening on the Pensieve port
-# (bun's own command line is too common to pgrep for, unlike foundry's vite one above).
+# (bun's own command line is too common to pgrep for, unlike foundry's vite one above);
+# otherwise it always rebuilds first, so it never serves a build older than the code.
 pensieve-bg:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -142,9 +148,7 @@ pensieve-bg:
     fi
     root="$(pwd)"
     cd apps/pensieve
-    if [[ ! -f dist/server/server.js ]]; then
-      bun run build
-    fi
+    bun run build
     PORT="$port" nohup scripts/root-env.sh bun server.ts \
       >"$root/.pensieve.log" 2>&1 &
     echo "pensieve starting on :$port (log: .pensieve.log)"
