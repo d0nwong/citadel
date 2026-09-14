@@ -197,6 +197,18 @@ export const deleteConversation = createServerFn({ method: "POST" })
     return ask.deleteConversation(data);
   });
 
+/**
+ * Land a local-mode conversation's citadel-data worktree on main and remove both worktrees
+ * and both local branches (CTD-222). A no-op on a conversation with no worktrees — never run
+ * locally, or already finished.
+ */
+export const finishConversation = createServerFn({ method: "POST" })
+  .validator(threadId)
+  .handler(async ({ data }): Promise<void> => {
+    const ask = await import("#/server/ask");
+    await ask.finishConversation(data);
+  });
+
 // ── filing a ticket: the other write path ──────────────────────────────────────
 
 /** Is File available — the credential of whichever provider the draft's team routes to. */

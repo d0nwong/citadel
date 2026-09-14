@@ -1,13 +1,19 @@
 /**
- * Node-only. The git plumbing behind local-mode Ask worktrees (CTD-221): a conversation's
- * first question cuts one `ask/<id>` branch in two worktrees — `citadel` from citadel's
- * `origin/main` after a fetch, `citadel-data` from citadel-data's own local `main` (the sweep
- * commits there and never pushes, so no fetch is needed) — under
+ * Node-only. The git plumbing behind local-mode Ask worktrees (CTD-221) and Finish (CTD-222):
+ * a conversation's first question cuts one `ask/<id>` branch in two worktrees — `citadel` from
+ * citadel's `origin/main` after a fetch, `citadel-data` from citadel-data's own local `main`
+ * (the sweep commits there and never pushes, so no fetch is needed) — under
  * `PENSIEVE_HOME/worktrees/<id>/`. Every later question rebases the citadel-data branch onto
  * main, so a ledger the sweep committed since the last question is what the run reads; a
  * conflict is left in the worktree, named, for the run itself to resolve (`ask.ts`'s
  * `conflictPrompt`). `ask.ts` calls `ensureWorktrees` and stays the run; every `git` call
  * lives here.
+ *
+ * Finish (`ask.ts`'s `finishConversation`) reuses `rebaseOntoMain` and adds the rest of its own
+ * git steps: `commitAll` (everything in the citadel-data worktree, committed or not, S-41),
+ * `fastForwardMain` (the live checkout's main onto the branch, refusing rather than merging
+ * when it raced ahead, S-49), and `removeWorktrees` (both worktrees and both local branches
+ * once the data has landed, S-48).
  *
  * CTD-226: the first question also writes `apps/argus/.claude/settings.local.json` into the
  * fresh citadel worktree, disabling the gateway MCP servers `apps/argus/.claude/settings.json`
@@ -124,7 +130,7 @@ export interface RebaseResult {
 }
 
 /** Rebase the citadel-data worktree's branch onto its (local) main; a conflict is left for the run to resolve. */
-async function rebaseOntoMain(worktree: string): Promise<RebaseResult> {
+export async function rebaseOntoMain(worktree: string): Promise<RebaseResult> {
   try {
     await git(worktree, ["rebase", "main"]);
     return { conflict: [] };
@@ -162,4 +168,68 @@ export async function ensureWorktrees(opts: {
   }
   await createWorktrees(paths, opts);
   return { ...paths, conflict: [] };
+}
+
+/**
+ * `git add -A` and commit everything in the worktree — tracked or not, staged or not (S-41).
+ * A no-op when there is nothing to commit, so a Finish on a conversation that never wrote
+ * anything still goes on to rebase and fast-forward.
+ */
+export async function commitAll(
+  worktree: string,
+  message: string
+): Promise<void> {
+  await git(worktree, ["add", "-A"]);
+  const staged = await git(worktree, ["diff", "--cached", "--name-only"]);
+  if (!staged.trim()) {
+    return;
+  }
+  await git(worktree, ["commit", "--quiet", "-m", message]);
+}
+
+const NOT_FAST_FORWARD = /not possible to fast-forward/i;
+
+/**
+ * Fast-forward the live checkout's main onto the conversation's branch. `false` means the
+ * merge refused because live main moved past the worktree's rebase since it ran (S-49) — the
+ * caller rebases the worktree again and retries, rather than merging or failing.
+ */
+export async function fastForwardMain(
+  liveDir: string,
+  branch: string
+): Promise<boolean> {
+  try {
+    await git(liveDir, ["merge", "--ff-only", branch]);
+    return true;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (NOT_FAST_FORWARD.test(message)) {
+      return false;
+    }
+    throw e;
+  }
+}
+
+/**
+ * Remove both of a conversation's worktrees and delete `ask/<id>` from both live checkouts
+ * (S-48) — the last step of Finish, once citadel-data has landed on main. `--force` discards
+ * whatever the citadel worktree's code changes leave behind (uncommitted or not pushed): a code
+ * change leaves only as the PR the user already asked for (S-40); `-D` because that branch,
+ * even when pushed, was never merged into the *local* checkout. A pushed citadel branch and its
+ * PR live on the remote and are untouched by removing the local ref.
+ */
+export async function removeWorktrees(
+  paths: WorktreePaths,
+  opts: { citadelDataDir: string; citadelDir: string; threadId: string }
+): Promise<void> {
+  const branch = branchOf(opts.threadId);
+  await git(opts.citadelDir, ["worktree", "remove", "--force", paths.citadel]);
+  await git(opts.citadelDir, ["branch", "-D", branch]);
+  await git(opts.citadelDataDir, [
+    "worktree",
+    "remove",
+    "--force",
+    paths.citadelData,
+  ]);
+  await git(opts.citadelDataDir, ["branch", "-D", branch]);
 }
