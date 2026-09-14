@@ -55,11 +55,13 @@ services:
       FE_REPO: /home/bun/git/alden-portal-fe
       BE_REPO: /home/bun/git/alden-connect-portal-be
       # The model reads Slack and can see every variable here, so it is only what the sweep
-      # needs: Claude, Slack, Linear (reconcile reads ticket states; argus never writes
-      # Linear), and a read-only Bitbucket pair. The push token is a secret file.
+      # needs: Claude, Slack, Linear and Trello (reconcile reads ticket states; argus never
+      # writes a ticket), and a read-only Bitbucket pair. The push token is a secret file.
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       SLACK_TOKEN: ${SLACK_TOKEN:-}
       LINEAR_API_KEY: ${LINEAR_API_KEY:-}
+      TRELLO_API_KEY: ${TRELLO_API_KEY:-}
+      TRELLO_TOKEN: ${TRELLO_TOKEN:-}
       BITBUCKET_USERNAME: ${BITBUCKET_USERNAME:-}
       BITBUCKET_TOKEN: ${BITBUCKET_TOKEN:-}
       BITBUCKET_GIT_USERNAME: ${BITBUCKET_GIT_USERNAME:-x-bitbucket-api-token-auth}

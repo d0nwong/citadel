@@ -15,6 +15,8 @@ services:
       # Only the keys Pensieve reads, never the Slack token: an Ask run inherits all of this.
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       LINEAR_API_KEY: ${LINEAR_API_KEY:-}
+      TRELLO_API_KEY: ${TRELLO_API_KEY:-}
+      TRELLO_TOKEN: ${TRELLO_TOKEN:-}
       FOUNDRY_API_TOKEN: ${FOUNDRY_API_TOKEN:-}
       # Foundry as the container reaches it: the host's published port.
       FOUNDRY_URL: ${PENSIEVE_FOUNDRY_URL:-http://host.docker.internal:3777}
