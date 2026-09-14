@@ -475,6 +475,12 @@ export const titleOf = (messages: ModelMessage[]): string =>
     .replace(/\s+/g, " ")
     .trim();
 
+/** The last user turn's text: the one a run answers. Empty when there is none. */
+const lastUserTurnOf = (messages: ModelMessage[]): string =>
+  textOf(
+    [...messages].reverse().find((m) => m.role === "user")?.content ?? null
+  ).trim();
+
 /** Where a thread's short name lives, once Haiku has written one: `metadata[<threadId>].title`. */
 export const TITLE_KEY = "title";
 
@@ -717,15 +723,23 @@ export const SESSION_KEY = "sessionId";
  */
 export const FEATURE_KEY = "feature";
 
-/** `"scope"` on a conversation whose first turn was `/scope`, written once, like the feature. */
+/** `"scope"` on a conversation once a user turn started `/scope`, written once, like the feature. */
 export const MODE_KEY = "mode";
 
 /**
  * Is this run a `/scope` one, and is it the run that records it? The stored mode wins,
- * the way the feature does; a thread with none is decided by its first user turn.
+ * the way the feature does; a thread with none turns scope when its first user turn or the
+ * one this run answers starts `/scope` — so a conversation that began as a question can
+ * switch mid-way, keeping its session and what the interview settled.
  */
-export const scopeModeOf = (stored: unknown, firstTurn: string) => {
-  const record = stored === null && isScopeRequest(firstTurn);
+export const scopeModeOf = (
+  stored: unknown,
+  firstTurn: string,
+  latestTurn = ""
+) => {
+  const record =
+    stored === null &&
+    (isScopeRequest(firstTurn) || isScopeRequest(latestTurn));
   return { on: stored === "scope" || record, record };
 };
 
@@ -1049,11 +1063,13 @@ export async function* askStream(
     const sessionId = await readSessionId(store, input.threadId);
     const modelMessages = convertMessagesToModelMessages(input.messages);
     let firstTurn = titleOf(modelMessages);
+    let latestTurn = lastUserTurnOf(modelMessages);
     if (input.messages.length === 0) {
       const stored = await store.persistence.stores.messages.loadThread(
         input.threadId
       );
       firstTurn = titleOf(stored);
+      latestTurn = lastUserTurnOf(stored);
       if (stored.at(-1)?.role !== "user") {
         yield* errorChunks(
           input.threadId,
@@ -1071,7 +1087,8 @@ export async function* askStream(
     );
     const scope = scopeModeOf(
       await metadata.get(input.threadId, MODE_KEY),
-      firstTurn
+      firstTurn,
+      latestTurn
     );
     const setup = runSetup(scope.on, feature);
     const harness = harnessLog();

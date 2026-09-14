@@ -977,6 +977,44 @@ describe("/scope — a conversation that runs the scope skill", () => {
     expect(adapter.calls[1].systemPrompts).toEqual([SCOPE_SYSTEM_PROMPT]);
   });
 
+  test("a later turn starting /scope switches the thread, keeps its session, and it stays scope", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    const adapter = new FakeClaude({ sessionId: "sc3" });
+    const opts = { adapter, middleware: [], status: available, store };
+    const first = user("i want to scope a ticket");
+    const answer: UIMessage = {
+      id: "a1",
+      parts: [{ content: "here is the plan", type: "text" }],
+      role: "assistant",
+    };
+    await collect(askStream({ messages: [first], threadId: "sc3" }, opts));
+    expect(adapter.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
+    expect((await readJson(dir, "sc3")).metadata.mode).toBeUndefined();
+
+    const switchTurn = user("/scope write it");
+    await collect(
+      askStream(
+        { messages: [first, answer, switchTurn], threadId: "sc3" },
+        opts
+      )
+    );
+    expect(adapter.calls[1].systemPrompts).toEqual([SCOPE_SYSTEM_PROMPT]);
+    expect(adapter.calls[1].modelOptions?.sessionId).toBe("sc3");
+    expect((await readJson(dir, "sc3")).metadata.mode).toBe("scope");
+
+    await collect(
+      askStream(
+        {
+          messages: [first, answer, switchTurn, answer, user("yes")],
+          threadId: "sc3",
+        },
+        opts
+      )
+    );
+    expect(adapter.calls[2].systemPrompts).toEqual([SCOPE_SYSTEM_PROMPT]);
+  });
+
   test("an ordinary question stays Ask: no mode stored, the Ask prompt", async () => {
     const dir = await scratch();
     const store = conversationStore(dir);
