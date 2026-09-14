@@ -132,30 +132,31 @@ nothing about setting a machine up depends on bun being there first:
 
 ### Auth
 
-`foundry auth` opens an interactive picker — the Claude credential, `FOUNDRY_API_TOKEN`,
-a Trello row and every MCP upstream from argus's `infra/mcp/config.json`, each with its
-auth status; arrow keys + enter (re)authenticate one. Non-interactive: `--claude`,
-`--api-key`, `--linear`, `--slack`, `--trello`.
+`foundry auth` opens an interactive picker — the Claude credential, `FOUNDRY_API_TOKEN`
+and every MCP upstream from argus's `infra/mcp/config.json`, each with its auth status;
+arrow keys + enter (re)authenticate one. Non-interactive: `--claude`, `--api-key`,
+`--linear`, `--slack`.
 
 Claude Code on macOS keeps its credential in the **Keychain**, which Linux containers
 can't read. So the `claude` row runs `claude setup-token` and stores the long-lived
 token in the checkout's `.env` (chmod 600), injected into every forge as
 `CLAUDE_CODE_OAUTH_TOKEN`. Use `foundry auth --api-key` for a plain API key instead.
 
-`foundry auth --trello` prompts for `TRELLO_API_KEY` and `TRELLO_TOKEN` and stores both;
-unlike Linear and Slack, Trello is not behind the MCP gateway — nothing in Foundry reads
-them yet, `foundry doctor` just reports whether each is set.
+`just auth trello` prompts for `TRELLO_API_KEY` and `TRELLO_TOKEN` and stores both in the
+same root `.env`; unlike Linear and Slack, Trello is not behind the MCP gateway — `just
+check` reports whether each is set.
 
 #### One credential file
 
-Every credential `foundry auth` stores — the Claude credential, `FOUNDRY_API_TOKEN` and the
-Trello pair — lives in citadel's one `.env` at the root (gitignored; `.env.example` lists
-every key): `KEY=value` lines, mode 600, rewritten one key at a time, and read fresh by both
-readers here, the CLI and the web server, so a new value needs no restart. In a container
-there is no file, and the same keys arrive as environment variables. The upstream keys
-(`SLACK_TOKEN`, `LINEAR_API_KEY`) and `MCP_GATEWAY_TOKEN` live in that same file, beside the
-MCP gateway argus runs; a forge sees the gateway token as `FOUNDRY_MCP_TOKEN`. `foundry auth
---api` prints the `KEY=value` line Pensieve needs.
+Every credential `foundry auth` stores — the Claude credential and `FOUNDRY_API_TOKEN` —
+lives in citadel's one `.env` at the root (gitignored; `.env.example` lists every key):
+`KEY=value` lines, mode 600, rewritten one key at a time, and read fresh by both readers
+here, the CLI and the web server, so a new value needs no restart. In a container there is
+no file, and the same keys arrive as environment variables. The upstream keys
+(`SLACK_TOKEN`, `LINEAR_API_KEY`), the Trello pair (`TRELLO_API_KEY`, `TRELLO_TOKEN`) and
+`MCP_GATEWAY_TOKEN` live in that same file, beside the MCP gateway argus runs; a forge sees
+the gateway token as `FOUNDRY_MCP_TOKEN`. `foundry auth --api` prints the `KEY=value` line
+Pensieve needs.
 
 ### MCP gateway (Linear, Slack)
 

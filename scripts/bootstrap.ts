@@ -15,7 +15,7 @@
  *   just check                         report only
  *   just bootstrap env deps            some phases
  *   just bootstrap import <file>...    copy the keys .env lacks from other .env files
- *   just auth linear|slack|claude|foundry-api|gateway|gh|bitbucket [--rotate]
+ *   just auth linear|slack|trello|claude|foundry-api|gateway|gh|bitbucket [--rotate]
  */
 
 import { randomBytes } from "node:crypto";
@@ -215,9 +215,11 @@ function deps() {
   ok("bun install");
 }
 
-const PROMPTED = [
+export const PROMPTED = [
   ["SLACK_TOKEN", "slack", "argus's Slack intake and the gateway's Slack server", "the Slack user token, xoxp-…"],
   ["LINEAR_API_KEY", "linear", "the gateway's Linear server, Foundry's linear-link and Pensieve's File", "linear.app → Settings → Security & access → Personal API keys"],
+  ["TRELLO_API_KEY", "trello", "Foundry's Trello ticket provider (packages/tickets)", "trello.com/app-key → the API key"],
+  ["TRELLO_TOKEN", "trello", "Foundry's Trello ticket provider (packages/tickets)", "trello.com/app-key → a token minted from that key"],
 ] as const;
 const MINTED = [
   ["MCP_GATEWAY_TOKEN", "what every Claude session and forge presents to the gateway"],
@@ -379,6 +381,8 @@ function importKeys(files: string[]) {
   if (skipped.size) say(`     ${dim(`not copied, not in .env.example: ${[...skipped].join(", ")}`)}`);
 }
 
+export const AUTH_USAGE = "just auth linear|slack|trello|claude|foundry-api|gateway|gh|bitbucket [--rotate]";
+
 function auth(what: string | undefined, flags: string[]) {
   ensureEnvFile();
   const passthrough = (cmd: string[]) => {
@@ -394,6 +398,17 @@ function auth(what: string | undefined, flags: string[]) {
       if (!v) return miss("nothing typed — nothing written");
       writeKey(ENV_FILE, k, v);
       ok(`stored ${k} in ${tilde(ENV_FILE)} ${dim("(restart the gateway to pick it up)")}`);
+      return;
+    }
+    case "trello": {
+      if (!process.stdin.isTTY) return miss("just auth trello needs a terminal to type the pair into");
+      const key = secret("TRELLO_API_KEY");
+      if (!key) return miss("nothing typed — nothing written");
+      const tok = secret("TRELLO_TOKEN");
+      if (!tok) return miss("nothing typed — nothing written");
+      writeKey(ENV_FILE, "TRELLO_API_KEY", key);
+      writeKey(ENV_FILE, "TRELLO_TOKEN", tok);
+      ok(`stored the Trello pair in ${tilde(ENV_FILE)} ${dim("(read fresh on every use, no restart needed)")}`);
       return;
     }
     case "gh": {
@@ -428,7 +443,7 @@ function auth(what: string | undefined, flags: string[]) {
       ok("minted MCP_GATEWAY_TOKEN — restart the gateway, and recreate forges to pick it up");
       return;
     default:
-      miss("just auth linear|slack|claude|foundry-api|gateway|gh|bitbucket [--rotate]");
+      miss(AUTH_USAGE);
   }
 }
 
