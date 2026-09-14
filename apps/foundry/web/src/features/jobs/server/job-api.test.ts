@@ -59,6 +59,9 @@ const deps: ApiDeps = {
       claimed.push(key)
       trace.push(`claim ${key}`)
     },
+    link: async () => {
+      throw new Error('not used in these tests')
+    },
   },
   ignite: async (id) => {
     ignited.push(id)

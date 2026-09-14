@@ -5,14 +5,14 @@
  * provider whose read throws all leave that ticket `unknown` — the other provider's tickets
  * still settle, and reads never write anything (spec S-7). `listOpenTickets` (CTD-200) does
  * the same for the open-ticket list, routed by a bare team key instead of a ticket key.
- * `createTicket` (CTD-201) routes the same way, by `input.team`; `updateTicket` routes by
- * the key, like `claimTicket` — a write has no meaningful "unknown" to fall back to, so
- * either throws naming what it could not route.
+ * `createTicket` (CTD-201) routes the same way, by `input.team`; `updateTicket` and
+ * `linkTicket` (CTD-205) route by the key, like `claimTicket` — a write has no meaningful
+ * "unknown" to fall back to, so any of the three throws naming what it could not route.
  */
 
 import { providerNameFor, providerNameForTeam } from "./key.ts";
 import { linearProvider, type LinearOptions } from "./linear.ts";
-import type { CreateTicketInput, ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
+import type { CreateTicketInput, LinkInput, ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
 import { trelloProvider, type TrelloOptions } from "./trello.ts";
 
 export type TicketRouterOptions = LinearOptions &
@@ -127,4 +127,16 @@ export async function updateTicket(key: string, input: UpdateTicketInput, opts: 
   const provider = name ? providersFor(opts)[name] : undefined;
   if (!provider) throw new Error(`tickets: no provider owns ${key}`);
   return provider.update(key, input);
+}
+
+/**
+ * Links a PR (or other) input onto one ticket, on the provider its key names (CTD-205 AC2).
+ * As `claimTicket`, a key no provider owns, or a provider this run has none registered for,
+ * throws naming the key.
+ */
+export async function linkTicket(key: string, input: LinkInput, opts: TicketRouterOptions = {}): Promise<void> {
+  const name = (opts.routeKey ?? providerNameFor)(key);
+  const provider = name ? providersFor(opts)[name] : undefined;
+  if (!provider) throw new Error(`tickets: no provider owns ${key}`);
+  await provider.link(key, input);
 }
