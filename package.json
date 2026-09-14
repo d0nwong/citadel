@@ -8,7 +8,8 @@
     "apps/foundry",
     "apps/foundry/web",
     "apps/pensieve",
-    "apps/flows"
+    "apps/flows",
+    "packages/tickets"
   ],
   "scripts": {
     "argus": "bun apps/argus/scripts/argus.ts",

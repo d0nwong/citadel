@@ -1,0 +1,19 @@
+{
+  "name": "@citadel/tickets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "One provider interface for a ticket, and the Linear adapter that reads it — the key's prefix picks the provider.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "typescript": "~5.9.3"
+  },
+  "packageManager": "bun@1.4.0"
+}

@@ -12,7 +12,7 @@
 
 import { mkdir, readdir, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
-import { splitKey } from "./linear.ts";
+import { splitKey } from "@citadel/tickets";
 import { archivedRevisionDir, archiveDir, revisionDir, revisionsDir, specDocPath, splitFeatureKey } from "./paths.ts";
 import { type Evidence, parseEvidence, SchemaError } from "./schema.ts";
 import { type Problem, REVISION_STATUSES, type RevisionRecord, validateRevisionRecord, validateSpec, ValidationError } from "./validate.ts";

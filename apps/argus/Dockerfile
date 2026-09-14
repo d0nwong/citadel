@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 # The sweep: Claude Code running argus's /sweep over argus's data, every SWEEP_INTERVAL seconds
 # (infra/sweep/loop.sh). Built from citadel's root (compose's context is ../../..), so the
-# workspace's bun.lock installs argus's one dependency, typescript, which accio's analyzer uses.
+# workspace's bun.lock installs argus's dependencies — typescript, which accio's analyzer
+# uses, and the tickets package (CTD-198), which reconcile reads Linear through.
 FROM oven/bun:1.4 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
@@ -9,8 +10,10 @@ COPY apps/argus/package.json apps/argus/
 COPY apps/foundry/package.json apps/foundry/
 COPY apps/foundry/web/package.json apps/foundry/web/
 COPY apps/pensieve/package.json apps/pensieve/
+COPY packages/tickets/package.json packages/tickets/
 RUN bun install --frozen-lockfile
 COPY apps/argus apps/argus
+COPY packages/tickets packages/tickets
 
 FROM oven/bun:1.4-slim
 COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
@@ -23,6 +26,7 @@ WORKDIR /app
 COPY --from=build /app/package.json /app/bun.lock ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/argus apps/argus
+COPY --from=build /app/packages/tickets packages/tickets
 # Claude refuses --dangerously-skip-permissions as root, so the sweep runs as the image's `bun`
 # user (uid 1000). It trusts argus's directory, since nobody is here to accept the dialog; the
 # linear and slack servers are approved in apps/argus/.claude/settings.json.

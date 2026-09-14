@@ -6,9 +6,11 @@
  *
  * It also finishes what a ticket opened, from two facts:
  *
- * - Linear. A ticket Linear says is Done is settled `done`, and every open ask it serves
- *   closes with the ticket as evidence; Canceled settles it `dropped` and drops them. Linear
- *   is read once per run for every ticket still open (`linear.ts`) and never written.
+ * - Its provider. A ticket its provider reports Done is settled `done`, and every open ask
+ *   it serves closes with the ticket as evidence; Canceled settles it `dropped` and drops
+ *   them. Each provider is read once per run for every ticket still open, through the
+ *   tickets package's router (`@citadel/tickets`), which routes a key to the provider its
+ *   prefix names — `CTD` and `ALD` to Linear today — and never writes.
  * - A landing. An open ask whose ticket's key is on a landing (every Foundry branch carries
  *   it) moves to `built` with the PR as evidence, and to `closed` once that landing is live:
  *   on the frontend, the base branch is staging, so a merge is live; on the backend, once
@@ -16,9 +18,9 @@
  *   message) has nothing to close, so the same live landing settles the ticket itself.
  */
 
+import { ticketStates, type TicketStates } from "@citadel/tickets";
 import type { Deploy } from "./deploy.ts";
 import { deployedAt } from "./deploy.ts";
-import { ticketStates, type TicketStates } from "./linear.ts";
 import { listFeatures } from "./paths.ts";
 import { ticketKeysIn } from "./pr-facts.ts";
 import type { Blocker, Evidence, Landing, Ledger, Ticket } from "./schema.ts";
@@ -134,7 +136,7 @@ export type ReconcileResult = { feature: string; cleared: string[]; write: Write
 
 export type ReconcileOptions = {
   deployed?: DeployedOf;
-  /** the Linear reader; default asks Linear once for every open ticket across the run */
+  /** the tickets router; default asks each ticket's provider once for every open ticket across the run */
   states?: (keys: string[]) => Promise<TicketStates>;
   dryRun?: boolean;
   now?: Date;
