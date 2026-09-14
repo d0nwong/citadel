@@ -19,14 +19,10 @@ check:
 auth what *flags:
     bun scripts/bootstrap.ts auth {{what}} {{flags}}
 
-# Start everything from what is checked out now: stop the host processes, install, rebuild
-# the stack's images and Pensieve from scratch, then start the stack, Foundry web, local
-# Pensieve and the sweep loop — so nothing ever runs on a build older than the code.
+# Start everything: the stack, Foundry web on this Mac, local Pensieve, and the sweep loop.
+# Builds nothing; `just rebuild` does that.
 start:
-    -pkill -f 'vite dev --port 3777'
-    -kill $(lsof -tnP -iTCP:"${PENSIEVE_PORT:-3778}" -sTCP:LISTEN) 2>/dev/null
-    bun install
-    just rebuild
+    just up
     just foundry-bg
     just pensieve-bg
     just tailscale-up
@@ -64,14 +60,32 @@ up *services:
     bun scripts/stack.ts preflight-sweep
     docker compose --env-file .env --profile sweep up -d --wait --wait-timeout 120 {{services}}
 
-# Rebuild the images the stack builds (Pensieve, the sweep) from scratch and restart on them;
-# run after a merge. No build cache, so nothing from the old image survives; the images it
-# replaces are pruned once the containers run on the new ones.
-rebuild *services:
+# Rebuild the stack's images from scratch and restart on them; run after a merge. Name
+# `foundry` or `pensieve` to also `bun run build` that app; any other names are the stack
+# services to rebuild (all of them when none are named). Naming only apps skips the images.
+# No build cache, so nothing from the old image survives; replaced images are pruned.
+rebuild *targets:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    services=()
+    apps=()
+    for t in "$@"; do
+      case "$t" in
+        foundry) apps+=(apps/foundry/web) ;;
+        pensieve) apps+=(apps/pensieve) ;;
+        *) services+=("$t") ;;
+      esac
+    done
+    for dir in ${apps[@]+"${apps[@]}"}; do
+      (cd "$dir" && bun run build)
+    done
+    if [[ ${#apps[@]} -gt 0 && ${#services[@]} -eq 0 ]]; then
+      exit 0
+    fi
     bun scripts/stack.ts preflight
     bun scripts/stack.ts preflight-sweep
-    docker compose --env-file .env --profile sweep build --pull --no-cache {{services}}
-    docker compose --env-file .env --profile sweep up -d --force-recreate --wait --wait-timeout 120 {{services}}
+    docker compose --env-file .env --profile sweep build --pull --no-cache ${services[@]+"${services[@]}"}
+    docker compose --env-file .env --profile sweep up -d --force-recreate --wait --wait-timeout 120 ${services[@]+"${services[@]}"}
     docker image prune -f
 
 # Stop the stack, the sweep included; the data volumes stay. It names the sweep's profile so
@@ -136,8 +150,8 @@ foundry-bg:
 
 # Local Pensieve with bun in the background, logging to .pensieve.log; this is what
 # `just start` runs. Skips when something is already listening on the Pensieve port
-# (bun's own command line is too common to pgrep for, unlike foundry's vite one above);
-# otherwise it always rebuilds first, so it never serves a build older than the code.
+# (bun's own command line is too common to pgrep for, unlike foundry's vite one above).
+# Builds only when there is no build yet; `just rebuild pensieve` rebuilds it.
 pensieve-bg:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -148,7 +162,9 @@ pensieve-bg:
     fi
     root="$(pwd)"
     cd apps/pensieve
-    bun run build
+    if [[ ! -f dist/server/server.js ]]; then
+      bun run build
+    fi
     PORT="$port" nohup scripts/root-env.sh bun server.ts \
       >"$root/.pensieve.log" 2>&1 &
     echo "pensieve starting on :$port (log: .pensieve.log)"
