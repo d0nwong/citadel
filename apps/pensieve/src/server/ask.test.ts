@@ -1733,7 +1733,7 @@ describe("AC6 (LIA-102) / AC5 (LIA-104) — auth mode, availability, and what th
 // ── AC7: the list and delete ───────────────────────────────────────────────────
 
 describe("AC7 — listConversations and deleteConversation", () => {
-  test("newest first, title = first user turn; delete removes that one file", async () => {
+  test("newest first, title = first user turn; delete removes that one conversation file (CTD-224 AC1)", async () => {
     const dir = await scratch();
     const store = conversationStore(dir);
     const adapter = new FakeClaude({ sessionId: "x" });
@@ -1792,6 +1792,27 @@ describe("AC7 — listConversations and deleteConversation", () => {
       { content: "forty-two", type: "text" },
     ]);
     expect(await getConversation("nope", store)).toBeNull();
+  });
+
+  test("CTD-224 — getConversation carries this server's run mode, so the page knows to show Finish", async () => {
+    const store = conversationStore(await scratch());
+    const adapter = new FakeClaude({ sessionId: "sess-mode" });
+    await collect(
+      askStream(
+        { messages: [user("hi")], threadId: "mode-1" },
+        { adapter, middleware: [], status: available, store }
+      )
+    );
+    expect((await getConversation("mode-1", store, { env: {} }))?.mode).toBe(
+      "local"
+    );
+    expect(
+      (
+        await getConversation("mode-1", store, {
+          env: { PENSIEVE_RUNNER: "container" },
+        })
+      )?.mode
+    ).toBe("container");
   });
 
   test("titleOf reads string and part content", () => {
