@@ -1,6 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -58,6 +65,10 @@ const {
   LOCAL_SCOPE_SYSTEM_PROMPT,
   TITLE_KEY,
   cleanTitle,
+  WORKTREES_DIR,
+  conflictPrompt,
+  worktreeAdapterOverrides,
+  worktreeSandboxMiddleware,
 } = ask;
 const {
   BASE_TOOLS,
@@ -75,6 +86,47 @@ const {
 afterAll(() => rm(HOME, { force: true, recursive: true }));
 
 const scratch = () => mkdtemp(join(tmpdir(), "pensieve-conv-"));
+
+/** A throwaway git repo with one commit on `main`, for the worktree tests (CTD-221). */
+async function initRepo(prefix: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), prefix));
+  execFileSync("git", ["init", "--quiet", "-b", "main", dir]);
+  execFileSync("git", ["config", "user.email", "test@example.com"], {
+    cwd: dir,
+  });
+  execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
+  return dir;
+}
+
+async function commitFile(
+  dir: string,
+  name: string,
+  content: string,
+  message: string
+): Promise<void> {
+  await writeFile(join(dir, name), content);
+  execFileSync("git", ["add", name], { cwd: dir });
+  execFileSync("git", ["commit", "--quiet", "-m", message], { cwd: dir });
+}
+
+/** citadel: an "origin" bare repo plus a clone tracking it, both with one commit on main. */
+async function makeCitadelRepo(): Promise<{ dir: string; origin: string }> {
+  const origin = await mkdtemp(join(tmpdir(), "pensieve-citadel-origin-"));
+  execFileSync("git", ["init", "--quiet", "--bare", "-b", "main", origin]);
+  const dir = await initRepo("pensieve-citadel-");
+  await mkdir(join(dir, "apps/argus"), { recursive: true });
+  await commitFile(dir, "README.md", "citadel\n", "init");
+  execFileSync("git", ["remote", "add", "origin", origin], { cwd: dir });
+  execFileSync("git", ["push", "--quiet", "origin", "main"], { cwd: dir });
+  return { dir, origin };
+}
+
+/** citadel-data: a plain repo with one commit on main — no remote, since it is never pushed to. */
+async function makeCitadelDataRepo(): Promise<string> {
+  const dir = await initRepo("pensieve-citadel-data-");
+  await commitFile(dir, "ledger.json", "{}\n", "init");
+  return dir;
+}
 const user = (
   text: string,
   id = `u_${Math.random().toString(36).slice(2)}`
@@ -1162,16 +1214,22 @@ describe("CTD-219 — the run mode: container keeps the sandbox, local runs free
 
   test("a run picks its prompt from PENSIEVE_RUNNER on that request, not the process default", async () => {
     const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
     const local = new FakeClaude({ sessionId: "run-local" });
     await collect(
       askStream(
         { messages: [user("where does it stand")], threadId: "runmode-1" },
         {
           adapter: local,
+          citadelDataDir,
+          citadelDir,
           env: { PENSIEVE_RUNNER: "local" },
           middleware: [],
           status: available,
           store,
+          worktreesDir,
         }
       )
     );
@@ -1183,10 +1241,13 @@ describe("CTD-219 — the run mode: container keeps the sandbox, local runs free
         { messages: [user("/scope add bulk delete")], threadId: "runmode-2" },
         {
           adapter: localScope,
+          citadelDataDir,
+          citadelDir,
           env: { PENSIEVE_RUNNER: "local" },
           middleware: [],
           status: available,
           store,
+          worktreesDir,
         }
       )
     );
@@ -1204,6 +1265,165 @@ describe("CTD-219 — the run mode: container keeps the sandbox, local runs free
       )
     );
     expect(stillContainer.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
+  });
+});
+
+describe("CTD-221 — local Ask conversations run in their own worktrees, rebased per question", () => {
+  test("WORKTREES_DIR sits under PENSIEVE_HOME, beside conversations/", () => {
+    expect(WORKTREES_DIR).toBe(join(HOME, "worktrees"));
+  });
+
+  test("worktreeAdapterOverrides: no worktrees is no override; worktrees point ARGUS_ROOT and addDirs at citadel-data", () => {
+    expect(worktreeAdapterOverrides(undefined)).toEqual({});
+    expect(
+      worktreeAdapterOverrides({
+        citadel: "/w/t/citadel",
+        citadelData: "/w/t/citadel-data",
+      })
+    ).toEqual({
+      addDirs: ["/w/t/citadel-data"],
+      env: { ARGUS_ROOT: "/w/t/citadel-data" },
+    });
+  });
+
+  test("conflictPrompt names the worktree and every conflicted file", () => {
+    const prompt = conflictPrompt("/w/t/citadel-data", ["ledger.json", "a.md"]);
+    expect(prompt).toContain("ledger.json, a.md");
+    expect(prompt).toContain("/w/t/citadel-data");
+    expect(prompt).toMatch(/rebase --continue/);
+    expect(prompt).toMatch(/Name the files you resolved/);
+  });
+
+  test("worktreeSandboxMiddleware builds middleware without touching disk", () => {
+    const mw = worktreeSandboxMiddleware("/some/worktree/that/does/not/exist");
+    expect(mw.provides).toEqual(ask.sandboxMiddleware.provides);
+    expect(typeof mw.name).toBe("string");
+  });
+
+  test("the first question creates the worktrees and runs there; ARGUS_ROOT and addDirs point at citadel-data, not the live checkout", async () => {
+    const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const adapter = new FakeClaude({ sessionId: "s1" });
+    await collect(
+      askStream(
+        { messages: [user("where does it stand")], threadId: "wt-1" },
+        {
+          adapter,
+          citadelDataDir,
+          citadelDir,
+          env: { PENSIEVE_RUNNER: "local" },
+          middleware: [],
+          status: available,
+          store,
+          worktreesDir,
+        }
+      )
+    );
+    // No conflict on a first question: no extra prompt ahead of the local Ask one.
+    expect(adapter.calls[0].systemPrompts).toEqual([LOCAL_ASK_SYSTEM_PROMPT]);
+
+    const paths = {
+      citadel: join(worktreesDir, "wt-1", "citadel"),
+      citadelData: join(worktreesDir, "wt-1", "citadel-data"),
+    };
+    expect(await readFile(join(paths.citadelData, "ledger.json"), "utf8")).toBe(
+      "{}\n"
+    );
+    expect(
+      execFileSync(
+        "git",
+        ["-C", paths.citadel, "rev-parse", "--abbrev-ref", "HEAD"],
+        {
+          encoding: "utf8",
+        }
+      ).trim()
+    ).toBe("ask/wt-1");
+    // The live checkouts are never touched.
+    expect(
+      execFileSync("git", ["-C", citadelDataDir, "status", "--porcelain"], {
+        encoding: "utf8",
+      })
+    ).toBe("");
+  });
+
+  test("a later question rebases citadel-data onto main, so a ledger committed since the last question is read; a conflict is named in the run's first prompt", async () => {
+    const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+
+    const first = new FakeClaude({ sessionId: "s1" });
+    await collect(
+      askStream(
+        { messages: [user("where does it stand")], threadId: "wt-2" },
+        {
+          adapter: first,
+          citadelDataDir,
+          citadelDir,
+          env: { PENSIEVE_RUNNER: "local" },
+          middleware: [],
+          status: available,
+          store,
+          worktreesDir,
+        }
+      )
+    );
+
+    const paths = { citadelData: join(worktreesDir, "wt-2", "citadel-data") };
+    // The worktree edits the same line a sweep tick on main also edits — a rebase collision.
+    await commitFile(
+      paths.citadelData,
+      "ledger.json",
+      '{"from":"worktree"}\n',
+      "worktree edit"
+    );
+    await commitFile(
+      citadelDataDir,
+      "ledger.json",
+      '{"from":"main"}\n',
+      "sweep tick"
+    );
+
+    const second = new FakeClaude({ sessionId: "s1" });
+    await collect(
+      askStream(
+        { messages: [user("what changed")], threadId: "wt-2" },
+        {
+          adapter: second,
+          citadelDataDir,
+          citadelDir,
+          env: { PENSIEVE_RUNNER: "local" },
+          middleware: [],
+          status: available,
+          store,
+          worktreesDir,
+        }
+      )
+    );
+    expect(second.calls[0].systemPrompts).toHaveLength(2);
+    expect(second.calls[0].systemPrompts[0]).toContain("ledger.json");
+    expect(second.calls[0].systemPrompts[0]).toMatch(/mid-rebase/);
+    expect(second.calls[0].systemPrompts[1]).toBe(LOCAL_ASK_SYSTEM_PROMPT);
+  });
+
+  test("container mode never touches a worktree", async () => {
+    const store = conversationStore(await scratch());
+    const adapter = new FakeClaude({ sessionId: "s1" });
+    await collect(
+      askStream(
+        { messages: [user("where does it stand")], threadId: "wt-3" },
+        {
+          adapter,
+          env: { PENSIEVE_RUNNER: "container" },
+          middleware: [],
+          status: available,
+          store,
+        }
+      )
+    );
+    expect(adapter.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
   });
 });
 
@@ -1311,7 +1531,7 @@ describe("AC6 (LIA-102) / AC5 (LIA-104) — auth mode, availability, and what th
         { messages: [user("hi")], threadId: "th7" },
         {
           adapter,
-          env: { ANTHROPIC_API_KEY: "k" },
+          env: { ANTHROPIC_API_KEY: "k", PENSIEVE_RUNNER: "container" },
           middleware: [],
           status: available,
           store,
@@ -1321,7 +1541,13 @@ describe("AC6 (LIA-102) / AC5 (LIA-104) — auth mode, availability, and what th
     await collect(
       askStream(
         { messages: [user("hi")], threadId: "th8" },
-        { adapter, env: {}, middleware: [], status: available, store }
+        {
+          adapter,
+          env: { PENSIEVE_RUNNER: "container" },
+          middleware: [],
+          status: available,
+          store,
+        }
       )
     );
     expect(adapter.calls[0].modelOptions?.authMode).toBe("api-key");
@@ -1534,7 +1760,13 @@ describe("AC4 (LIA-104) — a run that fails before its session id", () => {
     const chunks = await collect(
       askStream(
         { messages: [user("hi")], threadId: "auth1" },
-        { adapter, env: {}, middleware: [], status: available, store }
+        {
+          adapter,
+          env: { PENSIEVE_RUNNER: "container" },
+          middleware: [],
+          status: available,
+          store,
+        }
       )
     ).catch((e: unknown) => {
       // The engine rethrows after the chunk went out; what matters is what went out and what is on disk.

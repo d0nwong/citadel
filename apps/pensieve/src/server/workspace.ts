@@ -32,6 +32,16 @@ export const ARGUS_DIR = resolve(
     WORKSPACE_DIR
 );
 
+/**
+ * citadel's own repo root — the checkout `apps/pensieve` and `apps/argus` live in, and what a
+ * local-mode conversation's citadel worktree is cut from (CTD-221). `CITADEL_DIR` names it
+ * directly; otherwise two directories up from where this process runs (`apps/pensieve` in the
+ * monorepo), the same layout `ARGUS_DIR`'s own default assumes for `apps/argus`.
+ */
+export const CITADEL_DIR = resolve(
+  process.env.CITADEL_DIR || join(process.cwd(), "..", "..")
+);
+
 /** Workspace directories that are never an app, so the scan does not descend into them. */
 const NOT_APPS = new Set([
   "reports",

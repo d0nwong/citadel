@@ -8,9 +8,16 @@
  * read-only allowlist, so the checkout is never touched; the adapter's per-run runner files
  * land in the checkout for the run's duration and are removed in its `finally` — `git status`
  * is unchanged afterwards. In local mode — the host's default — the process runs with
- * `bypassPermissions` and the operator's own `~/.claude`, exactly as a terminal session would.
- * Pensieve's own rule holds in both: in the blackboard it writes `decisions/` and nothing
- * else, and Ask writes only under `PENSIEVE_HOME` (default `~/.pensieve`).
+ * `bypassPermissions` and the operator's own `~/.claude`, exactly as a terminal session would,
+ * but never against the live checkouts: a conversation's first question cuts its own
+ * `citadel` and `citadel-data` worktrees on branch `ask/<id>` under `PENSIEVE_HOME/worktrees/`
+ * (CTD-221; see `worktrees.ts`), and every run in that conversation works there — the citadel
+ * worktree's argus directory as its sandbox, the citadel-data worktree as `ARGUS_ROOT`. Before
+ * each later question the citadel-data branch is rebased onto main, so a ledger the sweep
+ * committed since the last question is what the run reads; a conflict is left for the run
+ * itself to resolve first (`conflictPrompt`). Pensieve's own rule holds in both modes: in the
+ * blackboard it writes `decisions/` and nothing else, and Ask writes only under
+ * `PENSIEVE_HOME` (default `~/.pensieve`) — a local run's worktrees included.
  *
  * Two tools are bridged into the run: `propose_decision` (LIA-111, retargeted by LIA-162)
  * and `propose_ticket` (LIA-113). A bridged tool always executes when the model calls it,
@@ -89,7 +96,9 @@ const isFeature = (v: unknown): v is string =>
   typeof v === "string" && /^[a-z0-9-]+(\/[a-z0-9-]+)?$/.test(v);
 
 import { proposeDecisionTool, proposeTicketTool } from "./ask-tools.server";
-import { ARGUS_DIR, WORKSPACE_DIR } from "./workspace";
+import { ARGUS_DIR, CITADEL_DIR, WORKSPACE_DIR } from "./workspace";
+import type { EnsureWorktreesResult, WorktreePaths } from "./worktrees";
+import { ensureWorktrees } from "./worktrees";
 
 // ── configuration ──────────────────────────────────────────────────────────────
 
@@ -98,6 +107,8 @@ export const PENSIEVE_HOME = resolve(
   process.env.PENSIEVE_HOME || join(homedir(), ".pensieve")
 );
 export const CONVERSATIONS_DIR = join(PENSIEVE_HOME, "conversations");
+/** A local-mode conversation's worktrees (CTD-221) — `worktrees/<threadId>/{citadel,citadel-data}`. */
+export const WORKTREES_DIR = join(PENSIEVE_HOME, "worktrees");
 
 /** The claude binary's own model alias; the CLI resolves it. */
 export const MODEL = "opus";
@@ -325,6 +336,48 @@ export const sandboxMiddleware: ChatMiddleware = {
   ...withSandbox(sandbox),
   provides: [SandboxCapability] as const,
 };
+
+/**
+ * A local-mode run's own sandbox (CTD-221, AC1, AC2): the working directory is argus's
+ * directory inside the conversation's citadel worktree, not the live checkout `sandbox`
+ * above is pinned to. The local-process provider resolves a given `dir` as a real host
+ * directory and never removes it, so this is safe to build per run.
+ */
+export function worktreeSandboxMiddleware(
+  citadelWorktree: string
+): ChatMiddleware {
+  const worktreeSandbox = defineSandbox({
+    fileEvents: false,
+    id: "ask",
+    provider: localProcessSandbox({ dir: join(citadelWorktree, "apps/argus") }),
+  });
+  return {
+    ...withSandbox(worktreeSandbox),
+    provides: [SandboxCapability] as const,
+  };
+}
+
+/**
+ * Local mode's data override, once a run has its worktrees (S-33, S-47): the citadel-data
+ * worktree instead of the live checkout `ADAPTER_CONFIG.addDirs` / `.env.ARGUS_ROOT` name.
+ */
+export const worktreeAdapterOverrides = (
+  worktrees: WorktreePaths | undefined
+): Partial<ClaudeCodeTextConfig> =>
+  worktrees
+    ? {
+        addDirs: [worktrees.citadelData],
+        env: { ARGUS_ROOT: worktrees.citadelData },
+      }
+    : {};
+
+/**
+ * Prepended when a later question's rebase left the citadel-data worktree mid-conflict
+ * (S-37): the run's first job, before it answers, is to resolve each file and finish the
+ * rebase, then say in its reply which files it resolved.
+ */
+export const conflictPrompt = (worktree: string, files: string[]) =>
+  `Rebasing this conversation's citadel-data worktree onto main left it mid-rebase, with conflicts in: ${files.join(", ")}. Before answering the question below: resolve each conflict in ${worktree}, \`git -C ${worktree} add\` the resolved files, then \`git -C ${worktree} rebase --continue\`. Name the files you resolved in your reply.`;
 
 // ── availability ───────────────────────────────────────────────────────────────
 
@@ -818,27 +871,70 @@ export const scopeModeOf = (
 };
 
 /**
+ * Local mode only (CTD-221): the worktree step between `acquireThread` and `runSetup` — the
+ * first question on a thread cuts its worktrees, every later one rebases citadel-data onto
+ * main. Container mode never calls `ensureWorktrees` at all (out of scope for this ticket).
+ */
+function localWorktrees(
+  runner: RunMode,
+  threadId: string,
+  opts: AskRunOptions
+): Promise<EnsureWorktreesResult | undefined> {
+  if (runner !== "local") {
+    return Promise.resolve(undefined);
+  }
+  return ensureWorktrees({
+    citadelDataDir: opts.citadelDataDir ?? WORKSPACE_DIR,
+    citadelDir: opts.citadelDir ?? CITADEL_DIR,
+    threadId,
+    worktreesDir: opts.worktreesDir ?? WORKTREES_DIR,
+  });
+}
+
+/** The run's sandbox: the conversation's citadel worktree once it has one, the live checkout otherwise. */
+const sandboxFor = (
+  worktrees: EnsureWorktreesResult | undefined
+): ChatMiddleware =>
+  worktrees ? worktreeSandboxMiddleware(worktrees.citadel) : sandboxMiddleware;
+
+/**
  * The adapter overrides and system prompts for a run: the scope skill's or Ask's, container's
- * or local's (CTD-219). `askAdapter` always merges its argument over `ADAPTER_CONFIG`, so the
- * container branches pass only what they change (`{}`, `SCOPE_ADAPTER_CONFIG`) while the local
- * branches pass a whole `LOCAL_*` config — its explicit `allowedTools`/`disallowedTools:
- * undefined` is what clears the container's lists rather than leaving them under the merge.
+ * or local's (CTD-219), with local's worktrees (CTD-221) laid over that. `askAdapter` always
+ * merges its argument over `ADAPTER_CONFIG`, so the container branches pass only what they
+ * change (`{}`, `SCOPE_ADAPTER_CONFIG`) while the local branches pass a whole `LOCAL_*` config
+ * — its explicit `allowedTools`/`disallowedTools: undefined` is what clears the container's
+ * lists rather than leaving them under the merge — plus `worktreeAdapterOverrides`, which
+ * point the data at the conversation's citadel-data worktree instead of the live checkout.
+ * A conflict left by that worktree's rebase (S-37) becomes the run's first system prompt.
  */
 const runSetup = (
   scope: boolean,
   feature: string | undefined,
-  mode: RunMode
+  mode: RunMode,
+  worktrees?: EnsureWorktreesResult
 ) => {
   const local = mode === "local";
+  const overrides = worktreeAdapterOverrides(local ? worktrees : undefined);
+  const conflictPrompts =
+    local && worktrees?.conflict.length
+      ? [conflictPrompt(worktrees.citadelData, worktrees.conflict)]
+      : [];
   if (scope) {
     return {
-      adapter: local ? LOCAL_SCOPE_ADAPTER_CONFIG : SCOPE_ADAPTER_CONFIG,
-      systemPrompts: [local ? LOCAL_SCOPE_SYSTEM_PROMPT : SCOPE_SYSTEM_PROMPT],
+      adapter: {
+        ...(local ? LOCAL_SCOPE_ADAPTER_CONFIG : SCOPE_ADAPTER_CONFIG),
+        ...overrides,
+      },
+      systemPrompts: [
+        ...conflictPrompts,
+        local ? LOCAL_SCOPE_SYSTEM_PROMPT : SCOPE_SYSTEM_PROMPT,
+      ],
     };
   }
   return {
-    adapter: local ? LOCAL_ADAPTER_CONFIG : {},
+    adapter: local ? { ...LOCAL_ADAPTER_CONFIG, ...overrides } : {},
     systemPrompts: [
+      ...conflictPrompts,
       local ? LOCAL_ASK_SYSTEM_PROMPT : ASK_SYSTEM_PROMPT,
       ...(feature ? [featurePrompt(feature)] : []),
     ],
@@ -951,6 +1047,10 @@ export interface AskInput {
 export interface AskRunOptions {
   abortController?: AbortController;
   adapter?: AnyTextAdapter;
+  /** Local mode only: citadel-data's repo root, cut from its local `main`. Defaults to `WORKSPACE_DIR`. */
+  citadelDataDir?: string;
+  /** Local mode only (CTD-221): citadel's repo root, cut from `origin/main`. Defaults to `CITADEL_DIR`. */
+  citadelDir?: string;
   env?: NodeJS.ProcessEnv;
   /** Middleware ahead of persistence; the sandbox by default. Tests pass `[]` with a fake adapter. */
   middleware?: ChatMiddleware[];
@@ -958,6 +1058,8 @@ export interface AskRunOptions {
   name?: (firstTurn: string) => Promise<string | null>;
   status?: () => Promise<AskStatus>;
   store?: ConversationStore;
+  /** Local mode only: where a conversation's worktrees live. Defaults to `WORKTREES_DIR`. */
+  worktreesDir?: string;
 }
 
 /**
@@ -1151,6 +1253,10 @@ export async function* askStream(
   const diagnosis = diagnosisLine(status, auth);
   const release = await acquireThread(input.threadId);
   try {
+    // Local mode only (CTD-221): the first question cuts the conversation's worktrees,
+    // every later one rebases citadel-data onto main. Between the thread lock and the run
+    // setup, so it also serialises the git calls per thread (S-15).
+    const worktrees = await localWorktrees(runner, input.threadId, opts);
     const sessionId = await readSessionId(store, input.threadId);
     const modelMessages = convertMessagesToModelMessages(input.messages);
     let firstTurn = titleOf(modelMessages);
@@ -1181,7 +1287,7 @@ export async function* askStream(
       firstTurn,
       latestTurn
     );
-    const setup = runSetup(scope.on, feature, runner);
+    const setup = runSetup(scope.on, feature, runner, worktrees);
     const harness = harnessLog();
     let lastError: LastError | undefined;
     const recordError = async (message: string, code: string | undefined) => {
@@ -1268,7 +1374,7 @@ export async function* askStream(
       },
     });
     const middleware: ChatMiddleware[] = [
-      ...(opts.middleware ?? [sandboxMiddleware]),
+      ...(opts.middleware ?? [sandboxFor(worktrees)]),
       withPersistence(store.persistence, { snapshotStreaming: true }),
       recorder,
     ];
