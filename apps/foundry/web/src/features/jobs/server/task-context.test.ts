@@ -100,6 +100,11 @@ describe('linkedIssueIds', () => {
   test('a task written as instructions fetches the ticket it links', () => {
     expect(linkedIssueIds('Implement https://linear.app/acme/issue/ALD-45/slug, keep it small')).toEqual(['ALD-45'])
   })
+
+  test('a Trello card brief does not fetch its own card either, only the ones it links', () => {
+    const brief = 'AP-45: title\nhttps://trello.com/c/abc123\n\nBlocked by ALD-44. Related to AP-45.'
+    expect(linkedIssueIds(brief)).toEqual(['ALD-44'])
+  })
 })
 
 describe('hydrateTask', () => {
@@ -263,10 +268,22 @@ describe('the revision source', () => {
     expect(out.task.indexOf('### CTD-901: CTD-901 title')).toBeLessThan(out.task.indexOf('### Spec: foundry/jobs'))
   })
 
+  test('AC1/AC3: a brief for an AP sub-card whose parent has a filed revision gets its specs and arch docs, same as a Linear one', async () => {
+    const apBrief = 'AP-207: title\nhttps://trello.com/c/abc123\n\nNo files named.'
+    const calls: Array<string> = []
+    const out = await hydrateTask(apBrief, work, deps({ 'AP-207': 'CTD-900' }, {}, calls))
+    expect(calls).toEqual(['AP-207'])
+    expect(out.task).toContain('### Spec: foundry/jobs')
+    expect(out.task).toContain('### Arch: foundry/jobs')
+    // the card's own brief is already the task; it must not also appear as a linked ticket block.
+    expect(out.task).not.toContain('### AP-207:')
+  })
+
   test('AC2: no parent, no revision, a draft, no data dir, no key, a failed fetch: nothing added, one sys line says which', async () => {
     const plain = (id: string) => brief(id, 'No files named.')
     const cases: Array<[string, ContextDeps, string]> = [
       ['CTD-902', deps({ 'CTD-902': undefined }), 'context: no revision — CTD-902 has no parent'],
+      ['AP-208', deps({ 'AP-208': undefined }), 'context: no revision — AP-208 has no parent'],
       ['CTD-903', deps({ 'CTD-903': 'CTD-999' }), 'context: no revision for CTD-999'],
       ['CTD-801', deps({ 'CTD-801': 'CTD-800' }), 'context: no revision — revisions/CTD-800 is draft, not filed'],
       ['CTD-901', deps({ 'CTD-901': 'CTD-900' }, { dataDir: '/nowhere/citadel-data' }), 'context: no revision — no citadel-data at /nowhere/citadel-data'],
