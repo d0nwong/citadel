@@ -43,5 +43,6 @@ export {
   trelloProvider,
   trelloTicketStates,
   trelloUpdate,
+  trelloViewerId,
 } from "./trello.ts";
 export type { TrelloOptions } from "./trello.ts";

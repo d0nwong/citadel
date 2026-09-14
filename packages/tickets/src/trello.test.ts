@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { MissingCredentialError } from "./errors.ts";
-import { TRELLO_BOARD_ID, TRELLO_CHECKLIST_NAME, TRELLO_PIPELINE_LIST, trelloCreate, trelloGet, trelloListOpen, trelloTicketStates, trelloUpdate } from "./trello.ts";
+import { TRELLO_BOARD_ID, TRELLO_CHECKLIST_NAME, TRELLO_PIPELINE_LIST, trelloCreate, trelloGet, trelloListOpen, trelloTicketStates, trelloUpdate, trelloViewerId } from "./trello.ts";
 
 const now = new Date("2026-09-14T10:00:00Z");
 
@@ -431,5 +431,25 @@ describe("trelloUpdate", () => {
     await expect(trelloUpdate("CTD-1", {}, { trelloKey: "k", trelloToken: "tok" })).rejects.toThrow("CTD-1 is not an AP card");
     const f = fakeWrite({ cards: [], lists: TEN_LISTS });
     await expect(trelloUpdate("AP-999", {}, { fetch: f, trelloKey: "k", trelloToken: "tok" })).rejects.toThrow("no such card AP-999");
+  });
+});
+
+describe("trelloViewerId", () => {
+  test("the credential's own member id", async () => {
+    const id = await trelloViewerId({ fetch: fakeFetch({ cards: [], lists: [], me: { id: "u1" } }), trelloKey: "k", trelloToken: "t" });
+    expect(id).toBe("u1");
+  });
+
+  test("no credential answers null without asking Trello", async () => {
+    const calls: string[] = [];
+    const id = await trelloViewerId({ fetch: fakeFetch({ cards: [], lists: [] }, calls), trelloKey: null, trelloToken: "t" });
+    expect(id).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  test("an unreachable board answers null rather than throwing", async () => {
+    const failing = (async () => new Response("nope", { status: 500 })) as unknown as typeof fetch;
+    const id = await trelloViewerId({ fetch: failing, trelloKey: "k", trelloToken: "t" });
+    expect(id).toBeNull();
   });
 });

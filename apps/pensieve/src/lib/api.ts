@@ -16,7 +16,7 @@ import type {
   FiledTicket,
 } from "#/server/ask";
 import type { FoundryJob, FoundryRepo } from "#/server/foundry";
-import type { Home, LedgerRef } from "#/server/ledger";
+import type { Home, LedgerRef, PipelineCard } from "#/server/ledger";
 import type { LinearConfig } from "#/server/linear";
 import type { Json } from "#/server/workspace";
 
@@ -376,21 +376,92 @@ export const fileTicket = createServerFn({ method: "POST" })
 
 // ── the board, a feature, and the triage queue (LIA-160, CTD-167) ──────────────
 
+/**
+ * The Alden board's Pipeline and High Priority Pipeline cards, whichever the ledgers do or
+ * don't already track — a revision's parent card (the one whose checklist lists its
+ * sub-cards) is left out, since its sub-cards are the work (AC3). With no Trello credential,
+ * or the board unreachable, there is simply nothing to add here.
+ */
+async function pipelineCandidates(
+  tickets: typeof import("@citadel/tickets")
+): Promise<PipelineCard[]> {
+  let open: Awaited<ReturnType<typeof tickets.listOpenTickets>>;
+  try {
+    open = await tickets.listOpenTickets({ team: "AP" });
+  } catch {
+    return [];
+  }
+  const candidates = open.filter(
+    (t) => t.state.state === "open" && t.state.stage === "unstarted"
+  );
+  // A card referenced as some other candidate's parent is the revision's parent, not the work.
+  const parents = new Set<string>();
+  for (const t of candidates) {
+    try {
+      const full = await tickets.getTicket(t.key);
+      if (full?.parentKey) {
+        parents.add(full.parentKey);
+      }
+    } catch {
+      // a checklist that could not be read leaves this card's parent unknown; it stays a candidate
+    }
+  }
+  return candidates
+    .filter((t) => !parents.has(t.key))
+    .map((t) => {
+      const s = t.state;
+      return {
+        highPriority: s.state === "open" && s.name === "High Priority Pipeline",
+        key: t.key,
+        state: s,
+        title: t.title,
+      };
+    });
+}
+
 /** The home page: on you, ready, unplaced, and one line per feature. */
 export const getHome = createServerFn({ method: "GET" }).handler(
   async (): Promise<Home> => {
     const l = await import("#/server/ledger");
+    const lib = await import("#/lib/ledger");
     const ask = await import("#/server/ask");
     const linear = await import("#/server/linear");
-    // Tickets filed from Ask with no feature have no ledger; Linear says when they are done.
+    const tickets = await import("@citadel/tickets");
+
+    // Tickets filed from Ask with no feature have no ledger; their provider says when they are done (AC1).
     const loose = (await ask.listFiledTickets()).filter((t) => !t.feature);
-    const states = await linear.issueStates(
-      loose.map((t) => t.id).filter(Boolean)
+
+    // Every ledger's own ready tickets, so their live state and assignee can be read in one batch (AC2).
+    const { ledgers } = await l.listLedgers();
+    const ledgerKeys = ledgers.flatMap(({ ledger }) =>
+      lib.readyTickets(ledger).map((t) => t.key)
     );
-    const open = loose.filter(
-      (t) => !["completed", "canceled"].includes(states.types[t.id] ?? "")
+    const states = await tickets.ticketStates([
+      ...ledgerKeys,
+      ...loose.map((t) => t.identifier),
+    ]);
+
+    const open = loose.filter((t) => {
+      const s = states(t.identifier);
+      return s.state !== "done" && s.state !== "canceled";
+    });
+
+    // Liam's own id on each provider — whose tickets, and Pipeline cards, are his to work on.
+    const [{ viewerId: linearViewer }, trelloViewer, pipelineCards] =
+      await Promise.all([
+        linear.knownProjects(),
+        tickets.trelloViewerId(),
+        pipelineCandidates(tickets),
+      ]);
+
+    return l.home(
+      undefined,
+      undefined,
+      open,
+      states,
+      { linear: linearViewer ?? null, trello: trelloViewer },
+      pipelineCards
     );
-    return l.home(undefined, undefined, open);
   }
 );
 

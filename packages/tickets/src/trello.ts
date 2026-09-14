@@ -162,6 +162,18 @@ function listIdFor(name: string, lists: TrelloList[]): string {
   return found.id;
 }
 
+/** the credential's own member id, or `null` with no credential or an unreachable board */
+export async function trelloViewerId(opts: TrelloOptions = {}): Promise<string | null> {
+  const key = keyOf(opts);
+  const token = tokenOf(opts);
+  if (missingCredential(key, token)) return null;
+  try {
+    return (await trelloViewer(opts, key!, token!)).id;
+  } catch {
+    return null;
+  }
+}
+
 const NUMBER_IN_URL = /\/c\/[^/]+\/(\d+)(?:-|$)/;
 
 /** `idShort` when Trello answered one, else the number its own `url` shows */
