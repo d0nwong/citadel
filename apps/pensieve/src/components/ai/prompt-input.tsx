@@ -36,7 +36,7 @@ export function PromptInputTextarea({
   return (
     <textarea
       className={cn(
-        "max-h-40 min-h-12 w-full resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted-foreground",
+        "field-sizing-content max-h-40 min-h-12 w-full resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted-foreground",
         className
       )}
       rows={1}
