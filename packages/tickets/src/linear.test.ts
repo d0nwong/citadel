@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { LINEAR_API_URL, linearGet, linearTicketStates, stateOf } from "./linear.ts";
+import { LINEAR_API_URL, linearGet, linearListOpen, linearTicketStates, stateOf } from "./linear.ts";
 
 const now = new Date("2026-09-13T10:00:00Z");
 const node = (identifier: string, type: string, extra: Record<string, unknown> = {}) => ({
@@ -90,5 +90,43 @@ describe("linearGet", () => {
     await expect(linearGet("CTD-1", { apiKey: null })).rejects.toThrow("LINEAR_API_KEY");
     const f = (async () => new Response(JSON.stringify({ errors: [{ message: "not found" }] }))) as unknown as typeof fetch;
     await expect(linearGet("CTD-1", { fetch: f, apiKey: "k" })).rejects.toThrow("not found");
+  });
+});
+
+describe("linearListOpen", () => {
+  const openBody = (nodes: unknown[], viewerId = "u1") => JSON.stringify({ data: { viewer: { id: viewerId }, issues: { nodes } } });
+
+  test("a team filter is sent when given, and left off the query otherwise", async () => {
+    const calls: { variables: { filter: Record<string, unknown> } }[] = [];
+    const f = (async (_url: string | URL | Request, init?: RequestInit) => {
+      calls.push(JSON.parse(String(init?.body)));
+      return new Response(openBody([node("CTD-9", "started")]));
+    }) as unknown as typeof fetch;
+    await linearListOpen({ fetch: f, apiKey: "k", now, team: "CTD" });
+    expect(calls[0]!.variables.filter).toEqual({ state: { type: { nin: ["completed", "canceled"] } }, team: { key: { eq: "CTD" } } });
+    await linearListOpen({ fetch: f, apiKey: "k", now });
+    expect(calls[1]!.variables.filter).toEqual({ state: { type: { nin: ["completed", "canceled"] } } });
+  });
+
+  test("the nodes come back as tickets, parent included, in the state the query already scoped to open", async () => {
+    const f = (async () =>
+      new Response(openBody([node("CTD-9", "started", { title: "t", description: "d", parent: { identifier: "CTD-1" } })]))) as unknown as typeof fetch;
+    const tickets = await linearListOpen({ fetch: f, apiKey: "k", now });
+    expect(tickets).toEqual([
+      { key: "CTD-9", title: "t", url: "https://linear.app/x/issue/CTD-9", description: "d", state: { state: "open", name: "In Progress", url: "https://linear.app/x/issue/CTD-9", provider: "linear" }, parentKey: "CTD-1" },
+    ]);
+  });
+
+  test("--mine keeps the viewer's own issues, --unassigned keeps the assignee-less ones", async () => {
+    const nodes = [node("CTD-1", "started", { title: "mine", assignee: { id: "u1" } }), node("CTD-2", "started", { title: "theirs", assignee: { id: "u2" } }), node("CTD-3", "started", { title: "nobody's" })];
+    const f = (async () => new Response(openBody(nodes, "u1"))) as unknown as typeof fetch;
+    const mine = await linearListOpen({ fetch: f, apiKey: "k", now, mine: true });
+    expect(mine.map((t) => t.key)).toEqual(["CTD-1"]);
+    const unassigned = await linearListOpen({ fetch: f, apiKey: "k", now, unassigned: true });
+    expect(unassigned.map((t) => t.key)).toEqual(["CTD-3"]);
+  });
+
+  test("no credential throws, naming the variable", async () => {
+    await expect(linearListOpen({ apiKey: null })).rejects.toThrow("LINEAR_API_KEY");
   });
 });

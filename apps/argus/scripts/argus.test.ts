@@ -122,6 +122,25 @@ describe("click verbs through the CLI", () => {
     const t = await argus("ticket", "admin/invoicing", "P-1", "ALD-60");
     expect(t.out).toContain("+ ALD-60 ready");
   });
+  test("ticket accepts an AP key exactly as it does an ALD key, in both the proposal and the bare form", async () => {
+    const t = await argus("ticket", "admin/invoicing", "P-1", "AP-60");
+    expect(t.out).toContain("+ AP-60 ready");
+    const bare = await argus("ticket", "admin/invoicing", "AP-77", "--title", "from Ask");
+    expect(bare.out).toContain("+ AP-77 ready");
+    const sent = await argus("sent", "admin/invoicing", "AP-77", "--repo", "alden-portal-fe", "--json");
+    expect(JSON.parse(sent.out)).toMatchObject({ ok: true, wrote: true });
+    const unknownTeam = await argus("ticket", "admin/invoicing", "XYZ-1", "--title", "nope");
+    expect(unknownTeam.code).toBe(1);
+    expect(unknownTeam.err).toContain("usage: argus ticket");
+  });
+  test("tracker: a missing key or sub-verb is a usage error", async () => {
+    const noSub = await argus("tracker");
+    expect(noSub.code).toBe(1);
+    expect(noSub.err).toContain("usage: argus tracker");
+    const noKey = await argus("tracker", "show");
+    expect(noKey.code).toBe(1);
+    expect(noKey.err).toContain("usage: argus tracker");
+  });
   test("dismiss needs an unplaced list too", async () => {
     const r = await argus("dismiss", "123");
     expect(r.code).toBe(1);

@@ -2,10 +2,12 @@
  * The Linear adapter (CTD-198). `states` batches keys by team and answers `TicketState`,
  * each one carrying the ticket's assignee (`assignee { id }` in the same query, for ticket
  * 13 to read); `get` answers one ticket by its identifier, with its parent's key when it has
- * one. One GraphQL query per team for `states`, so a run costs as many calls as there are
- * team keys among the tickets asked for. This is argus's old `linear.ts`, moved: the logic
- * is unchanged, so `ticketStates` for `ALD` and `CTD` keys settles exactly as before
- * (spec S-15). The other five verbs on `TicketProvider` are ticket 4's to write.
+ * one; `listOpen` answers the team's (or, unscoped, the workspace's) open issues, filtered
+ * for `--mine`/`--unassigned` against the same query's `viewer { id }` (CTD-200). One
+ * GraphQL query per team for `states`, so a run costs as many calls as there are team keys
+ * among the tickets asked for. This is argus's old `linear.ts`, moved: the logic is
+ * unchanged, so `ticketStates` for `ALD` and `CTD` keys settles exactly as before
+ * (spec S-15). `create`, `update`, `claim` and `link` are ticket 4's to write.
  *
  * Auth: `LINEAR_API_KEY` from the environment, read fresh per call so a key set after the
  * process started still counts. Without it `states` answers `unknown` for every key — a
@@ -15,7 +17,7 @@
  */
 
 import { splitKey } from "./key.ts";
-import type { Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
+import type { ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
 
 export const LINEAR_API_URL = "https://api.linear.app/graphql";
 
@@ -27,6 +29,13 @@ const STATES_QUERY = `query TicketStates($team: String!, $numbers: [Float!]!) {
 
 const GET_QUERY = `query TicketGet($id: String!) {
   issue(id: $id) { identifier url title description completedAt canceledAt state { name type } assignee { id } parent { identifier } }
+}`;
+
+const OPEN_QUERY = `query TicketsOpen($filter: IssueFilter) {
+  viewer { id }
+  issues(filter: $filter, first: 250, orderBy: updatedAt) {
+    nodes { identifier url title description state { name type } assignee { id } parent { identifier } }
+  }
 }`;
 
 type Node = {
@@ -120,17 +129,55 @@ export async function linearGet(key: string, opts: LinearOptions = {}): Promise<
   };
 }
 
+/**
+ * The team's (or, with no `--team`, the workspace's) open issues as `Ticket`s (CTD-200) —
+ * `openIssues` in `apps/pensieve/src/server/linear.ts`, generalised with assignee and the
+ * viewer's own id, read in the same query so `--mine` and `--unassigned` are filtered
+ * client-side rather than costing a second round trip. Throws, naming `LINEAR_API_KEY`,
+ * when there is no credential — a caller asking for the open list has nothing else to
+ * show.
+ */
+export async function linearListOpen(opts: LinearOptions & ListOpenOptions = {}): Promise<Ticket[]> {
+  const apiKey = keyOf(opts);
+  if (!apiKey) throw new Error("LINEAR_API_KEY is not set");
+  const now = opts.now ?? new Date();
+  const f = opts.fetch ?? fetch;
+  const filter: Record<string, unknown> = { state: { type: { nin: ["completed", "canceled"] } } };
+  if (opts.team) filter.team = { key: { eq: opts.team } };
+  const res = await f(LINEAR_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: apiKey },
+    body: JSON.stringify({ query: OPEN_QUERY, variables: { filter } }),
+  });
+  if (!res.ok) throw new Error(`linear: ${res.status}`);
+  const body = (await res.json()) as { data?: { viewer?: { id: string }; issues?: { nodes: IssueNode[] } }; errors?: { message: string }[] };
+  if (body.errors?.length) throw new Error(`linear: ${body.errors.map((e) => e.message).join("; ")}`);
+  const viewerId = body.data?.viewer?.id;
+  const nodes = body.data?.issues?.nodes ?? [];
+  return nodes
+    .filter((n) => !opts.unassigned || !n.assignee)
+    .filter((n) => !opts.mine || n.assignee?.id === viewerId)
+    .map((issue) => ({
+      key: issue.identifier,
+      title: issue.title,
+      url: issue.url,
+      description: issue.description ?? "",
+      state: stateOf(issue, now),
+      ...(issue.parent ? { parentKey: issue.parent.identifier } : {}),
+    }));
+}
+
 const notImplemented = (verb: string): never => {
   throw new Error(`tickets: Linear's "${verb}" is not implemented yet`);
 };
 
-/** the Linear adapter as a `TicketProvider`; only `get` and `states` are implemented (CTD-198) */
+/** the Linear adapter as a `TicketProvider`; `get`, `states` and `listOpen` are implemented (CTD-198, CTD-200) */
 export function linearProvider(opts: LinearOptions = {}): TicketProvider {
   return {
     name: "linear",
     get: (key) => linearGet(key, opts),
     states: (keys) => linearTicketStates(keys, opts),
-    listOpen: () => notImplemented("listOpen"),
+    listOpen: (listOpts) => linearListOpen({ ...opts, ...listOpts }),
     create: () => notImplemented("create"),
     update: () => notImplemented("update"),
     claim: () => notImplemented("claim"),

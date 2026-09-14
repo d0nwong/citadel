@@ -13,6 +13,7 @@
  * ticket, file, send) are added by their own files under scripts/argus/.
  */
 
+import { providerNameFor } from "@citadel/tickets";
 import { listFeatures, ledgerPath, root } from "./argus/paths.ts";
 import { validateDoc, validateLedger, validateSpec, ValidationError } from "./argus/validate.ts";
 import { archDocPath, isFeature, listApps, specDocPath } from "./argus/paths.ts";
@@ -27,6 +28,7 @@ import { readUnplaced } from "./argus/state.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
 import { seedFeature } from "./argus/seed.ts";
+import { trackerList, trackerShow } from "./argus/tracker.ts";
 import { closeAsk, confirmRequirement, dismissMessage, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketBare, recordTicketForAsk } from "./argus/verbs.ts";
 import { readLedger, writeLedger } from "./argus/write.ts";
 
@@ -69,15 +71,18 @@ const USAGE = `argus — the ledger CLI
   argus confirm <feature> <R-n>|--all --reason "<why>" [--contradict] [--by "<name>"]
   argus place <message-id> <feature>
   argus dismiss <message-id>         the message belongs to no feature; its thread is dropped from now on
-  argus file <feature> <P-n>|<A-n>   the ticket a proposal, or an ask, would become: title, body, team, project
-  argus ticket <feature> <P-n>|<A-n> <ALD-key> [--title "<t>"]
-  argus sent <feature> <ALD-key> --repo <name> [--job <id>]   record that Pensieve sent it to Foundry
+  argus file <feature> <P-n>|<A-n>   the ticket a proposal, or an ask, would become: title, body, and its destination
+  argus ticket <feature> <P-n>|<A-n> <key> [--title "<t>"]
+  argus sent <feature> <key> --repo <name> [--job <id>]   record that Pensieve sent it to Foundry
   argus seed <feature>...|--all [--force]  requirement rows from the product doc's BR table
 
   argus revision new <slug> --title "<t>" --feature <app>/<dir>[,…]   a draft under revisions/<slug>; the scope skill writes beside it
   argus revision show <slug|KEY>                       the record, from revisions/ or its archive
   argus revision file <slug> <KEY> --tickets K1,K2,…   the draft is filed on its parent; the directory takes the key
   argus revision drop <slug|KEY> --reason "<why>"      archived whole as dropped; nothing under revisions/ is ever deleted
+
+  argus tracker show <KEY>                             a ticket — key, title, state, assignee, url, description, parent — from whichever provider owns it
+  argus tracker list [--mine] [--unassigned] [--team <t>]   the open tickets that provider lists, across providers or narrowed to one
 
 flags: --dry-run  --json  --user (the write is a person's, not the model's)
 root: ${root()}`;
@@ -293,7 +298,7 @@ const verbs: Record<string, Verb> = {
     if (!feature || !proposalId) throw new Usage("file <feature> <P-n>|<A-n>");
     const d = proposalId.startsWith("A-") ? await draftForAsk(feature, proposalId) : await draftFor(feature, proposalId);
     if (f.json) console.log(JSON.stringify({ ok: true, ...d }));
-    else console.log(`${d.team} · ${d.project}\n# ${d.title}\n\n${d.body}`);
+    else console.log(`${d.board} · ${d.list} · ${d.label}\n# ${d.title}\n\n${d.body}`);
     return 0;
   },
 
@@ -308,8 +313,8 @@ const verbs: Record<string, Verb> = {
 
   async ticket(f) {
     const [feature, proposalId, key] = f.rest;
-    const usage = "ticket <feature> <P-n>|<A-n> <ALD-key> [--title] | ticket <feature> <ALD-key> --title <t>";
-    if (feature && proposalId && !key && /^[A-Z]+-\d+$/.test(proposalId) && !/^[PA]-/.test(proposalId)) {
+    const usage = "ticket <feature> <P-n>|<A-n> <key> [--title] | ticket <feature> <key> --title <t>";
+    if (feature && proposalId && !key && providerNameFor(proposalId) !== null) {
       if (!f.opts.title) throw new Usage(usage);
       return report(f, feature, await recordTicketBare(feature, proposalId, f.opts.title, { dryRun: f.dryRun }));
     }
@@ -320,8 +325,44 @@ const verbs: Record<string, Verb> = {
 
   async sent(f) {
     const [feature, key] = f.rest;
-    if (!feature || !key || !f.opts.repo) throw new Usage("sent <feature> <ALD-key> --repo <name> [--job <id>]");
+    if (!feature || !key || !f.opts.repo) throw new Usage("sent <feature> <key> --repo <name> [--job <id>]");
     return report(f, feature, await recordSent(feature, key, f.opts.repo, f.opts.job, { dryRun: f.dryRun }));
+  },
+
+  async tracker(f) {
+    const [sub, a] = f.rest;
+    const usage = "tracker show <KEY> | tracker list [--mine] [--unassigned] [--team <t>]";
+    switch (sub) {
+      case "show": {
+        if (!a) throw new Usage(usage);
+        const t = await trackerShow(a);
+        if (f.json) console.log(JSON.stringify({ ok: true, ticket: t }));
+        else {
+          const s = t.state;
+          console.log(`${t.key} — ${t.title}`);
+          console.log(`state: ${s.state}${s.state !== "unknown" ? ` (${s.name})` : ""}`);
+          if (s.state !== "unknown" && s.assignee) console.log(`assignee: ${s.assignee.id}`);
+          console.log(`url: ${t.url}`);
+          if (t.parentKey) console.log(`parent: ${t.parentKey}`);
+          if (t.description) console.log(`\n${t.description}`);
+        }
+        return 0;
+      }
+      case "list": {
+        const tickets = await trackerList({ mine: f.opts.mine === "true", unassigned: f.opts.unassigned === "true", team: f.opts.team });
+        if (f.json) console.log(JSON.stringify({ ok: true, tickets }));
+        else if (!tickets.length) console.log("nothing open");
+        else
+          for (const t of tickets) {
+            const s = t.state;
+            const assignee = s.state !== "unknown" && s.assignee ? ` [${s.assignee.id}]` : "";
+            console.log(`${t.key}  ${s.state === "unknown" ? s.state : s.name}${assignee}  ${t.title}`);
+          }
+        return 0;
+      }
+      default:
+        throw new Usage(usage);
+    }
   },
 
   async seed(f) {

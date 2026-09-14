@@ -23,3 +23,8 @@ export function providerNameFor(key: string): string | null {
   const split = splitKey(key);
   return split ? (PROVIDER_BY_TEAM[split[0]] ?? null) : null;
 }
+
+/** the provider that owns a bare team key (`"ALD"`, `"AP"`, …) — `tracker list --team <t>`'s routing, where there is no ticket number to split off */
+export function providerNameForTeam(team: string): string | null {
+  return PROVIDER_BY_TEAM[team] ?? null;
+}
