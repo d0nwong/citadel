@@ -15,7 +15,7 @@ bootstrap *phases:
 check:
     bun scripts/bootstrap.ts --check
 
-# Store one credential in .env: linear, slack, claude, foundry-api, gateway, gh or bitbucket.
+# Store one credential in .env: linear, slack, trello, claude, foundry-api, gateway, gh or bitbucket.
 auth what *flags:
     bun scripts/bootstrap.ts auth {{what}} {{flags}}
 

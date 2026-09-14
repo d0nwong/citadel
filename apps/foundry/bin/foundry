@@ -106,7 +106,7 @@ cmd_doctor() {
   else warn "no $ENVFILE — run: foundry auth"; fi
   # The other keys: names only, never a value.
   local have="" miss="" k
-  for k in SLACK_TOKEN LINEAR_API_KEY TRELLO_API_KEY TRELLO_TOKEN FOUNDRY_API_TOKEN; do
+  for k in SLACK_TOKEN LINEAR_API_KEY FOUNDRY_API_TOKEN; do
     if [ -n "${!k:-}" ]; then have="${have:+$have, }$k"; else miss="${miss:+$miss, }$k"; fi
   done
   if [ -n "$have" ]; then ok "keys: $have ${c_dim}(from ${ENVFILE/#$HOME/~})${c_0}"
@@ -169,20 +169,6 @@ auth_api_key() {
   local key; read -rsp "ANTHROPIC_API_KEY: " key; echo >&2
   [ -n "$key" ] || die "empty key"
   write_env ANTHROPIC_API_KEY "$key"; ok "stored ANTHROPIC_API_KEY in $ENVFILE"
-}
-
-# Trello has no MCP gateway server (unlike --linear/--slack), so the two keys
-# are typed here and written straight to the .env; nothing reads them until
-# a Trello ticket provider lands (CTD-203 is the write side only).
-auth_trello() {
-  local key tok
-  read -rsp "TRELLO_API_KEY: " key; echo >&2
-  [ -n "$key" ] || die "empty key"
-  read -rsp "TRELLO_TOKEN: " tok; echo >&2
-  [ -n "$tok" ] || die "empty token"
-  write_env TRELLO_API_KEY "$key"
-  write_env TRELLO_TOKEN "$tok"
-  ok "stored TRELLO_API_KEY and TRELLO_TOKEN in $ENVFILE — read fresh on every use, no restart needed"
 }
 
 # The trigger API's bearer token (web/README.md, "Trigger a job over HTTP").
@@ -278,11 +264,6 @@ auth_menu_rows() {
   if [ -n "${FOUNDRY_API_TOKEN:-}" ]; then st="${c_grn}✓${c_0} FOUNDRY_API_TOKEN ${c_dim}$(env_where FOUNDRY_API_TOKEN)${c_0}"
   else st="${c_red}✗${c_0} not configured"; fi
   MENU_ROWS+=("$(printf '%-8s %s' api "$st")"); MENU_ACTIONS+=(api)
-  if   [ -n "${TRELLO_API_KEY:-}" ] && [ -n "${TRELLO_TOKEN:-}" ]; then st="${c_grn}✓${c_0} TRELLO_API_KEY, TRELLO_TOKEN ${c_dim}$(env_where TRELLO_API_KEY)${c_0}"
-  elif [ -n "${TRELLO_API_KEY:-}" ]; then st="${c_yel}~${c_0} TRELLO_API_KEY set, TRELLO_TOKEN missing"
-  elif [ -n "${TRELLO_TOKEN:-}" ];   then st="${c_yel}~${c_0} TRELLO_TOKEN set, TRELLO_API_KEY missing"
-  else st="${c_red}✗${c_0} not configured"; fi
-  MENU_ROWS+=("$(printf '%-8s %s' trello "$st")"); MENU_ACTIONS+=(trello)
   while IFS=$'\t' read -r name var; do
     if [ -n "${!var:-}" ]; then st="${c_grn}✓${c_0} $var ${c_dim}${ENVFILE/#$HOME/~}${c_0}"
     else st="${c_red}✗${c_0} not configured"; fi
@@ -296,13 +277,12 @@ cmd_auth() {
     --claude)  auth_claude; return ;;
     --api-key) auth_api_key; return ;;
     --api)     auth_api "${2:-}"; return ;;
-    --trello)  auth_trello; return ;;
     --*)       auth_upstream "${1#--}"; return ;;
     "")        ;;
-    *) die "usage: foundry auth [--claude|--api-key|--api [--rotate]|--linear|--slack|--trello]" ;;
+    *) die "usage: foundry auth [--claude|--api-key|--api [--rotate]|--linear|--slack]" ;;
   esac
   if ! { [ -t 0 ] && [ -t 2 ]; }; then
-    die "no TTY for the picker — use foundry auth --claude|--api-key|--api|--linear|--slack|--trello"
+    die "no TTY for the picker — use foundry auth --claude|--api-key|--api|--linear|--slack"
   fi
   trap 'tput cnorm 2>/dev/null || true' EXIT
   local -a MENU_ROWS MENU_ACTIONS
@@ -322,7 +302,6 @@ cmd_auth() {
     case "${MENU_ACTIONS[MENU_CHOICE]}" in
       claude)     auth_claude ;;
       api)        auth_api --rotate ;;
-      trello)     auth_trello ;;
       upstream:*) auth_upstream "${MENU_ACTIONS[MENU_CHOICE]#upstream:}" ;;
     esac
     say ""
@@ -635,7 +614,6 @@ foundry — Claude Code forges on OrbStack
     foundry auth                      interactive: credentials + status, pick one to (re)auth
     foundry auth --claude|--api-key   store a Claude credential for all forges
     foundry auth --linear|--slack     link forges to argus's MCP gateway (the keys live in argus's .env)
-    foundry auth --trello             store TRELLO_API_KEY and TRELLO_TOKEN in the checkout's .env
     foundry auth --api [--rotate]     mint the bearer token for POST /api/jobs (web/README.md)
                                       every credential lands in the checkout's .env (gitignored);
                                       --api prints the line to paste into Pensieve's .env
