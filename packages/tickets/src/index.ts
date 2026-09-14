@@ -1,12 +1,15 @@
 /**
  * The tickets package (CTD-198, CTD-199): one provider interface for a ticket, routed by
  * the key's prefix. `ticketStates` and `getTicket` are the router — ask once per provider,
- * merge the answers, write nothing. `linearProvider` and `trelloProvider`, each with its two
- * standalone reads, are the adapters; `CTD` and `ALD` route to Linear, `AP` to Trello.
+ * merge the answers, write nothing. `claimTicket` is its one write, routed the same way.
+ * `linearProvider` and `trelloProvider`, each with its standalone reads, are the adapters;
+ * `CTD` and `ALD` route to Linear, `AP` to Trello. Foundry's job pipeline reads and claims
+ * through this package (CTD-204).
  */
 
+export { MissingCredentialError } from "./errors.ts";
 export { providerNameFor, splitKey } from "./key.ts";
-export { LINEAR_API_URL, linearGet, linearProvider, linearTicketStates, stateOf } from "./linear.ts";
+export { LINEAR_API_URL, linearClaim, linearGet, linearProvider, linearTicketStates, stateOf } from "./linear.ts";
 export type { LinearOptions } from "./linear.ts";
 export type {
   Assignee,
@@ -21,7 +24,7 @@ export type {
   UpdateTicketInput,
 } from "./provider.ts";
 export { providerLabel } from "./provider.ts";
-export { getTicket, ticketStates } from "./router.ts";
+export { claimTicket, getTicket, ticketStates } from "./router.ts";
 export type { TicketRouterOptions } from "./router.ts";
 export { cardNumber, cardState, TRELLO_API_URL, TRELLO_BOARD_ID, TRELLO_LISTS, trelloGet, trelloProvider, trelloTicketStates } from "./trello.ts";
 export type { TrelloOptions } from "./trello.ts";

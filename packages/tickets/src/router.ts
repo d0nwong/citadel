@@ -61,3 +61,15 @@ export async function getTicket(key: string, opts: TicketRouterOptions = {}): Pr
   if (!provider) return null;
   return provider.get(key);
 }
+
+/**
+ * Claims one ticket on the provider its key names. A write has no meaningful "unknown" to
+ * fall back to, so a key no provider owns, or a provider this run has none registered for,
+ * throws naming the key.
+ */
+export async function claimTicket(key: string, assigneeId?: string, opts: TicketRouterOptions = {}): Promise<void> {
+  const name = (opts.routeKey ?? providerNameFor)(key);
+  const provider = name ? providersFor(opts)[name] : undefined;
+  if (!provider) throw new Error(`tickets: no provider owns ${key}`);
+  await provider.claim(key, assigneeId);
+}

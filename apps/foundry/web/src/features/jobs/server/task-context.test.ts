@@ -1,8 +1,8 @@
 /**
  * The task's `## Context` (CTD-190) against a real git repo in a temp dir and a
- * stubbed Linear: what counts as a named file, what is carried whole, what is
- * listed as missing or not included, and that nothing here fails a job. No
- * database, no docker.
+ * stubbed tickets package: what counts as a named file, what is carried whole,
+ * what is listed as missing or not included, and that nothing here fails a
+ * job. No database, no docker.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { execFile } from 'node:child_process'
@@ -10,8 +10,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import { MissingCredentialError } from '@citadel/tickets'
+import type { Ticket } from '@citadel/tickets'
 import { ARG_BUDGET, CONTEXT_CAP, hydrateTask, linkedIssueIds, namedFiles } from './task-context'
-import type { LinearIssue } from './linear-link'
 import type { ContextDeps } from './task-context'
 
 const exec = promisify(execFile)
@@ -47,25 +48,25 @@ afterAll(async () => {
   await rm(work, { force: true, recursive: true })
 })
 
-const issue = (identifier: string): LinearIssue => ({
+const issue = (identifier: string): Ticket => ({
   description: `The ${identifier} description.`,
-  id: `uuid-${identifier}`,
-  identifier,
-  teamId: 'team',
+  key: identifier,
   title: `${identifier} title`,
   url: `https://linear.app/acme/issue/${identifier}/slug`,
+  state: { state: 'open', name: 'Todo', provider: 'linear', url: `https://linear.app/acme/issue/${identifier}/slug` },
 })
 
-/** A Linear that knows ALD-44 and ALD-45, knows nothing of UTF-8, and is down for ALD-500. */
+/** A tracker that knows ALD-44 and ALD-45, knows nothing of UTF-8, and is down for ALD-500. */
 const linear = (calls: Array<string> = []): ContextDeps => ({
-  fetchIssue: async (_key, id) => {
-    calls.push(id)
-    if (id === 'ALD-500') {
-      throw new Error('HTTP 503')
-    }
-    return id === 'ALD-44' || id === 'ALD-45' ? issue(id) : null
+  tickets: {
+    get: async (id) => {
+      calls.push(id)
+      if (id === 'ALD-500') {
+        throw new Error('HTTP 503')
+      }
+      return id === 'ALD-44' || id === 'ALD-45' ? issue(id) : null
+    },
   },
-  linearKey: 'lin_api_test',
 })
 
 describe('namedFiles', () => {
@@ -129,8 +130,9 @@ describe('hydrateTask', () => {
   })
 
   test('AC3: with no Linear key the id is carried with the reason, an err line is logged, and nothing throws', async () => {
-    const out = await hydrateTask('Blocked by ALD-44.', work, { ...linear(), linearKey: undefined })
-    expect(out.task).toContain('- ALD-44 — not fetched: no Linear key on the host')
+    const noKey: ContextDeps = { tickets: { get: async () => { throw new MissingCredentialError('LINEAR_API_KEY') } } }
+    const out = await hydrateTask('Blocked by ALD-44.', work, noKey)
+    expect(out.task).toContain('- ALD-44 — not fetched: LINEAR_API_KEY is not set')
     expect(out.log.some((l) => l.stream === 'err' && l.text.includes('ALD-44'))).toBe(true)
   })
 
@@ -218,21 +220,22 @@ describe('the revision source', () => {
     await rm(data, { force: true, recursive: true })
   })
 
-  /** A Linear that knows each id in `parents`, with that parent (or none), and fails on CTD-503. */
+  /** A tracker that knows each id in `parents`, with that parent (or none), and fails on CTD-503. */
   const deps = (parents: Record<string, string | undefined>, over: Partial<ContextDeps> = {}, calls: Array<string> = []): ContextDeps => ({
     dataDir: data,
-    fetchIssue: async (_key, id) => {
-      calls.push(id)
-      if (id === 'CTD-503') {
-        throw new Error('HTTP 503')
-      }
-      if (!(id in parents)) {
-        return null
-      }
-      const parent = parents[id]
-      return { ...issue(id), ...(parent ? { parentKey: parent } : {}) }
+    tickets: {
+      get: async (id) => {
+        calls.push(id)
+        if (id === 'CTD-503') {
+          throw new Error('HTTP 503')
+        }
+        if (!(id in parents)) {
+          return null
+        }
+        const parent = parents[id]
+        return { ...issue(id), ...(parent ? { parentKey: parent } : {}) }
+      },
     },
-    linearKey: 'lin_api_test',
     ...over,
   })
   const brief = (id: string, body = `Fix \`${MAPPER}\`.`) => `${id}: title\nhttps://linear.app/acme/issue/${id}/slug\n\n${body}`
@@ -268,7 +271,11 @@ describe('the revision source', () => {
       ['CTD-801', deps({ 'CTD-801': 'CTD-800' }), 'context: no revision — revisions/CTD-800 is draft, not filed'],
       ['CTD-901', deps({ 'CTD-901': 'CTD-900' }, { dataDir: '/nowhere/citadel-data' }), 'context: no revision — no citadel-data at /nowhere/citadel-data'],
       ['CTD-901', deps({ 'CTD-901': 'CTD-900' }, { dataDir: undefined }), 'context: no revision — no ARGUS_DATA_DIR on the host'],
-      ['CTD-901', deps({ 'CTD-901': 'CTD-900' }, { linearKey: undefined }), "context: revision not checked — no Linear key to read CTD-901's parent"],
+      [
+        'CTD-901',
+        deps({ 'CTD-901': 'CTD-900' }, { tickets: { get: async () => { throw new MissingCredentialError('LINEAR_API_KEY') } } }),
+        "context: revision not checked — no LINEAR_API_KEY to read CTD-901's parent",
+      ],
       ['CTD-503', deps({}), 'context: revision not checked — CTD-503 not fetched: HTTP 503'],
     ]
     for (const [id, d, line] of cases) {
