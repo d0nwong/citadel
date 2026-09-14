@@ -70,15 +70,18 @@ export const branchOf = (threadId: string) => `ask/${threadId}`;
 export const hasWorktrees = (paths: WorktreePaths): Promise<boolean> =>
   exists(paths.citadel);
 
+/** Written by `writeLocalArgusSettings`, relative to the citadel worktree — ours, not the run's work. */
+const LOCAL_ARGUS_SETTINGS = "apps/argus/.claude/settings.local.json";
+
 /**
  * Disables argus's gateway MCP servers for this worktree (S-50): `apps/argus/.claude/settings.json`
  * carries `enabledMcpjsonServers`, which this beats as the `'local'` setting source.
  */
 async function writeLocalArgusSettings(citadelWorktree: string): Promise<void> {
-  const dir = join(citadelWorktree, "apps/argus/.claude");
-  await mkdir(dir, { recursive: true });
+  const file = join(citadelWorktree, LOCAL_ARGUS_SETTINGS);
+  await mkdir(join(file, ".."), { recursive: true });
   await writeFile(
-    join(dir, "settings.local.json"),
+    file,
     `${JSON.stringify({ disabledMcpjsonServers: ["linear", "slack"] }, null, 2)}\n`,
     "utf8"
   );
@@ -163,14 +166,22 @@ export interface WorktreeDiscardCounts {
  * What Delete (and, later, Finish) discards in a conversation's worktrees (S-43, S-44):
  * `unpushed` counts commits ahead of `origin/main` rather than `@{u}`, so it does not depend
  * on `branch.autoSetupMerge`; `unmerged` counts citadel-data's branch ahead of its own local
- * `main`, which the sweep commits to and the worktree's branch never pushes.
+ * `main`, which the sweep commits to and the worktree's branch never pushes. The settings file
+ * `writeLocalArgusSettings` put there is not counted — nothing the run did is lost with it.
  */
 export async function discardCounts(
   paths: WorktreePaths
 ): Promise<WorktreeDiscardCounts> {
   const [citadelUncommitted, citadelUnpushed, dataUncommitted, dataUnmerged] =
     await Promise.all([
-      countLines(paths.citadel, ["status", "--porcelain"]),
+      countLines(paths.citadel, [
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--",
+        ".",
+        `:!${LOCAL_ARGUS_SETTINGS}`,
+      ]),
       countCommits(paths.citadel, "origin/main..HEAD"),
       countLines(paths.citadelData, ["status", "--porcelain"]),
       countCommits(paths.citadelData, "main..HEAD"),
