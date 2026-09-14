@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Answer a question about the argus ledgers, read-only — "where are we on invoicing", "what is on me", "what did Foong ask for this week", "is R-12 confirmed", "what shipped on 2026-09-04", "what does the arch doc say about the usage page". Use for any question-shaped prompt about a feature, an ask, a requirement, a ticket, a day, a landing or a rule, from a terminal, from Pensieve's Ask, or mid-sweep. Reads with `argus show`, `accio find`, the Linear read tools and the product checkouts at pinned shas, writes nothing, and answers in a fixed shape citing every path. Also covers proposing a change to the record — close an ask, confirm or contradict a requirement, place an unplaced message — and drafting a ticket, each proposed for the user's confirmation, never performed.
+description: Answer a question about the argus ledgers, read-only — "where are we on invoicing", "what is on me", "what did Foong ask for this week", "is R-12 confirmed", "what shipped on 2026-09-04", "what does the arch doc say about the usage page". Use for any question-shaped prompt about a feature, an ask, a requirement, a ticket, a day, a landing or a rule, from a terminal, from Pensieve's Ask, or mid-sweep. Reads with `argus show`, `accio find`, `argus tracker` and the product checkouts at pinned shas, writes nothing, and answers in a fixed shape citing every path. Also covers proposing a change to the record — close an ask, confirm or contradict a requirement, place an unplaced message — and drafting a ticket, each proposed for the user's confirmation, never performed.
 ---
 
 # ask — answer a question about the ledgers, read-only
@@ -30,10 +30,11 @@ user's, and this skill only proposes.
 2. `argus show <feature>` and read the whole ledger before answering. For a rule, the
    requirement and its evidence; for an ask, its history; for a day, the landings and the
    history entries dated that day.
-3. Only when the ledger cannot answer: the arch doc, `mcp__linear__get_issue` for a
-   ticket, `git -C <repo> show origin/<branch>:<path>` at the sha a code pointer names,
-   `mcp__slack__slack_read_thread` for a Slack permalink (the channel id and the ts from
-   the link: `p1789096091998619` is `1789096091.998619`).
+3. Only when the ledger cannot answer: the arch doc, `argus tracker show <KEY>` for a
+   ticket, from whichever provider its key names, `git -C <repo> show
+   origin/<branch>:<path>` at the sha a code pointer names, `mcp__slack__slack_read_thread`
+   for a Slack permalink (the channel id and the ts from the link: `p1789096091998619` is
+   `1789096091.998619`).
 4. Answer in the shape below. Then stop.
 
 ## Rules
@@ -43,12 +44,13 @@ There is no one to answer. Run the tool; a denied tool is reported once under No
 checked and worked around, never retried in another spelling.
 
 ### Write nothing
-Not the checkout, not the product checkouts, not Linear. No git fetch, pull, checkout or
+Not the checkout, not the product checkouts, not a tracker. No git fetch, pull, checkout or
 stash. A proposal is not a write: the user's click is.
 
 ### Bash is by prefix
-`argus show`, `argus validate`, `accio …`, `git log`, `git show` and `git -C <repo> log|show`.
-Read, Grep and Glob for everything else; never `cat`, `ls` or a shell grep.
+`argus show`, `argus validate`, `argus tracker show`, `accio …`, `git log`, `git show` and
+`git -C <repo> log|show`. Read, Grep and Glob for everything else; never `cat`, `ls` or a
+shell grep.
 
 ### The ledger is the answer
 A requirement's status is what the ledger says, with who and when; an ask is where its

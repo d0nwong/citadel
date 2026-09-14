@@ -1,9 +1,9 @@
 /**
  * The shape every provider answers a ticket in, and the interface each one implements
- * (CTD-198, CTD-199, CTD-200, CTD-201). `CTD` and `ALD` route to Linear (`linear.ts`);
- * `AP` routes to Trello (`trello.ts`); `key.ts` holds the table. `get`, `states`,
- * `listOpen`, `create` and `update` are implemented for both; `claim` is Linear-only
- * today (CTD-204) and `link` still throws — the PR attachment on a card is ticket 8/14's.
+ * (CTD-198, CTD-199, CTD-200, CTD-201, CTD-204, CTD-205). `CTD` and `ALD` route to Linear
+ * (`linear.ts`); `AP` routes to Trello (`trello.ts`); `key.ts` holds the table. Every verb
+ * — `get`, `states`, `listOpen`, `create`, `update`, `claim` and `link` — is implemented for
+ * both providers.
  */
 
 /** who a ticket is assigned to, when its provider knows */

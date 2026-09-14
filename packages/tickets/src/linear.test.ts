@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { MissingCredentialError } from "./errors.ts";
-import { LINEAR_API_URL, linearClaim, linearCreate, linearGet, linearListOpen, linearTicketStates, linearUpdate, stateOf } from "./linear.ts";
+import { LINEAR_API_URL, linearClaim, linearCreate, linearGet, linearLink, linearListOpen, linearTicketStates, linearUpdate, stateOf } from "./linear.ts";
 
 const now = new Date("2026-09-13T10:00:00Z");
 const node = (identifier: string, type: string, extra: Record<string, unknown> = {}) => ({
@@ -380,5 +380,39 @@ describe("linearUpdate", () => {
   test("no credential throws MissingCredentialError; a key that is not a ticket key is refused", async () => {
     await expect(linearUpdate("CTD-5", {}, { apiKey: null })).rejects.toThrow(MissingCredentialError);
     await expect(linearUpdate("fe#437", {}, { apiKey: "k" })).rejects.toThrow("is not a ticket key");
+  });
+});
+
+describe("linearLink", () => {
+  test("AC2: resolves the issue's uuid, then attaches the url with the given title", async () => {
+    const calls: { op: string; variables: Record<string, unknown> }[] = [];
+    const f = fakeLinear({ TicketUuid: () => ({ issue: { id: "uuid-9" } }), TicketLink: () => ({ attachmentLinkURL: { success: true } }) }, calls);
+    await linearLink("CTD-9", { kind: "pr", url: "https://bitbucket.org/x/y/pull-requests/1", title: "the PR" }, { fetch: f, apiKey: "k" });
+    expect(calls[0]).toEqual({ op: "TicketUuid", variables: { id: "CTD-9" } });
+    expect(calls[1]).toEqual({ op: "TicketLink", variables: { issueId: "uuid-9", url: "https://bitbucket.org/x/y/pull-requests/1", title: "the PR" } });
+  });
+
+  test("no title falls back to the key", async () => {
+    const calls: { op: string; variables: Record<string, unknown> }[] = [];
+    const f = fakeLinear({ TicketUuid: () => ({ issue: { id: "uuid-9" } }), TicketLink: () => ({ attachmentLinkURL: { success: true } }) }, calls);
+    await linearLink("CTD-9", { kind: "pr", url: "u" }, { fetch: f, apiKey: "k" });
+    expect(calls.find((c) => c.op === "TicketLink")?.variables.title).toBe("CTD-9");
+  });
+
+  test("no credential throws MissingCredentialError", async () => {
+    await expect(linearLink("CTD-9", { kind: "pr", url: "u" }, { apiKey: null })).rejects.toThrow(MissingCredentialError);
+  });
+
+  test("an unknown issue — a null result or a \"not found\" GraphQL error — throws by name", async () => {
+    const nullResult = fakeLinear({ TicketUuid: () => ({ issue: null }) });
+    await expect(linearLink("CTD-9", { kind: "pr", url: "u" }, { fetch: nullResult, apiKey: "k" })).rejects.toThrow("no such issue CTD-9");
+
+    const notFound = (async () => new Response(JSON.stringify({ errors: [{ message: "Entity not found" }] }))) as unknown as typeof fetch;
+    await expect(linearLink("CTD-9", { kind: "pr", url: "u" }, { fetch: notFound, apiKey: "k" })).rejects.toThrow("no such issue CTD-9");
+  });
+
+  test("a declined attachment throws", async () => {
+    const f = fakeLinear({ TicketUuid: () => ({ issue: { id: "uuid-9" } }), TicketLink: () => ({ attachmentLinkURL: { success: false } }) });
+    await expect(linearLink("CTD-9", { kind: "pr", url: "u" }, { fetch: f, apiKey: "k" })).rejects.toThrow("declined");
   });
 });

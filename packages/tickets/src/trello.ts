@@ -27,6 +27,13 @@
  * drops this card's item off whichever checklist already named it, so a re-parented card is
  * never listed on two (CTD-201's own S-42 requirement, for foundry's revision lookup).
  *
+ * `claim` (CTD-205) is `POST /1/cards/{id}/idMembers` adding the given id, or the
+ * credential's own member when none is given (the token owner, as `linearClaim`'s omitted
+ * `assigneeId` assigns the key's own viewer), then `PUT /1/cards/{id}` moving it onto the
+ * In Progress list. `link` (CTD-205) is `POST /1/cards/{id}/attachments` with the PR's `url`
+ * and, when given, its `title` as the attachment's name — the Trello side of the Bitbucket PR
+ * linker that used to call Linear's attachment API directly.
+ *
  * Auth: `TRELLO_API_KEY` and `TRELLO_TOKEN` from the environment, read fresh per call, sent
  * as query parameters as Trello's own REST API expects. Without either, `states` answers
  * `unknown` for every `AP` key and names the missing variable on stderr once; every other
@@ -41,12 +48,14 @@
 
 import { MissingCredentialError } from "./errors.ts";
 import { splitKey } from "./key.ts";
-import type { CreateTicketInput, ListOpenOptions, Stage, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
+import type { CreateTicketInput, LinkInput, ListOpenOptions, Stage, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
 
 export const TRELLO_API_URL = "https://api.trello.com/1";
 export const TRELLO_BOARD_ID = "6a20ed52a8d9725b59ceb3bb";
 export const TRELLO_BOARD_NAME = "Alden SWE Ticketing System";
 export const TRELLO_PIPELINE_LIST = "Pipeline";
+/** the list `claim` moves a card onto (CTD-205 AC1) */
+export const TRELLO_IN_PROGRESS_LIST = "In Progress";
 /** the checklist a parent card gets when it has none yet (CTD-201 AC3) */
 export const TRELLO_CHECKLIST_NAME = "Tickets";
 
@@ -505,7 +514,43 @@ export async function trelloUpdate(cardKey: string, input: UpdateTicketInput, op
   };
 }
 
-/** the Trello adapter as a `TicketProvider`; every verb but `claim` and `link` is implemented (CTD-198, CTD-199, CTD-200, CTD-201) */
+/** one card, by its `AP-<n>` key; throws by name when the key is not `AP` or the board has no such card */
+async function cardByKey(key: string, opts: TrelloOptions, apiKey: string, token: string): Promise<TrelloCard> {
+  const split = splitKey(key);
+  if (!split || split[0] !== "AP") throw new Error(`trello: ${key} is not an AP card`);
+  const cards = await boardCards(opts, apiKey, token);
+  const card = cards.find((c) => cardNumber(c) === split[1]);
+  if (!card) throw new Error(`trello: no such card ${key}`);
+  return card;
+}
+
+/**
+ * Adds the given member (or, with none, the credential's own) to the card, then moves it onto
+ * In Progress (CTD-205 AC1). Throws `MissingCredentialError` naming the first unset
+ * credential, and by name when the key is not `AP` or the board has no such card.
+ */
+export async function trelloClaim(key: string, assigneeId: string | undefined, opts: TrelloOptions = {}): Promise<void> {
+  const [apiKey, token] = requireCredentials(opts);
+  const [card, lists] = await Promise.all([cardByKey(key, opts, apiKey, token), boardLists(opts, apiKey, token)]);
+  const memberId = assigneeId ?? (await trelloViewer(opts, apiKey, token)).id;
+  const idList = listIdFor(TRELLO_IN_PROGRESS_LIST, lists);
+  await trelloSend("POST", `/cards/${card.id}/idMembers`, { value: memberId }, opts, apiKey, token);
+  await trelloSend("PUT", `/cards/${card.id}`, { idList }, opts, apiKey, token);
+}
+
+/**
+ * One `POST /1/cards/{id}/attachments` carrying the PR's `url` (CTD-205 AC2) — Trello has no
+ * relation API, so an attachment is the whole mechanism, as a `Blocked by:` line is for a
+ * blocker. Throws `MissingCredentialError` naming the first unset credential, and by name
+ * when the key is not `AP` or the board has no such card.
+ */
+export async function trelloLink(key: string, input: LinkInput, opts: TrelloOptions = {}): Promise<void> {
+  const [apiKey, token] = requireCredentials(opts);
+  const card = await cardByKey(key, opts, apiKey, token);
+  await trelloSend("POST", `/cards/${card.id}/attachments`, { url: input.url, ...(input.title ? { name: input.title } : {}) }, opts, apiKey, token);
+}
+
+/** the Trello adapter as a `TicketProvider`; every verb is implemented (CTD-198, CTD-199, CTD-200, CTD-201, CTD-205) */
 export function trelloProvider(opts: TrelloOptions = {}): TicketProvider {
   return {
     name: "trello",
@@ -514,11 +559,7 @@ export function trelloProvider(opts: TrelloOptions = {}): TicketProvider {
     listOpen: (listOpts) => trelloListOpen({ ...opts, ...listOpts }),
     create: (input) => trelloCreate(input, opts),
     update: (key, input) => trelloUpdate(key, input, opts),
-    claim: () => {
-      throw new Error('tickets: Trello\'s "claim" is not implemented yet');
-    },
-    link: () => {
-      throw new Error('tickets: Trello\'s "link" is not implemented yet');
-    },
+    claim: (key, assigneeId) => trelloClaim(key, assigneeId, opts),
+    link: (key, input) => trelloLink(key, input, opts),
   };
 }

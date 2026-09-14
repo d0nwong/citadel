@@ -1,21 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import type { CreateTicketInput, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
-import { claimTicket, createTicket, getTicket, listOpenTickets, ticketStates, updateTicket } from "./router.ts";
+import type { CreateTicketInput, LinkInput, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
+import { claimTicket, createTicket, getTicket, linkTicket, listOpenTickets, ticketStates, updateTicket } from "./router.ts";
 
-/** a fake provider that answers from a map and records every batch it was asked for, every claim, and every create/update */
+/** a fake provider that answers from a map and records every batch it was asked for, every claim, every link, and every create/update */
 function fakeProvider(
   name: string,
   states: Record<string, TicketState>,
   tickets: Record<string, Ticket> = {},
-): TicketProvider & { asked: string[][]; claimed: Array<[string, string | undefined]>; created: CreateTicketInput[]; updated: Array<[string, UpdateTicketInput]> } {
+): TicketProvider & { asked: string[][]; claimed: Array<[string, string | undefined]>; linked: Array<[string, LinkInput]>; created: CreateTicketInput[]; updated: Array<[string, UpdateTicketInput]> } {
   const asked: string[][] = [];
   const claimed: Array<[string, string | undefined]> = [];
+  const linked: Array<[string, LinkInput]> = [];
   const created: CreateTicketInput[] = [];
   const updated: Array<[string, UpdateTicketInput]> = [];
   return {
     name,
     asked,
     claimed,
+    linked,
     created,
     updated,
     async states(keys) {
@@ -40,8 +42,8 @@ function fakeProvider(
     async claim(key, assigneeId) {
       claimed.push([key, assigneeId]);
     },
-    async link() {
-      throw new Error("not used in these tests");
+    async link(key, input) {
+      linked.push([key, input]);
     },
   };
 }
@@ -177,6 +179,21 @@ describe("claimTicket", () => {
     const linear = fakeProvider("linear", {});
     await expect(claimTicket("AP-1", "u1", { providers: { linear } })).rejects.toThrow("AP-1");
     await expect(claimTicket("fe#437", "u1", { providers: { linear } })).rejects.toThrow("fe#437");
+  });
+});
+
+describe("linkTicket", () => {
+  test("routes to the key's provider, with the input passed through", async () => {
+    const linear = fakeProvider("linear", {});
+    const input: LinkInput = { kind: "pr", url: "https://bitbucket.org/x/y/pull-requests/1", title: "the PR" };
+    await linkTicket("ALD-1", input, { providers: { linear } });
+    expect(linear.linked).toEqual([["ALD-1", input]]);
+  });
+  test("a key no provider owns, or a provider this run has none registered for, throws naming the key", async () => {
+    const linear = fakeProvider("linear", {});
+    const input: LinkInput = { kind: "pr", url: "u" };
+    await expect(linkTicket("AP-1", input, { providers: { linear } })).rejects.toThrow("AP-1");
+    await expect(linkTicket("fe#437", input, { providers: { linear } })).rejects.toThrow("fe#437");
   });
 });
 

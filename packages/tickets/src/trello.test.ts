@@ -4,9 +4,11 @@ import {
   TRELLO_BOARD_ID,
   TRELLO_CHECKLIST_NAME,
   TRELLO_PIPELINE_LIST,
+  trelloClaim,
   trelloCreate,
   trelloGet,
   trelloLabels,
+  trelloLink,
   trelloListOpen,
   trelloMembers,
   trelloTicketStates,
@@ -277,6 +279,8 @@ function fakeWrite(
     if (method === "POST" && path === "/checklists") return json(responses.createChecklist ?? { id: "checklist-new", idCard: params.idCard, checkItems: [] });
     if (method === "POST" && /^\/checklists\/[^/]+\/checkItems$/.test(path)) return json({ id: "item-new", name: params.name });
     if (method === "POST" && /^\/cards\/[^/]+\/idLabels$/.test(path)) return json([params.value]);
+    if (method === "POST" && /^\/cards\/[^/]+\/idMembers$/.test(path)) return json({ id: params.value });
+    if (method === "POST" && /^\/cards\/[^/]+\/attachments$/.test(path)) return json({ id: "attachment-new", url: params.url });
     if (method === "PUT" && /^\/cards\/[^/]+$/.test(path)) return json(responses.updateCard);
     if (method === "DELETE" && /^\/checklists\/[^/]+\/checkItems\/[^/]+$/.test(path)) return json({});
     return new Response("not found", { status: 404 });
@@ -444,6 +448,70 @@ describe("trelloUpdate", () => {
     await expect(trelloUpdate("CTD-1", {}, { trelloKey: "k", trelloToken: "tok" })).rejects.toThrow("CTD-1 is not an AP card");
     const f = fakeWrite({ cards: [], lists: TEN_LISTS });
     await expect(trelloUpdate("AP-999", {}, { fetch: f, trelloKey: "k", trelloToken: "tok" })).rejects.toThrow("no such card AP-999");
+  });
+});
+
+describe("trelloClaim", () => {
+  test("AC1: adds the given member and moves the card onto In Progress", async () => {
+    const original = card("c108", 108, "L-pipe");
+    const calls: Call[] = [];
+    const f = fakeWrite({ cards: [original], lists: TEN_LISTS }, { updateCard: card("c108", 108, "L-prog") }, calls);
+    await trelloClaim("AP-108", "user-7", { fetch: f, trelloKey: "k", trelloToken: "tok" });
+    const members = calls.find((c) => c.method === "POST" && c.path === "/cards/c108/idMembers");
+    expect(members?.params).toMatchObject({ value: "user-7" });
+    const move = calls.find((c) => c.method === "PUT" && c.path === "/cards/c108");
+    expect(move?.params).toMatchObject({ idList: "L-prog" });
+  });
+
+  test("an omitted assigneeId claims the credential's own member", async () => {
+    const original = card("c108", 108, "L-pipe");
+    const calls: Call[] = [];
+    const f = fakeWrite({ cards: [original], lists: TEN_LISTS, me: { id: "u9" } }, { updateCard: original }, calls);
+    await trelloClaim("AP-108", undefined, { fetch: f, trelloKey: "k", trelloToken: "tok" });
+    expect(calls.find((c) => c.method === "POST" && c.path === "/cards/c108/idMembers")?.params).toMatchObject({ value: "u9" });
+  });
+
+  test("no credential throws MissingCredentialError naming the first unset variable", async () => {
+    await expect(trelloClaim("AP-108", "u1", { trelloKey: null, trelloToken: "tok" })).rejects.toThrow(MissingCredentialError);
+    await expect(trelloClaim("AP-108", "u1", { trelloKey: "k", trelloToken: null })).rejects.toThrow("TRELLO_TOKEN");
+  });
+
+  test("a key that is not AP, or a card the board does not have, is refused by name", async () => {
+    await expect(trelloClaim("CTD-1", "u1", { trelloKey: "k", trelloToken: "tok" })).rejects.toThrow("CTD-1 is not an AP card");
+    const f = fakeWrite({ cards: [], lists: TEN_LISTS });
+    await expect(trelloClaim("AP-999", "u1", { fetch: f, trelloKey: "k", trelloToken: "tok" })).rejects.toThrow("no such card AP-999");
+  });
+});
+
+describe("trelloLink", () => {
+  test("AC2: posts the PR url and title as an attachment", async () => {
+    const original = card("c108", 108, "L-pipe");
+    const calls: Call[] = [];
+    const f = fakeWrite({ cards: [original], lists: TEN_LISTS }, {}, calls);
+    await trelloLink("AP-108", { kind: "pr", url: "https://bitbucket.org/x/y/pull-requests/1", title: "the PR" }, { fetch: f, trelloKey: "k", trelloToken: "tok" });
+    const post = calls.find((c) => c.method === "POST" && c.path === "/cards/c108/attachments");
+    expect(post?.params).toMatchObject({ url: "https://bitbucket.org/x/y/pull-requests/1", name: "the PR" });
+  });
+
+  test("no title leaves the name off", async () => {
+    const original = card("c108", 108, "L-pipe");
+    const calls: Call[] = [];
+    const f = fakeWrite({ cards: [original], lists: TEN_LISTS }, {}, calls);
+    await trelloLink("AP-108", { kind: "pr", url: "https://bitbucket.org/x/y/pull-requests/1" }, { fetch: f, trelloKey: "k", trelloToken: "tok" });
+    const post = calls.find((c) => c.method === "POST" && c.path === "/cards/c108/attachments");
+    expect(post?.params).toMatchObject({ url: "https://bitbucket.org/x/y/pull-requests/1" });
+    expect(post?.params.name).toBeUndefined();
+  });
+
+  test("no credential throws MissingCredentialError naming the first unset variable", async () => {
+    await expect(trelloLink("AP-108", { kind: "pr", url: "u" }, { trelloKey: null, trelloToken: "tok" })).rejects.toThrow(MissingCredentialError);
+    await expect(trelloLink("AP-108", { kind: "pr", url: "u" }, { trelloKey: "k", trelloToken: null })).rejects.toThrow("TRELLO_TOKEN");
+  });
+
+  test("a key that is not AP, or a card the board does not have, is refused by name", async () => {
+    await expect(trelloLink("CTD-1", { kind: "pr", url: "u" }, { trelloKey: "k", trelloToken: "tok" })).rejects.toThrow("CTD-1 is not an AP card");
+    const f = fakeWrite({ cards: [], lists: TEN_LISTS });
+    await expect(trelloLink("AP-999", { kind: "pr", url: "u" }, { fetch: f, trelloKey: "k", trelloToken: "tok" })).rejects.toThrow("no such card AP-999");
   });
 });
 

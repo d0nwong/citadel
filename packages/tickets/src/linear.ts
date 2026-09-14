@@ -24,11 +24,14 @@
  * `MissingCredentialError`, since a caller asking for one ticket, or writing one, has
  * nothing to fall back to. `claim` (CTD-204, moved from Foundry's `linear-link.ts`
  * unchanged) is assign + move to the team's started state, in one lookup and one mutation.
+ * `link` (CTD-205, also moved from `linear-link.ts` unchanged) resolves the issue's uuid
+ * then attaches the PR as a URL attachment with `attachmentLinkURL` — the same call Foundry's
+ * host used to make directly, now reached through the package like every other write.
  */
 
 import { MissingCredentialError } from "./errors.ts";
 import { splitKey } from "./key.ts";
-import type { CreateTicketInput, ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
+import type { CreateTicketInput, LinkInput, ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
 
 export const LINEAR_API_URL = "https://api.linear.app/graphql";
 
@@ -410,7 +413,40 @@ export async function linearUpdate(key: string, input: UpdateTicketInput, opts: 
   return toTicket(issue, now);
 }
 
-/** the Linear adapter as a `TicketProvider`; `get`, `states`, `listOpen`, `create`, `update` and `claim` are implemented (CTD-198, CTD-200, CTD-201, CTD-204) */
+const ISSUE_UUID_QUERY = `query TicketUuid($id: String!) { issue(id: $id) { id } }`;
+
+/** the issue's uuid, from the human identifier; `null` when Linear has no such issue — either a null result or a "not found" GraphQL error, the same answer worded differently */
+async function issueUuid(key: string, apiKey: string, f: typeof fetch): Promise<string | null> {
+  try {
+    const data = await linearPost<{ issue: { id: string } | null }>(ISSUE_UUID_QUERY, { id: key }, apiKey, f);
+    return data.issue?.id ?? null;
+  } catch (e) {
+    if (/not found/i.test(e instanceof Error ? e.message : String(e))) return null;
+    throw e;
+  }
+}
+
+const ATTACHMENT_LINK_MUTATION = `mutation TicketLink($issueId: String!, $url: String!, $title: String!) {
+  attachmentLinkURL(issueId: $issueId, url: $url, title: $title) { success }
+}`;
+
+/**
+ * Resolves the issue's uuid, then `attachmentLinkURL` (CTD-205 AC2) — attachments are keyed
+ * on the url, so re-linking the same PR is a no-op and a fresh PR's url adds a second link
+ * rather than replacing the first. Throws `MissingCredentialError` with no key, by name on an
+ * unknown issue, and on a declined mutation.
+ */
+export async function linearLink(key: string, input: LinkInput, opts: LinearOptions = {}): Promise<void> {
+  const apiKey = keyOf(opts);
+  if (!apiKey) throw new MissingCredentialError("LINEAR_API_KEY");
+  const f = opts.fetch ?? fetch;
+  const issueId = await issueUuid(key, apiKey, f);
+  if (!issueId) throw new Error(`linear: no such issue ${key}`);
+  const done = await linearPost<{ attachmentLinkURL: { success: boolean } }>(ATTACHMENT_LINK_MUTATION, { issueId, url: input.url, title: input.title ?? key }, apiKey, f);
+  if (!done.attachmentLinkURL.success) throw new Error("linear: attachmentLinkURL declined");
+}
+
+/** the Linear adapter as a `TicketProvider`; every verb is implemented (CTD-198, CTD-200, CTD-201, CTD-204, CTD-205) */
 export function linearProvider(opts: LinearOptions = {}): TicketProvider {
   return {
     name: "linear",
@@ -420,8 +456,6 @@ export function linearProvider(opts: LinearOptions = {}): TicketProvider {
     create: (input) => linearCreate(input, opts),
     update: (key, input) => linearUpdate(key, input, opts),
     claim: (key, assigneeId) => linearClaim(key, assigneeId, opts),
-    link: () => {
-      throw new Error('tickets: Linear\'s "link" is not implemented yet');
-    },
+    link: (key, input) => linearLink(key, input, opts),
   };
 }
