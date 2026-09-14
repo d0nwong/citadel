@@ -438,6 +438,46 @@ export async function openIssues(
   return issues;
 }
 
+export interface IssueStates {
+  /** `'live'` from Linear, `'none'` when the key is absent or Linear could not answer. */
+  source: "live" | "none";
+  /** issue id → Linear's state type (`completed`, `canceled`, `started`, …) */
+  types: Record<string, string>;
+}
+
+const ISSUE_STATES_QUERY = `query IssueStates($ids: [ID!]) {
+  issues(filter: { id: { in: $ids } }, first: 250) { nodes { id state { type } } }
+}`;
+
+/**
+ * The state type of each issue by id, across teams — what Home drops a filed ticket off
+ * the Ready list by, since a Citadel ticket has no ledger for the sweep to settle. Never
+ * throws: `source: 'none'` and the caller keeps every ticket.
+ */
+export async function issueStates(
+  ids: string[],
+  fetchImpl: Fetch = fetch
+): Promise<IssueStates> {
+  if (ids.length === 0 || !linearKey()) {
+    return { source: "none", types: {} };
+  }
+  try {
+    const data = await graphql<{
+      issues: { nodes: Array<{ id: string; state?: { type?: string } }> };
+    }>(ISSUE_STATES_QUERY, { ids }, fetchImpl);
+    const types: Record<string, string> = {};
+    for (const n of data.issues.nodes) {
+      types[n.id] = n.state?.type ?? "";
+    }
+    return { source: "live", types };
+  } catch (e) {
+    console.warn(
+      `[linear] issue states could not be read — ${e instanceof Error ? e.message : String(e)}`
+    );
+    return { source: "none", types: {} };
+  }
+}
+
 // ── the two mutations ──────────────────────────────────────────────────────────
 
 const PROJECT_CREATE = `mutation CreateProject($input: ProjectCreateInput!) {

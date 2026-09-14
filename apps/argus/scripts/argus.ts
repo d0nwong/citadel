@@ -27,7 +27,7 @@ import { readUnplaced } from "./argus/state.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
 import { seedFeature } from "./argus/seed.ts";
-import { closeAsk, confirmRequirement, dismissMessage, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./argus/verbs.ts";
+import { closeAsk, confirmRequirement, dismissMessage, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketBare, recordTicketForAsk } from "./argus/verbs.ts";
 import { readLedger, writeLedger } from "./argus/write.ts";
 
 export type Flags = { dryRun: boolean; json: boolean; actor: "model" | "user"; rest: string[]; opts: Record<string, string> };
@@ -308,7 +308,12 @@ const verbs: Record<string, Verb> = {
 
   async ticket(f) {
     const [feature, proposalId, key] = f.rest;
-    if (!feature || !proposalId || !key) throw new Usage("ticket <feature> <P-n>|<A-n> <ALD-key> [--title]");
+    const usage = "ticket <feature> <P-n>|<A-n> <ALD-key> [--title] | ticket <feature> <ALD-key> --title <t>";
+    if (feature && proposalId && !key && /^[A-Z]+-\d+$/.test(proposalId) && !/^[PA]-/.test(proposalId)) {
+      if (!f.opts.title) throw new Usage(usage);
+      return report(f, feature, await recordTicketBare(feature, proposalId, f.opts.title, { dryRun: f.dryRun }));
+    }
+    if (!feature || !proposalId || !key) throw new Usage(usage);
     if (proposalId.startsWith("A-")) return report(f, feature, await recordTicketForAsk(feature, proposalId, key, f.opts.title ?? key, { dryRun: f.dryRun }));
     return report(f, feature, await recordTicket(feature, proposalId, key, { dryRun: f.dryRun }));
   },

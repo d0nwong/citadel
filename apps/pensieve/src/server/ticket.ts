@@ -13,6 +13,7 @@
  * `verdict.ts`'s arrangement, for the same reason.
  */
 
+import { listLedgers } from "./ledger";
 import type { ProjectLookup, Team } from "./linear";
 import { knownProjects, TEAMS, teamFor } from "./linear";
 
@@ -41,10 +42,13 @@ const SECTION_LIST = REQUIRED_SECTIONS.join(", ");
 
 /** Where the checks read from. Defaults to Linear, with its on-disk cache behind it. */
 export interface TicketSources {
+  /** The feature dirs a ticket can be recorded on. Absent: the feature is not checked. */
+  features?: () => Promise<string[]>;
   projects: (teamKey: string) => Promise<ProjectLookup>;
 }
 
 export const linearSources = (): TicketSources => ({
+  features: async () => (await listLedgers()).ledgers.map((l) => l.dir),
   projects: (teamKey) => knownProjects(fetch, teamKey),
 });
 
@@ -65,6 +69,8 @@ export function headingsOf(description: string): string[] {
 
 export interface CheckedDraft {
   description: string;
+  /** The feature dir the user confirmed, whose ledger File records the ticket on. */
+  feature?: string;
   project: {
     id?: string;
     /** True when the team has no project by this name yet: File creates it before the issue. */
@@ -140,7 +146,13 @@ function checkSections(description: string): string | undefined {
  * feature is exactly the one whose project does not exist yet.
  */
 export async function checkDraft(
-  input: { description: string; project: string; team?: string; title: string },
+  input: {
+    description: string;
+    feature?: string;
+    project: string;
+    team?: string;
+    title: string;
+  },
   sources: TicketSources = linearSources()
 ): Promise<DraftCheck> {
   const title = trimmed(input.title);
@@ -167,6 +179,17 @@ export async function checkDraft(
     };
   }
 
+  const feature = trimmed(input.feature);
+  if (feature && sources.features) {
+    const known = await sources.features();
+    if (!known.includes(feature)) {
+      return {
+        error: `"${feature}" is not a feature with a ledger — the features are ${known.join(", ")}`,
+        ok: false,
+      };
+    }
+  }
+
   const lookup = await sources.projects(team.key);
   const match = lookup.projects.find((p) => norm(p.name) === norm(project));
   const verified = lookup.source !== "none";
@@ -181,6 +204,7 @@ export async function checkDraft(
       },
       team,
       title,
+      ...(feature ? { feature } : {}),
       ...(lookup.teamId ? { teamId: lookup.teamId } : {}),
       ...(lookup.viewerId ? { viewerId: lookup.viewerId } : {}),
     },

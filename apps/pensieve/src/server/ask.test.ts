@@ -41,6 +41,7 @@ const {
   listConversations,
   deleteConversation,
   fileNameOf,
+  listFiledTickets,
   readFiledTicket,
   ticketKey,
   writeFiledTicket,
@@ -330,6 +331,33 @@ describe("file store — beyond the suite", () => {
     const f = await readJson(dir, "t");
     expect(f.messages).toEqual([{ content: "v19", role: "user" }]);
     expect(Object.keys(f.metadata)).toHaveLength(20);
+  });
+
+  test("listFiledTickets reads every thread's filed tickets back with the thread they came from", async () => {
+    const store = conversationStore(await scratch());
+    await store.persistence.stores.messages.saveThread("t1", [
+      { content: "file the billing fix", role: "user" },
+    ]);
+    await store.persistence.stores.messages.saveThread("t2", [
+      { content: "just a question", role: "user" },
+    ]);
+    await writeFiledTicket(store, "t1", "call_1", {
+      at: "2026-09-14T00:00:00.000Z",
+      id: "id_1",
+      identifier: "CTD-9",
+      title: "[FE] Billing fix",
+      url: "https://linear.app/liamai/issue/CTD-9",
+    });
+    expect(await listFiledTickets(store)).toEqual([
+      {
+        at: "2026-09-14T00:00:00.000Z",
+        id: "id_1",
+        identifier: "CTD-9",
+        threadId: "t1",
+        title: "[FE] Billing fix",
+        url: "https://linear.app/liamai/issue/CTD-9",
+      },
+    ]);
   });
 });
 
@@ -756,7 +784,8 @@ describe("LIA-104 — the system prompt", () => {
       /never say it is done/i,
       /argus verbs that write are denied/i,
       /^You are Argus, a panel inside Pensieve/,
-      /draft it per the linear-ticket skill and call `propose_ticket` once/,
+      /draft it per the linear-ticket skill, confirm its feature with the user/,
+      /then call `propose_ticket` once with it/,
       /never that it is filed/i,
     ]) {
       expect(ASK_SYSTEM_PROMPT).toMatch(re);

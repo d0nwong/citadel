@@ -8,7 +8,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readThreads, readUnplaced, writeUnplaced, type Unplaced } from "./state.ts";
-import { closeAsk, confirmRequirement, dismissMessage, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketForAsk } from "./verbs.ts";
+import { closeAsk, confirmRequirement, dismissMessage, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketBare, recordTicketForAsk } from "./verbs.ts";
 import { readLedger } from "./write.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
@@ -139,6 +139,12 @@ describe("ticket", () => {
   });
   test("refuses an unknown proposal", async () => {
     await expect(recordTicket("admin/invoicing", "P-7", "ALD-1")).rejects.toThrow("no proposal P-7");
+  });
+  test("a ticket filed from Ask with no ask is added ready; a repeat is a no-op", async () => {
+    const r = await recordTicketBare("admin/invoicing", "ALD-80", "[FE] From Ask", { now: T0 });
+    expect(r.diff).toEqual(["+ ALD-80 ready"]);
+    expect((await readLedger("admin/invoicing"))!.tickets.at(-1)).toMatchObject({ key: "ALD-80", title: "[FE] From Ask", asks: [], ready: true });
+    expect((await recordTicketBare("admin/invoicing", "ALD-80", "x")).wrote).toBe(false);
   });
 });
 

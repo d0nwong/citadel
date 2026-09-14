@@ -145,6 +145,13 @@ export async function recordSent(feature: string, key: string, repo: string, job
 }
 
 /** a ticket filed straight from an ask: the ask's open blockers become the ticket's, the key goes on the ask */
+/** a ticket filed from Ask with no ask behind it: ready at once, a repeat of the key is a no-op */
+export async function recordTicketBare(feature: string, key: string, title: string, o: VerbOptions = {}): Promise<WriteResult> {
+  const now = o.now ?? new Date();
+  const l = await mustRead(feature, o.app);
+  if (l.tickets.some((t) => t.key === key)) return commit(feature, l, { ...o, now });
+  return commit(feature, { ...l, tickets: [...l.tickets, { key, title, asks: [], blockers: [], ready: true }] }, { ...o, now });
+}
 export async function recordTicketForAsk(feature: string, askId: string, key: string, title: string, o: VerbOptions = {}): Promise<WriteResult> {
   const now = o.now ?? new Date();
   const l = await mustRead(feature, o.app);

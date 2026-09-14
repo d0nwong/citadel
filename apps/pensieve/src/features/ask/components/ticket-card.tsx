@@ -30,6 +30,8 @@ const TITLE_MAX = 80;
 /** What `propose_ticket` answers, as the card reads it back off the wire. */
 interface Proposal {
   description: string;
+  /** The feature dir confirmed in the chat, whose ledger File records the ticket on. */
+  feature?: string;
   /** True when the team has no project by this name yet: File creates it before the issue. */
   isNew: boolean;
   project: string;
@@ -78,6 +80,7 @@ export function parseAnswer(output: unknown): Answer {
     ok: true,
     proposal: {
       description,
+      feature: str(p.feature),
       isNew: p.isNew === true,
       project: str(p.project) ?? "",
       projectId: str(p.projectId),
@@ -166,6 +169,7 @@ function Proposed({
       const r = await fileTicket({
         data: {
           description,
+          feature: proposal.feature,
           project: proposal.project,
           team: proposal.team,
           threadId,
@@ -200,7 +204,8 @@ function Proposed({
           </span>
         </div>
         <p className="mt-1 text-sm text-subtle">
-          {proposal.team} · {proposal.project || "no project"}
+          {proposal.team} · {proposal.project || "no project"} ·{" "}
+          {proposal.feature ?? "no feature"}
         </p>
       </section>
     );
@@ -219,7 +224,8 @@ function Proposed({
           new ticket
         </span>
         <span className="mono min-w-0 truncate text-muted-foreground">
-          {proposal.team} · {proposal.project || "no project"}
+          {proposal.team} · {proposal.project || "no project"} ·{" "}
+          {proposal.feature ?? "no feature"}
         </span>
         <span className="mono ml-auto shrink-0 text-subtle">proposed</span>
       </div>

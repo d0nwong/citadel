@@ -125,6 +125,25 @@ describe("home", () => {
     expect(h.unplaced).toHaveLength(1);
     expect(await readUnplaced(join(root, "missing.json"))).toEqual([]);
   });
+  test("tickets filed from Ask with no ledger are listed, unless a ledger already has the key", async () => {
+    const row = (identifier: string) => ({
+      at: "2026-09-14T00:00:00.000Z",
+      id: `id_${identifier}`,
+      identifier,
+      threadId: "t1",
+      title: `[FE] ${identifier}`,
+      url: `https://linear.app/liamai/issue/${identifier}`,
+    });
+    const h = await home(roots, join(root, "state/unplaced.json"), [
+      row("CTD-9"),
+      row("ALD-41"),
+    ]);
+    // ALD-41 is the fixture ledger's own ticket, so it shows there and not twice
+    expect(h.filed.map((t) => t.identifier)).toEqual(["CTD-9"]);
+    expect(
+      (await home(roots, join(root, "state/unplaced.json"))).filed
+    ).toEqual([]);
+  });
   test("a ticket leaves Ready once every ask it serves is settled, or once it was sent", async () => {
     const l = await fixture();
     for (const b of l.tickets[0].blockers) {
