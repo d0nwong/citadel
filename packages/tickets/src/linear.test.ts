@@ -24,7 +24,7 @@ describe("stateOf", () => {
 
 describe("linearTicketStates", () => {
   test("one query per team by number; listed keys answer, the rest are unknown", async () => {
-    const calls: { url: string; body: { variables: { team: string; numbers: number[] } }; auth: string | null }[] = [];
+    const calls: { url: string; body: { variables: { team: string; numbers: number[] } | { id: string } }; auth: string | null }[] = [];
     const f = (async (url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       calls.push({ url: String(url), body, auth: (init?.headers as Record<string, string>).Authorization ?? null });
