@@ -229,6 +229,14 @@ argus revision show <slug|KEY>                       # the record, from revision
 argus revision file <slug> <KEY> --tickets K1,K2,…   # draft → filed; the directory is renamed to the key
 argus revision drop <slug|KEY> --reason "<why>"      # → revisions/archive/, status dropped; nothing is deleted
 
+# the tracker (CTD-200, CTD-201): read and write a ticket on the provider its key or team names,
+# through packages/tickets — Linear for CTD/ALD, Trello for AP; each refuses, naming the variable,
+# when that provider's credential is unset
+argus tracker show <KEY>                                       # key, title, state, assignee, url, description, parent
+argus tracker list [--mine] [--unassigned] [--team <t>]         # open tickets, across providers or narrowed to one
+argus tracker create --title "<t>" --team <t> [--body <file>|-] [--project <p>] [--assignee me|none|<id>] [--parent <KEY>] [--blocked-by K1,K2]
+argus tracker edit <KEY> [--title "<t>"] [--body <file>|-] [--project <p>] [--assignee me|none|<id>] [--parent <KEY>] [--state <name>] [--blocked-by K1,K2]
+
 # what is where in the code and docs
 accio find "<words>"                      # feature, files, endpoints for a screen, field or route
 accio stale                               # features whose arch.md is behind their core files

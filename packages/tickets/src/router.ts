@@ -3,13 +3,16 @@
  * provider is asked once per run for only the keys it owns, and the answers are merged into
  * one lookup. A key no provider owns, a provider this run has none registered for, or a
  * provider whose read throws all leave that ticket `unknown` — the other provider's tickets
- * still settle, and this never writes anything (spec S-7). `listOpenTickets` (CTD-200) does
+ * still settle, and reads never write anything (spec S-7). `listOpenTickets` (CTD-200) does
  * the same for the open-ticket list, routed by a bare team key instead of a ticket key.
+ * `createTicket` (CTD-201) routes the same way, by `input.team`; `updateTicket` routes by
+ * the key, like `claimTicket` — a write has no meaningful "unknown" to fall back to, so
+ * either throws naming what it could not route.
  */
 
 import { providerNameFor, providerNameForTeam } from "./key.ts";
 import { linearProvider, type LinearOptions } from "./linear.ts";
-import type { ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
+import type { CreateTicketInput, ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
 import { trelloProvider, type TrelloOptions } from "./trello.ts";
 
 export type TicketRouterOptions = LinearOptions &
@@ -102,4 +105,26 @@ export async function claimTicket(key: string, assigneeId?: string, opts: Ticket
   const provider = name ? providersFor(opts)[name] : undefined;
   if (!provider) throw new Error(`tickets: no provider owns ${key}`);
   await provider.claim(key, assigneeId);
+}
+
+/**
+ * Creates one ticket on the provider `input.team` names (CTD-201 AC1). A team no provider
+ * owns, or a provider this run has none registered for, throws naming the team.
+ */
+export async function createTicket(input: CreateTicketInput, opts: TicketRouterOptions = {}): Promise<Ticket> {
+  const name = providerNameForTeam(input.team);
+  const provider = name ? providersFor(opts)[name] : undefined;
+  if (!provider) throw new Error(`tickets: no provider owns team ${input.team}`);
+  return provider.create(input);
+}
+
+/**
+ * Updates one ticket on the provider its key names (CTD-201 AC2). As `claimTicket`, a key
+ * no provider owns, or a provider this run has none registered for, throws naming the key.
+ */
+export async function updateTicket(key: string, input: UpdateTicketInput, opts: TicketRouterOptions = {}): Promise<Ticket> {
+  const name = (opts.routeKey ?? providerNameFor)(key);
+  const provider = name ? providersFor(opts)[name] : undefined;
+  if (!provider) throw new Error(`tickets: no provider owns ${key}`);
+  return provider.update(key, input);
 }

@@ -23,6 +23,17 @@ const argus = async (...args: string[]) => {
   return { code: await p.exited, out, err };
 };
 
+/** as `argus`, but with every ticket-provider credential cleared, for the refusal and dry-run cases that must not depend on the machine's own `.env` */
+const argusNoCreds = async (...args: string[]) => {
+  const p = Bun.spawn(["bun", join(ROOT, "scripts/argus.ts"), ...args], {
+    env: { ...process.env, ARGUS_ROOT: ws, LINEAR_API_KEY: "", TRELLO_API_KEY: "", TRELLO_TOKEN: "" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  return { code: await p.exited, out, err };
+};
+
 beforeEach(() => {
   ws = mkdtempSync(join(tmpdir(), "argus-cli-"));
   for (const f of ["tasks", "admin/invoicing", "admin/usage"]) mkdirSync(join(ws, "alden/alden-portal/features", f, "docs"), { recursive: true });
@@ -140,6 +151,35 @@ describe("click verbs through the CLI", () => {
     const noKey = await argus("tracker", "show");
     expect(noKey.code).toBe(1);
     expect(noKey.err).toContain("usage: argus tracker");
+  });
+  test("tracker create/edit: missing required flags are usage errors", async () => {
+    const noTitle = await argus("tracker", "create", "--team", "AP");
+    expect(noTitle.code).toBe(1);
+    expect(noTitle.err).toContain("usage: argus tracker");
+    const noTeam = await argus("tracker", "create", "--title", "t");
+    expect(noTeam.code).toBe(1);
+    expect(noTeam.err).toContain("usage: argus tracker");
+    const noKey = await argus("tracker", "edit");
+    expect(noKey.code).toBe(1);
+    expect(noKey.err).toContain("usage: argus tracker");
+  });
+  test("tracker create/edit: --dry-run needs no credential and prints the plan without calling a provider", async () => {
+    const create = await argusNoCreds("tracker", "create", "--title", "New thing", "--team", "AP", "--parent", "AP-1", "--dry-run");
+    expect(create.code).toBe(0);
+    expect(create.out).toContain("would create on AP: New thing");
+    expect(create.out).toContain("under AP-1");
+    const edit = await argusNoCreds("tracker", "edit", "CTD-1", "--title", "New title", "--dry-run");
+    expect(edit.code).toBe(0);
+    expect(edit.out).toContain("would edit CTD-1");
+    expect(edit.out).toContain("title=New title");
+  });
+  test("tracker create/edit: a missing credential is refused, naming the variable (AC2)", async () => {
+    const create = await argusNoCreds("tracker", "create", "--title", "t", "--team", "AP");
+    expect(create.code).toBe(1);
+    expect(create.err).toContain("TRELLO_API_KEY");
+    const edit = await argusNoCreds("tracker", "edit", "CTD-1", "--title", "t");
+    expect(edit.code).toBe(1);
+    expect(edit.err).toContain("LINEAR_API_KEY");
   });
   test("dismiss needs an unplaced list too", async () => {
     const r = await argus("dismiss", "123");
