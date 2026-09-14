@@ -3,11 +3,14 @@
  * read the argus checkout and nothing more, a TanStack AI persistence adapter that keeps
  * one conversation per file under `PENSIEVE_HOME/conversations/`, and the run itself.
  *
- * Pensieve's rule holds: in the blackboard it writes `decisions/` and nothing else. Ask
- * writes only under `PENSIEVE_HOME` (default `~/.pensieve`). The claude process runs with
- * `permissionMode: 'default'` and a read-only allowlist, so the checkout is never touched;
- * the adapter's per-run runner files land in the checkout for the run's duration and are
- * removed in its `finally` — `git status` is unchanged afterwards.
+ * `PENSIEVE_RUNNER` picks the run mode per request (CTD-219; see `runMode`). In container
+ * mode — the image's own — the claude process runs with `permissionMode: 'default'` and a
+ * read-only allowlist, so the checkout is never touched; the adapter's per-run runner files
+ * land in the checkout for the run's duration and are removed in its `finally` — `git status`
+ * is unchanged afterwards. In local mode — the host's default — the process runs with
+ * `bypassPermissions` and the operator's own `~/.claude`, exactly as a terminal session would.
+ * Pensieve's own rule holds in both: in the blackboard it writes `decisions/` and nothing
+ * else, and Ask writes only under `PENSIEVE_HOME` (default `~/.pensieve`).
  *
  * Two tools are bridged into the run: `propose_decision` (LIA-111, retargeted by LIA-162)
  * and `propose_ticket` (LIA-113). A bridged tool always executes when the model calls it,
@@ -137,6 +140,18 @@ export function allowedToolsFor(checkouts: readonly string[]): string[] {
 /** Files, search, git history, the accio and argus read verbs, the `ask` skill, ticket reads (both providers, through `argus tracker`) and the bridged tools. Nothing that writes. */
 export const ALLOWED_TOOLS = allowedToolsFor([...CHECKOUTS, WORKSPACE_DIR]);
 
+export type RunMode = "container" | "local";
+
+/**
+ * Container keeps today's read-only sandbox exactly; local runs each session as the host's
+ * own Claude Code, with no allowlist and the operator's settings (CTD-219). Decided per
+ * request from the environment, never cached, the same as `authMode`: the image sets
+ * `PENSIEVE_RUNNER=container`; anything else, unset included, is local (hosting S-7 — a host
+ * run is local unless told otherwise).
+ */
+export const runMode = (env: NodeJS.ProcessEnv = process.env): RunMode =>
+  env.PENSIEVE_RUNNER?.trim() === "container" ? "container" : "local";
+
 /** Belt and braces under `default`: these never even reach the permission check. */
 export const DISALLOWED_TOOLS = [
   ...HARNESS_WRITE_TOOLS,
@@ -170,11 +185,29 @@ export const ADAPTER_CONFIG = {
   settingSources: ["project"],
 } satisfies ClaudeCodeTextConfig;
 
+/**
+ * Local mode (CTD-219): the host's own Claude Code, with no allowlist and the operator's
+ * settings — `bypassPermissions` needs no rule per command (AC6), and `['user', 'project']`
+ * loads `~/.claude/skills` alongside argus's own (AC7). `allowedTools`/`disallowedTools` are
+ * explicitly `undefined` so spreading this over `ADAPTER_CONFIG` in `askAdapter` clears the
+ * container's lists rather than leaving them in place. `cwd` stays `/workspace`: the sandbox
+ * (below) is pinned to `ARGUS_DIR` regardless of mode, so `/workspace` already resolves to
+ * argus's own directory in the live checkout — the same directory a literal path would name.
+ */
+export const LOCAL_ADAPTER_CONFIG = {
+  ...ADAPTER_CONFIG,
+  allowedTools: undefined,
+  disallowedTools: undefined,
+  permissionMode: "bypassPermissions",
+  settingSources: ["user", "project"],
+} satisfies ClaudeCodeTextConfig;
+
 // Once per process, so the value the running server uses is on record (a dev server keeps
 // an old module loaded across edits; the 08:48 run on 2026-09-06 ran with 12 while the
-// source said 40).
+// source said 40). `runner` is the default this process falls back to; a request's own
+// `PENSIEVE_RUNNER` can still differ (tests, mainly).
 console.log(
-  `[ask] claude-code · model ${MODEL} · maxTurns ${ADAPTER_CONFIG.maxTurns} · permissionMode ${ADAPTER_CONFIG.permissionMode} · ${ALLOWED_TOOLS.length} allowed · ${DISALLOWED_TOOLS.length} disallowed · checkouts ${CHECKOUTS.join(", ")}`
+  `[ask] claude-code · model ${MODEL} · runner ${runMode()} · maxTurns ${ADAPTER_CONFIG.maxTurns} · permissionMode ${ADAPTER_CONFIG.permissionMode} · ${ALLOWED_TOOLS.length} allowed · ${DISALLOWED_TOOLS.length} disallowed · checkouts ${CHECKOUTS.join(", ")}`
 );
 
 /**
@@ -190,6 +223,21 @@ To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
 You cannot write files, edit tickets or comments, or run the sweep; the argus verbs that write are denied. To change the record — close an ask, confirm or contradict a requirement, place an unplaced message — call \`propose_decision\` once as the ask skill's Correcting section says; the user confirms it on the card, so never say it is done. To open a ticket, draft it per the linear-ticket skill, confirm its feature with the user (none for Citadel apps), then call \`propose_ticket\` once with it; say the draft is ready, never that it is filed.`;
+
+/**
+ * Local mode's plain-Ask prompt (CTD-219): the same working directory and retrieval recipes,
+ * but no sandbox to work around — the session runs on the operator's own machine, with their
+ * own tools and credentials, so it drops the "no permission dialog" and "cannot write" lines
+ * and adds the one rule local mode still needs: a commit, a push or a PR only on the user's
+ * word, never on its own initiative.
+ */
+export const LOCAL_ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus ledgers. Your working directory is argus's code (its skills, CLAUDE.md and scripts); its data (the ledgers, the arch docs and state/) is in ${WORKSPACE_DIR}, which the argus and accio verbs read on their own. This session runs on the operator's own machine, with their own tools and credentials, like a terminal.
+
+To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature's record is \`argus show <feature>\` (its ledger.json: the story, the requirements with their status, the asks with their history, the tickets, the landings); what nobody could place is ${WORKSPACE_DIR}/state/unplaced.json; the record's own history is \`git -C ${WORKSPACE_DIR} log\`; where a screen or field lives in the code is \`accio find "<words>"\`; a ticket is \`argus tracker show <KEY>\`; a Slack permalink is \`mcp__slack__slack_read_thread\` (the channel id and ts from the link). Code from a product checkout is \`git -C <repo> show origin/<branch>:<path>\` at the sha the ledger names; never run git fetch, pull, checkout or stash.
+
+Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
+
+To change the record — close an ask, confirm or contradict a requirement, place an unplaced message — call \`propose_decision\` once as the ask skill's Correcting section says; the user confirms it on the card, so never say it is done. To open a ticket, draft it per the linear-ticket skill, confirm its feature with the user (none for Citadel apps), then call \`propose_ticket\` once with it; say the draft is ready, never that it is filed. You may commit, push a branch or open a pull request, but only when the user asks for it in this conversation — never on your own initiative.`;
 
 /**
  * A conversation whose first turn starts `/scope` runs the scope skill (CTD-192's Ask
@@ -208,6 +256,16 @@ export const SCOPE_ADAPTER_CONFIG = {
   maxTurns: 80,
 } satisfies ClaudeCodeTextConfig;
 
+/**
+ * Local mode's `/scope` config (CTD-219): local mode already has no allowlist to lift, so a
+ * scope run there just keeps `LOCAL_ADAPTER_CONFIG` and asks for the same longer turn budget
+ * a container scope run gets — a local `/scope` sandboxed again would be the one surprise.
+ */
+export const LOCAL_SCOPE_ADAPTER_CONFIG = {
+  ...LOCAL_ADAPTER_CONFIG,
+  maxTurns: 80,
+} satisfies ClaudeCodeTextConfig;
+
 /** A `/scope` first turn, with or without arguments. */
 export const isScopeRequest = (text: string) =>
   /^\/scope(\s|$)/.test(text.trim());
@@ -217,6 +275,19 @@ export const SCOPE_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve, runn
 This is a \`/scope\` conversation: load the \`scope\` skill (skills/scope/SKILL.md), if it is not loaded already, and follow it with the user in this chat. Every step waits for their explicit yes, in a message here, before its file is written or anything is filed.
 
 ARGUS_ROOT is already ${WORKSPACE_DIR}: run \`argus\` and \`accio\` bare, one command at a time, with no pipe, redirect (\`2>&1\`), \`&&\` or \`;\` — a command with any of those is denied, whatever the skill's examples show. You may write files only under ${WORKSPACE_DIR}/revisions/, run \`argus revision new\`, \`show\` and \`file\`, and in step 5 only \`argus tracker create\` and \`argus tracker edit\`, passing a body as \`--body -\` from a heredoc, never a temp file. Everything else that writes is denied: never run the sweep, reconcile or commit.`;
+
+/**
+ * Local mode's `/scope` prompt (CTD-219): the same skill, the same wait for an explicit yes
+ * before a step's file is written or anything is filed, but no sandbox rule to work around —
+ * the skill's own commands run as written, pipes, redirects and \`&&\` included (AC6). Adds the
+ * same commit/push/PR rule the plain local prompt does, since the skill's own steps stop at
+ * filing a ticket and never commit or push on their own.
+ */
+export const LOCAL_SCOPE_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve, running the scope skill with the user. Your working directory is argus's code; its data is in ${WORKSPACE_DIR}. This session runs on the operator's own machine, with their own tools and credentials, like a terminal.
+
+This is a \`/scope\` conversation: load the \`scope\` skill (skills/scope/SKILL.md), if it is not loaded already, and follow it with the user in this chat. Every step waits for their explicit yes, in a message here, before its file is written or anything is filed.
+
+ARGUS_ROOT is already ${WORKSPACE_DIR}: run \`argus\` and \`accio\` exactly as the skill shows, pipes, redirects and \`&&\` included. You may commit, push a branch or open a pull request, but only when the user asks for it in this conversation, and never as part of a step the skill did not ask you to commit.`;
 
 /**
  * The extra system prompt a conversation opened from a feature page carries (LIA-162 AC4,
@@ -746,17 +817,33 @@ export const scopeModeOf = (
   return { on: stored === "scope" || record, record };
 };
 
-/** The adapter overrides and system prompts for a run: the scope skill's, or Ask's. */
-const runSetup = (scope: boolean, feature: string | undefined) =>
-  scope
-    ? { adapter: SCOPE_ADAPTER_CONFIG, systemPrompts: [SCOPE_SYSTEM_PROMPT] }
-    : {
-        adapter: {},
-        systemPrompts: [
-          ASK_SYSTEM_PROMPT,
-          ...(feature ? [featurePrompt(feature)] : []),
-        ],
-      };
+/**
+ * The adapter overrides and system prompts for a run: the scope skill's or Ask's, container's
+ * or local's (CTD-219). `askAdapter` always merges its argument over `ADAPTER_CONFIG`, so the
+ * container branches pass only what they change (`{}`, `SCOPE_ADAPTER_CONFIG`) while the local
+ * branches pass a whole `LOCAL_*` config — its explicit `allowedTools`/`disallowedTools:
+ * undefined` is what clears the container's lists rather than leaving them under the merge.
+ */
+const runSetup = (
+  scope: boolean,
+  feature: string | undefined,
+  mode: RunMode
+) => {
+  const local = mode === "local";
+  if (scope) {
+    return {
+      adapter: local ? LOCAL_SCOPE_ADAPTER_CONFIG : SCOPE_ADAPTER_CONFIG,
+      systemPrompts: [local ? LOCAL_SCOPE_SYSTEM_PROMPT : SCOPE_SYSTEM_PROMPT],
+    };
+  }
+  return {
+    adapter: local ? LOCAL_ADAPTER_CONFIG : {},
+    systemPrompts: [
+      local ? LOCAL_ASK_SYSTEM_PROMPT : ASK_SYSTEM_PROMPT,
+      ...(feature ? [featurePrompt(feature)] : []),
+    ],
+  };
+};
 
 /**
  * Where a filed ticket lives: `metadata[<threadId>]["ticket:<toolCallId>"]`. One key per
@@ -1059,8 +1146,9 @@ export async function* askStream(
     );
     return;
   }
-  const mode = authMode(opts.env ?? process.env);
-  const diagnosis = diagnosisLine(status, mode);
+  const auth = authMode(opts.env ?? process.env);
+  const runner = runMode(opts.env ?? process.env);
+  const diagnosis = diagnosisLine(status, auth);
   const release = await acquireThread(input.threadId);
   try {
     const sessionId = await readSessionId(store, input.threadId);
@@ -1093,7 +1181,7 @@ export async function* askStream(
       firstTurn,
       latestTurn
     );
-    const setup = runSetup(scope.on, feature);
+    const setup = runSetup(scope.on, feature, runner);
     const harness = harnessLog();
     let lastError: LastError | undefined;
     const recordError = async (message: string, code: string | undefined) => {
@@ -1204,7 +1292,7 @@ export async function* askStream(
       debug: harness.debug,
       messages: modelMessages,
       middleware,
-      modelOptions: { authMode: mode, ...(sessionId ? { sessionId } : {}) },
+      modelOptions: { authMode: auth, ...(sessionId ? { sessionId } : {}) },
       runId,
       systemPrompts: setup.systemPrompts,
       threadId: input.threadId,

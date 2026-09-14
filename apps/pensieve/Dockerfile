@@ -40,7 +40,7 @@ COPY --from=build /app/apps/pensieve/node_modules apps/pensieve/node_modules
 COPY --from=build /app/apps/pensieve/dist apps/pensieve/dist
 COPY --from=build /app/apps/pensieve/server.ts apps/pensieve/
 WORKDIR /app/apps/pensieve
-ENV NODE_ENV=production PORT=3778 WORKSPACE_DIR=/argus-data ARGUS_DIR=/app/apps/argus PENSIEVE_HOME=/data
+ENV NODE_ENV=production PORT=3778 WORKSPACE_DIR=/argus-data ARGUS_DIR=/app/apps/argus PENSIEVE_HOME=/data PENSIEVE_RUNNER=container
 # argus's data is mounted, never baked in: it changes every sweep tick. /data is Ask's
 # conversations; /root/.claude holds the transcripts a conversation resumes from.
 VOLUME ["/argus-data", "/data", "/root/.claude"]

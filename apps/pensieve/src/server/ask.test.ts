@@ -23,15 +23,21 @@ import { ARGUS_DIR, WORKSPACE_DIR } from "./workspace";
 // Ask's default store lives under PENSIEVE_HOME; point it at a scratch dir before the module loads.
 const HOME = await mkdtemp(join(tmpdir(), "pensieve-home-"));
 process.env.PENSIEVE_HOME = HOME;
+// The suite below (S-2, S-3, S-4, S-29) pins container mode, the way the image runs it; local
+// mode gets its own describe block further down, passing PENSIEVE_RUNNER through opts.env.
+process.env.PENSIEVE_RUNNER = "container";
 const ask = await import("./ask");
 const {
   conversationStore,
   askStream,
   askStatus,
   authMode,
+  runMode,
   allowedToolsFor,
   ADAPTER_CONFIG,
+  LOCAL_ADAPTER_CONFIG,
   ASK_SYSTEM_PROMPT,
+  LOCAL_ASK_SYSTEM_PROMPT,
   AUTH_ERROR_RE,
   featureOf,
   featurePrompt,
@@ -47,7 +53,9 @@ const {
   writeFiledTicket,
   isScopeRequest,
   SCOPE_ADAPTER_CONFIG,
+  LOCAL_SCOPE_ADAPTER_CONFIG,
   SCOPE_SYSTEM_PROMPT,
+  LOCAL_SCOPE_SYSTEM_PROMPT,
   TITLE_KEY,
   cleanTitle,
 } = ask;
@@ -1095,6 +1103,107 @@ describe("/scope — a conversation that runs the scope skill", () => {
     ]) {
       expect(SCOPE_SYSTEM_PROMPT).toMatch(re);
     }
+  });
+});
+
+describe("CTD-219 — the run mode: container keeps the sandbox, local runs free", () => {
+  test("PENSIEVE_RUNNER=container is container; anything else, unset included, is local", () => {
+    expect(runMode({ PENSIEVE_RUNNER: "container" })).toBe("container");
+    expect(runMode({ PENSIEVE_RUNNER: " container " })).toBe("container");
+    expect(runMode({ PENSIEVE_RUNNER: "local" })).toBe("local");
+    expect(runMode({})).toBe("local");
+  });
+
+  test("the local adapter config drops the allowlist and denials, and runs bypassPermissions with the operator's settings", () => {
+    expect(LOCAL_ADAPTER_CONFIG.permissionMode).toBe("bypassPermissions");
+    expect(LOCAL_ADAPTER_CONFIG.settingSources).toEqual(["user", "project"]);
+    expect(LOCAL_ADAPTER_CONFIG.allowedTools).toBeUndefined();
+    expect(LOCAL_ADAPTER_CONFIG.disallowedTools).toBeUndefined();
+    // Everything else — the checkouts' data dir, the working directory, the turn cap —
+    // is unchanged from the container config.
+    expect(LOCAL_ADAPTER_CONFIG.addDirs).toEqual(ADAPTER_CONFIG.addDirs);
+    expect(LOCAL_ADAPTER_CONFIG.cwd).toBe(ADAPTER_CONFIG.cwd);
+    expect(LOCAL_ADAPTER_CONFIG.env).toEqual(ADAPTER_CONFIG.env);
+    expect(LOCAL_ADAPTER_CONFIG.maxTurns).toBe(ADAPTER_CONFIG.maxTurns);
+    // Container mode itself is untouched by adding local mode (AC8).
+    expect(ADAPTER_CONFIG.permissionMode).toBe("default");
+    expect(ADAPTER_CONFIG.settingSources).toEqual(["project"]);
+  });
+
+  test("a local /scope run keeps the local config and only widens the turn cap", () => {
+    expect(LOCAL_SCOPE_ADAPTER_CONFIG.maxTurns).toBe(80);
+    expect(LOCAL_SCOPE_ADAPTER_CONFIG.permissionMode).toBe("bypassPermissions");
+    expect(LOCAL_SCOPE_ADAPTER_CONFIG.settingSources).toEqual([
+      "user",
+      "project",
+    ]);
+    expect(LOCAL_SCOPE_ADAPTER_CONFIG.allowedTools).toBeUndefined();
+    expect(LOCAL_SCOPE_ADAPTER_CONFIG.disallowedTools).toBeUndefined();
+    // Container /scope keeps its own allowlist and denials, unaffected (AC8).
+    expect(SCOPE_ADAPTER_CONFIG.maxTurns).toBe(80);
+    expect(SCOPE_ADAPTER_CONFIG.permissionMode).toBe("default");
+  });
+
+  test("the local prompts drop the sandbox rules and add the commit/push/PR rule", () => {
+    for (const prompt of [LOCAL_ASK_SYSTEM_PROMPT, LOCAL_SCOPE_SYSTEM_PROMPT]) {
+      expect(prompt).not.toMatch(/not a terminal/i);
+      expect(prompt).not.toMatch(/no permission dialog/i);
+      expect(prompt).toMatch(/only when the user asks/i);
+    }
+    expect(LOCAL_ASK_SYSTEM_PROMPT).not.toMatch(
+      /argus verbs that write are denied/i
+    );
+    expect(LOCAL_SCOPE_SYSTEM_PROMPT).not.toMatch(/no pipe, redirect/i);
+    expect(LOCAL_SCOPE_SYSTEM_PROMPT).toMatch(/pipes, redirects and `&&`/);
+    // Still argus's own working directory and the ask/scope skills — that part carries over.
+    expect(LOCAL_ASK_SYSTEM_PROMPT).toMatch(/skills\/ask\/SKILL\.md/);
+    expect(LOCAL_SCOPE_SYSTEM_PROMPT).toMatch(/skills\/scope\/SKILL\.md/);
+  });
+
+  test("a run picks its prompt from PENSIEVE_RUNNER on that request, not the process default", async () => {
+    const store = conversationStore(await scratch());
+    const local = new FakeClaude({ sessionId: "run-local" });
+    await collect(
+      askStream(
+        { messages: [user("where does it stand")], threadId: "runmode-1" },
+        {
+          adapter: local,
+          env: { PENSIEVE_RUNNER: "local" },
+          middleware: [],
+          status: available,
+          store,
+        }
+      )
+    );
+    expect(local.calls[0].systemPrompts).toEqual([LOCAL_ASK_SYSTEM_PROMPT]);
+
+    const localScope = new FakeClaude({ sessionId: "run-local-scope" });
+    await collect(
+      askStream(
+        { messages: [user("/scope add bulk delete")], threadId: "runmode-2" },
+        {
+          adapter: localScope,
+          env: { PENSIEVE_RUNNER: "local" },
+          middleware: [],
+          status: available,
+          store,
+        }
+      )
+    );
+    expect(localScope.calls[0].systemPrompts).toEqual([
+      LOCAL_SCOPE_SYSTEM_PROMPT,
+    ]);
+
+    // The process default stays container (set at the top of this file) — a request that
+    // names its own runner is what changes the pick, not a global flip.
+    const stillContainer = new FakeClaude({ sessionId: "run-container" });
+    await collect(
+      askStream(
+        { messages: [user("where does it stand")], threadId: "runmode-3" },
+        { adapter: stillContainer, middleware: [], status: available, store }
+      )
+    );
+    expect(stillContainer.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
   });
 });
 
