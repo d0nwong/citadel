@@ -4,6 +4,7 @@ import {
   TRELLO_BOARD_ID,
   TRELLO_CHECKLIST_NAME,
   TRELLO_PIPELINE_LIST,
+  TRELLO_READY_FOR_AGENT_LIST,
   trelloClaim,
   trelloCreate,
   trelloGet,
@@ -376,6 +377,14 @@ describe("trelloUpdate", () => {
     expect(put?.params).toMatchObject({ idList: "L-deploy" });
     const badList = fakeWrite({ cards: [original], lists: TEN_LISTS });
     await expect(trelloUpdate("AP-108", { state: "Bogus" }, { fetch: badList, trelloKey: "k", trelloToken: "tok" })).rejects.toThrow('no list named "Bogus"');
+  });
+
+  test("CTD-211 AC4: moves the card onto TRELLO_READY_FOR_AGENT_LIST, the list a Send lands it on", async () => {
+    const original = card("c103", 103, "L-pipe", { name: "t", desc: "d" });
+    const moved = card("c103", 103, "L-agent", { name: "t", desc: "d" });
+    const f = fakeWrite({ cards: [original], lists: TEN_LISTS }, { updateCard: moved });
+    const t = await trelloUpdate("AP-103", { state: TRELLO_READY_FOR_AGENT_LIST }, { fetch: f, trelloKey: "k", trelloToken: "tok", now });
+    expect(t.state).toMatchObject({ state: "open", name: "Ready for Agent", stage: "started" });
   });
 
   test("title alone is carried in one PUT; unrelated fields are left off", async () => {

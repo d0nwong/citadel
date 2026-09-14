@@ -283,6 +283,24 @@ describe("home", () => {
     ]);
   });
 
+  test("AC3: a ready ticket's url comes from its provider's state; an unread state leaves it unset", async () => {
+    await put(
+      `${APP}/features/admin/invoicing/ledger.json`,
+      await readyFixture()
+    );
+    const states: TicketStates = () => ({
+      name: "Backlog",
+      provider: "linear",
+      state: "open",
+      url: "https://linear.app/liamai/issue/ALD-41",
+    });
+    const h = await home(roots, join(root, "state/unplaced.json"), [], states);
+    expect(h.ready[0]?.url).toBe("https://linear.app/liamai/issue/ALD-41");
+
+    const unread = await home(roots, join(root, "state/unplaced.json"));
+    expect(unread.ready[0]?.url).toBeUndefined();
+  });
+
   test("AC4: an assignee present but Liam's own id unconfirmed is shown as unknown, not dropped", async () => {
     await put(
       `${APP}/features/admin/invoicing/ledger.json`,
@@ -351,6 +369,27 @@ describe("home", () => {
       );
       expect(h.ready.map((t) => t.key)).toEqual(["ALD-41"]);
       expect(h.ready[0]?.title).not.toBe("duplicate");
+    });
+
+    test("AC3: a Pipeline card's url comes from its state, for the TicketLink to its Trello card", async () => {
+      const h = await home(
+        roots,
+        join(root, "state/unplaced.json"),
+        [],
+        undefined,
+        {},
+        [
+          card({
+            state: {
+              name: "Pipeline",
+              provider: "trello",
+              state: "open",
+              url: "https://trello.com/c/LRENc1a3",
+            },
+          }),
+        ]
+      );
+      expect(h.ready[0]?.url).toBe("https://trello.com/c/LRENc1a3");
     });
 
     test("a Pipeline card assigned to someone else is dropped, like any other ticket", async () => {

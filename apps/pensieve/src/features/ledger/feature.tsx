@@ -474,7 +474,7 @@ function AskRow({
         ) : null}
         {key && (
           <span className="ml-auto">
-            <TicketLink ticket={key} />
+            <TicketLink ticket={key} url={filed?.url} />
           </span>
         )}
       </div>

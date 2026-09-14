@@ -38,6 +38,7 @@ export {
   TRELLO_IN_PROGRESS_LIST,
   TRELLO_LISTS,
   TRELLO_PIPELINE_LIST,
+  TRELLO_READY_FOR_AGENT_LIST,
   trelloClaim,
   trelloCreate,
   trelloGet,
