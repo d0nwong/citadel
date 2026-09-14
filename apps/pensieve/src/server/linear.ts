@@ -1,14 +1,6 @@
 /**
- * Node-only. The Linear client — Pensieve's second outbound call, and the only one that
- * writes anywhere but the blackboard. Two operations of Linear's GraphQL API:
- *
- *   query    teams(key) { projects }, viewer { id }   → what `propose_ticket` validates against
- *   query    issues(team, state not done)             → what `propose_arc`'s ticket seeds are
- *   mutation issueCreate(input)                       → what File on the ticket card does
- *
- * The write is `createIssue` and nothing else: no labels (the `linear-ticket` skill's
- * "no labels at filing, ever"), no parent, no relations. One plain issue per call, which
- * is what LIA-113 files and all it files.
+ * Node-only. The Linear client — one read: `knownProjects`, what `propose_ticket` validates
+ * a Citadel draft's project against, and `openIssues`.
  *
  * Config: `LINEAR_API_KEY`, from the environment and nowhere else, exactly as
  * `FOUNDRY_API_TOKEN` is read (LIA-142) — `.env` fills it on a Mac, the compose file's
@@ -20,10 +12,9 @@
  * Linear, and `propose_ticket` still has to refuse a project that is not the named team's
  * (LIA-113 AC4 holds under AC5). The cache is refreshed on every successful fetch.
  *
- * The team itself is one of a short table (CTD-172): Alden, the alden-portal features, and
- * Citadel, which owns Pensieve, Argus and Foundry as projects. Alden is the default when a
- * draft names none, so an ask about an alden-portal feature behaves exactly as before there
- * was a second team.
+ * The write path (`createIssue`, `createProject`) moved to `@citadel/tickets`' `createTicket`
+ * (CTD-201, CTD-207): `server/ticket.ts` now holds the team table (Alden, Citadel) and routes
+ * a draft to whichever provider its team names, Linear or the Alden Trello board.
  */
 
 import { randomBytes } from "node:crypto";
@@ -33,37 +24,9 @@ import { dirname, join, resolve } from "node:path";
 
 export const LINEAR_API_URL = "https://api.linear.app/graphql";
 
-/**
- * The teams Pensieve can file into. Alden is first because it is the default when a draft
- * names none — an ask about an alden-portal feature behaves exactly as it did with one team.
- */
-export const TEAMS = [
-  { key: "ALD", name: "Alden" },
-  { key: "CTD", name: "Citadel" },
-] as const;
-
-export type Team = (typeof TEAMS)[number];
-
-const [DEFAULT_TEAM] = TEAMS;
-
-/** The default team's key and name, for the reads that are not per draft (`linearConfig`, the cache file). */
-export const TEAM_KEY: string = DEFAULT_TEAM.key;
-export const TEAM_NAME: string = DEFAULT_TEAM.name;
-
-/**
- * The named team, matched by key or name case-insensitively; the default (Alden) when
- * nothing is named; `undefined` when the name is neither team Pensieve knows.
- */
-export function teamFor(named?: string): Team | undefined {
-  const trimmed = named?.trim();
-  if (!trimmed) {
-    return DEFAULT_TEAM;
-  }
-  const norm = trimmed.toLowerCase();
-  return TEAMS.find(
-    (t) => t.key.toLowerCase() === norm || t.name.toLowerCase() === norm
-  );
-}
+/** The Linear team `knownProjects`/the projects cache default to when no team key is given. */
+export const TEAM_KEY = "ALD";
+export const TEAM_NAME = "Alden";
 
 /**
  * Where the last successful project list is kept, so AC4 survives a missing key.
@@ -436,102 +399,4 @@ export async function openIssues(
   }
   openMemo = { at: Date.now(), issues };
   return issues;
-}
-
-// ── the two mutations ──────────────────────────────────────────────────────────
-
-const PROJECT_CREATE = `mutation CreateProject($input: ProjectCreateInput!) {
-  projectCreate(input: $input) {
-    success
-    project { id name }
-  }
-}`;
-
-/**
- * Create one project on the team, for a draft whose project the team does not have yet
- * (`CheckedDraft.project.isNew`). The new project joins the on-disk cache and the memo is
- * dropped, so the next check — a second ticket for the same feature — finds it without a
- * round trip.
- */
-export async function createProject(
-  input: { name: string; teamId: string },
-  fetchImpl: Fetch = fetch,
-  teamKey: string = TEAM_KEY
-): Promise<LinearProject> {
-  const data = await graphql<{
-    projectCreate: { project: LinearProject | null; success: boolean };
-  }>(
-    PROJECT_CREATE,
-    { input: { name: input.name, teamIds: [input.teamId] } },
-    fetchImpl
-  );
-  const { project, success } = data.projectCreate;
-  if (!(success && project)) {
-    throw new LinearError(0, "Linear did not create the project");
-  }
-  const made = { id: project.id, name: project.name };
-  memos.delete(teamKey);
-  const cached = await readCache(teamKey);
-  if (cached) {
-    await writeCache(
-      {
-        ...cached,
-        at: new Date().toISOString(),
-        projects: [...cached.projects, made],
-      },
-      teamKey
-    );
-  }
-  return made;
-}
-
-const ISSUE_CREATE = `mutation FileTicket($input: IssueCreateInput!) {
-  issueCreate(input: $input) {
-    success
-    issue { id identifier url }
-  }
-}`;
-
-/** The filed issue, as the card shows it and the conversation file records it. */
-export interface FiledIssue {
-  id: string;
-  identifier: string;
-  url: string;
-}
-
-/**
- * Create one issue. `labelIds` is deliberately absent — filing queues a ticket, it never
- * signals readiness (the `linear-ticket` skill's step 4) — and so are `parentId` and every
- * relation: a split into sub-issues is a terminal's job.
- */
-export async function createIssue(
-  input: {
-    assigneeId?: string;
-    description: string;
-    projectId?: string;
-    teamId: string;
-    title: string;
-  },
-  fetchImpl: Fetch = fetch
-): Promise<FiledIssue> {
-  const data = await graphql<{
-    issueCreate: { issue: FiledIssue | null; success: boolean };
-  }>(
-    ISSUE_CREATE,
-    {
-      input: {
-        description: input.description,
-        teamId: input.teamId,
-        title: input.title,
-        ...(input.projectId ? { projectId: input.projectId } : {}),
-        ...(input.assigneeId ? { assigneeId: input.assigneeId } : {}),
-      },
-    },
-    fetchImpl
-  );
-  const { issue, success } = data.issueCreate;
-  if (!(success && issue)) {
-    throw new LinearError(0, "Linear did not create the issue");
-  }
-  return { id: issue.id, identifier: issue.identifier, url: issue.url };
 }

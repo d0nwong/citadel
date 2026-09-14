@@ -32,6 +32,11 @@
  * `unknown` for every `AP` key and names the missing variable on stderr once; every other
  * verb throws `MissingCredentialError` naming the first unset one, since a caller asking
  * for one ticket, or writing one, has nothing to fall back to.
+ *
+ * `trelloLabels`/`trelloMembers` (CTD-207) are the board's own labels and members, read
+ * plainly (`GET /1/boards/{id}/labels`, `GET /1/boards/{id}/members`) for a caller checking
+ * a project/label name before filing, or offering an assignee — throwing, by name, with no
+ * credential, like every other read here.
  */
 
 import { MissingCredentialError } from "./errors.ts";
@@ -63,6 +68,9 @@ type TrelloCard = { id: string; idShort: number | null; idList: string; idMember
 type TrelloList = { id: string; name: string };
 type TrelloChecklist = { id: string; idCard: string; checkItems: { id: string; name: string }[] };
 type TrelloLabel = { id: string; name: string };
+
+/** one member of the Alden board, as `GET /1/boards/{id}/members` answers it */
+export type TrelloMember = { id: string; fullName: string; username: string };
 
 export type TrelloOptions = { fetch?: typeof fetch; trelloKey?: string | null; trelloToken?: string | null; now?: Date };
 
@@ -138,6 +146,14 @@ async function boardLabels(opts: TrelloOptions, key: string, token: string): Pro
   return (await res.json()) as TrelloLabel[];
 }
 
+async function boardMembers(opts: TrelloOptions, key: string, token: string): Promise<TrelloMember[]> {
+  const f = opts.fetch ?? fetch;
+  const url = trelloUrl(`/boards/${TRELLO_BOARD_ID}/members`, { fields: "fullName,username" }, key, token);
+  const res = await f(url);
+  if (!res.ok) throw new Error(`trello: ${res.status}`);
+  return (await res.json()) as TrelloMember[];
+}
+
 /** one authenticated write — POST or PUT or DELETE, every param (including the body) as Trello's own query-string convention expects */
 async function trelloSend<T>(method: "POST" | "PUT" | "DELETE", path: string, params: Record<string, string>, opts: TrelloOptions, key: string, token: string): Promise<T> {
   const f = opts.fetch ?? fetch;
@@ -172,6 +188,31 @@ export async function trelloViewerId(opts: TrelloOptions = {}): Promise<string |
   } catch {
     return null;
   }
+}
+
+/**
+ * The Alden board's own labels — what a `project` name is matched against before `create`
+ * makes a new one. Throws, naming the missing variable, when a credential is not set: a
+ * caller asking for the board's labels has nothing to fall back to.
+ */
+export async function trelloLabels(opts: TrelloOptions = {}): Promise<{ id: string; name: string }[]> {
+  const key = keyOf(opts);
+  const token = tokenOf(opts);
+  const missing = missingCredential(key, token);
+  if (missing) throw new Error(missing);
+  return boardLabels(opts, key!, token!);
+}
+
+/**
+ * The Alden board's own members — the assignee picker's read (ticket 11). Throws, naming
+ * the missing variable, when a credential is not set.
+ */
+export async function trelloMembers(opts: TrelloOptions = {}): Promise<TrelloMember[]> {
+  const key = keyOf(opts);
+  const token = tokenOf(opts);
+  const missing = missingCredential(key, token);
+  if (missing) throw new Error(missing);
+  return boardMembers(opts, key!, token!);
 }
 
 const NUMBER_IN_URL = /\/c\/[^/]+\/(\d+)(?:-|$)/;

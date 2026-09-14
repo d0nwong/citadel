@@ -1,6 +1,18 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { MissingCredentialError } from "./errors.ts";
-import { TRELLO_BOARD_ID, TRELLO_CHECKLIST_NAME, TRELLO_PIPELINE_LIST, trelloCreate, trelloGet, trelloListOpen, trelloTicketStates, trelloUpdate, trelloViewerId } from "./trello.ts";
+import {
+  TRELLO_BOARD_ID,
+  TRELLO_CHECKLIST_NAME,
+  TRELLO_PIPELINE_LIST,
+  trelloCreate,
+  trelloGet,
+  trelloLabels,
+  trelloListOpen,
+  trelloMembers,
+  trelloTicketStates,
+  trelloUpdate,
+  trelloViewerId,
+} from "./trello.ts";
 
 const now = new Date("2026-09-14T10:00:00Z");
 
@@ -241,7 +253,7 @@ type Call = { method: string; path: string; params: Record<string, string> };
 
 /** a fetch stub with both the board's reads and its writes, dispatched by method + path; records every call */
 function fakeWrite(
-  board: { cards?: unknown[]; lists?: unknown[]; labels?: unknown[]; me?: { id: string }; checklistsByCard?: Record<string, unknown[]>; boardChecklists?: unknown[] },
+  board: { cards?: unknown[]; lists?: unknown[]; labels?: unknown[]; members?: unknown[]; me?: { id: string }; checklistsByCard?: Record<string, unknown[]>; boardChecklists?: unknown[] },
   responses: { createCard?: unknown; createLabel?: unknown; createChecklist?: unknown; updateCard?: unknown } = {},
   calls: Call[] = [],
 ) {
@@ -255,6 +267,7 @@ function fakeWrite(
     if (method === "GET" && path === `/boards/${TRELLO_BOARD_ID}/cards`) return json(board.cards ?? []);
     if (method === "GET" && path === `/boards/${TRELLO_BOARD_ID}/lists`) return json(board.lists ?? []);
     if (method === "GET" && path === `/boards/${TRELLO_BOARD_ID}/labels`) return json(board.labels ?? []);
+    if (method === "GET" && path === `/boards/${TRELLO_BOARD_ID}/members`) return json(board.members ?? []);
     if (method === "GET" && path === "/members/me") return json(board.me ?? { id: "u1" });
     if (method === "GET" && path === `/boards/${TRELLO_BOARD_ID}/checklists`) return json(board.boardChecklists ?? []);
     const cardChecklists = /^\/cards\/([^/]+)\/checklists$/.exec(path);
@@ -451,5 +464,31 @@ describe("trelloViewerId", () => {
     const failing = (async () => new Response("nope", { status: 500 })) as unknown as typeof fetch;
     const id = await trelloViewerId({ fetch: failing, trelloKey: "k", trelloToken: "t" });
     expect(id).toBeNull();
+  });
+});
+
+describe("trelloLabels", () => {
+  test("the board's own labels", async () => {
+    const labels = [{ id: "lbl-1", name: "Admin - Invoicing" }];
+    const got = await trelloLabels({ fetch: fakeWrite({ labels }), trelloKey: "k", trelloToken: "t" });
+    expect(got).toEqual(labels);
+  });
+
+  test("no credential throws, naming the missing variable", async () => {
+    await expect(trelloLabels({ trelloKey: null, trelloToken: "t" })).rejects.toThrow("TRELLO_API_KEY");
+    await expect(trelloLabels({ trelloKey: "k", trelloToken: null })).rejects.toThrow("TRELLO_TOKEN");
+  });
+});
+
+describe("trelloMembers", () => {
+  test("the board's own members", async () => {
+    const members = [{ id: "u1", fullName: "Liam", username: "liam" }];
+    const got = await trelloMembers({ fetch: fakeWrite({ members }), trelloKey: "k", trelloToken: "t" });
+    expect(got).toEqual(members);
+  });
+
+  test("no credential throws, naming the missing variable", async () => {
+    await expect(trelloMembers({ trelloKey: null, trelloToken: "t" })).rejects.toThrow("TRELLO_API_KEY");
+    await expect(trelloMembers({ trelloKey: "k", trelloToken: null })).rejects.toThrow("TRELLO_TOKEN");
   });
 });

@@ -39,10 +39,12 @@ export {
   TRELLO_PIPELINE_LIST,
   trelloCreate,
   trelloGet,
+  trelloLabels,
   trelloListOpen,
+  trelloMembers,
   trelloProvider,
   trelloTicketStates,
   trelloUpdate,
   trelloViewerId,
 } from "./trello.ts";
-export type { TrelloOptions } from "./trello.ts";
+export type { TrelloMember, TrelloOptions } from "./trello.ts";
