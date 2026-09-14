@@ -192,9 +192,23 @@ async function stopWatch(prUrl: string, reason: string): Promise<void> {
  * then insert the follow-up. The guard on `follow_ups` is what keeps two
  * processes from both launching — the second finds the count moved and
  * inserts nothing. Null means exactly that.
+ *
+ * The count alone is not enough when the other process has already
+ * committed: this one listed the PR with no follow-up open, but the watch it
+ * then read is the moved one, so the same commit's red check looks like a
+ * fresh trigger and the count it guards on is the fresh count. So the launch
+ * looks for an open follow-up on the PR first — the listing's own rule, now
+ * inside the transaction. Sound without a lock: a follow-up inserted after
+ * that look moved the count past the one this process read.
  */
 async function launch(job: JobRow, watch: WatchRow, trigger: Trigger, now: Date): Promise<Job | null> {
   return db.transaction(async (tx) => {
+    const [open] = await tx
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.prUrl, watch.prUrl), inArray(jobs.status, ['queued', 'running'])))
+      .limit(1)
+    if (open) return null
     const mark = trigger.kind === 'review' ? { reviewedAt: trigger.reviewedAt } : { checkedSha: trigger.checkedSha }
     const [claimed] = await tx
       .update(prWatches)

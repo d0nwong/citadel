@@ -239,6 +239,45 @@ test('AC3 — the same review or check failure never launches two jobs', async (
   expect(await followUpsOf(root.prUrl)).toHaveLength(2)
 })
 
+test('AC3 — a tick that listed the PR before another launched on it does not launch for the same commit', async () => {
+  const root = await rootJob()
+  prs.set(root.prUrl, state({ headSha: 'cafe02', reviews: [review(Date.now() + 1000)], checks: [check('failed')] }))
+
+  // Two processes. The second lists the PR — no follow-up open yet — and is
+  // still reading it while the first launches for the review and commits.
+  const gate = () => {
+    let open!: () => void
+    const held = new Promise<void>((resolve) => {
+      open = resolve
+    })
+    return { held, open }
+  }
+  const secondListed = gate()
+  const firstDone = gate()
+  const first = tick(
+    deps({
+      fetchPr: async (_origin, prUrl) => {
+        await secondListed.held
+        return prs.get(prUrl) ?? state()
+      },
+    }),
+  ).then(firstDone.open)
+  const second = tick(
+    deps({
+      fetchPr: async (_origin, prUrl) => {
+        secondListed.open()
+        await firstDone.held
+        return prs.get(prUrl) ?? state()
+      },
+    }),
+  )
+  await Promise.all([first, second])
+
+  // The second saw the review answered and the check on cafe02 still open —
+  // but the first's follow-up is queued on that branch, so it launches nothing.
+  expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['review'])
+})
+
 test('no second launch while a follow-up is still open on the PR', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000)] }))
