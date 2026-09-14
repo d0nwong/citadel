@@ -38,7 +38,7 @@ const issueFor = (identifier: string): Ticket => ({
   title: 'do the thing',
   url: `https://linear.app/liamai/issue/${identifier}/slug`,
   description: '## Summary\n\nEvery detail here.',
-  state: { state: 'open', name: 'In Progress', url: `https://linear.app/liamai/issue/${identifier}/slug` },
+  state: { state: 'open', name: 'In Progress', provider: 'linear', url: `https://linear.app/liamai/issue/${identifier}/slug` },
 })
 let claimFails = false
 /** Claims and ignitions in the order they happened — the claim must come first. */

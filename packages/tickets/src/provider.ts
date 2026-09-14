@@ -1,21 +1,27 @@
 /**
  * The shape every provider answers a ticket in, and the interface each one implements
- * (CTD-198). `CTD` and `ALD` route to Linear (`linear.ts`, `key.ts`); Trello is ticket 2's.
- * This ticket implements `get` and `states` for Linear only — the other five verbs throw
- * until the ticket that writes them (ticket 4) lands.
+ * (CTD-198, CTD-199). `CTD` and `ALD` route to Linear (`linear.ts`); `AP` routes to Trello
+ * (`trello.ts`); `key.ts` holds the table. `get` and `states` are implemented for both —
+ * the other five verbs throw until the ticket that writes them (ticket 4) lands.
  */
 
 /** who a ticket is assigned to, when its provider knows */
 export type Assignee = { id: string };
 
+/** the list category a Trello `open` card's list maps to; unset for a Linear ticket today */
+export type Stage = "triage" | "unstarted" | "started";
+
 export type TicketState =
-  | { state: "done"; at: string; name: string; url: string; assignee?: Assignee }
-  | { state: "canceled"; at: string; name: string; url: string; assignee?: Assignee }
-  | { state: "open"; name: string; url: string; assignee?: Assignee }
+  | { state: "done"; at: string; name: string; url: string; provider: string; assignee?: Assignee }
+  | { state: "canceled"; at: string; name: string; url: string; provider: string; assignee?: Assignee }
+  | { state: "open"; name: string; url: string; provider: string; assignee?: Assignee; stage?: Stage }
   | { state: "unknown" };
 
 /** looks up one key's last-read state; `unknown` for a key nobody answered */
 export type TicketStates = (key: string) => TicketState;
+
+/** a state's `provider`, spelled for a report line: `"linear"` → `"Linear"`, `"trello"` → `"Trello"` */
+export const providerLabel = (name: string): string => (name ? name[0]!.toUpperCase() + name.slice(1) : name);
 
 /** what `get` answers: the ticket itself, for a skill, a job brief or a card to read */
 export type Ticket = {

@@ -53,7 +53,7 @@ const issue = (identifier: string): Ticket => ({
   key: identifier,
   title: `${identifier} title`,
   url: `https://linear.app/acme/issue/${identifier}/slug`,
-  state: { state: 'open', name: 'Todo', url: `https://linear.app/acme/issue/${identifier}/slug` },
+  state: { state: 'open', name: 'Todo', provider: 'linear', url: `https://linear.app/acme/issue/${identifier}/slug` },
 })
 
 /** A tracker that knows ALD-44 and ALD-45, knows nothing of UTF-8, and is down for ALD-500. */

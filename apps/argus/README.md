@@ -63,10 +63,11 @@ can be named by a revision as `<app>/<dir>`.
 4. Read — one Opus subagent per feature with a slice returns a patch
    (`skills/sweep/reader.md`, `shapes.md`); code applies and validates the whole.
 5. `argus reconcile` — a landing blocker clears when Bitbucket says the merge deployed. An
-   open ticket settles when Linear says Done (its asks close) or Canceled (they drop), or,
-   with no asks, once the landing carrying its key is live. A filed revision whose parent
-   is Done folds into its features' `docs/spec.md` (retiring a `product.md`) and moves to
-   `revisions/archive/`; Canceled archives it untouched. Linear is read, never written.
+   open ticket settles when its provider says Done (its asks close) or Canceled (they drop),
+   or, with no asks, once the landing carrying its key is live — Linear for `CTD` and `ALD`,
+   the Alden Trello board for `AP`. A filed revision whose parent is Done folds into its
+   features' `docs/spec.md` (retiring a `product.md`) and moves to `revisions/archive/`;
+   Canceled archives it untouched. Both providers are read, never written.
 6. `accio stale` and the `feature-docs` skill for arch docs that drifted.
 7. `argus validate`, commit, promote the cursor.
 
@@ -101,10 +102,13 @@ Both product checkouts must exist (`~/git/alden-portal-fe`, `~/git/alden-connect
 or `FE_REPO` / `BE_REPO`); the run reads them at `origin/*` and never switches a branch. The
 sweep container clones its own copies instead.
 The deploy check reads the credentials `bb` keeps in `~/.bitbucket-rest-cli-config.json`
-(`BITBUCKET_CONFIG` to point elsewhere); the ticket-state check reads `LINEAR_API_KEY` from
-`.env`, and without it tickets settle only from landings. Linear and Slack are the MCP servers in `.mcp.json`, both behind the local MCP gateway
-(mcp-proxy on :9090, `infra/compose.yaml`, started by `just up mcp`); a
-session presents `MCP_GATEWAY_TOKEN` from `.env`, and the gateway holds the keys.
+(`BITBUCKET_CONFIG` to point elsewhere); the ticket-state check reads `LINEAR_API_KEY` and
+`TRELLO_API_KEY`/`TRELLO_TOKEN` from `.env`, and without either a provider's credential its
+tickets settle only from landings. Linear and Slack are the MCP servers in `.mcp.json`, both
+behind the local MCP gateway (mcp-proxy on :9090, `infra/compose.yaml`, started by
+`just up mcp`); a session presents `MCP_GATEWAY_TOKEN` from `.env`, and the gateway holds the
+keys. Trello is not behind the gateway — `packages/tickets` reads `TRELLO_API_KEY` and
+`TRELLO_TOKEN` straight from `.env`, as `foundry auth --trello` writes them.
 
 ## Running it
 
@@ -113,7 +117,7 @@ just sweep-once [--dry-run]   # one tick in the stack; --dry-run only pulls
 just sweep-on                 # the loop: one tick per SWEEP_INTERVAL (900s)
 argus pull                    # the batch, or "nothing new"
 argus place <batch>           # the joins
-argus reconcile               # clear what deployed, settle what Linear closed
+argus reconcile               # clear what deployed, settle what each ticket's provider closed
 argus validate                # every ledger and arch doc
 argus show admin/usage        # one ledger
 argus close admin/usage A-7 --reason "..."         # the click verbs, as Pensieve runs them

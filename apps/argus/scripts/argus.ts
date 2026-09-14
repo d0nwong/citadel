@@ -57,7 +57,7 @@ const USAGE = `argus — the ledger CLI
 
   argus pull [--since <date>] [--no-slack] [--no-landings] [--no-fetch] [--out <dir>]
   argus place <batch-id|path>        the deterministic joins → <batch>.placed.json + state/unplaced.json
-  argus reconcile [<feature>...]     clear the blockers and settle the tickets the facts allow (asks Bitbucket whether a landing deployed, Linear whether a ticket is Done or Canceled); a filed revision whose parent is Done folds into its features' specs, Canceled archives it
+  argus reconcile [<feature>...]     clear the blockers and settle the tickets the facts allow (asks Bitbucket whether a landing deployed, each ticket's provider — Linear or Trello — whether it is Done or Canceled); a filed revision whose parent is Done folds into its features' specs, Canceled archives it
   argus prompt attribute [<batch>]   the attribution step's prompt over state/unplaced.json
   argus prompt reader <feature> <batch>   the reader's prompt for one feature's slice
   argus patch <feature> <file>|-     apply a reader's patch to the ledger (validated whole)

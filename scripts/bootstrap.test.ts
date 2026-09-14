@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { exampleKeys, parseEnv, setKey, writeKey } from "./bootstrap.ts";
+import { AUTH_USAGE, exampleKeys, parseEnv, PROMPTED, setKey, writeKey } from "./bootstrap.ts";
 
 test("parseEnv: KEY=value lines, the last wins, comments and blanks skipped, an empty value stays empty", () => {
   expect(parseEnv("# A=1\nA=2\n\nB=\nA=3\nnot a key\n")).toEqual({ A: "3", B: "" });
@@ -24,4 +24,13 @@ test("writeKey: keeps the other lines and leaves the file mode 600", () => {
 
 test("exampleKeys: set and commented-out keys, never the prose", () => {
   expect(exampleKeys("# SLACK_TOKEN  what it is\nSLACK_TOKEN=\n# MCP_PORT=9090\n")).toEqual(new Set(["SLACK_TOKEN", "MCP_PORT"]));
+});
+
+test("PROMPTED: the Trello pair reports under just check, as LINEAR_API_KEY does", () => {
+  const trello = PROMPTED.filter(([, auth]) => auth === "trello").map(([k]) => k);
+  expect(trello).toEqual(["TRELLO_API_KEY", "TRELLO_TOKEN"]);
+});
+
+test("AUTH_USAGE: trello is among the names just auth accepts", () => {
+  expect(AUTH_USAGE).toContain("trello");
 });

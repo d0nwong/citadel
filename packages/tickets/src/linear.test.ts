@@ -12,13 +12,13 @@ const node = (identifier: string, type: string, extra: Record<string, unknown> =
 
 describe("stateOf", () => {
   test("the state's type decides; completedAt and canceledAt date it, else now", () => {
-    expect(stateOf(node("ALD-1", "completed", { completedAt: "2026-09-12T01:00:00Z" }), now)).toEqual({ state: "done", at: "2026-09-12T01:00:00Z", name: "Done", url: "https://linear.app/x/issue/ALD-1" });
-    expect(stateOf(node("ALD-2", "canceled", { canceledAt: null }), now)).toEqual({ state: "canceled", at: now.toISOString(), name: "Canceled", url: "https://linear.app/x/issue/ALD-2" });
-    expect(stateOf(node("ALD-3", "started"), now)).toEqual({ state: "open", name: "In Progress", url: "https://linear.app/x/issue/ALD-3" });
+    expect(stateOf(node("ALD-1", "completed", { completedAt: "2026-09-12T01:00:00Z" }), now)).toEqual({ state: "done", at: "2026-09-12T01:00:00Z", name: "Done", url: "https://linear.app/x/issue/ALD-1", provider: "linear" });
+    expect(stateOf(node("ALD-2", "canceled", { canceledAt: null }), now)).toEqual({ state: "canceled", at: now.toISOString(), name: "Canceled", url: "https://linear.app/x/issue/ALD-2", provider: "linear" });
+    expect(stateOf(node("ALD-3", "started"), now)).toEqual({ state: "open", name: "In Progress", url: "https://linear.app/x/issue/ALD-3", provider: "linear" });
   });
   test("an assignee on the node rides along; none is left off rather than guessed at", () => {
-    expect(stateOf(node("ALD-4", "started", { assignee: { id: "u1" } }), now)).toEqual({ state: "open", name: "In Progress", url: "https://linear.app/x/issue/ALD-4", assignee: { id: "u1" } });
-    expect(stateOf(node("ALD-5", "started", { assignee: null }), now)).toEqual({ state: "open", name: "In Progress", url: "https://linear.app/x/issue/ALD-5" });
+    expect(stateOf(node("ALD-4", "started", { assignee: { id: "u1" } }), now)).toEqual({ state: "open", name: "In Progress", url: "https://linear.app/x/issue/ALD-4", provider: "linear", assignee: { id: "u1" } });
+    expect(stateOf(node("ALD-5", "started", { assignee: null }), now)).toEqual({ state: "open", name: "In Progress", url: "https://linear.app/x/issue/ALD-5", provider: "linear" });
   });
 });
 
@@ -36,7 +36,7 @@ describe("linearTicketStates", () => {
       [LINEAR_API_URL, "k", { team: "ALD", numbers: [45, 47, 99] }],
       [LINEAR_API_URL, "k", { team: "CTD", numbers: [9] }],
     ]);
-    expect(s("ALD-45")).toEqual({ state: "done", at: "2026-09-12T01:00:00Z", name: "Done", url: "https://linear.app/x/issue/ALD-45", assignee: { id: "u1" } });
+    expect(s("ALD-45")).toEqual({ state: "done", at: "2026-09-12T01:00:00Z", name: "Done", url: "https://linear.app/x/issue/ALD-45", provider: "linear", assignee: { id: "u1" } });
     expect(s("ALD-47").state).toBe("open");
     expect(s("CTD-9").state).toBe("canceled");
     expect(s("ALD-99")).toEqual({ state: "unknown" });
@@ -73,7 +73,7 @@ describe("linearGet", () => {
       title: "sub-issue",
       url: "https://linear.app/x/issue/CTD-202",
       description: "the body",
-      state: { state: "open", name: "In Progress", url: "https://linear.app/x/issue/CTD-202", assignee: { id: "u1" } },
+      state: { state: "open", name: "In Progress", url: "https://linear.app/x/issue/CTD-202", provider: "linear", assignee: { id: "u1" } },
       parentKey: "CTD-201",
     });
   });
