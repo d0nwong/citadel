@@ -11,10 +11,15 @@ export function splitKey(key: string): [team: string, number: number] | null {
   return m ? [m[1]!, Number(m[2])] : null;
 }
 
-/** the provider each team key routes to (CTD-199: `AP` is the Alden Trello board) */
+/**
+ * the provider each team key routes to (CTD-199: `AP` is the Alden Trello board). `LIA` is
+ * the Linear team retired in the reorg: its keys still resolve by the moved-key lookup, so
+ * they must route to Linear or they read `unknown` and stay open forever.
+ */
 const PROVIDER_BY_TEAM: Record<string, string> = {
   ALD: "linear",
   CTD: "linear",
+  LIA: "linear",
   AP: "trello",
 };
 

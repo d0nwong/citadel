@@ -132,7 +132,7 @@ describe("listOpenTickets", () => {
   });
 
   test("an unknown team, or one this run has no provider for, throws by name", async () => {
-    await expect(listOpenTickets({ team: "LIA", providers: {} })).rejects.toThrow("LIA: not a known team");
+    await expect(listOpenTickets({ team: "ZZZ", providers: {} })).rejects.toThrow("ZZZ: not a known team");
     await expect(listOpenTickets({ team: "AP", providers: {} })).rejects.toThrow("AP: no trello provider registered");
   });
 
@@ -208,7 +208,7 @@ describe("createTicket", () => {
   });
   test("a team no provider owns, or a provider this run has none registered for, throws naming the team", async () => {
     const linear = fakeProvider("linear", {});
-    await expect(createTicket({ title: "t", description: "d", team: "LIA" }, { providers: { linear } })).rejects.toThrow("LIA");
+    await expect(createTicket({ title: "t", description: "d", team: "ZZZ" }, { providers: { linear } })).rejects.toThrow("ZZZ");
     await expect(createTicket({ title: "t", description: "d", team: "AP" }, { providers: { linear } })).rejects.toThrow("AP");
   });
 });
