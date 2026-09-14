@@ -25,7 +25,7 @@ describe("splitKey and stateOf", () => {
 
 describe("ticketStates", () => {
   test("one query per team by number; listed keys answer, the rest are unknown", async () => {
-    const calls: { url: string; body: { variables: { team: string; numbers: number[] } }; auth: string | null }[] = [];
+    const calls: { url: string; body: { variables: { team: string; numbers: number[] } | { id: string } }; auth: string | null }[] = [];
     const f = (async (url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       calls.push({ url: String(url), body, auth: (init?.headers as Record<string, string>).Authorization ?? null });
@@ -36,6 +36,7 @@ describe("ticketStates", () => {
     expect(calls.map((c) => [c.url, c.auth, c.body.variables])).toEqual([
       [LINEAR_API_URL, "k", { team: "ALD", numbers: [45, 47, 99] }],
       [LINEAR_API_URL, "k", { team: "CTD", numbers: [9] }],
+      [LINEAR_API_URL, "k", { id: "ALD-99" }],
     ]);
     expect(s("ALD-45")).toEqual({ state: "done", at: "2026-09-12T01:00:00Z", name: "Done", url: "https://linear.app/x/issue/ALD-45", provider: "linear" });
     expect(s("ALD-47").state).toBe("open");

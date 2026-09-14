@@ -24,7 +24,7 @@ describe("stateOf", () => {
 
 describe("linearTicketStates", () => {
   test("one query per team by number; listed keys answer, the rest are unknown", async () => {
-    const calls: { url: string; body: { variables: { team: string; numbers: number[] } }; auth: string | null }[] = [];
+    const calls: { url: string; body: { variables: { team: string; numbers: number[] } | { id: string } }; auth: string | null }[] = [];
     const f = (async (url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       calls.push({ url: String(url), body, auth: (init?.headers as Record<string, string>).Authorization ?? null });
@@ -35,6 +35,7 @@ describe("linearTicketStates", () => {
     expect(calls.map((c) => [c.url, c.auth, c.body.variables])).toEqual([
       [LINEAR_API_URL, "k", { team: "ALD", numbers: [45, 47, 99] }],
       [LINEAR_API_URL, "k", { team: "CTD", numbers: [9] }],
+      [LINEAR_API_URL, "k", { id: "ALD-99" }],
     ]);
     expect(s("ALD-45")).toEqual({ state: "done", at: "2026-09-12T01:00:00Z", name: "Done", url: "https://linear.app/x/issue/ALD-45", provider: "linear", assignee: { id: "u1" } });
     expect(s("ALD-47").state).toBe("open");
@@ -55,6 +56,16 @@ describe("linearTicketStates", () => {
     const s = await linearTicketStates(["ALD-45", "CTD-9"], { fetch: f, apiKey: "k", now });
     expect(s("ALD-45")).toEqual({ state: "unknown" });
     expect(s("CTD-9").state).toBe("done");
+  });
+  test("a key its team does not list is asked for by the old key, so a ticket that moved team still answers", async () => {
+    const f = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const { variables } = JSON.parse(String(init?.body));
+      if (variables.team) return new Response(JSON.stringify({ data: { issues: { nodes: [] } } }));
+      expect(variables.id).toBe("LIA-153");
+      return new Response(JSON.stringify({ data: { issue: node("ALD-1", "completed", { completedAt: "2026-09-09T12:58:27Z" }) } }));
+    }) as unknown as typeof fetch;
+    const s = await linearTicketStates(["LIA-153"], { fetch: f, apiKey: "k", now });
+    expect(s("LIA-153")).toEqual({ state: "done", at: "2026-09-09T12:58:27Z", name: "Done", url: "https://linear.app/x/issue/ALD-1", provider: "linear" });
   });
 });
 
