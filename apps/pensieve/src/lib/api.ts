@@ -654,10 +654,11 @@ export const dropAsk = createServerFn({ method: "POST" })
   });
 
 /**
- * Ticket: file an ask straight into Linear. `argus file <dir> <A-n>` drafts the body from
- * the ask and its trail, Linear creates the issue in the feature's project with the viewer
- * as assignee, and `argus ticket <dir> <A-n> <key>` puts the key on the ask and the ticket
- * on the ledger with the ask's open blockers. No proposal, no second click.
+ * Ticket: file an ask straight into Linear. `argus file <dir> <A-n>` hands back the reader's
+ * proposal covering the ask (and refuses when there is none), Linear creates the issue in
+ * the feature's project with the viewer as assignee, and `argus ticket <dir> <A-n> <key>`
+ * puts the key on the ask, the ticket on the ledger with the ask's open blockers, and spends
+ * the proposal.
  */
 export const fileAsk = createServerFn({ method: "POST" })
   .validator((input: { dir: string; ask: string }) => ({
