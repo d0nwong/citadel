@@ -13,6 +13,10 @@ const log = [
   ["b".repeat(40), "2026-09-09T09:00:00+01:00", "2026-09-09", "Liam Leung", "fix BR-7 typo in usage labels", ""].join(US),
 ].join(RS + "\n") + RS;
 
+const apLog = [
+  ["c".repeat(40), "2026-09-11T10:00:00+01:00", "2026-09-11", "Sam O", "Merged in foundry/ap-207-tab-projects-abc12345 (pull request #430)", "AP-207: tab projects\n\nsome body"].join(US),
+].join(RS + "\n") + RS;
+
 describe("parseLandings", () => {
   test("a merge carries its PR number, branch, title and ticket; a direct push is its own landing", () => {
     const [merge, direct] = parseLandings("fe", log);
@@ -21,11 +25,18 @@ describe("parseLandings", () => {
     expect(direct).toMatchObject({ ref: `fe@${"b".repeat(9)}`, number: null, url: null, title: "fix BR-7 typo in usage labels", ticketKeys: [] });
   });
   test("an empty log is no landings", () => expect(parseLandings("be", "")).toEqual([]));
+  test("CTD-199: a Foundry branch or PR title carrying AP-<n> records a landing carrying that key, as ALD-<n> does", () => {
+    const [merge] = parseLandings("fe", apLog);
+    expect(merge).toMatchObject({ branch: "foundry/ap-207-tab-projects-abc12345", ticketKeys: ["AP-207"] });
+  });
 });
 
 describe("ticketKeysIn", () => {
   test("rule ids and http talk are not tickets", () => {
     expect(ticketKeysIn("ALD-4 fixes BR-12 and MM-3 on the API-1 path, see CTD-160 and R-2")).toEqual(["ALD-4", "CTD-160"]);
+  });
+  test("CTD-199: AP is a ticket, not the A- or P- prefixes NOT_A_TICKET excludes", () => {
+    expect(ticketKeysIn("AP-207 tab projects, not A-2 or P-3")).toEqual(["AP-207"]);
   });
 });
 

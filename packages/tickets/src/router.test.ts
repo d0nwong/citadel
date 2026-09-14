@@ -34,37 +34,32 @@ function fakeProvider(name: string, states: Record<string, TicketState>, tickets
   };
 }
 
-/** `ALD-*` and `CTD-*` route to "linear", `AP-*` to "trello" — a test-only stand-in for
- * the day the real table grows a second provider (ticket 2), so the merge logic is proved
- * without waiting on it. */
-const twoProviders = (key: string): string | null => (key.startsWith("ALD-") || key.startsWith("CTD-") ? "linear" : key.startsWith("AP-") ? "trello" : null);
-
 describe("ticketStates", () => {
   test("today's table batches every key it owns — ALD and CTD alike — into one call to Linear", async () => {
-    const linear = fakeProvider("linear", { "ALD-1": { state: "open", name: "Todo", url: "u" }, "CTD-2": { state: "done", at: "2026-09-14", name: "Done", url: "u" } });
+    const linear = fakeProvider("linear", { "ALD-1": { state: "open", name: "Todo", url: "u", provider: "linear" }, "CTD-2": { state: "done", at: "2026-09-14", name: "Done", url: "u", provider: "linear" } });
     const s = await ticketStates(["ALD-1", "CTD-2"], { providers: { linear } });
     expect(linear.asked).toEqual([["ALD-1", "CTD-2"]]);
     expect(s("ALD-1").state).toBe("open");
     expect(s("CTD-2").state).toBe("done");
   });
-  test("each provider is asked once, with only the keys its prefix owns", async () => {
-    const linear = fakeProvider("linear", { "ALD-1": { state: "open", name: "Todo", url: "u" } });
-    const trello = fakeProvider("trello", { "AP-1": { state: "done", at: "2026-09-14", name: "Deployed", url: "u" } });
-    const s = await ticketStates(["ALD-1", "AP-1"], { providers: { linear, trello }, routeKey: twoProviders });
+  test("each provider is asked once, with only the keys its prefix owns — through the real table, AP included", async () => {
+    const linear = fakeProvider("linear", { "ALD-1": { state: "open", name: "Todo", url: "u", provider: "linear" } });
+    const trello = fakeProvider("trello", { "AP-1": { state: "done", at: "2026-09-14", name: "Deployed", url: "u", provider: "trello" } });
+    const s = await ticketStates(["ALD-1", "AP-1"], { providers: { linear, trello } });
     expect(linear.asked).toEqual([["ALD-1"]]);
     expect(trello.asked).toEqual([["AP-1"]]);
     expect(s("ALD-1").state).toBe("open");
     expect(s("AP-1").state).toBe("done");
   });
   test("a key no provider owns, and a provider this run has none registered for, answer unknown", async () => {
-    const linear = fakeProvider("linear", { "ALD-1": { state: "open", name: "Todo", url: "u" } });
+    const linear = fakeProvider("linear", { "ALD-1": { state: "open", name: "Todo", url: "u", provider: "linear" } });
     const s = await ticketStates(["ALD-1", "AP-1", "fe#437"], { providers: { linear } });
     expect(s("ALD-1").state).toBe("open");
     expect(s("AP-1")).toEqual({ state: "unknown" });
     expect(s("fe#437")).toEqual({ state: "unknown" });
   });
   test("a provider that throws leaves its own keys unknown; the other provider still settles", async () => {
-    const linear = fakeProvider("linear", { "ALD-1": { state: "open", name: "Todo", url: "u" } });
+    const linear = fakeProvider("linear", { "ALD-1": { state: "open", name: "Todo", url: "u", provider: "linear" } });
     const failing: TicketProvider = {
       name: "trello",
       async states() {
@@ -81,7 +76,7 @@ describe("ticketStates", () => {
       claim: async () => {},
       link: async () => {},
     };
-    const s = await ticketStates(["ALD-1", "AP-1"], { providers: { linear, trello: failing }, routeKey: twoProviders });
+    const s = await ticketStates(["ALD-1", "AP-1"], { providers: { linear, trello: failing } });
     expect(s("ALD-1").state).toBe("open");
     expect(s("AP-1")).toEqual({ state: "unknown" });
   });
@@ -95,7 +90,7 @@ describe("ticketStates", () => {
 
 describe("getTicket", () => {
   test("routes to the key's provider", async () => {
-    const ticket: Ticket = { key: "ALD-1", title: "t", url: "u", description: "d", state: { state: "open", name: "Todo", url: "u" } };
+    const ticket: Ticket = { key: "ALD-1", title: "t", url: "u", description: "d", state: { state: "open", name: "Todo", url: "u", provider: "linear" } };
     const linear = fakeProvider("linear", {}, { "ALD-1": ticket });
     expect(await getTicket("ALD-1", { providers: { linear } })).toEqual(ticket);
   });

@@ -10,7 +10,8 @@
  *   it serves closes with the ticket as evidence; Canceled settles it `dropped` and drops
  *   them. Each provider is read once per run for every ticket still open, through the
  *   tickets package's router (`@citadel/tickets`), which routes a key to the provider its
- *   prefix names — `CTD` and `ALD` to Linear today — and never writes.
+ *   prefix names — `CTD` and `ALD` to Linear, `AP` to the Alden Trello board — and never
+ *   writes; each report line names the provider the state came from.
  * - A landing. An open ask whose ticket's key is on a landing (every Foundry branch carries
  *   it) moves to `built` with the PR as evidence, and to `closed` once that landing is live:
  *   on the frontend, the base branch is staging, so a merge is live; on the backend, once
@@ -18,7 +19,7 @@
  *   message) has nothing to close, so the same live landing settles the ticket itself.
  */
 
-import { ticketStates, type TicketStates } from "@citadel/tickets";
+import { providerLabel, ticketStates, type TicketStates } from "@citadel/tickets";
 import type { Deploy } from "./deploy.ts";
 import { deployedAt } from "./deploy.ts";
 import { listFeatures } from "./paths.ts";
@@ -60,7 +61,7 @@ export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new
   /** a date that cannot precede the thing it follows is today */
   const notBefore = (at: string, floor: string) => (day(at) < day(floor) ? day0 : day(at));
 
-  // Linear: Done settles the ticket and closes its asks; Canceled drops both
+  // its provider: Done settles the ticket and closes its asks; Canceled drops both
   for (const t of next.tickets) {
     if (t.settled) continue;
     const s = states(t.key);
@@ -69,7 +70,7 @@ export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new
     const status = s.state === "done" ? "closed" : "dropped";
     const evidence: Evidence[] = [{ kind: "ticket", key: t.key, url: s.url }];
     t.settled = { outcome, at: day(s.at), evidence };
-    cleared.push(`${t.key}: ${s.name} in Linear, ${outcome}`);
+    cleared.push(`${t.key}: ${s.name} in ${providerLabel(s.provider)}, ${outcome}`);
     for (const a of asksOf(t)) {
       if (a.status === "closed" || a.status === "dropped") continue;
       a.status = status;
@@ -185,10 +186,11 @@ export async function reconcileAll(opts: ReconcileOptions = {}): Promise<Reconci
       const o = { now: opts.now, dryRun: opts.dryRun, url: s.url };
       const settled = s.state === "done" ? await foldRevision(r, o) : await cancelRevision(r, o);
       const retired = settled.retired.length ? `; ${settled.retired.length} product doc(s) retired` : "";
+      const label = providerLabel(s.provider);
       const line =
         settled.to === "done"
-          ? `${key}: ${s.name} in Linear — folded into ${settled.features.join(", ") || "no spec"}${retired}; archived as done`
-          : `${key}: ${s.name} in Linear — archived as dropped`;
+          ? `${key}: ${s.name} in ${label} — folded into ${settled.features.join(", ") || "no spec"}${retired}; archived as done`
+          : `${key}: ${s.name} in ${label} — archived as dropped`;
       out.push({ feature, cleared: [line], write: null, revision: settled });
     } catch (e) {
       out.push({ feature, cleared: [], write: null, error: `${key}: not settled — ${(e as Error).message}` });

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -110,7 +110,7 @@ describe("a ticket with no asks is done once its landing is live", () => {
 describe("Linear settles a ticket and the asks it serves", () => {
   const url = "https://linear.app/x/issue/ALD-52";
   const linear = (state: TicketState["state"]): TicketStates => (key) =>
-    key === "ALD-52" ? ({ state, at: "2026-09-12T10:00:00Z", name: state === "done" ? "Done" : "Canceled", url } as TicketState) : { state: "unknown" };
+    key === "ALD-52" ? ({ state, at: "2026-09-12T10:00:00Z", name: state === "done" ? "Done" : "Canceled", url, provider: "linear" } as TicketState) : { state: "unknown" };
   const withTicket = async () => {
     const l = await valid();
     l.asks[1]!.ticket = "ALD-52";
@@ -146,6 +146,19 @@ describe("Linear settles a ticket and the asks it serves", () => {
   });
 });
 
+describe("Trello settles an AP ticket, same as Linear settles a Linear one (CTD-199)", () => {
+  const trello: TicketStates = (key) =>
+    key === "AP-207" ? { state: "done", at: "2026-09-12T10:00:00Z", name: "Deployed", url: "https://trello.com/c/abc207", provider: "trello" } : { state: "unknown" };
+  test("the report line names Trello, not Linear", async () => {
+    const l = await valid();
+    l.asks[1]!.ticket = "AP-207";
+    l.tickets.push({ key: "AP-207", title: "[FE] tab projects", asks: ["A-2"], blockers: [], ready: true });
+    const r = await reconcileLedger(l, async () => null, new Date("2026-09-13T10:00:00Z"), trello);
+    expect(r.cleared).toEqual(["AP-207: Deployed in Trello, done", "A-2: AP-207 is Deployed, closed"]);
+    expect(validateLedger(r.ledger, { prev: l, actor: "model" })).toEqual([]);
+  });
+});
+
 describe("reconcileAll", () => {
   let ws: string;
   beforeEach(() => {
@@ -168,6 +181,24 @@ describe("reconcileAll", () => {
     expect(after.asks[1]!.ready).toBe(true);
     expect(validateLedger(after)).toEqual([]);
     expect(await reconcileAll({ deployed: async () => live })).toEqual([]);
+  });
+  test("an AP ticket, with no Trello credential set, is left exactly as it was (CTD-199 AC2)", async () => {
+    delete process.env.TRELLO_API_KEY;
+    delete process.env.TRELLO_TOKEN;
+    const before = (await readLedger("admin/invoicing"))!;
+    before.tickets.push({ key: "AP-1", title: "[FE] tab projects", asks: [], blockers: [], ready: true });
+    await Bun.write(join(ws, "alden/alden-portal/features/admin/invoicing/ledger.json"), JSON.stringify(before));
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await reconcileAll({ deployed: async () => null, now: new Date("2026-09-11T10:00:00Z") });
+      expect(r).toEqual([]);
+      const after = (await readLedger("admin/invoicing"))!;
+      expect(after.tickets.find((t) => t.key === "AP-1")?.settled).toBeUndefined();
+      const lines = errSpy.mock.calls.map((c) => String(c[0])).filter((l) => l.includes("TRELLO"));
+      expect(lines).toEqual([expect.stringContaining("TRELLO_API_KEY and TRELLO_TOKEN")]);
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });
 
@@ -192,8 +223,8 @@ describe("reconcileAll settles revisions (CTD-196)", () => {
   const T = new Date("2026-09-14T10:00:00Z");
   const at = (...p: string[]) => join(ws, ...p);
   const spec = (feature: string) => `---\nfeature: ${feature}\nrevised_by: draft\nnext_id: 2\n---\n# Spec\n\n## Criteria\n- S-1 — a thing is observed.\n\n## Retired\n- none\n`;
-  const done = (key: string): TicketState => ({ state: "done", at: T.toISOString(), name: "Done", url: `https://linear.app/x/${key}` });
-  const canceled: TicketState = { state: "canceled", at: T.toISOString(), name: "Canceled", url: "https://linear.app/x/c" };
+  const done = (key: string): TicketState => ({ state: "done", at: T.toISOString(), name: "Done", url: `https://linear.app/x/${key}`, provider: "linear" });
+  const canceled: TicketState = { state: "canceled", at: T.toISOString(), name: "Canceled", url: "https://linear.app/x/c", provider: "linear" };
   /** a Linear that answers from the map and records every key it was asked for */
   const linear = (map: Record<string, TicketState>) => {
     const asked: string[][] = [];
@@ -268,7 +299,7 @@ describe("reconcileAll settles revisions (CTD-196)", () => {
     await filed("a", "CTD-30", ["foundry/jobs"]);
     await filed("b", "CTD-40", ["foundry/jobs"]);
     const before = [readFileSync(at("revisions/CTD-30/revision.json")), readFileSync(at("revisions/CTD-40/revision.json"))];
-    const r = await reconcileAll({ states: linear({ "CTD-30": { state: "open", name: "In Progress", url: "u" } }).states, now: T });
+    const r = await reconcileAll({ states: linear({ "CTD-30": { state: "open", name: "In Progress", url: "u", provider: "linear" } }).states, now: T });
     expect(r).toEqual([]);
     expect(readFileSync(at("revisions/CTD-30/revision.json")).equals(before[0]!)).toBe(true);
     expect(readFileSync(at("revisions/CTD-40/revision.json")).equals(before[1]!)).toBe(true);
@@ -299,5 +330,21 @@ describe("reconcileAll settles revisions (CTD-196)", () => {
     expect(r[0]?.error).toBe("CTD-10: not settled — foundry/jobs is no longer a feature directory");
     expect(existsSync(at("alden/alden-portal/features/tasks/docs/spec.md"))).toBe(false);
     expect((await readRevision("CTD-10"))?.rev.status).toBe("filed");
+  });
+
+  test("CTD-199: an AP-keyed parent folds via Trello, and the report line names Trello, not Linear", async () => {
+    await filed("tab-projects", "AP-207", ["foundry/jobs"]);
+    const trelloDone: TicketState = { state: "done", at: T.toISOString(), name: "Deployed", url: "https://trello.com/c/abc207", provider: "trello" };
+    const r = await reconcileAll({ states: async () => (k) => (k === "AP-207" ? trelloDone : { state: "unknown" }), now: T });
+    expect(r[0]?.cleared).toEqual(["AP-207: Deployed in Trello — folded into foundry/jobs; 1 product doc(s) retired; archived as done"]);
+    expect((await readRevision("AP-207"))?.rev.status).toBe("done");
+  });
+
+  test("CTD-199 AC2: an AP-keyed revision whose parent Trello could not report (no credential) stays filed", async () => {
+    await filed("tab-projects", "AP-207", ["foundry/jobs"]);
+    const r = await reconcileAll({ states: async () => () => ({ state: "unknown" }), now: T });
+    expect(r).toEqual([]);
+    expect((await readRevision("AP-207"))?.rev.status).toBe("filed");
+    expect(existsSync(at("foundry/features/jobs/docs/spec.md"))).toBe(false);
   });
 });
