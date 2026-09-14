@@ -25,10 +25,18 @@ import {
   useNavigate,
   useRouter,
 } from "@tanstack/react-router";
+import { GitMergeIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Button } from "#/components/ui/button";
 import { AskStatusProvider, useAppChat } from "#/features/ask";
 import { FeatureLine } from "#/features/ask/components/feature-line";
-import { askStatus, getConversation } from "#/lib/api";
+import { finishMessage } from "#/features/ask/lib/finish-message";
+import {
+  askStatus,
+  finishConversation,
+  getConversation,
+  getConversationDiscard,
+} from "#/lib/api";
 
 /** a feature is its directory under an app's features/, one level of nesting at most */
 const isFeature = (v: unknown): v is string =>
@@ -114,6 +122,48 @@ const firstQuestion = (messages: UIMessage[]): string =>
     .replace(/\s+/g, " ")
     .trim();
 
+/**
+ * Finish (CTD-224): local mode's way of landing this conversation's citadel-data changes on
+ * main. The confirm names what the citadel worktree discards (S-43); with nothing to discard
+ * it asks nothing extra and runs straight through — `finishConversation` is a no-op besides.
+ */
+function FinishButton({
+  onFinished,
+  threadId,
+}: {
+  onFinished: () => Promise<void>;
+  threadId: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const finish = async () => {
+    setBusy(true);
+    try {
+      const discard = await getConversationDiscard({ data: threadId });
+      const message = finishMessage(discard);
+      // biome-ignore lint/suspicious/noAlert: a native confirm is the intended guard for Finish
+      if (message && !window.confirm(message)) {
+        return;
+      }
+      await finishConversation({ data: threadId });
+      await onFinished();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button
+      className="shrink-0"
+      disabled={busy}
+      onClick={() => void finish()}
+      size="sm"
+      variant="outline"
+    >
+      <GitMergeIcon />
+      Commit to main
+    </Button>
+  );
+}
+
 function AskConversationPage() {
   const { id } = Route.useParams();
   const { q, feature: urlFeature } = Route.useSearch();
@@ -197,7 +247,17 @@ function AskConversationPage() {
       ref={fill.ref}
       style={fill.style}
     >
-      <FeatureLine feature={feature} />
+      <div className="flex items-start justify-between gap-2">
+        <FeatureLine feature={feature} />
+        {conversation?.mode === "local" && (
+          <FinishButton
+            onFinished={async () => {
+              await router.invalidate();
+            }}
+            threadId={id}
+          />
+        )}
+      </div>
       <AskStatusProvider
         draft={q && !status.available ? q : undefined}
         finishReason={conversation?.finishReason}

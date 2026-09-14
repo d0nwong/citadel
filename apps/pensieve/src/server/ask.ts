@@ -1477,6 +1477,8 @@ export interface Conversation {
   /** How the last run ended, when it ended in error; cleared when the next run starts. */
   lastError?: LastError;
   messages: UIMessage[];
+  /** This server's run mode (CTD-224) — the page shows Finish only in `'local'`. */
+  mode: RunMode;
   sessionId?: string;
   threadId: string;
   /** Haiku's short name for it, once written; the page falls back to the first turn. */
@@ -1501,7 +1503,8 @@ const lastErrorOf = (v: unknown): LastError | undefined => {
 
 export async function getConversation(
   threadId: string,
-  store = askStore
+  store = askStore,
+  opts: { env?: NodeJS.ProcessEnv } = {}
 ): Promise<Conversation | null> {
   const f = await store.read(threadId);
   if (!f) {
@@ -1513,6 +1516,7 @@ export async function getConversation(
   const title = storedTitleOf(f.metadata);
   return {
     messages: modelMessagesToUIMessages(f.messages),
+    mode: runMode(opts.env ?? process.env),
     threadId: f.threadId,
     ...(title ? { title } : {}),
     ...(isFeature(feature) ? { feature } : {}),
