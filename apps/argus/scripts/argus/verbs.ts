@@ -150,10 +150,12 @@ export async function recordTicketForAsk(feature: string, askId: string, key: st
   const l = await mustRead(feature, o.app);
   const a = l.asks.find((x) => x.id === askId);
   if (!a) throw new Error(`${feature}: no ask ${askId}`);
-  if (l.tickets.some((t) => t.key === key)) return commit(feature, { ...l, asks: l.asks.map((x) => (x.id === askId ? { ...x, ticket: key } : x)) }, { ...o, now });
+  // the proposal it was filed from is spent, so it cannot be filed twice
+  const proposals = l.proposals.filter((p) => !p.asks.includes(askId));
+  if (l.tickets.some((t) => t.key === key)) return commit(feature, { ...l, proposals, asks: l.asks.map((x) => (x.id === askId ? { ...x, ticket: key } : x)) }, { ...o, now });
   const blockers = (a.blockers ?? []).filter((b) => !b.cleared).map((b) => structuredClone(b));
   const tickets = [...l.tickets, { key, title, asks: [askId], blockers, ready: blockers.length === 0 }];
-  return commit(feature, { ...l, tickets, asks: l.asks.map((x) => (x.id === askId ? { ...x, ticket: key } : x)) }, { ...o, now });
+  return commit(feature, { ...l, tickets, proposals, asks: l.asks.map((x) => (x.id === askId ? { ...x, ticket: key } : x)) }, { ...o, now });
 }
 
 export type MoveResult = { from: WriteResult; to: WriteResult; id: string };

@@ -163,8 +163,9 @@ describe("drop and a ticket from an ask", () => {
     l.asks[1]!.blockers = [{ kind: "answer", from: "Foong Leung", question: "which fields?", cleared: null }];
     await Bun.write(join(ws, "alden/alden-portal/features/admin/invoicing/ledger.json"), JSON.stringify(l));
     const r = await recordTicketForAsk("admin/invoicing", "A-2", "ALD-70", "[FE] Billing fields", { now: T0 });
-    expect(r.diff).toEqual(["+ ALD-70 blocked"]);
+    expect(r.diff).toEqual(["+ ALD-70 blocked", "- P-1 gone"]);
     const after = (await readLedger("admin/invoicing"))!;
+    expect(after.proposals).toEqual([]);
     expect(after.asks[1]!.ticket).toBe("ALD-70");
     expect(after.tickets.at(-1)).toMatchObject({ key: "ALD-70", asks: ["A-2"], ready: false });
     expect((await recordTicketForAsk("admin/invoicing", "A-2", "ALD-70", "x")).wrote).toBe(false);
