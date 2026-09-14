@@ -48,6 +48,8 @@ const {
   isScopeRequest,
   SCOPE_ADAPTER_CONFIG,
   SCOPE_SYSTEM_PROMPT,
+  TITLE_KEY,
+  cleanTitle,
 } = ask;
 const {
   BASE_TOOLS,
@@ -361,6 +363,68 @@ describe("file store — beyond the suite", () => {
         url: "https://linear.app/liamai/issue/CTD-9",
       },
     ]);
+  });
+});
+
+describe("the conversation's name", () => {
+  test("the list and the page prefer the stored name, and fall back to the first turn", async () => {
+    const store = conversationStore(await scratch());
+    await store.persistence.stores.messages.saveThread("named", [
+      { content: "a long rambling first question", role: "user" },
+    ]);
+    await store.persistence.stores.metadata.set("named", TITLE_KEY, "Short");
+    await store.persistence.stores.messages.saveThread("plain", [
+      { content: "no name yet", role: "user" },
+    ]);
+    const titles = Object.fromEntries(
+      (await store.list()).map((c) => [c.threadId, c.title])
+    );
+    expect(titles).toEqual({ named: "Short", plain: "no name yet" });
+    expect((await getConversation("named", store))?.title).toBe("Short");
+    expect((await getConversation("plain", store))?.title).toBeUndefined();
+  });
+
+  test("a new thread is named from its first turn once; a named one is not renamed", async () => {
+    const dir = await scratch();
+    const store = conversationStore(dir);
+    const asked: string[] = [];
+    const name = (turn: string) => {
+      asked.push(turn);
+      return Promise.resolve("Greeting");
+    };
+    const run = (messages: UIMessage[]) =>
+      collect(
+        askStream(
+          { messages, threadId: "n1" },
+          {
+            adapter: new FakeClaude({ reply: "hello", sessionId: "s" }),
+            middleware: [],
+            name,
+            status: available,
+            store,
+          }
+        )
+      );
+    await run([user("hi there")]);
+    await Bun.sleep(10);
+    expect((await readJson(dir, "n1")).metadata.title).toBe("Greeting");
+    await run([
+      user("hi there"),
+      {
+        id: "a1",
+        parts: [{ content: "hello", type: "text" }],
+        role: "assistant",
+      },
+      user("again"),
+    ]);
+    expect(asked).toEqual(["hi there"]);
+  });
+
+  test("cleanTitle keeps one clean line", () => {
+    expect(cleanTitle('"Bulk delete drafts."\nmore')).toBe(
+      "Bulk delete drafts"
+    );
+    expect(cleanTitle("  \n")).toBeNull();
   });
 });
 

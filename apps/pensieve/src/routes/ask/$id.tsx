@@ -1,8 +1,8 @@
 /**
  * /ask/$id — one conversation. The loader brings the stored turns (none for a thread the
  * list page just minted) and whether a credential is available; the page hands both to
- * the bound chat from `#/features/ask` and adds the title, Delete, and a footer with the
- * thread and Claude session ids.
+ * the bound chat from `#/features/ask` and adds a footer with the thread and Claude session
+ * ids. The title is the breadcrumb's last crumb alone; Delete lives in the list's row menu.
  *
  * Reload during an answer behaves like Stop: the request drops, the server kills the
  * claude process, and what was persisted while streaming is what comes back (AC2, AC7).
@@ -25,12 +25,10 @@ import {
   useNavigate,
   useRouter,
 } from "@tanstack/react-router";
-import { Trash2Icon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Button } from "#/components/ui/button";
 import { AskStatusProvider, useAppChat } from "#/features/ask";
 import { FeatureLine } from "#/features/ask/components/feature-line";
-import { askStatus, deleteConversation, getConversation } from "#/lib/api";
+import { askStatus, getConversation } from "#/lib/api";
 
 /** a feature is its directory under an app's features/, one level of nesting at most */
 const isFeature = (v: unknown): v is string =>
@@ -57,9 +55,11 @@ export const Route = createFileRoute("/ask/$id")({
       conversation,
       // `messages` crossed the wire as JSON (see `ConversationWire`); the bytes are UIMessages.
       crumb:
-        firstQuestion(
+        conversation?.title ??
+        (firstQuestion(
           (conversation?.messages ?? []) as unknown as UIMessage[]
-        ) || "New conversation",
+        ) ||
+          "New conversation"),
       status,
     };
   },
@@ -120,7 +120,6 @@ function AskConversationPage() {
   const { conversation, status } = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
-  const [deleting, setDeleting] = useState(false);
 
   // The feature rides with every run of a thread opened on one; the server keeps the
   // first it is told and ignores the rest, so a later send cannot re-point the conversation.
@@ -190,30 +189,6 @@ function AskConversationPage() {
     return () => clearTimeout(t);
   }, [q, status.available, chat]);
 
-  const remove = async () => {
-    if (
-      // biome-ignore lint/suspicious/noAlert: a native confirm is the intended guard for delete
-      !window.confirm(
-        "Delete this conversation? Its file under PENSIEVE_HOME is removed."
-      )
-    ) {
-      return;
-    }
-    setDeleting(true);
-    if (chat.isLoading) {
-      chat.stop();
-    }
-    try {
-      await deleteConversation({ data: id });
-    } finally {
-      setDeleting(false);
-    }
-    await router.invalidate();
-    await navigate({ to: "/ask" });
-  };
-
-  const title =
-    firstQuestion(chat.messages as UIMessage[]) || "New conversation";
   const fill = useFillToBottom();
 
   return (
@@ -222,26 +197,6 @@ function AskConversationPage() {
       ref={fill.ref}
       style={fill.style}
     >
-      {/* On a phone the header is one row — back, the question on one line, a delete icon — so the
-          conversation keeps the screen; from `sm` up it is the page title with its breadcrumb. */}
-      <header className="mb-3 flex items-center gap-2 border-border border-b pb-2 sm:mb-8 sm:flex-wrap sm:items-end sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:pb-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:block">
-          <h1 className="min-w-0 truncate font-semibold text-[17px] leading-tight sm:line-clamp-2 sm:whitespace-normal sm:text-[28px]">
-            {title}
-          </h1>
-        </div>
-        <Button
-          className="shrink-0 text-muted-foreground hover:text-st-hold"
-          disabled={deleting}
-          onClick={remove}
-          size="sm"
-          title="Delete"
-          variant="ghost"
-        >
-          <Trash2Icon />
-          <span className="hidden sm:inline">Delete</span>
-        </Button>
-      </header>
       <FeatureLine feature={feature} />
       <AskStatusProvider
         draft={q && !status.available ? q : undefined}
