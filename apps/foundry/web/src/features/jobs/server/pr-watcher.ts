@@ -14,8 +14,9 @@
  * commit's failed checks never launch two jobs: `pr_watches` remembers the
  * newest review answered and the head commit whose checks were, and the
  * watermark moves in the same transaction that inserts the follow-up — with
- * an optimistic guard on the launch count, so two server processes cannot
- * both launch. And a red check cannot launch forever: after
+ * an optimistic guard on the launch count, and on no follow-up being open on
+ * the PR, so two server processes cannot both launch. And a red check cannot
+ * launch forever: after
  * `FOUNDRY_PR_RETRIES` automatic follow-ups the watch stops and the root
  * job's log says so; queuing a follow-up by hand starts it over.
  */
@@ -189,17 +190,33 @@ async function stopWatch(prUrl: string, reason: string): Promise<void> {
 
 /**
  * The launch, in one transaction: move the watermark and spend one retry,
- * then insert the follow-up. The guard on `follow_ups` is what keeps two
- * processes from both launching — the second finds the count moved and
- * inserts nothing. Null means exactly that.
+ * then insert the follow-up. Two guards keep two processes from both
+ * launching. The count on `follow_ups`: a process that read the watch before
+ * the other launched finds the count moved and inserts nothing. And no open
+ * follow-up on the PR: a process that listed the PR before the other launched
+ * but read the watch after it sees the count current and the review answered,
+ * so it decides on the commit's check instead — the rule `watchedPrs` applies
+ * when listing has to hold here too, or the same failure launches twice while
+ * the first forge is still on the branch. Null means either.
  */
 async function launch(job: JobRow, watch: WatchRow, trigger: Trigger, now: Date): Promise<Job | null> {
   return db.transaction(async (tx) => {
     const mark = trigger.kind === 'review' ? { reviewedAt: trigger.reviewedAt } : { checkedSha: trigger.checkedSha }
+    const open = tx
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.prUrl, prWatches.prUrl), inArray(jobs.status, ['queued', 'running'])))
     const [claimed] = await tx
       .update(prWatches)
       .set({ ...mark, followUps: sql`${prWatches.followUps} + 1`, updatedAt: now })
-      .where(and(eq(prWatches.prUrl, watch.prUrl), eq(prWatches.followUps, watch.followUps), isNull(prWatches.stopped)))
+      .where(
+        and(
+          eq(prWatches.prUrl, watch.prUrl),
+          eq(prWatches.followUps, watch.followUps),
+          isNull(prWatches.stopped),
+          notExists(open),
+        ),
+      )
       .returning({ prUrl: prWatches.prUrl })
     if (!claimed) return null
     return insertFollowUp(tx, job, trigger.kind, `${trigger.reason} on ${job.prUrl} — watcher follow-up of ${shortId(job.id)}`)
@@ -235,7 +252,7 @@ async function inspect(job: JobRow, existing: WatchRow | undefined, deps: Watche
   }
 
   const follow = await launch(job, watch, trigger, deps.now())
-  if (!follow) return // another process launched for this very state
+  if (!follow) return // another process launched for this very state, or its follow-up is still open
   await sys(job.id, `watcher: ${trigger.reason} → follow-up ${shortId(follow.id)} (${watch.followUps + 1}/${deps.maxFollowUps})`)
   void deps.ignite(follow.id)
 }

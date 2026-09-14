@@ -239,6 +239,37 @@ test('AC3 — the same review or check failure never launches two jobs', async (
   expect(await followUpsOf(root.prUrl)).toHaveLength(2)
 })
 
+test('AC3 — a tick that listed the PR before another launched, and read the watch after, launches nothing more', async () => {
+  const root = await rootJob()
+  prs.set(root.prUrl, state({ headSha: 'cafe02', reviews: [review(Date.now() + 1000)], checks: [check('failed')] }))
+
+  // Two ticks list the PR before either has a watch row. The first's gh call
+  // waits until the second has listed too; the second's comes back only once
+  // the first has queued the review follow-up. The watch row the second then
+  // reads has the review answered and the commit's check not — a trigger the
+  // first never saw — while the first's follow-up is still open on the PR.
+  const { promise: gate, resolve: release } = Promise.withResolvers<void>()
+  const first = tick(
+    deps({
+      fetchPr: async (_origin, url) => {
+        await gate
+        return prs.get(url) ?? state()
+      },
+    }),
+  )
+  const second = tick(
+    deps({
+      fetchPr: async (_origin, url) => {
+        release()
+        await first
+        return prs.get(url) ?? state()
+      },
+    }),
+  )
+  await Promise.all([first, second])
+  expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['review'])
+})
+
 test('no second launch while a follow-up is still open on the PR', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000)] }))
