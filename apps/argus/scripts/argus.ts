@@ -28,7 +28,7 @@ import { readUnplaced } from "./argus/state.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
 import { seedFeature } from "./argus/seed.ts";
-import { trackerList, trackerShow } from "./argus/tracker.ts";
+import { trackerCreate, trackerEdit, trackerList, trackerShow } from "./argus/tracker.ts";
 import { closeAsk, confirmRequirement, dismissMessage, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketBare, recordTicketForAsk } from "./argus/verbs.ts";
 import { readLedger, writeLedger } from "./argus/write.ts";
 
@@ -83,6 +83,8 @@ const USAGE = `argus — the ledger CLI
 
   argus tracker show <KEY>                             a ticket — key, title, state, assignee, url, description, parent — from whichever provider owns it
   argus tracker list [--mine] [--unassigned] [--team <t>]   the open tickets that provider lists, across providers or narrowed to one
+  argus tracker create --title "<t>" --team <t> [--body <file>|-] [--project <p>] [--assignee me|none|<id>] [--parent <KEY>] [--blocked-by K1,K2]
+  argus tracker edit <KEY> [--title "<t>"] [--body <file>|-] [--project <p>] [--assignee me|none|<id>] [--parent <KEY>] [--state <name>] [--blocked-by K1,K2]
 
 flags: --dry-run  --json  --user (the write is a person's, not the model's)
 root: ${root()}`;
@@ -331,7 +333,14 @@ const verbs: Record<string, Verb> = {
 
   async tracker(f) {
     const [sub, a] = f.rest;
-    const usage = "tracker show <KEY> | tracker list [--mine] [--unassigned] [--team <t>]";
+    const usage =
+      'tracker show <KEY> | tracker list [--mine] [--unassigned] [--team <t>] | tracker create --title "<t>" --team <t> [--body <file>|-] [--project <p>] [--assignee me|none|<id>] [--parent <KEY>] [--blocked-by K1,K2] | tracker edit <KEY> [--title "<t>"] [--body <file>|-] [--project <p>] [--assignee me|none|<id>] [--parent <KEY>] [--state <name>] [--blocked-by K1,K2]';
+    const readBody = async () => (f.opts.body ? (f.opts.body === "-" ? await Bun.stdin.text() : await Bun.file(f.opts.body).text()) : undefined);
+    const blockedBy = () => (f.opts["blocked-by"] ? f.opts["blocked-by"]!.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
+    const printTicket = (t: Awaited<ReturnType<typeof trackerShow>>) => {
+      if (f.json) console.log(JSON.stringify({ ok: true, ticket: t }));
+      else console.log(`${t.key} — ${t.title}\nurl: ${t.url}`);
+    };
     switch (sub) {
       case "show": {
         if (!a) throw new Usage(usage);
@@ -358,6 +367,47 @@ const verbs: Record<string, Verb> = {
             const assignee = s.state !== "unknown" && s.assignee ? ` [${s.assignee.id}]` : "";
             console.log(`${t.key}  ${s.state === "unknown" ? s.state : s.name}${assignee}  ${t.title}`);
           }
+        return 0;
+      }
+      case "create": {
+        if (!f.opts.title || !f.opts.team) throw new Usage(usage);
+        const createOpts = {
+          title: f.opts.title,
+          body: await readBody(),
+          team: f.opts.team,
+          project: f.opts.project ?? f.opts.label,
+          assignee: f.opts.assignee,
+          parent: f.opts.parent,
+          blockedBy: blockedBy(),
+        };
+        if (f.dryRun) {
+          if (f.json) console.log(JSON.stringify({ ok: true, dryRun: true, ...createOpts }));
+          else
+            console.log(
+              `would create on ${createOpts.team}: ${createOpts.title}${createOpts.project ? ` [${createOpts.project}]` : ""}${createOpts.parent ? ` under ${createOpts.parent}` : ""}${createOpts.blockedBy?.length ? `, blocked by ${createOpts.blockedBy.join(", ")}` : ""}`,
+            );
+          return 0;
+        }
+        printTicket(await trackerCreate(createOpts));
+        return 0;
+      }
+      case "edit": {
+        if (!a) throw new Usage(usage);
+        const editOpts = {
+          title: f.opts.title,
+          body: await readBody(),
+          project: f.opts.project ?? f.opts.label,
+          assignee: f.opts.assignee,
+          parent: f.opts.parent,
+          state: f.opts.state,
+          blockedBy: blockedBy(),
+        };
+        if (f.dryRun) {
+          if (f.json) console.log(JSON.stringify({ ok: true, dryRun: true, key: a, ...editOpts }));
+          else console.log(`would edit ${a}: ${Object.entries(editOpts).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}=${v}`).join(", ") || "nothing"}`);
+          return 0;
+        }
+        printTicket(await trackerEdit(a, editOpts));
         return 0;
       }
       default:

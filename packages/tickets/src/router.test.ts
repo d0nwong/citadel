@@ -1,15 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import type { Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
-import { claimTicket, getTicket, listOpenTickets, ticketStates } from "./router.ts";
+import type { CreateTicketInput, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
+import { claimTicket, createTicket, getTicket, listOpenTickets, ticketStates, updateTicket } from "./router.ts";
 
-/** a fake provider that answers from a map and records every batch it was asked for, and every claim */
-function fakeProvider(name: string, states: Record<string, TicketState>, tickets: Record<string, Ticket> = {}): TicketProvider & { asked: string[][]; claimed: Array<[string, string | undefined]> } {
+/** a fake provider that answers from a map and records every batch it was asked for, every claim, and every create/update */
+function fakeProvider(
+  name: string,
+  states: Record<string, TicketState>,
+  tickets: Record<string, Ticket> = {},
+): TicketProvider & { asked: string[][]; claimed: Array<[string, string | undefined]>; created: CreateTicketInput[]; updated: Array<[string, UpdateTicketInput]> } {
   const asked: string[][] = [];
   const claimed: Array<[string, string | undefined]> = [];
+  const created: CreateTicketInput[] = [];
+  const updated: Array<[string, UpdateTicketInput]> = [];
   return {
     name,
     asked,
     claimed,
+    created,
+    updated,
     async states(keys) {
       asked.push(keys);
       const lookup: TicketStates = (k) => states[k] ?? { state: "unknown" };
@@ -21,11 +29,13 @@ function fakeProvider(name: string, states: Record<string, TicketState>, tickets
     async listOpen() {
       throw new Error("not used in these tests");
     },
-    async create() {
-      throw new Error("not used in these tests");
+    async create(input) {
+      created.push(input);
+      return { key: `${name}-new`, title: input.title, url: "u", description: input.description, state: { state: "open", name: "Todo", url: "u", provider: name } };
     },
-    async update() {
-      throw new Error("not used in these tests");
+    async update(key, input) {
+      updated.push([key, input]);
+      return { key, title: input.title ?? "t", url: "u", description: input.description ?? "d", state: { state: "open", name: "Todo", url: "u", provider: name } };
     },
     async claim(key, assigneeId) {
       claimed.push([key, assigneeId]);
@@ -167,5 +177,36 @@ describe("claimTicket", () => {
     const linear = fakeProvider("linear", {});
     await expect(claimTicket("AP-1", "u1", { providers: { linear } })).rejects.toThrow("AP-1");
     await expect(claimTicket("fe#437", "u1", { providers: { linear } })).rejects.toThrow("fe#437");
+  });
+});
+
+describe("createTicket", () => {
+  test("routes to the provider its team names", async () => {
+    const linear = fakeProvider("linear", {});
+    const trello = fakeProvider("trello", {});
+    const input: CreateTicketInput = { title: "t", description: "d", team: "CTD" };
+    await createTicket(input, { providers: { linear, trello } });
+    expect(linear.created).toEqual([input]);
+    expect(trello.created).toEqual([]);
+  });
+  test("a team no provider owns, or a provider this run has none registered for, throws naming the team", async () => {
+    const linear = fakeProvider("linear", {});
+    await expect(createTicket({ title: "t", description: "d", team: "LIA" }, { providers: { linear } })).rejects.toThrow("LIA");
+    await expect(createTicket({ title: "t", description: "d", team: "AP" }, { providers: { linear } })).rejects.toThrow("AP");
+  });
+});
+
+describe("updateTicket", () => {
+  test("routes to the key's provider", async () => {
+    const linear = fakeProvider("linear", {});
+    const trello = fakeProvider("trello", {});
+    await updateTicket("ALD-1", { title: "new" }, { providers: { linear, trello } });
+    expect(linear.updated).toEqual([["ALD-1", { title: "new" }]]);
+    expect(trello.updated).toEqual([]);
+  });
+  test("a key no provider owns, or a provider this run has none registered for, throws naming the key", async () => {
+    const linear = fakeProvider("linear", {});
+    await expect(updateTicket("AP-1", { title: "new" }, { providers: { linear } })).rejects.toThrow("AP-1");
+    await expect(updateTicket("fe#437", { title: "new" }, { providers: { linear } })).rejects.toThrow("fe#437");
   });
 });

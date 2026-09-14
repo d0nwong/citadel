@@ -1,34 +1,49 @@
 /**
- * The Trello adapter (CTD-199). `AP-<n>` is card `<n>` on the Alden board — "Alden SWE
- * Ticketing System" (`TRELLO_BOARD_ID`) — and its state is its list, through `TRELLO_LISTS`,
- * the board's own list map: Deployed is done, Feature not a bug is canceled, Pipeline and
- * High Priority Pipeline are unstarted, New Reports and Holding Pattern are triage, and
- * In Progress, Testing, Staging and Ready for Agent are started. A list the map does not
- * know is left `open` with that list's own name and no `stage`, reported once. `get` also
- * answers the card's parent: the one card whose checklist item names or links this card's
- * key; none, or more than one, is no parent. `listOpen` (CTD-200) answers every card not on
- * Deployed or Feature not a bug, filtered for `--mine`/`--unassigned` against `idMembers`
- * and `GET /1/members/me`; it does not compute a parent — that is `get`'s one checklist
- * read per card, not the list's.
+ * The Trello adapter (CTD-199, CTD-201). `AP-<n>` is card `<n>` on the Alden board — "Alden
+ * SWE Ticketing System" (`TRELLO_BOARD_ID`) — and its state is its list, through
+ * `TRELLO_LISTS`, the board's own list map: Deployed is done, Feature not a bug is
+ * canceled, Pipeline and High Priority Pipeline are unstarted, New Reports and Holding
+ * Pattern are triage, and In Progress, Testing, Staging and Ready for Agent are started. A
+ * list the map does not know is left `open` with that list's own name and no `stage`,
+ * reported once. `get` also answers the card's parent: the one card whose checklist item
+ * names or links this card's key; none, or more than one, is no parent. `listOpen`
+ * (CTD-200) answers every card not on Deployed or Feature not a bug, filtered for
+ * `--mine`/`--unassigned` against `idMembers` and `GET /1/members/me`; it does not compute
+ * a parent — that is `get`'s one checklist read per card, not the list's.
  *
  * A card's number is `idShort` when Trello answers one, else the number its own `url` shows
  * (`/c/<short>/207-…`) — `trello-cli --get-all-cards` was seen to answer `idShort: null`, so
  * both are read and neither is assumed.
  *
+ * `create` (CTD-201) is `POST /1/cards` into Pipeline: a label named after `project`,
+ * created on the board when it is new, `idMembers` from `"me"`/an id/none, and blockers as
+ * a `Blocked by: K1, K2` line at the top of the description (spec S-14) — Trello has no
+ * blocked-by relation, so the line is the whole mechanism. A `parent` gains one checklist
+ * item — the new card's key, title and link, on its first checklist or one created named
+ * `TRELLO_CHECKLIST_NAME` — appended at the bottom, so items stay in creation order (AC3);
+ * the item text is exactly what `parentOf`'s matcher already reads a parent by. `update` is
+ * `PUT /1/cards/{id}`: `state` resolves to a target list by name (AC2's list move); a
+ * `project` label is added, never replacing one a person put on the card; a `parent` first
+ * drops this card's item off whichever checklist already named it, so a re-parented card is
+ * never listed on two (CTD-201's own S-42 requirement, for foundry's revision lookup).
+ *
  * Auth: `TRELLO_API_KEY` and `TRELLO_TOKEN` from the environment, read fresh per call, sent
  * as query parameters as Trello's own REST API expects. Without either, `states` answers
- * `unknown` for every `AP` key and names the missing variable on stderr once; `get` and
- * `listOpen` throw, naming it, since a caller asking for one ticket or the open list has
- * nothing to fall back to. Read-only: nothing here writes Trello.
+ * `unknown` for every `AP` key and names the missing variable on stderr once; every other
+ * verb throws `MissingCredentialError` naming the first unset one, since a caller asking
+ * for one ticket, or writing one, has nothing to fall back to.
  */
 
+import { MissingCredentialError } from "./errors.ts";
 import { splitKey } from "./key.ts";
-import type { ListOpenOptions, Stage, Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
+import type { CreateTicketInput, ListOpenOptions, Stage, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
 
 export const TRELLO_API_URL = "https://api.trello.com/1";
 export const TRELLO_BOARD_ID = "6a20ed52a8d9725b59ceb3bb";
 export const TRELLO_BOARD_NAME = "Alden SWE Ticketing System";
 export const TRELLO_PIPELINE_LIST = "Pipeline";
+/** the checklist a parent card gets when it has none yet (CTD-201 AC3) */
+export const TRELLO_CHECKLIST_NAME = "Tickets";
 
 /** the list each state maps to, keyed by the list's own name, lowercased */
 export const TRELLO_LISTS: Record<string, "done" | "canceled" | Stage> = {
@@ -46,7 +61,8 @@ export const TRELLO_LISTS: Record<string, "done" | "canceled" | Stage> = {
 
 type TrelloCard = { id: string; idShort: number | null; idList: string; idMembers: string[]; name: string; desc: string | null; shortUrl: string; url: string };
 type TrelloList = { id: string; name: string };
-type TrelloChecklist = { idCard: string; checkItems: { name: string }[] };
+type TrelloChecklist = { id: string; idCard: string; checkItems: { id: string; name: string }[] };
+type TrelloLabel = { id: string; name: string };
 
 export type TrelloOptions = { fetch?: typeof fetch; trelloKey?: string | null; trelloToken?: string | null; now?: Date };
 
@@ -57,6 +73,15 @@ const tokenOf = (opts: TrelloOptions) => (opts.trelloToken === undefined ? proce
 function missingCredential(key: string | null, token: string | null): string | null {
   const missing = [!key && "TRELLO_API_KEY", !token && "TRELLO_TOKEN"].filter((x): x is string => !!x);
   return missing.length ? `${missing.join(" and ")} ${missing.length > 1 ? "are" : "is"} not set` : null;
+}
+
+/** the credentials, or `MissingCredentialError` naming the first unset one — every write's guard, since a caller writing one ticket has nothing to fall back to */
+function requireCredentials(opts: TrelloOptions): [key: string, token: string] {
+  const key = keyOf(opts);
+  if (!key) throw new MissingCredentialError("TRELLO_API_KEY");
+  const token = tokenOf(opts);
+  if (!token) throw new MissingCredentialError("TRELLO_TOKEN");
+  return [key, token];
 }
 
 const trelloUrl = (path: string, params: Record<string, string>, key: string, token: string) => {
@@ -88,12 +113,53 @@ async function boardChecklists(opts: TrelloOptions, key: string, token: string):
   return (await res.json()) as TrelloChecklist[];
 }
 
+/** one card's own checklists, ids included — what `attachToParent` reads to find or make the checklist it appends to */
+async function cardChecklists(cardId: string, opts: TrelloOptions, key: string, token: string): Promise<TrelloChecklist[]> {
+  const f = opts.fetch ?? fetch;
+  const url = trelloUrl(`/cards/${cardId}/checklists`, { fields: "idCard", checkItems: "all", checkItem_fields: "id,name" }, key, token);
+  const res = await f(url);
+  if (!res.ok) throw new Error(`trello: ${res.status}`);
+  return (await res.json()) as TrelloChecklist[];
+}
+
 async function trelloViewer(opts: TrelloOptions, key: string, token: string): Promise<{ id: string }> {
   const f = opts.fetch ?? fetch;
   const url = trelloUrl("/members/me", { fields: "id" }, key, token);
   const res = await f(url);
   if (!res.ok) throw new Error(`trello: ${res.status}`);
   return (await res.json()) as { id: string };
+}
+
+async function boardLabels(opts: TrelloOptions, key: string, token: string): Promise<TrelloLabel[]> {
+  const f = opts.fetch ?? fetch;
+  const url = trelloUrl(`/boards/${TRELLO_BOARD_ID}/labels`, { fields: "name" }, key, token);
+  const res = await f(url);
+  if (!res.ok) throw new Error(`trello: ${res.status}`);
+  return (await res.json()) as TrelloLabel[];
+}
+
+/** one authenticated write — POST or PUT or DELETE, every param (including the body) as Trello's own query-string convention expects */
+async function trelloSend<T>(method: "POST" | "PUT" | "DELETE", path: string, params: Record<string, string>, opts: TrelloOptions, key: string, token: string): Promise<T> {
+  const f = opts.fetch ?? fetch;
+  const res = await f(trelloUrl(path, params, key, token), { method });
+  if (!res.ok) throw new Error(`trello: ${res.status}`);
+  return (await res.json()) as T;
+}
+
+/** the named label's id, case-insensitively; created on the board with no colour when nothing by that name exists yet */
+async function labelIdFor(name: string, opts: TrelloOptions, key: string, token: string): Promise<string> {
+  const labels = await boardLabels(opts, key, token);
+  const existing = labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+  if (existing) return existing.id;
+  const created = await trelloSend<TrelloLabel>("POST", "/labels", { name, color: "null", idBoard: TRELLO_BOARD_ID }, opts, key, token);
+  return created.id;
+}
+
+/** the named list's id, case-insensitively; an unknown name is refused, listing what the board has */
+function listIdFor(name: string, lists: TrelloList[]): string {
+  const found = lists.find((l) => l.name.toLowerCase() === name.toLowerCase());
+  if (!found) throw new Error(`trello: no list named "${name}" — the board has ${lists.map((l) => l.name).join(", ")}`);
+  return found.id;
 }
 
 const NUMBER_IN_URL = /\/c\/[^/]+\/(\d+)(?:-|$)/;
@@ -252,20 +318,154 @@ export async function trelloListOpen(opts: TrelloOptions & ListOpenOptions = {})
   return out;
 }
 
-const notImplemented = (verb: string): never => {
-  throw new Error(`tickets: Trello's "${verb}" is not implemented yet`);
-};
+const BLOCKED_BY_RE = /^Blocked by: ([^\n]*)\n?/;
 
-/** the Trello adapter as a `TicketProvider`; `get`, `states` and `listOpen` are implemented (CTD-198, CTD-199, CTD-200) */
+/** the keys a description's own `Blocked by:` line already names, when it has one */
+function currentBlockedBy(desc: string): string[] {
+  const m = BLOCKED_BY_RE.exec(desc);
+  return m ? m[1]!.split(",").map((s) => s.trim()).filter(Boolean) : [];
+}
+
+/** `desc` with its `Blocked by:` line replaced by `keys` (spec S-14) — Trello has no blocked-by relation, so this is the whole mechanism */
+function withBlockedBy(desc: string, keys: string[]): string {
+  const stripped = desc.replace(BLOCKED_BY_RE, "");
+  return keys.length ? `Blocked by: ${keys.join(", ")}\n${stripped}` : stripped;
+}
+
+/** a parent checklist item's text — the key, title and link `parentOf`'s matcher already reads a parent by */
+const checkItemText = (ticket: { key: string; title: string; url: string }) => `${ticket.key} — ${ticket.title} — ${ticket.url}`;
+
+/** the child's item on the parent card's checklist — its first, or one created named `TRELLO_CHECKLIST_NAME` — appended at the bottom so items stay in creation order (AC3) */
+async function attachToParent(parentKey: string, child: { key: string; title: string; url: string }, opts: TrelloOptions, key: string, token: string): Promise<void> {
+  const split = splitKey(parentKey);
+  if (!split || split[0] !== "AP") throw new Error(`trello: ${parentKey} is not an AP card`);
+  const cards = await boardCards(opts, key, token);
+  const parentCard = cards.find((c) => cardNumber(c) === split[1]);
+  if (!parentCard) throw new Error(`trello: no such card ${parentKey}`);
+  const checklists = await cardChecklists(parentCard.id, opts, key, token);
+  const checklist = checklists[0] ?? (await trelloSend<TrelloChecklist>("POST", "/checklists", { idCard: parentCard.id, name: TRELLO_CHECKLIST_NAME }, opts, key, token));
+  await trelloSend("POST", `/checklists/${checklist.id}/checkItems`, { name: checkItemText(child), pos: "bottom" }, opts, key, token);
+}
+
+/** drops `card`'s item off whichever checklist already named it — a re-parented card is never listed on two (S-42) */
+async function removeFromAnyParent(card: { key: string; shortUrl: string }, opts: TrelloOptions, key: string, token: string): Promise<void> {
+  const nameRe = new RegExp(`\\b${card.key}\\b`, "i");
+  const selfLink = shortLinkOf(card.shortUrl);
+  const checklists = await boardChecklists(opts, key, token);
+  for (const cl of checklists)
+    for (const item of cl.checkItems)
+      if (nameRe.test(item.name) || (selfLink && item.name.includes(selfLink))) await trelloSend("DELETE", `/checklists/${cl.id}/checkItems/${item.id}`, {}, opts, key, token);
+}
+
+/**
+ * One card, into Pipeline (CTD-201 AC1). `project` is a label, created on the board when
+ * it is new; `assigneeId` is `"me"` for the credential's own member, an id, or left off
+ * unassigned; `blockedBy` becomes the description's `Blocked by:` line; `parent` adds one
+ * checklist item on the parent card (AC3). Throws `MissingCredentialError` naming the
+ * first unset credential, and by name when `team` is not the Alden board or a card comes
+ * back with no readable number.
+ */
+export async function trelloCreate(input: CreateTicketInput, opts: TrelloOptions = {}): Promise<Ticket> {
+  const [key, token] = requireCredentials(opts);
+  if (input.team.toUpperCase() !== "AP") throw new Error(`trello: ${input.team} is not the Alden board`);
+  const now = opts.now ?? new Date();
+  const lists = await boardLists(opts, key, token);
+  const idList = listIdFor(TRELLO_PIPELINE_LIST, lists);
+  let memberId: string | undefined;
+  if (input.assigneeId === "me") memberId = (await trelloViewer(opts, key, token)).id;
+  else if (input.assigneeId) memberId = input.assigneeId;
+  const labelId = input.project ? await labelIdFor(input.project, opts, key, token) : undefined;
+  const desc = withBlockedBy(input.description, input.blockedBy ?? []);
+  const created = await trelloSend<TrelloCard>(
+    "POST",
+    "/cards",
+    { idList, name: input.title, desc, ...(labelId ? { idLabels: labelId } : {}), ...(memberId ? { idMembers: memberId } : {}) },
+    opts,
+    key,
+    token,
+  );
+  const n = cardNumber(created);
+  if (n === null) throw new Error("trello: card created with no readable number");
+  const ticket: Ticket = {
+    key: `AP-${n}`,
+    title: created.name,
+    url: created.shortUrl,
+    description: created.desc ?? "",
+    state: cardState(created, TRELLO_PIPELINE_LIST, now),
+    ...(input.parent ? { parentKey: input.parent } : {}),
+  };
+  if (input.parent) await attachToParent(input.parent, ticket, opts, key, token);
+  return ticket;
+}
+
+/**
+ * One `PUT /1/cards/{id}`, carrying only the fields given. `state` resolves to a target
+ * list by name (AC2's list move); `project` adds a label without touching one already on
+ * the card; `parent` re-attaches the card's checklist item, first dropping it off any
+ * checklist it was already on. Throws `MissingCredentialError` naming the first unset
+ * credential, and by name on an unknown card, list or parent.
+ */
+export async function trelloUpdate(cardKey: string, input: UpdateTicketInput, opts: TrelloOptions = {}): Promise<Ticket> {
+  const [key, token] = requireCredentials(opts);
+  const split = splitKey(cardKey);
+  if (!split || split[0] !== "AP") throw new Error(`trello: ${cardKey} is not an AP card`);
+  const now = opts.now ?? new Date();
+  const [cards, lists] = await Promise.all([boardCards(opts, key, token), boardLists(opts, key, token)]);
+  const card = cards.find((c) => cardNumber(c) === split[1]);
+  if (!card) throw new Error(`trello: no such card ${cardKey}`);
+  const nameOfList = new Map(lists.map((l) => [l.id, l.name]));
+
+  const idList = input.state !== undefined ? listIdFor(input.state, lists) : undefined;
+  let memberId: string | undefined;
+  if (input.assigneeId === "me") memberId = (await trelloViewer(opts, key, token)).id;
+  else if (input.assigneeId === null) memberId = "";
+  else if (input.assigneeId !== undefined) memberId = input.assigneeId;
+  const nextDesc =
+    input.description !== undefined || input.blockedBy !== undefined
+      ? withBlockedBy(input.description ?? card.desc ?? "", input.blockedBy ?? currentBlockedBy(card.desc ?? ""))
+      : undefined;
+
+  const params: Record<string, string> = {};
+  if (input.title !== undefined) params.name = input.title;
+  if (nextDesc !== undefined) params.desc = nextDesc;
+  if (idList !== undefined) params.idList = idList;
+  if (memberId !== undefined) params.idMembers = memberId;
+  const updated = Object.keys(params).length ? await trelloSend<TrelloCard>("PUT", `/cards/${card.id}`, params, opts, key, token) : card;
+
+  if (input.project !== undefined) {
+    const labelId = await labelIdFor(input.project, opts, key, token);
+    await trelloSend("POST", `/cards/${card.id}/idLabels`, { value: labelId }, opts, key, token);
+  }
+  if (input.parent !== undefined) {
+    await removeFromAnyParent({ key: cardKey, shortUrl: card.shortUrl }, opts, key, token);
+    await attachToParent(input.parent, { key: cardKey, title: updated.name, url: updated.shortUrl }, opts, key, token);
+  }
+
+  const listName = nameOfList.get(updated.idList) ?? `list ${updated.idList}`;
+  return {
+    key: cardKey,
+    title: updated.name,
+    url: updated.shortUrl,
+    description: updated.desc ?? "",
+    state: cardState(updated, listName, now),
+    ...(input.parent ? { parentKey: input.parent } : {}),
+  };
+}
+
+/** the Trello adapter as a `TicketProvider`; every verb but `claim` and `link` is implemented (CTD-198, CTD-199, CTD-200, CTD-201) */
 export function trelloProvider(opts: TrelloOptions = {}): TicketProvider {
   return {
     name: "trello",
     get: (key) => trelloGet(key, opts),
     states: (keys) => trelloTicketStates(keys, opts),
     listOpen: (listOpts) => trelloListOpen({ ...opts, ...listOpts }),
-    create: () => notImplemented("create"),
-    update: () => notImplemented("update"),
-    claim: () => notImplemented("claim"),
-    link: () => notImplemented("link"),
+    create: (input) => trelloCreate(input, opts),
+    update: (key, input) => trelloUpdate(key, input, opts),
+    claim: () => {
+      throw new Error('tickets: Trello\'s "claim" is not implemented yet');
+    },
+    link: () => {
+      throw new Error('tickets: Trello\'s "link" is not implemented yet');
+    },
   };
 }

@@ -1,25 +1,34 @@
 /**
- * The Linear adapter (CTD-198). `states` batches keys by team and answers `TicketState`,
- * each one carrying the ticket's assignee (`assignee { id }` in the same query, for ticket
- * 13 to read); `get` answers one ticket by its identifier, with its parent's key when it has
- * one; `listOpen` answers the team's (or, unscoped, the workspace's) open issues, filtered
- * for `--mine`/`--unassigned` against the same query's `viewer { id }` (CTD-200). One
- * GraphQL query per team for `states`, so a run costs as many calls as there are team keys
- * among the tickets asked for. This is argus's old `linear.ts`, moved: the logic is
- * unchanged, so `ticketStates` for `ALD` and `CTD` keys settles exactly as before
- * (spec S-15). `create`, `update`, `claim` and `link` are ticket 4's to write.
+ * The Linear adapter (CTD-198, CTD-201). `states` batches keys by team and answers
+ * `TicketState`, each one carrying the ticket's assignee (`assignee { id }` in the same
+ * query, for ticket 13 to read); `get` answers one ticket by its identifier, with its
+ * parent's key when it has one; `listOpen` answers the team's (or, unscoped, the
+ * workspace's) open issues, filtered for `--mine`/`--unassigned` against the same query's
+ * `viewer { id }` (CTD-200). One GraphQL query per team for `states`, so a run costs as
+ * many calls as there are team keys among the tickets asked for. This is argus's old
+ * `linear.ts`, moved: the logic is unchanged, so `ticketStates` for `ALD` and `CTD` keys
+ * settles exactly as before (spec S-15).
+ *
+ * `create` (CTD-201) generalises Pensieve's `createIssue`/`createProject`
+ * (`apps/pensieve/src/server/linear.ts`) with `parentId` and `blockedBy` relations: one
+ * context query for the team's id, states, projects and the viewer, a `projectCreate` when
+ * `project` names one the team does not have, one `issueCreate`, then one
+ * `issueRelationCreate` per blocker (the blocker `blocks` the new issue). `update` is the
+ * same context query scoped to the key's own team, then one `issueUpdate` carrying only the
+ * fields given — a `state` name resolves against the team's own workflow states, as
+ * `linearClaim`'s started-state lookup already does; blockers are added, never removed.
  *
  * Auth: `LINEAR_API_KEY` from the environment, read fresh per call so a key set after the
  * process started still counts. Without it `states` answers `unknown` for every key — a
- * caller with a batch to read still has its other facts — and `get`/`claim` throw
- * `MissingCredentialError`, since a caller asking for one ticket has nothing to fall back
- * to. `claim` (CTD-204, moved from Foundry's `linear-link.ts` unchanged) is the only write:
- * assign + move to the team's started state, in one lookup and one mutation.
+ * caller with a batch to read still has its other facts — and every other verb throws
+ * `MissingCredentialError`, since a caller asking for one ticket, or writing one, has
+ * nothing to fall back to. `claim` (CTD-204, moved from Foundry's `linear-link.ts`
+ * unchanged) is assign + move to the team's started state, in one lookup and one mutation.
  */
 
 import { MissingCredentialError } from "./errors.ts";
 import { splitKey } from "./key.ts";
-import type { ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
+import type { CreateTicketInput, ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates, UpdateTicketInput } from "./provider.ts";
 
 export const LINEAR_API_URL = "https://api.linear.app/graphql";
 
@@ -54,6 +63,20 @@ type IssueNode = Node & { title: string; description?: string | null; parent?: {
 export type LinearOptions = { fetch?: typeof fetch; apiKey?: string | null; now?: Date };
 
 const keyOf = (opts: LinearOptions) => (opts.apiKey === undefined ? process.env.LINEAR_API_KEY?.trim() || null : opts.apiKey);
+
+/** one authenticated POST, unwrapped to its `data` — every write shares this, the way `linearClaim`'s did before it moved here. */
+async function linearPost<T>(query: string, variables: Record<string, unknown>, apiKey: string, f: typeof fetch): Promise<T> {
+  const res = await f(LINEAR_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: apiKey },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!res.ok) throw new Error(`linear: ${res.status}`);
+  const body = (await res.json()) as { data?: T; errors?: { message: string }[] };
+  if (body.errors?.length) throw new Error(`linear: ${body.errors.map((e) => e.message).join("; ")}`);
+  if (!body.data) throw new Error("linear: no data in response");
+  return body.data;
+}
 
 /** one node → its state; the state's `type` is Linear's own, since a workspace may rename a column */
 export function stateOf(n: Node, now: Date): TicketState {
@@ -202,46 +225,203 @@ export async function linearClaim(key: string, assigneeId?: string, opts: Linear
   const apiKey = keyOf(opts);
   if (!apiKey) throw new MissingCredentialError("LINEAR_API_KEY");
   const f = opts.fetch ?? fetch;
-  const post = async <T>(query: string, variables: Record<string, string>): Promise<T> => {
-    const res = await f(LINEAR_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: apiKey },
-      body: JSON.stringify({ query, variables }),
-    });
-    if (!res.ok) throw new Error(`linear: ${res.status}`);
-    const body = (await res.json()) as { data?: T; errors?: { message: string }[] };
-    if (body.errors?.length) throw new Error(`linear: ${body.errors.map((e) => e.message).join("; ")}`);
-    if (!body.data) throw new Error("linear: no data in response");
-    return body.data;
-  };
-  const context = await post<{
+  const context = await linearPost<{
     viewer: { id: string };
     issue: { id: string; team: { states: { nodes: Array<{ id: string; name: string; type: string }> } } } | null;
-  }>(VIEWER_AND_STATES_QUERY, { id: key });
+  }>(VIEWER_AND_STATES_QUERY, { id: key }, apiKey, f);
   if (!context.issue) throw new Error(`linear: no such issue ${key}`);
   const stateId = startedStateId(context.issue.team.states.nodes);
-  const done = await post<{ issueUpdate: { success: boolean } }>(CLAIM_MUTATION, {
-    id: context.issue.id,
-    assigneeId: assigneeId ?? context.viewer.id,
-    stateId,
-  });
+  const done = await linearPost<{ issueUpdate: { success: boolean } }>(CLAIM_MUTATION, { id: context.issue.id, assigneeId: assigneeId ?? context.viewer.id, stateId }, apiKey, f);
   if (!done.issueUpdate.success) throw new Error("linear: issueUpdate declined");
 }
 
-const notImplemented = (verb: string): never => {
-  throw new Error(`tickets: Linear's "${verb}" is not implemented yet`);
-};
+type TeamState = { id: string; name: string; type: string };
+type TeamProject = { id: string; name: string };
 
-/** the Linear adapter as a `TicketProvider`; `get`, `states`, `listOpen` and `claim` are implemented (CTD-198, CTD-200, CTD-204) */
+const TEAM_CONTEXT_QUERY = `query TicketTeamContext($team: String!) {
+  viewer { id }
+  teams(filter: { key: { eq: $team } }, first: 1) {
+    nodes { id states { nodes { id name type } } projects(first: 250) { nodes { id name } } }
+  }
+}`;
+
+/** the team's id, states and projects, plus the viewer — what `create` and `update` both resolve `project`, `state` and `"me"` against */
+async function teamContext(team: string, apiKey: string, f: typeof fetch): Promise<{ viewerId: string; teamId: string; states: TeamState[]; projects: TeamProject[] }> {
+  const data = await linearPost<{ viewer: { id: string }; teams: { nodes: Array<{ id: string; states: { nodes: TeamState[] }; projects: { nodes: TeamProject[] } }> } }>(TEAM_CONTEXT_QUERY, { team }, apiKey, f);
+  const node = data.teams.nodes[0];
+  if (!node) throw new Error(`linear: no such team ${team}`);
+  return { viewerId: data.viewer.id, teamId: node.id, states: node.states.nodes, projects: node.projects.nodes };
+}
+
+const PROJECT_CREATE_MUTATION = `mutation TicketProjectCreate($input: ProjectCreateInput!) {
+  projectCreate(input: $input) { success project { id name } }
+}`;
+
+/** the named project's id, case-insensitively; created on the team when nothing by that name exists yet, as `argus file`'s Linear path does today */
+async function projectId(name: string, ctx: { teamId: string; projects: TeamProject[] }, apiKey: string, f: typeof fetch): Promise<string> {
+  const existing = ctx.projects.find((p) => p.name.toLowerCase() === name.toLowerCase());
+  if (existing) return existing.id;
+  const created = await linearPost<{ projectCreate: { success: boolean; project: TeamProject | null } }>(PROJECT_CREATE_MUTATION, { input: { name, teamIds: [ctx.teamId] } }, apiKey, f);
+  if (!created.projectCreate.success || !created.projectCreate.project) throw new Error("linear: projectCreate declined");
+  return created.projectCreate.project.id;
+}
+
+/** the named workflow state's id, case-insensitively; an unknown name is refused, listing what the team has */
+function stateId(name: string, states: TeamState[]): string {
+  const found = states.find((s) => s.name.toLowerCase() === name.toLowerCase());
+  if (!found) throw new Error(`linear: no state named "${name}" — the team has ${states.map((s) => s.name).join(", ")}`);
+  return found.id;
+}
+
+const TICKET_IDS_QUERY = `query TicketIds($team: String!, $numbers: [Float!]!) {
+  issues(filter: { team: { key: { eq: $team } }, number: { in: $numbers } }, first: 250) {
+    nodes { id identifier }
+  }
+}`;
+
+/** every key's uuid, batched by team like `linearTicketStates`; a key Linear does not have is thrown by name, so a parent or blocker is never silently dropped */
+async function idsForKeys(keys: string[], apiKey: string, f: typeof fetch): Promise<Map<string, string>> {
+  const byTeam = new Map<string, number[]>();
+  for (const k of keys) {
+    const s = splitKey(k);
+    if (s) byTeam.set(s[0], [...(byTeam.get(s[0]) ?? []), s[1]]);
+  }
+  const found = new Map<string, string>();
+  for (const [team, numbers] of byTeam) {
+    const data = await linearPost<{ issues: { nodes: Array<{ id: string; identifier: string }> } }>(TICKET_IDS_QUERY, { team, numbers }, apiKey, f);
+    for (const n of data.issues.nodes) found.set(n.identifier, n.id);
+  }
+  for (const k of keys) if (!found.has(k)) throw new Error(`linear: no such issue ${k}`);
+  return found;
+}
+
+/** `"me"` → the viewer, `undefined`/`null` → left off (create) or cleared (update), anything else passed through as Linear's own user id */
+const resolveAssignee = (assigneeId: string | null | undefined, viewerId: string): string | null | undefined => (assigneeId === "me" ? viewerId : assigneeId);
+
+const ISSUE_CREATE_MUTATION = `mutation TicketCreate($input: IssueCreateInput!) {
+  issueCreate(input: $input) { success issue { id identifier url title description completedAt canceledAt state { name type } assignee { id } parent { identifier } } }
+}`;
+
+const ISSUE_UPDATE_MUTATION = `mutation TicketUpdate($id: String!, $input: IssueUpdateInput!) {
+  issueUpdate(id: $id, input: $input) { success issue { id identifier url title description completedAt canceledAt state { name type } assignee { id } parent { identifier } } }
+}`;
+
+/** the blocker `blocks` the new/updated issue — the direction that reads as "blocked by" on the ticket this adds relations to */
+const RELATION_CREATE_MUTATION = `mutation TicketBlockedBy($issueId: String!, $relatedIssueId: String!) {
+  issueRelationCreate(input: { issueId: $issueId, relatedIssueId: $relatedIssueId, type: blocks }) { success }
+}`;
+
+const toTicket = (issue: IssueNode, now: Date): Ticket => ({
+  key: issue.identifier,
+  title: issue.title,
+  url: issue.url,
+  description: issue.description ?? "",
+  state: stateOf(issue, now),
+  ...(issue.parent ? { parentKey: issue.parent.identifier } : {}),
+});
+
+/** every blocker relation the new/updated issue needs, one mutation each — additive, never removing one a caller did not name */
+async function addBlockers(issueId: string, blockedBy: string[] | undefined, apiKey: string, f: typeof fetch): Promise<void> {
+  if (!blockedBy?.length) return;
+  const ids = await idsForKeys(blockedBy, apiKey, f);
+  for (const blockerKey of blockedBy) {
+    const done = await linearPost<{ issueRelationCreate: { success: boolean } }>(RELATION_CREATE_MUTATION, { issueId: ids.get(blockerKey), relatedIssueId: issueId }, apiKey, f);
+    if (!done.issueRelationCreate.success) throw new Error(`linear: could not record ${blockerKey} as a blocker`);
+  }
+}
+
+/**
+ * One issue, with a project created on the team when `project` names one it does not have,
+ * `parentId` resolved from `input.parent`, and one blocker relation per `input.blockedBy`
+ * (CTD-201 AC3). Throws `MissingCredentialError` with no key, and by name on an unknown
+ * team, project-create failure, or a parent/blocker key Linear does not have.
+ */
+export async function linearCreate(input: CreateTicketInput, opts: LinearOptions = {}): Promise<Ticket> {
+  const apiKey = keyOf(opts);
+  if (!apiKey) throw new MissingCredentialError("LINEAR_API_KEY");
+  const now = opts.now ?? new Date();
+  const f = opts.fetch ?? fetch;
+  const ctx = await teamContext(input.team, apiKey, f);
+  const [projectIdValue, parentAndBlockerIds] = await Promise.all([
+    input.project ? projectId(input.project, ctx, apiKey, f) : Promise.resolve(undefined),
+    idsForKeys([...(input.parent ? [input.parent] : []), ...(input.blockedBy ?? [])], apiKey, f),
+  ]);
+  const assigneeId = resolveAssignee(input.assigneeId, ctx.viewerId);
+  const created = await linearPost<{ issueCreate: { success: boolean; issue: (IssueNode & { id: string }) | null } }>(
+    ISSUE_CREATE_MUTATION,
+    {
+      input: {
+        title: input.title,
+        description: input.description,
+        teamId: ctx.teamId,
+        ...(projectIdValue ? { projectId: projectIdValue } : {}),
+        ...(input.parent ? { parentId: parentAndBlockerIds.get(input.parent) } : {}),
+        ...(assigneeId ? { assigneeId } : {}),
+      },
+    },
+    apiKey,
+    f,
+  );
+  if (!created.issueCreate.success || !created.issueCreate.issue) throw new Error("linear: issueCreate declined");
+  const issue = created.issueCreate.issue;
+  await addBlockers(issue.id, input.blockedBy, apiKey, f);
+  return toTicket(issue, now);
+}
+
+/**
+ * One `issueUpdate` carrying only the fields given — `project`/`state` resolved against the
+ * key's own team, `assigneeId: null` clears the assignee, a blocker is added (never
+ * removed). AC2's title, description, label/project, assignee, parent and state move all
+ * go through this one mutation. Throws `MissingCredentialError` with no key, and by name on
+ * an unknown state, project-create failure, or a parent/blocker key Linear does not have.
+ */
+export async function linearUpdate(key: string, input: UpdateTicketInput, opts: LinearOptions = {}): Promise<Ticket> {
+  const apiKey = keyOf(opts);
+  if (!apiKey) throw new MissingCredentialError("LINEAR_API_KEY");
+  const now = opts.now ?? new Date();
+  const f = opts.fetch ?? fetch;
+  const split = splitKey(key);
+  if (!split) throw new Error(`linear: ${key} is not a ticket key`);
+  const ctx = await teamContext(split[0], apiKey, f);
+  const [ids, projectIdValue] = await Promise.all([
+    idsForKeys([key, ...(input.parent ? [input.parent] : [])], apiKey, f),
+    input.project ? projectId(input.project, ctx, apiKey, f) : Promise.resolve(undefined),
+  ]);
+  const assigneeId = resolveAssignee(input.assigneeId, ctx.viewerId);
+  const updated = await linearPost<{ issueUpdate: { success: boolean; issue: IssueNode | null } }>(
+    ISSUE_UPDATE_MUTATION,
+    {
+      id: ids.get(key),
+      input: {
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(projectIdValue ? { projectId: projectIdValue } : {}),
+        ...(input.parent ? { parentId: ids.get(input.parent) } : {}),
+        ...(input.assigneeId !== undefined ? { assigneeId } : {}),
+        ...(input.state !== undefined ? { stateId: stateId(input.state, ctx.states) } : {}),
+      },
+    },
+    apiKey,
+    f,
+  );
+  if (!updated.issueUpdate.success || !updated.issueUpdate.issue) throw new Error("linear: issueUpdate declined");
+  const issue = updated.issueUpdate.issue;
+  await addBlockers(ids.get(key)!, input.blockedBy, apiKey, f);
+  return toTicket(issue, now);
+}
+
+/** the Linear adapter as a `TicketProvider`; `get`, `states`, `listOpen`, `create`, `update` and `claim` are implemented (CTD-198, CTD-200, CTD-201, CTD-204) */
 export function linearProvider(opts: LinearOptions = {}): TicketProvider {
   return {
     name: "linear",
     get: (key) => linearGet(key, opts),
     states: (keys) => linearTicketStates(keys, opts),
     listOpen: (listOpts) => linearListOpen({ ...opts, ...listOpts }),
-    create: () => notImplemented("create"),
-    update: () => notImplemented("update"),
+    create: (input) => linearCreate(input, opts),
+    update: (key, input) => linearUpdate(key, input, opts),
     claim: (key, assigneeId) => linearClaim(key, assigneeId, opts),
-    link: () => notImplemented("link"),
+    link: () => {
+      throw new Error('tickets: Linear\'s "link" is not implemented yet');
+    },
   };
 }
