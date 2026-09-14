@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
-import { getTicket, listOpenTickets, ticketStates } from "./router.ts";
+import { claimTicket, getTicket, listOpenTickets, ticketStates } from "./router.ts";
 
-/** a fake provider that answers from a map and records every batch it was asked for */
-function fakeProvider(name: string, states: Record<string, TicketState>, tickets: Record<string, Ticket> = {}): TicketProvider & { asked: string[][] } {
+/** a fake provider that answers from a map and records every batch it was asked for, and every claim */
+function fakeProvider(name: string, states: Record<string, TicketState>, tickets: Record<string, Ticket> = {}): TicketProvider & { asked: string[][]; claimed: Array<[string, string | undefined]> } {
   const asked: string[][] = [];
+  const claimed: Array<[string, string | undefined]> = [];
   return {
     name,
     asked,
+    claimed,
     async states(keys) {
       asked.push(keys);
       const lookup: TicketStates = (k) => states[k] ?? { state: "unknown" };
@@ -25,8 +27,8 @@ function fakeProvider(name: string, states: Record<string, TicketState>, tickets
     async update() {
       throw new Error("not used in these tests");
     },
-    async claim() {
-      throw new Error("not used in these tests");
+    async claim(key, assigneeId) {
+      claimed.push([key, assigneeId]);
     },
     async link() {
       throw new Error("not used in these tests");
@@ -147,5 +149,23 @@ describe("getTicket", () => {
     const linear = fakeProvider("linear", {});
     expect(await getTicket("AP-1", { providers: { linear } })).toBeNull();
     expect(await getTicket("fe#437", { providers: { linear } })).toBeNull();
+  });
+});
+
+describe("claimTicket", () => {
+  test("routes to the key's provider, with the assigneeId passed through", async () => {
+    const linear = fakeProvider("linear", {});
+    await claimTicket("ALD-1", "u1", { providers: { linear } });
+    expect(linear.claimed).toEqual([["ALD-1", "u1"]]);
+  });
+  test("an omitted assigneeId reaches the provider as undefined", async () => {
+    const linear = fakeProvider("linear", {});
+    await claimTicket("ALD-1", undefined, { providers: { linear } });
+    expect(linear.claimed).toEqual([["ALD-1", undefined]]);
+  });
+  test("a key no provider owns, or a provider this run has none registered for, throws naming the key", async () => {
+    const linear = fakeProvider("linear", {});
+    await expect(claimTicket("AP-1", "u1", { providers: { linear } })).rejects.toThrow("AP-1");
+    await expect(claimTicket("fe#437", "u1", { providers: { linear } })).rejects.toThrow("fe#437");
   });
 });

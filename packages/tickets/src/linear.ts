@@ -11,11 +11,13 @@
  *
  * Auth: `LINEAR_API_KEY` from the environment, read fresh per call so a key set after the
  * process started still counts. Without it `states` answers `unknown` for every key — a
- * caller with a batch to read still has its other facts — and `get` throws, naming the
- * variable, since a caller asking for one ticket has nothing to fall back to. Read-only:
- * nothing here writes Linear.
+ * caller with a batch to read still has its other facts — and `get`/`claim` throw
+ * `MissingCredentialError`, since a caller asking for one ticket has nothing to fall back
+ * to. `claim` (CTD-204, moved from Foundry's `linear-link.ts` unchanged) is the only write:
+ * assign + move to the team's started state, in one lookup and one mutation.
  */
 
+import { MissingCredentialError } from "./errors.ts";
 import { splitKey } from "./key.ts";
 import type { ListOpenOptions, Ticket, TicketProvider, TicketState, TicketStates } from "./provider.ts";
 
@@ -100,13 +102,15 @@ export async function linearTicketStates(keys: string[], opts: LinearOptions = {
 
 /**
  * One ticket, from Linear's `issue(id:)`, which takes the human identifier as well as the
- * uuid. `null` when Linear has no such issue; throws, naming `LINEAR_API_KEY`, when there is
- * no credential to ask with, and on a failed request or a GraphQL error — a caller asking
- * for one specific ticket has nothing else to show.
+ * uuid. `null` when Linear has no such issue — either a null result or, on some lookups, a
+ * "not found" GraphQL error, which is the same answer worded differently. Throws
+ * `MissingCredentialError` when there is no credential to ask with, and on a failed request
+ * or any other GraphQL error — a caller asking for one specific ticket has nothing else to
+ * show.
  */
 export async function linearGet(key: string, opts: LinearOptions = {}): Promise<Ticket | null> {
   const apiKey = keyOf(opts);
-  if (!apiKey) throw new Error("LINEAR_API_KEY is not set");
+  if (!apiKey) throw new MissingCredentialError("LINEAR_API_KEY");
   const now = opts.now ?? new Date();
   const f = opts.fetch ?? fetch;
   const res = await f(LINEAR_API_URL, {
@@ -116,7 +120,11 @@ export async function linearGet(key: string, opts: LinearOptions = {}): Promise<
   });
   if (!res.ok) throw new Error(`linear: ${res.status}`);
   const body = (await res.json()) as { data?: { issue?: IssueNode | null }; errors?: { message: string }[] };
-  if (body.errors?.length) throw new Error(`linear: ${body.errors.map((e) => e.message).join("; ")}`);
+  if (body.errors?.length) {
+    const message = body.errors.map((e) => e.message).join("; ");
+    if (/not found/i.test(message)) return null;
+    throw new Error(`linear: ${message}`);
+  }
   const issue = body.data?.issue;
   if (!issue) return null;
   return {
@@ -167,11 +175,64 @@ export async function linearListOpen(opts: LinearOptions & ListOpenOptions = {})
     }));
 }
 
+const VIEWER_AND_STATES_QUERY = `query ClaimContext($id: String!) {
+  viewer { id }
+  issue(id: $id) { id team { states { nodes { id name type } } } }
+}`;
+
+const CLAIM_MUTATION = `mutation Claim($id: String!, $assigneeId: String!, $stateId: String!) {
+  issueUpdate(id: $id, input: { assigneeId: $assigneeId, stateId: $stateId }) { success }
+}`;
+
+/** The team's started-type state, preferring one named "In Progress" when it has several. */
+function startedStateId(states: Array<{ id: string; name: string; type: string }>): string {
+  const started = states.find((s) => s.type === "started" && s.name.toLowerCase() === "in progress") ?? states.find((s) => s.type === "started");
+  if (!started) throw new Error("team has no started-type state to move the ticket into");
+  return started.id;
+}
+
+/**
+ * Assign + move to the team's started state — one lookup query (the viewer's id and the
+ * team's states) and one `issueUpdate`. `assigneeId` omitted assigns the credential's own
+ * user, which is what a Foundry claim means. Idempotent — re-applying it is a no-op on
+ * Linear's side. Throws `MissingCredentialError` with no credential, and on an unknown
+ * issue or a declined update.
+ */
+export async function linearClaim(key: string, assigneeId?: string, opts: LinearOptions = {}): Promise<void> {
+  const apiKey = keyOf(opts);
+  if (!apiKey) throw new MissingCredentialError("LINEAR_API_KEY");
+  const f = opts.fetch ?? fetch;
+  const post = async <T>(query: string, variables: Record<string, string>): Promise<T> => {
+    const res = await f(LINEAR_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: apiKey },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (!res.ok) throw new Error(`linear: ${res.status}`);
+    const body = (await res.json()) as { data?: T; errors?: { message: string }[] };
+    if (body.errors?.length) throw new Error(`linear: ${body.errors.map((e) => e.message).join("; ")}`);
+    if (!body.data) throw new Error("linear: no data in response");
+    return body.data;
+  };
+  const context = await post<{
+    viewer: { id: string };
+    issue: { id: string; team: { states: { nodes: Array<{ id: string; name: string; type: string }> } } } | null;
+  }>(VIEWER_AND_STATES_QUERY, { id: key });
+  if (!context.issue) throw new Error(`linear: no such issue ${key}`);
+  const stateId = startedStateId(context.issue.team.states.nodes);
+  const done = await post<{ issueUpdate: { success: boolean } }>(CLAIM_MUTATION, {
+    id: context.issue.id,
+    assigneeId: assigneeId ?? context.viewer.id,
+    stateId,
+  });
+  if (!done.issueUpdate.success) throw new Error("linear: issueUpdate declined");
+}
+
 const notImplemented = (verb: string): never => {
   throw new Error(`tickets: Linear's "${verb}" is not implemented yet`);
 };
 
-/** the Linear adapter as a `TicketProvider`; `get`, `states` and `listOpen` are implemented (CTD-198, CTD-200) */
+/** the Linear adapter as a `TicketProvider`; `get`, `states`, `listOpen` and `claim` are implemented (CTD-198, CTD-200, CTD-204) */
 export function linearProvider(opts: LinearOptions = {}): TicketProvider {
   return {
     name: "linear",
@@ -180,7 +241,7 @@ export function linearProvider(opts: LinearOptions = {}): TicketProvider {
     listOpen: (listOpts) => linearListOpen({ ...opts, ...listOpts }),
     create: () => notImplemented("create"),
     update: () => notImplemented("update"),
-    claim: () => notImplemented("claim"),
+    claim: (key, assigneeId) => linearClaim(key, assigneeId, opts),
     link: () => notImplemented("link"),
   };
 }

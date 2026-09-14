@@ -1,8 +1,8 @@
 /**
- * Node-only. The host's edge onto Linear: fetching a ticket and composing its
- * job brief, claiming it (assignee + In Progress), and filing a pull request
- * back onto it. The trigger API (LIA-92) uses the first two; only the
- * runner's Bitbucket path uses the third.
+ * Node-only. The host's remaining Linear edge, now that fetching a ticket
+ * and claiming it live in `@citadel/tickets` (CTD-204): scanning text for
+ * ticket ids, and filing a pull request back onto Linear as an attachment.
+ * Only the runner's Bitbucket path (`linkPrToTicket`) uses this file now.
  *
  * Runs on the HOST for the same reason `bb` does: LINEAR_API_KEY never enters
  * a forge. Containers reach Linear through the MCP gateway and nowhere else.
@@ -111,47 +111,20 @@ export async function gql<T>(apiKey: string, query: string, variables: Record<st
 }
 
 /* ------------------------------------------------------------------ */
-/* One ticket: fetch, brief, claim                                     */
+/* PR links                                                            */
 /* ------------------------------------------------------------------ */
 
-/** What a job needs from a ticket: the brief's parts, plus the ids the claim mutation addresses. */
-export interface LinearIssue {
-  /** Linear's uuid — what mutations address. */
-  id: string
-  /** The human identifier, e.g. "LIA-52" — what the job row's claim is keyed on. */
-  identifier: string
-  title: string
-  url: string
-  /** description ?? '' — the job brief, all sections. */
-  description: string
-  teamId: string
-  /** The parent issue's identifier, when it has one — how a job finds the revision it was cut from (CTD-195). */
-  parentKey?: string
-}
-
 /**
- * `issue(id:)` takes the human identifier as well as the UUID. Null means
- * Linear has no such issue — either a null result or, on some lookups, a
- * "not found" GraphQL error, which is the same answer worded differently.
- * Anything else (network, auth, a bad key) throws; the caller decides what a
- * Linear outage costs.
+ * `issue(id:)` takes the human identifier as well as the UUID — the only
+ * thing `linkPrToTicket` needs, `attachmentLinkURL` addressing by uuid. Null
+ * means Linear has no such issue — either a null result or, on some
+ * lookups, a "not found" GraphQL error, which is the same answer worded
+ * differently. Anything else (network, auth, a bad key) throws.
  */
-export async function fetchIssue(apiKey: string, identifier: string): Promise<LinearIssue | null> {
+async function issueUuid(apiKey: string, identifier: string): Promise<string | null> {
   try {
-    const found = await gql<{
-      issue: {
-        id: string
-        identifier: string
-        title: string
-        url: string
-        description: string | null
-        team: { id: string }
-        parent: { identifier: string } | null
-      } | null
-    }>(apiKey, 'query($id: String!) { issue(id: $id) { id identifier title url description team { id } parent { identifier } } }', { id: identifier })
-    if (!found.issue) return null
-    const { description, team, parent, ...rest } = found.issue
-    return { ...rest, description: description ?? '', teamId: team.id, ...(parent ? { parentKey: parent.identifier } : {}) }
+    const found = await gql<{ issue: { id: string } | null }>(apiKey, 'query($id: String!) { issue(id: $id) { id } }', { id: identifier })
+    return found.issue?.id ?? null
   } catch (e) {
     if (/not found/i.test(e instanceof Error ? e.message : String(e))) return null
     throw e
@@ -159,61 +132,7 @@ export async function fetchIssue(apiKey: string, identifier: string): Promise<Li
 }
 
 /**
- * The ticket IS the job brief: every section, behind the key, title and URL.
- * `branchSlug` and the PR↔ticket linker both key off the leading identifier
- * for free.
- */
-export function ticketBrief(issue: Pick<LinearIssue, 'identifier' | 'title' | 'url' | 'description'>): string {
-  return `${issue.identifier}: ${issue.title}\n${issue.url}\n\n${issue.description}`
-}
-
-/** The user the key belongs to — who a claimed ticket is assigned to. */
-export async function viewerId(apiKey: string): Promise<string> {
-  const data = await gql<{ viewer: { id: string } }>(apiKey, 'query { viewer { id } }', {})
-  return data.viewer.id
-}
-
-/** The team's started-type state, preferring one named "In Progress" when it has several. */
-export async function startedStateId(apiKey: string, teamId: string): Promise<string> {
-  const data = await gql<{ team: { states: { nodes: Array<{ id: string; name: string; type: string }> } } }>(
-    apiKey,
-    'query($teamId: String!) { team(id: $teamId) { states { nodes { id name type } } } }',
-    { teamId },
-  )
-  const states = data.team.states.nodes
-  const started = states.find((s) => s.type === 'started' && s.name.toLowerCase() === 'in progress')
-    ?? states.find((s) => s.type === 'started')
-  if (!started) throw new Error('team has no started-type state to move the ticket into')
-  return started.id
-}
-
-/** Assign + move to In Progress. Idempotent — re-applying it is a no-op on Linear's side. */
-export async function claimIssue(apiKey: string, issueId: string, assigneeId: string, stateId: string): Promise<void> {
-  await gql<{ issueUpdate: { success: boolean } }>(
-    apiKey,
-    `mutation($id: String!, $assigneeId: String!, $stateId: String!) {
-      issueUpdate(id: $id, input: { assigneeId: $assigneeId, stateId: $stateId }) { success }
-    }`,
-    { id: issueId, assigneeId, stateId },
-  )
-}
-
-/**
- * The whole claim for one ticket: assign it to the key's user and move it to
- * the team's started state. A caller claiming many at once would memoise the
- * two lookups and call `claimIssue` itself.
- */
-export async function claimTicket(apiKey: string, issue: Pick<LinearIssue, 'id' | 'teamId'>): Promise<void> {
-  const [assigneeId, stateId] = await Promise.all([viewerId(apiKey), startedStateId(apiKey, issue.teamId)])
-  await claimIssue(apiKey, issue.id, assigneeId, stateId)
-}
-
-/* ------------------------------------------------------------------ */
-/* PR links                                                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * `attachmentLinkURL` wants the UUID, so resolve the identifier (`fetchIssue`)
+ * `attachmentLinkURL` wants the UUID, so resolve the identifier (`issueUuid`)
  * and then attach. Attachments are keyed on the URL, so a re-run that opens a
  * fresh PR adds a second link rather than replacing the first, and re-filing
  * the same URL is a no-op.
@@ -234,12 +153,12 @@ export async function linkPrToTicket(
   for (const id of ids) {
     let issueId: string
     try {
-      const found = await fetchIssue(apiKey, id)
+      const found = await issueUuid(apiKey, id)
       if (!found) {
         unknown.push(id)
         continue
       }
-      issueId = found.id
+      issueId = found
     } catch (e) {
       failed.push({ id, reason: trim1(e instanceof Error ? e.message : String(e), 300) })
       continue

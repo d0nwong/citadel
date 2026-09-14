@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { readCredentials, readEnvFile } from './foundry-env'
+import { forgeEnv, readCredentials, readEnvFile } from './foundry-env'
 
 let root = ''
 const env = () => path.join(root, 'env')
@@ -70,5 +70,52 @@ describe('readCredentials', () => {
 
   test('an environment-only TRELLO_TOKEN is read too, as in a container', async () => {
     expect(await readCredentials(path.join(root, 'absent'), { TRELLO_TOKEN: 'tok-env' })).toEqual({ TRELLO_TOKEN: 'tok-env' })
+  })
+})
+
+// CTD-204 AC1 — with every upstream credential on the host, the container's env carries
+// none of them, nor any git, GitHub, Bitbucket or database credential.
+describe('forgeEnv', () => {
+  const withEverything: Record<string, string> = {
+    ANTHROPIC_API_KEY: 'sk-ant-x',
+    CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oauth',
+    DATABASE_URL: 'postgresql://u:p@host/db',
+    FOUNDRY_API_TOKEN: 'ftok',
+    GH_TOKEN: 'gh-x',
+    GITHUB_TOKEN: 'gh-y',
+    LINEAR_API_KEY: 'lin',
+    MCP_GATEWAY_TOKEN: 'gw',
+    SLACK_TOKEN: 'xoxp',
+    SSH_AUTH_SOCK: '/tmp/agent.sock',
+    TRELLO_API_KEY: 'trello-key',
+    TRELLO_TOKEN: 'trello-tok',
+  }
+
+  test('carries only the Claude credential and the gateway token — nothing upstream, git, GitHub, Bitbucket or database', () => {
+    expect(forgeEnv(withEverything, 'http://gateway.test')).toEqual({
+      CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oauth',
+      FOUNDRY_MCP_TOKEN: 'gw',
+      FOUNDRY_MCP_URL: 'http://gateway.test',
+      FOUNDRY_MCP_SERVERS: 'linear,slack',
+    })
+  })
+
+  test('ANTHROPIC_API_KEY is the fallback when there is no OAuth token', () => {
+    const { CLAUDE_CODE_OAUTH_TOKEN: _drop, ...rest } = withEverything
+    expect(forgeEnv(rest, 'http://gateway.test').ANTHROPIC_API_KEY).toBe('sk-ant-x')
+  })
+
+  test('with no MCP_GATEWAY_TOKEN, none of the gateway fields are set', () => {
+    const { MCP_GATEWAY_TOKEN: _drop, ...rest } = withEverything
+    expect(forgeEnv(rest, 'http://gateway.test')).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oauth' })
+  })
+
+  test('FOUNDRY_MCP_SERVERS in the credentials narrows the default list', () => {
+    expect(forgeEnv({ ...withEverything, FOUNDRY_MCP_SERVERS: 'linear' }, 'http://gateway.test').FOUNDRY_MCP_SERVERS).toBe('linear')
+  })
+
+  test('no Claude credential at all throws, naming what to run', () => {
+    const { CLAUDE_CODE_OAUTH_TOKEN: _a, ANTHROPIC_API_KEY: _b, ...rest } = withEverything
+    expect(() => forgeEnv(rest, 'http://gateway.test')).toThrow('foundry auth')
   })
 })

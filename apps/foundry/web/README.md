@@ -412,7 +412,8 @@ src/
       server/job-events.ts    node-only: callback auth + stream-json -> the JSONL log
       server/job-api.ts       node-only: the trigger API — bearer auth, payload -> NewJobInput, ticket brief + claim
       server/job-webhook.ts   node-only: the signed job.settled POST to a job's callbackUrl
-      server/linear-link.ts   node-only: the host's Linear edge — issue fetch, brief, claim, PR link
+      server/tickets.ts       node-only: the host's edge onto @citadel/tickets — get + claim, keyed with LINEAR_API_KEY
+      server/linear-link.ts   node-only: the host's remaining Linear edge — id scanning, PR link
       server/auth.ts          node-only: constant-time bearer checks, FOUNDRY_API_TOKEN
       server/foundry-env.ts   node-only: the repo's .env, read fresh per use
       server/forge-pr.ts      node-only: bb / gh pr create, by origin host

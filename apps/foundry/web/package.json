@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@citadel/tickets": "workspace:*",
     "@faker-js/faker": "^10.3.0",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/match-sorter-utils": "9.1.2",

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { LINEAR_API_URL, linearGet, linearListOpen, linearTicketStates, stateOf } from "./linear.ts";
+import { MissingCredentialError } from "./errors.ts";
+import { LINEAR_API_URL, linearClaim, linearGet, linearListOpen, linearTicketStates, stateOf } from "./linear.ts";
 
 const now = new Date("2026-09-13T10:00:00Z");
 const node = (identifier: string, type: string, extra: Record<string, unknown> = {}) => ({
@@ -86,10 +87,84 @@ describe("linearGet", () => {
     expect(t?.description).toBe("");
     expect(t?.parentKey).toBeUndefined();
   });
-  test("no credential throws, naming the variable; a GraphQL error throws too", async () => {
+  test("no credential throws MissingCredentialError, naming the variable; a real GraphQL error throws too", async () => {
+    await expect(linearGet("CTD-1", { apiKey: null })).rejects.toThrow(MissingCredentialError);
     await expect(linearGet("CTD-1", { apiKey: null })).rejects.toThrow("LINEAR_API_KEY");
-    const f = (async () => new Response(JSON.stringify({ errors: [{ message: "not found" }] }))) as unknown as typeof fetch;
-    await expect(linearGet("CTD-1", { fetch: f, apiKey: "k" })).rejects.toThrow("not found");
+    const f = (async () => new Response(JSON.stringify({ errors: [{ message: "rate limited" }] }))) as unknown as typeof fetch;
+    await expect(linearGet("CTD-1", { fetch: f, apiKey: "k" })).rejects.toThrow("rate limited");
+  });
+  test('a "not found" GraphQL error answers null, the same as a null result', async () => {
+    const f = (async () => new Response(JSON.stringify({ errors: [{ message: "Entity not found" }] }))) as unknown as typeof fetch;
+    expect(await linearGet("CTD-1", { fetch: f, apiKey: "k" })).toBeNull();
+  });
+});
+
+describe("linearClaim", () => {
+  const claimContext = (states: Array<{ id: string; name: string; type: string }>) => ({
+    data: { viewer: { id: "viewer-1" }, issue: { id: "uuid-1", team: { states: { nodes: states } } } },
+  });
+
+  test("assigns the given user and moves to the state named \"In Progress\" among several started states", async () => {
+    const calls: Array<{ query: string; variables: Record<string, string> }> = [];
+    const f = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      calls.push(body);
+      if (body.query.includes("ClaimContext")) {
+        return new Response(JSON.stringify(claimContext([
+          { id: "s-todo", name: "Todo", type: "unstarted" },
+          { id: "s-started", name: "Started", type: "started" },
+          { id: "s-progress", name: "In Progress", type: "started" },
+        ])));
+      }
+      return new Response(JSON.stringify({ data: { issueUpdate: { success: true } } }));
+    }) as unknown as typeof fetch;
+    await linearClaim("CTD-1", "assignee-1", { fetch: f, apiKey: "k" });
+    expect(calls[0]?.variables).toEqual({ id: "CTD-1" });
+    expect(calls[1]?.variables).toEqual({ id: "uuid-1", assigneeId: "assignee-1", stateId: "s-progress" });
+  });
+
+  test("falls back to any started state when none is named \"In Progress\"", async () => {
+    const f = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      if (body.query.includes("ClaimContext")) {
+        return new Response(JSON.stringify(claimContext([{ id: "s-started", name: "Doing", type: "started" }])));
+      }
+      return new Response(JSON.stringify({ data: { issueUpdate: { success: true } } }));
+    }) as unknown as typeof fetch;
+    await expect(linearClaim("CTD-1", "assignee-1", { fetch: f, apiKey: "k" })).resolves.toBeUndefined();
+  });
+
+  test("omitting assigneeId assigns the credential's own viewer", async () => {
+    const calls: Array<Record<string, string>> = [];
+    const f = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      if (body.query.includes("ClaimContext")) {
+        return new Response(JSON.stringify(claimContext([{ id: "s-started", name: "In Progress", type: "started" }])));
+      }
+      calls.push(body.variables);
+      return new Response(JSON.stringify({ data: { issueUpdate: { success: true } } }));
+    }) as unknown as typeof fetch;
+    await linearClaim("CTD-1", undefined, { fetch: f, apiKey: "k" });
+    expect(calls[0]?.assigneeId).toBe("viewer-1");
+  });
+
+  test("no credential throws MissingCredentialError; no started state, an unknown issue, and a declined update all throw", async () => {
+    await expect(linearClaim("CTD-1", "a1", { apiKey: null })).rejects.toThrow(MissingCredentialError);
+
+    const noStarted = (async () => new Response(JSON.stringify(claimContext([{ id: "s-todo", name: "Todo", type: "unstarted" }])))) as unknown as typeof fetch;
+    await expect(linearClaim("CTD-1", "a1", { fetch: noStarted, apiKey: "k" })).rejects.toThrow("no started-type state");
+
+    const noIssue = (async () => new Response(JSON.stringify({ data: { viewer: { id: "v1" }, issue: null } }))) as unknown as typeof fetch;
+    await expect(linearClaim("CTD-1", "a1", { fetch: noIssue, apiKey: "k" })).rejects.toThrow("no such issue");
+
+    const declined = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      if (body.query.includes("ClaimContext")) {
+        return new Response(JSON.stringify(claimContext([{ id: "s-started", name: "In Progress", type: "started" }])));
+      }
+      return new Response(JSON.stringify({ data: { issueUpdate: { success: false } } }));
+    }) as unknown as typeof fetch;
+    await expect(linearClaim("CTD-1", "a1", { fetch: declined, apiKey: "k" })).rejects.toThrow("declined");
   });
 });
 

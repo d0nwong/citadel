@@ -16,13 +16,14 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { repoNotes } from '@/features/repos/server/repo-scan'
 import { createPullRequest, fetchFailedChecks, fetchPrComments, originHost, prCliFor } from './forge-pr'
-import { readFoundryEnv } from './foundry-env'
+import { forgeEnv, readFoundryEnv } from './foundry-env'
 import { FOUNDRY_HOME, appendLogs } from './job-logs'
 import * as store from './job-store'
 import type { JobRow } from './job-store'
 import { notifyCallback } from './job-webhook'
-import { fetchIssue, linearApiKey, linkPrToTicket } from './linear-link'
+import { linearApiKey, linkPrToTicket } from './linear-link'
 import { startPrWatcher } from './pr-watcher'
+import { hostTickets } from './tickets'
 import { hydrateTask } from './task-context'
 import { getBaseline } from './baseline-store'
 import { cleanupWorkspace } from './workspace-cleanup'
@@ -107,19 +108,7 @@ async function docker(args: Array<string>, timeout = 30_000): Promise<string> {
 
 /** The Claude credential the container needs, plus the MCP gateway token when one is configured. */
 async function checkCredential(): Promise<Record<string, string>> {
-  const cred = await readFoundryEnv()
-  const credEnv: Record<string, string> = {}
-  if (cred.CLAUDE_CODE_OAUTH_TOKEN) credEnv.CLAUDE_CODE_OAUTH_TOKEN = cred.CLAUDE_CODE_OAUTH_TOKEN
-  else if (cred.ANTHROPIC_API_KEY) credEnv.ANTHROPIC_API_KEY = cred.ANTHROPIC_API_KEY
-  else throw new Error('no Claude credential for the forge — run: foundry auth')
-  // Gateway token only — the Linear/Slack keys stay on the host, behind argus's
-  // gateway, which serves both; FOUNDRY_MCP_SERVERS in .env narrows what box-init registers.
-  if (cred.MCP_GATEWAY_TOKEN) {
-    credEnv.FOUNDRY_MCP_TOKEN = cred.MCP_GATEWAY_TOKEN
-    credEnv.FOUNDRY_MCP_URL = MCP_URL
-    credEnv.FOUNDRY_MCP_SERVERS = cred.FOUNDRY_MCP_SERVERS || 'linear,slack'
-  }
-  return credEnv
+  return forgeEnv(await readFoundryEnv(), MCP_URL)
 }
 
 /** The daemon is reachable and the forge image is built. */
@@ -504,13 +493,13 @@ export async function startJob(id: string): Promise<void> {
     )
 
     await store.patchJob(id, { step: 'agent' })
-    // What the task names, resolved here where the base commit and the Linear
-    // key both are (CTD-190). Root jobs only: a follow-up's task is a PR's
-    // comments or a check's log, composed above, not a ticket.
+    // What the task names, resolved here where the base commit and the
+    // tickets package both are (CTD-190). Root jobs only: a follow-up's task
+    // is a PR's comments or a check's log, composed above, not a ticket.
     let task = brief?.task
     if (brief === undefined) {
       try {
-        const hydrated = await hydrateTask(job.task, work, { dataDir: ARGUS_DATA_DIR, fetchIssue, linearKey: await linearApiKey() })
+        const hydrated = await hydrateTask(job.task, work, { dataDir: ARGUS_DATA_DIR, tickets: hostTickets })
         await appendLogs(id, hydrated.log)
         task = hydrated.task
       } catch (e) {

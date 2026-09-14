@@ -1,10 +1,10 @@
 /**
  * Node-only. What a task points at, resolved on the host before its container
- * starts (CTD-190): the Linear issues it links, read with the host's key, and
- * the repo files it names in backticks, read from the job's clone at the base
- * commit. Appended under `## Context` so the first step starts with them
- * instead of spending turns finding them. The row's `task` stays verbatim;
- * only what the container is handed grows.
+ * starts (CTD-190): the tickets it links, read through the tickets package
+ * (CTD-204), and the repo files it names in backticks, read from the job's
+ * clone at the base commit. Appended under `## Context` so the first step
+ * starts with them instead of spending turns finding them. The row's `task`
+ * stays verbatim; only what the container is handed grows.
  *
  * A ticket cut from a revision (CTD-195) also brings that revision's spec and
  * the arch doc of every feature it names, read from citadel-data
@@ -12,16 +12,17 @@
  * Only `revisions/<KEY>/revision.json`, its `specs/` and a feature's
  * `docs/arch.md` are read — never a ledger.
  *
- * Never fails a job: a path that is not there is listed as missing, an issue
+ * Never fails a job: a path that is not there is listed as missing, a ticket
  * that cannot be fetched is listed with the reason and an `err` line.
  */
 import { execFile } from 'node:child_process'
 import { lstat, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import { MissingCredentialError } from '@citadel/tickets'
+import type { Ticket } from '@citadel/tickets'
 import { trim1 } from '@/shared/lib/format'
 import { ticketIdsInTask } from './linear-link'
-import type { LinearIssue } from './linear-link'
 
 const exec = promisify(execFile)
 
@@ -45,22 +46,21 @@ const DOT_SLASH = /^\.\//
 const EXTENSION = /\.([A-Za-z0-9]+)$/
 /** A glob, a placeholder or a template: a pattern, never one file. */
 const PATTERN = /[*?{}<>$|]/
-/** The ticket brief's head (`ticketBrief`): its own issue is already the task. */
-const BRIEF_HEAD = /^([A-Z][A-Z0-9]*-\d+): .*\nhttps:\/\/linear\.app\//
+/** The ticket brief's head (`ticketBrief`): its own ticket is already the task, whichever provider its url is on. */
+const BRIEF_HEAD = /^([A-Z][A-Z0-9]*-\d+): .*\nhttps:\/\/\S+\n/
 /** Git's own test for a binary file: a NUL in the first 8000 bytes. */
 const BINARY_PROBE = 8000
-/** A Linear key, the only thing a revision's directory is named after once filed. */
+/** A ticket key, the only thing a revision's directory is named after once filed. */
 const TICKET_KEY = /^[A-Z][A-Z0-9]*-\d+$/
 /** One segment of a feature key — `foundry`, `alden-portal`, `admin` — never `..` or empty. */
 const SEGMENT = /^[a-z0-9][a-z0-9-]*$/
 
 const HEADER =
-  '## Context\n\nResolved by the host before this run from what the task above names: linked issues as Linear has them now, the reviewed spec and arch doc of a revision the ticket belongs to, files as they stand at the base commit. The task is verbatim; where its line numbers disagree with a file here, the file is current.'
+  '## Context\n\nResolved by the host before this run from what the task above names: linked tickets as their tracker has them now, the reviewed spec and arch doc of a revision the ticket belongs to, files as they stand at the base commit. The task is verbatim; where its line numbers disagree with a file here, the file is current.'
 
 export interface ContextDeps {
-  /** The host's Linear key; undefined when none is configured. */
-  linearKey: string | undefined
-  fetchIssue: (apiKey: string, identifier: string) => Promise<LinearIssue | null>
+  /** One linked ticket, from the provider its key names — the tickets package's `getTicket` (CTD-204). Rejects when the ticket cannot be fetched, including a missing credential. */
+  tickets: { get: (key: string) => Promise<Ticket | null> }
   /** citadel-data on this host (`ARGUS_DATA_DIR`); undefined when none is configured. */
   dataDir?: string
 }
@@ -109,7 +109,7 @@ export function namedFiles(task: string): { paths: Array<string>; names: Array<s
   return { names: [...names], paths: [...paths] }
 }
 
-/** The Linear issues a task links, less the brief's own issue when the task is a ticket brief. */
+/** The tickets a task links, less the brief's own ticket when the task is a ticket brief. */
 export function linkedIssueIds(task: string): Array<string> {
   const own = BRIEF_HEAD.exec(task)?.[1]
   return ticketIdsInTask(task).filter((id) => id !== own)
@@ -126,26 +126,18 @@ async function issueBlocks(
   ids: Array<string>,
   deps: ContextDeps,
   log: HydratedTask['log'],
-): Promise<{ blocks: Array<Block>; skipped: Array<string>; known: Map<string, LinearIssue> }> {
+): Promise<{ blocks: Array<Block>; skipped: Array<string>; known: Map<string, Ticket> }> {
   const blocks: Array<Block> = []
   const skipped: Array<string> = []
-  const known = new Map<string, LinearIssue>()
+  const known = new Map<string, Ticket>()
   if (ids.length === 0) {
-    return { blocks, known, skipped }
-  }
-  const key = deps.linearKey
-  if (key === undefined) {
-    for (const id of ids) {
-      skipped.push(`${id} — not fetched: no Linear key on the host`)
-    }
-    log.push({ stream: 'err', text: `context: ${ids.join(', ')} not fetched — no LINEAR_API_KEY on the host` })
     return { blocks, known, skipped }
   }
   const fetched = ids.slice(0, MAX_ISSUES)
   for (const id of ids.slice(MAX_ISSUES)) {
     skipped.push(`${id} — past the ${MAX_ISSUES}-issue limit, not fetched`)
   }
-  const results = await Promise.allSettled(fetched.map((id) => deps.fetchIssue(key, id)))
+  const results = await Promise.allSettled(fetched.map((id) => deps.tickets.get(id)))
   for (const [i, r] of results.entries()) {
     const id = fetched[i]
     if (r.status === 'rejected') {
@@ -153,11 +145,11 @@ async function issueBlocks(
       skipped.push(`${id} — not fetched: ${reason}`)
       log.push({ stream: 'err', text: `context: ${id} not fetched — ${reason}` })
     } else if (r.value !== null) {
-      const { identifier, title, url, description } = r.value
+      const { key, title, url, description } = r.value
       known.set(id, r.value)
-      blocks.push({ kind: 'issue', label: identifier, text: `### ${identifier}: ${title}\n${url}\n\n${description.trim()}` })
+      blocks.push({ kind: 'issue', label: key, text: `### ${key}: ${title}\n${url}\n\n${description.trim()}` })
     }
-    // null: Linear knows no such issue, so the id was ordinary text (`ISO-8601`).
+    // null: no provider knows this id, so it was ordinary text (`ISO-8601`).
   }
   return { blocks, known, skipped }
 }
@@ -237,14 +229,14 @@ export async function revisionBlocks(parentKey: string, dataDir: string): Promis
 }
 
 /**
- * The ticket the task is about — the brief's own, else the first linked issue
- * Linear knows — and the revision its parent carries. The own issue is not in
- * `known` (issues skips it), so it is fetched here, once, for its parent.
+ * The ticket the task is about — the brief's own, else the first linked ticket
+ * its tracker knows — and the revision its parent carries. The own ticket is
+ * not in `known` (issues skips it), so it is fetched here, once, for its parent.
  */
 async function revisionSource(
   own: string | undefined,
   ids: Array<string>,
-  known: Map<string, LinearIssue>,
+  known: Map<string, Ticket>,
   deps: ContextDeps,
 ): Promise<RevisionSource> {
   const id = own ?? ids.find((i) => known.has(i))
@@ -253,16 +245,16 @@ async function revisionSource(
   }
   let subject = known.get(id)
   if (!subject) {
-    if (deps.linearKey === undefined) {
-      return nothing(`revision not checked — no Linear key to read ${id}'s parent`)
-    }
     try {
-      subject = (await deps.fetchIssue(deps.linearKey, id)) ?? undefined
+      subject = (await deps.tickets.get(id)) ?? undefined
     } catch (e) {
+      if (e instanceof MissingCredentialError) {
+        return nothing(`revision not checked — no ${e.variable} to read ${id}'s parent`)
+      }
       return nothing(`revision not checked — ${id} not fetched: ${message(e)}`)
     }
     if (!subject) {
-      return nothing(`revision not checked — Linear has no ${id}`)
+      return nothing(`revision not checked — no such ticket ${id}`)
     }
   }
   if (!subject.parentKey) {

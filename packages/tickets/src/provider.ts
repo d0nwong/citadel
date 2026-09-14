@@ -54,7 +54,8 @@ export type LinkInput = { kind: "pr"; url: string; title?: string };
 /**
  * One tracker, reached by the key's prefix through `router.ts`. `get` and `states` are
  * reads; `listOpen` lists a provider's own open tickets; `create`, `update`, `claim` and
- * `link` write.
+ * `link` write. `claim`'s `assigneeId` is optional — omitted, it assigns the credential's
+ * own user, which is what Foundry's ticket claim means (CTD-204).
  */
 export interface TicketProvider {
   readonly name: string;
@@ -63,6 +64,6 @@ export interface TicketProvider {
   listOpen(opts?: ListOpenOptions): Promise<Ticket[]>;
   create(input: CreateTicketInput): Promise<Ticket>;
   update(key: string, input: UpdateTicketInput): Promise<Ticket>;
-  claim(key: string, assigneeId: string): Promise<void>;
+  claim(key: string, assigneeId?: string): Promise<void>;
   link(key: string, input: LinkInput): Promise<void>;
 }
