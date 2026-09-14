@@ -18,7 +18,7 @@ import { useParams } from "@tanstack/react-router";
 import { ArrowUpRight, FilePlus2, LoaderCircle } from "lucide-react";
 import { useState } from "react";
 import type { FileTicketResult } from "#/lib/api";
-import { fileTicket, getFiledTicket } from "#/lib/api";
+import { fileTicket, getAldenBoardMembers, getFiledTicket } from "#/lib/api";
 import { cn } from "#/lib/utils";
 import { toolResultText } from "../lib/tool-summary";
 import type { Opts } from "../model/chat-options";
@@ -135,11 +135,14 @@ function Proposed({
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(proposal.title);
   const [description, setDescription] = useState(proposal.description);
+  const [assignee, setAssignee] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Extract<
     FileTicketResult,
     { ok: false }
   > | null>(null);
+
+  const isAlden = proposal.team.toLowerCase() === "alden";
 
   const key = ["ask-ticket", threadId, toolCallId];
   const q = useQuery({
@@ -148,6 +151,11 @@ function Proposed({
         data: { team: proposal.team, threadId, toolCallId },
       }),
     queryKey: key,
+  });
+  const members = useQuery({
+    enabled: isAlden,
+    queryFn: () => getAldenBoardMembers(),
+    queryKey: ["alden-board-members"],
   });
 
   const filed = q.data?.issue;
@@ -169,6 +177,7 @@ function Proposed({
     try {
       const r = await fileTicket({
         data: {
+          assignee: isAlden ? assignee || undefined : undefined,
           description,
           feature: proposal.feature,
           project: proposal.project,
@@ -272,6 +281,32 @@ function Proposed({
           <span className="mono">{proposal.project}</span> yet — File creates
           it, then the issue in it.
         </p>
+      )}
+
+      {isAlden && (
+        <>
+          <label className="kicker" htmlFor={`ticket-assignee-${toolCallId}`}>
+            Assignee
+          </label>
+          <select
+            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-foreground focus:border-primary focus:outline-none"
+            id={`ticket-assignee-${toolCallId}`}
+            onChange={(e) => setAssignee(e.target.value)}
+            value={assignee}
+          >
+            <option value="">Unassigned</option>
+            {members.data?.members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          {members.data?.configured === false && (
+            <p className="text-sm text-subtle leading-snug">
+              {members.data.reason ?? "the board's members could not be read"}
+            </p>
+          )}
+        </>
       )}
 
       <div className="flex flex-wrap items-center gap-3">
