@@ -1,6 +1,6 @@
 ---
 name: scope
-description: Turns a ramble — a few sentences, a ticket of notes, a voice-note transcript — into a filed revision: an interview until the intent is confirmed, the revised spec of every feature it touches, a plan cut into tickets, and a Linear parent with sub-issues, kept under revisions/ in citadel-data. Use when the user says "/scope", "scope this", "spec this out", "turn this into tickets", or hands over a brain dump or a ticket of notes that needs more than one ticket. Interactive: every step waits for the user's yes.
+description: Turns a ramble — a few sentences, a ticket of notes, a voice-note transcript — into a filed revision: an interview until the intent is confirmed, the revised spec of every feature it touches, a plan cut into tickets, and a parent with sub-tickets on Linear or Trello, kept under revisions/ in citadel-data. Use when the user says "/scope", "scope this", "spec this out", "turn this into tickets", or hands over a brain dump or a ticket of notes that needs more than one ticket. Interactive: every step waits for the user's yes.
 ---
 
 # scope — a ramble, made into a revision
@@ -11,14 +11,14 @@ The human's effort goes where one bad line costs the most: the spec, not the PR.
 
 ## When to Use
 
-- `/scope <ramble>`, `/scope <KEY>` for a ticket of notes, `/scope <path>` for a notes file; add `--parent <KEY>` to file under an existing issue
+- `/scope <ramble>`, `/scope <KEY>` for a ticket of notes, `/scope <path>` for a notes file; add `--parent <KEY>` to file under an existing ticket
 - A change or a new feature whose shape is not settled, or that needs more than one ticket
 
 **When NOT to use:** one ticket with clear acceptance criteria (`linear-ticket`); a question about the record (`ask`); any unattended run — this needs a person answering.
 
 ## Handoff
 
-Reads citadel-data through `argus` and `accio`, the arch docs and specs as files, and Linear. Writes only under `revisions/<slug>/`: `revision.json` through `argus revision`, the markdown itself. Writes Linear only in step 5. Never runs `reconcile` or `commit`; the sweep commits on its next tick.
+Reads citadel-data through `argus` and `accio`, the arch docs and specs as files, and tickets through `argus tracker`. Writes only under `revisions/<slug>/`: `revision.json` through `argus revision`, the markdown itself. Writes a tracker only in step 5. Never runs `reconcile` or `commit`; the sweep commits on its next tick.
 
 A terminal does not set the data root, so every `argus` and `accio` call carries it; `$D` below is that directory:
 
@@ -28,7 +28,7 @@ ARGUS_ROOT=${ARGUS_ROOT:-$HOME/git/citadel-data} argus revision show <slug>
 
 ## Step 1: Ground, then interview
 
-Before the first hypothesis, find the features and read what exists. `accio find "<words>"` names the alden-portal feature behind a screen, field or route; for Foundry, Pensieve and Argus, whose code it does not index, the `aliases` and `core_files` in `$D/<app>/.doc-workspace/feature-manifest.json` do. Then, for each feature: `$D/<app>/features/<dir>/docs/spec.md` and `docs/arch.md`; an Alden feature's ledger with `argus show <dir>` (the other apps have none); `mcp__linear__get_issue` when the argument is a key. Then interview per `interview.md` until the restate gets an explicit yes.
+Before the first hypothesis, find the features and read what exists. `accio find "<words>"` names the alden-portal feature behind a screen, field or route; for Foundry, Pensieve and Argus, whose code it does not index, the `aliases` and `core_files` in `$D/<app>/.doc-workspace/feature-manifest.json` do. Then, for each feature: `$D/<app>/features/<dir>/docs/spec.md` and `docs/arch.md`; an Alden feature's ledger with `argus show <dir>` (the other apps have none); `argus tracker show <KEY>` when the argument is a ticket key, from whichever provider it names. Then interview per `interview.md` until the restate gets an explicit yes.
 
 ```
 "regenerating an invoice should warn when the period is still open"
@@ -52,13 +52,21 @@ The difference between baseline and revision, cut into tickets per `plan.md` and
 
 ## Step 5: File
 
-Only after the plan's yes, and only what the plan says:
+Only after the plan's yes, and only what the plan says, through `argus tracker`, never a provider's own tools. A Foundry, Pensieve or Argus feature files on Linear, team Citadel; an alden-portal feature files on Trello, the Alden board.
 
-1. **The parent.** With `--parent <KEY>`, that issue: rewrite its description whole with one line added pointing at `revisions/<KEY>/` — never a `patch`, which corrupts images. Otherwise create it: team Citadel and the app's project for a Foundry, Pensieve or Argus feature, team Alden and the feature's project otherwise; assignee the user.
-2. **The sub-issues**, in plan order, with `mcp__linear__save_issue`: `parentId` the parent, `blockedBy` the keys of the tickets its line names, title and body verbatim from `plan.md`, the parent's team and project, assignee the user.
-3. **The record.** `argus revision file <slug> <KEY> --tickets K1,K2,… --url <parent url>`; the directory takes the key's name. Then replace the slug with the key in each spec's `revised_by` and `retired by` lines and in `plan.md`'s heading.
+**On Linear** (Citadel apps):
 
-A save that fails stops the step: record nothing, say which tickets exist, and leave the draft for a retry.
+1. **The parent.** With `--parent <KEY>`, that issue: rewrite its description whole with one line added pointing at `revisions/<KEY>/` — never a `patch`, which corrupts images. Otherwise `argus tracker create --title "<t>" --team CTD --project "<app>" --assignee me`.
+2. **The sub-issues**, in plan order: `argus tracker create --title "<t>" --body <file> --team CTD --project "<app>" --assignee me --parent <parent key> --blocked-by K1,K2`, title and body verbatim from `plan.md`, blockers the keys the ticket's line names.
+
+**On Trello** (alden-portal): every card lands in Pipeline with the feature's label.
+
+1. **The parent.** With `--parent <KEY>`, that card: rewrite its description whole, one line added pointing at `revisions/<KEY>/`. Otherwise `argus tracker create --title "<t>" --team AP --project "<feature label>" [--assignee <member id>]` — assignee only when the plan names one, else omitted for unassigned.
+2. **The sub-cards**, in plan order: `argus tracker create --title "<t>" --body <file> --team AP --project "<feature label>" [--assignee <member id>] --parent <parent key> --blocked-by K1,K2` — `--parent` both writes the `Blocked by` line and appends the parent's one checklist item; nothing to build by hand.
+
+**The record**, either provider: `argus revision file <slug> <KEY> --tickets K1,K2,… --url <parent url>`; the directory takes the key's name. Then replace the slug with the key in each spec's `revised_by` and `retired by` lines and in `plan.md`'s heading.
+
+A create that fails stops the step: record nothing, say which tickets exist, and leave the draft for a retry.
 
 ## Finish
 
