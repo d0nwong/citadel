@@ -28,6 +28,22 @@ export const argusReadRules = (): string[] =>
     `Bash(bun run argus ${v}:*)`,
   ]);
 
+/**
+ * `argus tracker`'s two read verbs (CTD-200, CTD-209): a ticket, or the open ones, from
+ * whichever provider its key names — Linear for `CTD`/`ALD`, Trello for `AP` — in place of
+ * the Linear MCP read tools, which cannot reach Trello. Listed one by one for the same reason
+ * as `ARGUS_READ_VERBS`: a bare `argus tracker` rule would carry `create` and `edit` with it.
+ */
+const TRACKER_READ_VERBS = ["show", "list"] as const;
+
+/** argus tracker's read verbs, in both spellings a session might use; create/edit are never listed */
+export const trackerReadRules = (): string[] =>
+  TRACKER_READ_VERBS.flatMap((v) => [
+    `Bash(argus tracker ${v}:*)`,
+    `Bash(bun scripts/argus.ts tracker ${v}:*)`,
+    `Bash(bun run argus tracker ${v}:*)`,
+  ]);
+
 export const BASE_TOOLS = [
   "Read",
   "Grep",
@@ -39,6 +55,7 @@ export const BASE_TOOLS = [
   "Bash(bun scripts/accio.ts:*)",
   "Bash(accio:*)",
   ...argusReadRules(),
+  ...trackerReadRules(),
 ] as const;
 
 /** `accio sync` and `accio map` write `.state/` and the manifest — denied under the allow above. */
@@ -48,6 +65,15 @@ export const ACCIO_WRITE_VERBS = [
   "Bash(bun scripts/accio.ts sync:*)",
   "Bash(bun scripts/accio.ts map:*)",
 ] as const;
+
+/** `argus tracker create` and `edit` write a ticket on its provider — denied under the allow above. */
+export const TRACKER_WRITE_RULES = (["create", "edit"] as const).flatMap(
+  (v) => [
+    `Bash(argus tracker ${v}:*)`,
+    `Bash(bun scripts/argus.ts tracker ${v}:*)`,
+    `Bash(bun run argus tracker ${v}:*)`,
+  ]
+);
 
 /** Harness tools that write or reach the network. Never even reach the permission check. */
 export const HARNESS_WRITE_TOOLS = [
@@ -62,24 +88,6 @@ export const HARNESS_WRITE_TOOLS = [
 
 const linear = (names: readonly string[]) =>
   names.map((n) => `mcp__linear__${n}`);
-
-/** The hosted Linear MCP server's read tools — a ticket question is answered from Linear, not relayed. */
-export const LINEAR_READ_TOOLS = linear([
-  "get_issue",
-  "list_issues",
-  "list_comments",
-  "get_project",
-  "list_projects",
-  "get_document",
-  "list_documents",
-  "list_issue_labels",
-  "list_issue_statuses",
-  "list_users",
-  "get_team",
-  "get_milestone",
-  "list_milestones",
-  "search_documentation",
-]);
 
 /**
  * Everything on that server that writes, plus the diff and release tools, by name (no
@@ -206,7 +214,6 @@ export const ASK_TOOL_PART_NAMES: readonly string[] = [
     "TodoWrite",
     // Claude Code loads its deferred tools (the MCP ones included) through this one first.
     "ToolSearch",
-    ...LINEAR_READ_TOOLS,
     ...LINEAR_WRITE_TOOLS,
     ...SLACK_READ_TOOLS,
     ...SLACK_WRITE_TOOLS,

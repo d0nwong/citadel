@@ -73,10 +73,10 @@ import {
   bridgedToolRules,
   gitReadRules,
   HARNESS_WRITE_TOOLS,
-  LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
   SLACK_READ_TOOLS,
   SLACK_WRITE_TOOLS,
+  TRACKER_WRITE_RULES,
 } from "../lib/ask-tools";
 
 /** a feature is its directory under an app's features/, one level of nesting at most */
@@ -119,7 +119,6 @@ const expandHome = (p: string) =>
 export function allowedToolsFor(checkouts: readonly string[]): string[] {
   const rules = new Set<string>([
     ...BASE_TOOLS,
-    ...LINEAR_READ_TOOLS,
     ...SLACK_READ_TOOLS,
     ...bridgedToolRules(),
   ]);
@@ -133,13 +132,14 @@ export function allowedToolsFor(checkouts: readonly string[]): string[] {
   return [...rules];
 }
 
-/** Files, search, git history, the accio and argus read verbs, the `ask` skill, Linear reads and the bridged tools. Nothing that writes. */
+/** Files, search, git history, the accio and argus read verbs, the `ask` skill, ticket reads (both providers, through `argus tracker`) and the bridged tools. Nothing that writes. */
 export const ALLOWED_TOOLS = allowedToolsFor([...CHECKOUTS, WORKSPACE_DIR]);
 
 /** Belt and braces under `default`: these never even reach the permission check. */
 export const DISALLOWED_TOOLS = [
   ...HARNESS_WRITE_TOOLS,
   ...ACCIO_WRITE_VERBS,
+  ...TRACKER_WRITE_RULES,
   ...LINEAR_WRITE_TOOLS,
   ...SLACK_WRITE_TOOLS,
 ];
@@ -183,7 +183,7 @@ console.log(
  */
 export const ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus ledgers. Your working directory is argus's code (its skills, CLAUDE.md and scripts); its data (the ledgers, the arch docs and state/) is in ${WORKSPACE_DIR}, which the argus and accio verbs read on their own. This is not a terminal: there is no permission dialog and no one to answer one, so never tell the user to grant, allow or approve anything — a denied tool is an answer, and you work around it once.
 
-To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature's record is \`argus show <feature>\` (its ledger.json: the story, the requirements with their status, the asks with their history, the tickets, the landings); what nobody could place is ${WORKSPACE_DIR}/state/unplaced.json; the record's own history is \`git -C ${WORKSPACE_DIR} log\`; where a screen or field lives in the code is \`accio find "<words>"\`; a ticket is \`mcp__linear__get_issue\`; a Slack permalink is \`mcp__slack__slack_read_thread\` (the channel id and ts from the link). Code from a product checkout is \`git -C <repo> show origin/<branch>:<path>\` at the sha the ledger names; never run git fetch, pull, checkout or stash.
+To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature's record is \`argus show <feature>\` (its ledger.json: the story, the requirements with their status, the asks with their history, the tickets, the landings); what nobody could place is ${WORKSPACE_DIR}/state/unplaced.json; the record's own history is \`git -C ${WORKSPACE_DIR} log\`; where a screen or field lives in the code is \`accio find "<words>"\`; a ticket is \`argus tracker show <KEY>\`; a Slack permalink is \`mcp__slack__slack_read_thread\` (the channel id and ts from the link). Code from a product checkout is \`git -C <repo> show origin/<branch>:<path>\` at the sha the ledger names; never run git fetch, pull, checkout or stash.
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 

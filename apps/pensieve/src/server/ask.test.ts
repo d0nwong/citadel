@@ -50,10 +50,10 @@ const {
   BASE_TOOLS,
   ACCIO_WRITE_VERBS,
   BRIDGED_MCP_PREFIX,
-  LINEAR_READ_TOOLS,
   LINEAR_WRITE_TOOLS,
   SLACK_READ_TOOLS,
   SLACK_WRITE_TOOLS,
+  TRACKER_WRITE_RULES,
   ASK_TOOL_PART_NAMES,
   PROPOSE_DECISION,
   PROPOSE_TICKET,
@@ -612,9 +612,17 @@ describe("AC2 — the second run on a thread resumes the stored session", () => 
 
 // ── AC4 / AC6: configuration and availability ──────────────────────────────────
 
-describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the checkouts and Linear reads", () => {
-  test("the base set, the Linear read tools and both spellings of each checkout are allowed; permissionMode is default", () => {
-    for (const t of [...BASE_TOOLS, ...LINEAR_READ_TOOLS]) {
+describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the checkouts and ticket reads", () => {
+  test("the base set, the tracker read verbs and both spellings of each checkout are allowed; permissionMode is default", () => {
+    for (const t of BASE_TOOLS) {
+      expect(ADAPTER_CONFIG.allowedTools).toContain(t);
+    }
+    for (const t of [
+      "Bash(argus tracker show:*)",
+      "Bash(argus tracker list:*)",
+      "Bash(bun scripts/argus.ts tracker show:*)",
+      "Bash(bun scripts/argus.ts tracker list:*)",
+    ]) {
       expect(ADAPTER_CONFIG.allowedTools).toContain(t);
     }
     expect(ADAPTER_CONFIG.permissionMode).toBe("default");
@@ -634,11 +642,12 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
     // `git fetch`, `branch`, `find`, `python3`: nothing lets them through.
     expect(rules.some((r) => /fetch|branch|find|python/.test(r))).toBe(false);
   });
-  test("writes are denied by name: harness, accio sync/map, every Linear write tool; no name is in both lists", () => {
+  test("writes are denied by name: harness, accio sync/map, argus tracker create/edit, every Linear write tool; no name is in both lists", () => {
     for (const t of [
       "Write",
       "Edit",
       ...ACCIO_WRITE_VERBS,
+      ...TRACKER_WRITE_RULES,
       ...LINEAR_WRITE_TOOLS,
     ]) {
       expect(ADAPTER_CONFIG.disallowedTools).toContain(t);
@@ -655,6 +664,13 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
         /save_issue$|save_comment|share_issue|diff|release/.test(t)
       )
     ).toBe(true);
+    for (const t of [
+      "Bash(argus tracker create:*)",
+      "Bash(argus tracker edit:*)",
+    ]) {
+      expect(ADAPTER_CONFIG.disallowedTools).toContain(t);
+      expect(ADAPTER_CONFIG.allowedTools).not.toContain(t);
+    }
   });
   test("LIA-111 — the bridged tool is allowed under its mcp__tanstack__ name, and no bridged name is denied", () => {
     // Under `permissionMode: 'default'` an MCP tool absent from --allowedTools is denied,
@@ -737,6 +753,26 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
     // the per-checkout git rules, so a run with no checkouts at all still has them.
     expect(allowedToolsFor([])).toContain("Bash(argus show:*)");
   });
+  test("CTD-209 — argus tracker's read verbs are allowed one by one, and create/edit are not", () => {
+    for (const v of ["show", "list"]) {
+      expect(ADAPTER_CONFIG.allowedTools).toContain(
+        `Bash(argus tracker ${v}:*)`
+      );
+      expect(ADAPTER_CONFIG.allowedTools).toContain(
+        `Bash(bun scripts/argus.ts tracker ${v}:*)`
+      );
+    }
+    // A bare `argus tracker` rule would carry `create` and `edit` with it.
+    expect(ADAPTER_CONFIG.allowedTools).not.toContain("Bash(argus tracker:*)");
+    for (const v of ["create", "edit"]) {
+      expect(
+        ADAPTER_CONFIG.allowedTools.some((t) =>
+          t.startsWith(`Bash(argus tracker ${v}`)
+        )
+      ).toBe(false);
+    }
+    expect(allowedToolsFor([])).toContain("Bash(argus tracker show:*)");
+  });
   test("the page can render every name a run may call: the allowlist collapsed to tool names, and the denied ones", () => {
     for (const t of [
       "Read",
@@ -749,7 +785,6 @@ describe("AC4 (LIA-102) / LIA-104 — the tool set: read-only, with accio, the c
       // The adapter strips `mcp__tanstack__` on the way back, so the part carries the bare name.
       PROPOSE_DECISION,
       PROPOSE_TICKET,
-      ...LINEAR_READ_TOOLS,
       ...LINEAR_WRITE_TOOLS,
     ]) {
       expect(ASK_TOOL_PART_NAMES).toContain(t);
@@ -772,7 +807,7 @@ describe("LIA-104 — the system prompt", () => {
       /argus show <feature>/,
       /state\/unplaced\.json/,
       /accio find/,
-      /mcp__linear__get_issue/,
+      /argus tracker show <KEY>/,
       /mcp__slack__slack_read_thread/,
       /git -C <repo> show origin/,
       /never run git fetch/i,
