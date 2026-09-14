@@ -771,6 +771,17 @@ export const sendReady = createServerFn({ method: "POST" })
       }
       throw e;
     }
+    // A Pipeline card on no ledger has no feature to record the send on: Foundry has the
+    // job, and the row says so rather than calling `argus sent` with an empty feature.
+    if (!data.dir) {
+      const unrecorded = `${data.ticket} is on no ledger, so the send is not recorded there`;
+      return {
+        job: { id: job.id, url: fd.jobUrl(job.id) },
+        note: note ? `${note}; ${unrecorded}` : unrecorded,
+        ok: true,
+        replay,
+      };
+    }
     const recorded = await a.argus("sent", [
       data.dir,
       data.ticket,

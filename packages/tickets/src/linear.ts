@@ -35,8 +35,10 @@ import type { CreateTicketInput, LinkInput, ListOpenOptions, Ticket, TicketProvi
 
 export const LINEAR_API_URL = "https://api.linear.app/graphql";
 
+// `includeArchived`: Linear archives a canceled or done issue, and the filtered list leaves an
+// archived one out — ALD-51 read `unknown` and stayed on Ready to work on after it was canceled.
 const STATES_QUERY = `query TicketStates($team: String!, $numbers: [Float!]!) {
-  issues(filter: { team: { key: { eq: $team } }, number: { in: $numbers } }, first: 250) {
+  issues(filter: { team: { key: { eq: $team } }, number: { in: $numbers } }, first: 250, includeArchived: true) {
     nodes { identifier url completedAt canceledAt state { name type } assignee { id } }
   }
 }`;
