@@ -43,6 +43,12 @@ const STATES_QUERY = `query TicketStates($team: String!, $numbers: [Float!]!) {
   }
 }`;
 
+// `issue(id:)` resolves a key an issue had before it moved team, which the team filter above
+// cannot — LIA-153 became ALD-1 in the reorg, read `unknown` and stayed on Ready to work on after it was done.
+const MOVED_QUERY = `query TicketMoved($id: String!) {
+  issue(id: $id) { identifier url completedAt canceledAt state { name type } assignee { id } }
+}`;
+
 const GET_QUERY = `query TicketGet($id: String!) {
   issue(id: $id) { identifier url title description completedAt canceledAt state { name type } assignee { id } parent { identifier } }
 }`;
@@ -94,8 +100,9 @@ export function stateOf(n: Node, now: Date): TicketState {
 }
 
 /**
- * The state of every key, asked of Linear once per team. Keys Linear does not list, keys
- * that are not ticket keys, and every key when there is no credential answer `unknown`.
+ * The state of every key, asked of Linear once per team; a key its team does not list is
+ * asked for once more by that key, since it may have moved team. Keys Linear still cannot
+ * place, keys that are not ticket keys, and every key when there is no credential answer `unknown`.
  * A failed request answers `unknown` for that team and is reported on stderr, never thrown:
  * the caller still has its other facts.
  */
@@ -110,6 +117,7 @@ export async function linearTicketStates(keys: string[], opts: LinearOptions = {
     if (s) byTeam.set(s[0], [...(byTeam.get(s[0]) ?? []), s[1]]);
   }
   const f = opts.fetch ?? fetch;
+  const answered: string[] = [];
   for (const [team, numbers] of byTeam) {
     try {
       const res = await f(LINEAR_API_URL, {
@@ -121,8 +129,24 @@ export async function linearTicketStates(keys: string[], opts: LinearOptions = {
       const body = (await res.json()) as { data?: { issues?: { nodes: Node[] } }; errors?: { message: string }[] };
       if (body.errors?.length) throw new Error(`linear: ${body.errors.map((e) => e.message).join("; ")}`);
       for (const n of body.data?.issues?.nodes ?? []) found.set(n.identifier, stateOf(n, now));
+      answered.push(...numbers.map((n) => `${team}-${n}`));
     } catch (e) {
       console.error(`linear: could not read ${team} tickets — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  // a key its team did not list may have moved team: ask for it by the old key, one call each
+  for (const k of answered.filter((k) => !found.has(k))) {
+    try {
+      const res = await f(LINEAR_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: apiKey },
+        body: JSON.stringify({ query: MOVED_QUERY, variables: { id: k } }),
+      });
+      if (!res.ok) continue;
+      const body = (await res.json()) as { data?: { issue?: Node | null } };
+      if (body.data?.issue) found.set(k, stateOf(body.data.issue, now));
+    } catch {
+      // unknown, as before
     }
   }
   return (k) => found.get(k) ?? { state: "unknown" };
