@@ -19,24 +19,24 @@ check:
 auth what *flags:
     bun scripts/bootstrap.ts auth {{what}} {{flags}}
 
-# Start everything: the stack, Foundry web on this Mac, local Pensieve, and the sweep loop.
-# Builds nothing; `just rebuild` does that.
+# Start everything: the stack, Foundry web on this Mac, and local Pensieve. Builds nothing;
+# `just rebuild` does that. Does not serve on the tailnet; run `just serve` for that.
 start:
     just up
     just foundry-bg
     just pensieve-bg
-    just tailscale-up
 
-# Stop everything `just start` started; the data volumes stay.
+# Stop everything `just start` started; the data volumes stay. Also unserves the tailnet,
+# in case `just serve` was run since.
 stop:
-    -just tailscale-down
+    -just unserve
     -pkill -f 'vite dev --port 3777'
     -kill $(lsof -tnP -iTCP:"${PENSIEVE_PORT:-3778}" -sTCP:LISTEN) 2>/dev/null
     just down
 
 # Serve Pensieve (https :443) and Foundry (https :8443) on this machine's tailnet name.
 # Skipped, not failed, when tailscale is missing or not logged in.
-tailscale-up:
+serve:
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v tailscale >/dev/null || ! tailscale status >/dev/null 2>&1; then
@@ -49,8 +49,8 @@ tailscale-up:
     echo "pensieve: https://$host"
     echo "foundry:  https://$host:8443"
 
-# Take down the two tailnet serves `tailscale-up` added; other serves stay.
-tailscale-down:
+# Take down the two tailnet serves `serve` added; other serves stay.
+unserve:
     -tailscale serve --https=443 off
     -tailscale serve --https=8443 off
 
@@ -122,9 +122,9 @@ db-url:
 psql *args:
     bun scripts/stack.ts psql "$@"
 
-# Share a dev server on your tailnet: `just serve foundry up`, `just serve pensieve dev`.
-serve app *args:
-    {{ if app == "foundry" { "apps/foundry/web/serve.sh" } else if app == "pensieve" { "apps/pensieve/scripts/serve.sh" } else { error("just serve foundry|pensieve ...") } }} {{args}}
+# Share a dev server on your tailnet: `just serve-app foundry up`, `just serve-app pensieve dev`.
+serve-app app *args:
+    {{ if app == "foundry" { "apps/foundry/web/serve.sh" } else if app == "pensieve" { "apps/pensieve/scripts/serve.sh" } else { error("just serve-app foundry|pensieve ...") } }} {{args}}
 
 # Install bb, the Bitbucket CLI Foundry opens PRs with.
 setup-bb:

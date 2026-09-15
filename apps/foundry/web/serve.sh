@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # serve — share the web dev server with the rest of your tailnet.
-# Driven from citadel's root: `just serve foundry up|down|status|url`.
+# Driven from citadel's root: `just serve-app foundry up|down|status|url`.
 set -euo pipefail
 
 PORT="${FOUNDRY_WEB_PORT:-3777}"   # matches `vite dev --port 3777`
@@ -41,7 +41,7 @@ cmd_up() {
   tailscale serve --bg "http://localhost:$PORT" >/dev/null
   ok "$(serve_url)  ${c_dim}(tailnet only — not public)${c_0}"
   say ""
-  say "  ${c_dim}just serve foundry down   # stop sharing${c_0}"
+  say "  ${c_dim}just serve-app foundry down   # stop sharing${c_0}"
 }
 
 cmd_down() {
@@ -66,10 +66,10 @@ usage() {
 cat >&2 <<'USAGE'
 serve — share the foundry web UI over tailscale
 
-  just serve foundry up        share localhost:3777 with your tailnet over HTTPS
-  just serve foundry down      stop sharing
-  just serve foundry status    what this node is currently serving
-  just serve foundry url       print the https URL (for scripts)
+  just serve-app foundry up        share localhost:3777 with your tailnet over HTTPS
+  just serve-app foundry down      stop sharing
+  just serve-app foundry status    what this node is currently serving
+  just serve-app foundry url       print the https URL (for scripts)
 
 Tailnet only — nothing here exposes the dev server to the public internet.
 `tailscale funnel` does that, deliberately by hand.

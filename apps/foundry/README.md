@@ -128,7 +128,7 @@ nothing about setting a machine up depends on bun being there first:
 | `just migrate`, `just db-generate`, `just db-studio`, `just db-url` | the app schema |
 | `just up postgres`, `just down`, `just ps`, `just logs postgres`, `just psql` | the local stack |
 | `just foundry` | the web UI on this Mac, http://localhost:3777 |
-| `just serve foundry up\|down\|status\|url` | share it on your tailnet |
+| `just serve-app foundry up\|down\|status\|url` | share it on your tailnet |
 
 ### Auth
 
@@ -434,9 +434,9 @@ The full request and response contract is the OpenAPI document at
 ### Reaching it from your other devices
 
 ```sh
-just serve foundry up          # https://<this-node>.ts.net -> localhost:3777
-just serve foundry status
-just serve foundry down
+just serve-app foundry up          # https://<this-node>.ts.net -> localhost:3777
+just serve-app foundry status
+just serve-app foundry down
 ```
 
 Tailnet only, over `tailscale serve` — the dev server never becomes public. Exposing
