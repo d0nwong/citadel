@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { Empty, Tag, TicketLink } from "#/components/bits";
 import { Button } from "#/components/ui/button";
+import { Skeleton } from "#/components/ui/skeleton";
 import {
   CommitError,
   Confirm,
@@ -211,15 +212,23 @@ export function Ready({
   tickets,
   asks,
   filed = [],
+  loading = false,
   send,
 }: {
   tickets: HomeTicket[];
   asks: HomeAsk[];
   /** filed from Ask with no ledger: no Send, since Send records on a ledger */
   filed?: HomeFiledTicket[];
+  /** tickets and filed are still out asking Linear and Trello for their live state */
+  loading?: boolean;
   send: SendOptions;
 }) {
-  if (tickets.length === 0 && asks.length === 0 && filed.length === 0) {
+  if (
+    !loading &&
+    tickets.length === 0 &&
+    asks.length === 0 &&
+    filed.length === 0
+  ) {
     return (
       <p className="text-muted-foreground text-sm">
         Nothing is waiting on a landing or an answer that has since arrived.
@@ -278,7 +287,24 @@ export function Ready({
           </p>
         </li>
       ))}
+      {loading && <ReadyRowSkeleton />}
     </ul>
+  );
+}
+
+function ReadyRowSkeleton() {
+  return (
+    <>
+      {["a", "b"].map((k) => (
+        <li className="border-border border-b py-3 last:border-b-0" key={k}>
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-4 w-14 rounded-full" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <Skeleton className="mt-2 h-4 w-2/3" />
+        </li>
+      ))}
+    </>
   );
 }
 

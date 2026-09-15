@@ -18,7 +18,7 @@ import type {
   FiledTicket,
 } from "#/server/ask";
 import type { FoundryJob, FoundryRepo } from "#/server/foundry";
-import type { Home, LedgerRef, PipelineCard } from "#/server/ledger";
+import type { Home, HomeShell, LedgerRef, PipelineCard } from "#/server/ledger";
 import type { Json } from "#/server/workspace";
 import type { WorktreeDiscardCounts } from "#/server/worktrees";
 
@@ -477,9 +477,21 @@ async function pipelineCandidates(
     });
 }
 
-/** The home page: on you, ready, unplaced, and one line per feature. */
-export const getHome = createServerFn({ method: "GET" }).handler(
-  async (): Promise<Home> => {
+/**
+ * The home page's shell: on you, unplaced, and one line per feature — everything the
+ * ledgers alone can answer. No Linear or Trello call, so this is always fast; the page
+ * loads this first and fetches `getReadyWork` after, for the parts that need them.
+ */
+export const getHomeLocal = createServerFn({ method: "GET" }).handler(
+  async (): Promise<HomeShell> => {
+    const l = await import("#/server/ledger");
+    return l.homeShell();
+  }
+);
+
+/** Ready to work on: every ledger's ready tickets and every loose filed ticket, live. */
+export const getReadyWork = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Pick<Home, "filed" | "ready">> => {
     const l = await import("#/server/ledger");
     const lib = await import("#/lib/ledger");
     const ask = await import("#/server/ask");
@@ -512,7 +524,7 @@ export const getHome = createServerFn({ method: "GET" }).handler(
         pipelineCandidates(tickets),
       ]);
 
-    return l.home(
+    const home = await l.home(
       undefined,
       undefined,
       open,
@@ -520,6 +532,7 @@ export const getHome = createServerFn({ method: "GET" }).handler(
       { linear: linearViewer ?? null, trello: trelloViewer },
       pipelineCards
     );
+    return { filed: home.filed, ready: home.ready };
   }
 );
 

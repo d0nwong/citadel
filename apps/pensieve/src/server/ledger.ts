@@ -196,36 +196,32 @@ export interface FeatureSummary {
 /** a ticket filed from Ask with no ledger, still open on Linear */
 export type HomeFiledTicket = FiledTicketRow;
 
-export interface Home {
+export interface HomeShell {
   features: FeatureSummary[];
-  filed: HomeFiledTicket[];
   onYou: HomeAsk[];
   problems: LedgerProblem[];
-  ready: HomeTicket[];
   /** open asks whose wait is over */
   readyAsks: HomeAsk[];
   unplaced: Unplaced[];
 }
 
+export interface Home extends HomeShell {
+  filed: HomeFiledTicket[];
+  ready: HomeTicket[];
+}
+
 /**
- * The home page: what is on you across features, what is ready, what nobody could place.
- * `states` is every ready ticket's and every filed ticket's live state and assignee, read
- * once by the caller through the tickets package (AC1, AC2, AC4); `liam` is his own id on
- * each provider, so a ticket assigned to someone else is left off Ready to work on; a
- * revision's parent card has already been left out of `pipelineCards` by the caller
- * (AC3) — this just de-duplicates by key and orders High Priority Pipeline first.
+ * The home page's shell: what is on you, what nobody could place, and one line per
+ * feature — everything the ledgers alone can answer, no live ticket state. Fast, so the
+ * page can paint this immediately while `home`'s ready/filed lists (below) are still out
+ * asking Linear and Trello.
  */
-export async function home(
+export async function homeShell(
   roots?: AppRoot[],
-  unplacedFile?: string,
-  filed: HomeFiledTicket[] = [],
-  states: TicketStates = () => ({ state: "unknown" }),
-  liam: LiamIds = {},
-  pipelineCards: PipelineCard[] = []
-): Promise<Home> {
+  unplacedFile?: string
+): Promise<HomeShell> {
   const { ledgers, problems } = await listLedgers(roots);
   const onYouAll: HomeAsk[] = [];
-  const ready: HomeTicket[] = [];
   const readyAsksAll: HomeAsk[] = [];
   const features: FeatureSummary[] = [];
   for (const { feature, dir, ledger } of ledgers) {
@@ -235,20 +231,6 @@ export async function home(
     }
     for (const a of readyAsks(ledger)) {
       readyAsksAll.push({ ...a, dir, feature });
-    }
-    for (const t of readyTickets(ledger)) {
-      const state = states(t.key);
-      const verdict = assigneeVerdict(state, liam);
-      if (verdict === "drop") {
-        continue;
-      }
-      ready.push({
-        ...t,
-        dir,
-        feature,
-        url: stateUrl(state),
-        ...(verdict === "unknown" ? { assignee: "unknown" as const } : {}),
-      });
     }
     features.push({
       as_of: ledger.as_of,
@@ -265,6 +247,51 @@ export async function home(
     });
   }
   onYouAll.sort((a, b) => a.at.localeCompare(b.at));
+  return {
+    features,
+    onYou: onYouAll,
+    problems,
+    readyAsks: readyAsksAll,
+    unplaced: await readUnplaced(unplacedFile),
+  };
+}
+
+/**
+ * The home page's ready/filed lists: `states` is every ready ticket's and every filed
+ * ticket's live state and assignee, read once by the caller through the tickets package
+ * (AC1, AC2, AC4); `liam` is his own id on each provider, so a ticket assigned to someone
+ * else is left off Ready to work on; a revision's parent card has already been left out
+ * of `pipelineCards` by the caller (AC3) — this just de-duplicates by key and orders High
+ * Priority Pipeline first. Walks the ledgers a second time rather than sharing `homeShell`'s
+ * pass — a second local disk read is nothing next to the live calls this waits on.
+ */
+export async function home(
+  roots?: AppRoot[],
+  unplacedFile?: string,
+  filed: HomeFiledTicket[] = [],
+  states: TicketStates = () => ({ state: "unknown" }),
+  liam: LiamIds = {},
+  pipelineCards: PipelineCard[] = []
+): Promise<Home> {
+  const shell = await homeShell(roots, unplacedFile);
+  const { ledgers } = await listLedgers(roots);
+  const ready: HomeTicket[] = [];
+  for (const { feature, dir, ledger } of ledgers) {
+    for (const t of readyTickets(ledger)) {
+      const state = states(t.key);
+      const verdict = assigneeVerdict(state, liam);
+      if (verdict === "drop") {
+        continue;
+      }
+      ready.push({
+        ...t,
+        dir,
+        feature,
+        url: stateUrl(state),
+        ...(verdict === "unknown" ? { assignee: "unknown" as const } : {}),
+      });
+    }
+  }
   const onLedger = new Set(
     ledgers.flatMap(({ ledger }) => ledger.tickets.map((t) => t.key))
   );
@@ -294,12 +321,8 @@ export async function home(
     });
   }
   return {
-    features,
+    ...shell,
     filed: filed.filter((t) => !onLedger.has(t.identifier)),
-    onYou: onYouAll,
-    problems,
     ready,
-    readyAsks: readyAsksAll,
-    unplaced: await readUnplaced(unplacedFile),
   };
 }

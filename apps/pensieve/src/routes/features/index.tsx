@@ -5,11 +5,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Empty, PageHeader } from "#/components/bits";
 import { DocLayout } from "#/components/toc";
-import { getHome } from "#/lib/api";
+import { getHomeLocal } from "#/lib/api";
 
 export const Route = createFileRoute("/features/")({
   staticData: { crumb: "Features" },
-  loader: () => getHome(),
+  loader: () => getHomeLocal(),
   component: FeaturesIndexPage,
 });
 

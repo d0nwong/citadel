@@ -44,16 +44,18 @@ export async function ticketStates(keys: string[], opts: TicketRouterOptions = {
   const providers = providersFor(opts);
   const routeKey = opts.routeKey ?? providerNameFor;
   const found = new Map<string, TicketState>();
-  for (const [name, owned] of groupByProvider(keys, routeKey)) {
-    const provider = providers[name];
-    if (!provider) continue;
-    try {
-      const states = await provider.states(owned);
-      for (const key of owned) found.set(key, states(key));
-    } catch (e) {
-      console.error(`tickets: could not read ${name} tickets — ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+  await Promise.all(
+    Array.from(groupByProvider(keys, routeKey)).map(async ([name, owned]) => {
+      const provider = providers[name];
+      if (!provider) return;
+      try {
+        const states = await provider.states(owned);
+        for (const key of owned) found.set(key, states(key));
+      } catch (e) {
+        console.error(`tickets: could not read ${name} tickets — ${e instanceof Error ? e.message : String(e)}`);
+      }
+    })
+  );
   return (key) => found.get(key) ?? { state: "unknown" };
 }
 
@@ -85,13 +87,15 @@ export async function listOpenTickets(opts: TicketRouterOptions & ListOpenOption
     return provider.listOpen(opts);
   }
   const out: Ticket[] = [];
-  for (const [name, provider] of Object.entries(providers)) {
-    try {
-      out.push(...(await provider.listOpen(opts)));
-    } catch (e) {
-      console.error(`tickets: could not list ${name} tickets — ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+  await Promise.all(
+    Object.entries(providers).map(async ([name, provider]) => {
+      try {
+        out.push(...(await provider.listOpen(opts)));
+      } catch (e) {
+        console.error(`tickets: could not list ${name} tickets — ${e instanceof Error ? e.message : String(e)}`);
+      }
+    })
+  );
   return out;
 }
 

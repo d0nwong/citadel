@@ -5,16 +5,17 @@
  * page; every row is read from `ledger.json` and every click runs one argus verb.
  */
 
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageHeader } from "#/components/bits";
 import { DocLayout } from "#/components/toc";
 import { NeedsMe, Ready, UnplacedList } from "#/features/ledger/home";
-import { getHome, getSendOptions } from "#/lib/api";
+import { getHomeLocal, getReadyWork, getSendOptions } from "#/lib/api";
 
 export const Route = createFileRoute("/")({
   staticData: { crumb: "Home" },
   loader: async () => {
-    const [home, send] = await Promise.all([getHome(), getSendOptions()]);
+    const [home, send] = await Promise.all([getHomeLocal(), getSendOptions()]);
     return { ...home, send };
   },
   component: HomePage,
@@ -23,6 +24,12 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const h = Route.useLoaderData();
   const features = h.features.map((f) => f.dir);
+  // Ready to work on needs live Linear/Trello state; fetch it after the shell above has
+  // already painted instead of blocking the whole page on it.
+  const ready = useQuery({
+    queryFn: () => getReadyWork(),
+    queryKey: ["home-ready-work"],
+  });
   return (
     <DocLayout>
       <PageHeader
@@ -46,9 +53,10 @@ function HomePage() {
           </h2>
           <Ready
             asks={h.readyAsks}
-            filed={h.filed}
+            filed={ready.data?.filed ?? []}
+            loading={ready.isLoading}
             send={h.send}
-            tickets={h.ready}
+            tickets={ready.data?.ready ?? []}
           />
         </section>
         <section>
