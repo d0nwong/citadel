@@ -401,16 +401,37 @@ export async function followUpJob(sourceId: string): Promise<Job> {
 
 /**
  * No-op unless the job is still open — a settled job keeps its outcome.
- * Returns whether this call made the transition, like `settleJob`.
+ * Returns whether this call made the transition, like `settleJob`. `logText`
+ * lets a caller other than the UI's cancel button (the PR watcher, S-47) say
+ * why in its own words.
  */
-export async function cancelJob(id: string): Promise<boolean> {
+export async function cancelJob(id: string, logText = 'cancelled by user'): Promise<boolean> {
   const [row] = await db
     .update(jobs)
     .set({ status: 'cancelled', finishedAt: new Date() })
     .where(and(eq(jobs.id, id), inArray(jobs.status, ['queued', 'running'])))
     .returning({ id: jobs.id })
   // Only the call that actually made the transition says so in the log.
-  if (row) await appendLogs(id, [{ stream: 'sys', text: 'cancelled by user' }])
+  if (row) await appendLogs(id, [{ stream: 'sys', text: logText }])
+  return row !== undefined
+}
+
+/**
+ * The watcher's move once a `pr_ready` root's PR settles (S-46): `succeeded`
+ * when it merged, `cancelled` when it closed unmerged. Guarded to `pr_ready`
+ * only — a `failed` root stays `failed`, and a root already moved by another
+ * pass (or settled some other way) is left alone. Returns whether this call
+ * made the transition. `finishedAt` is left as it was set when the run
+ * itself finished; the PR closing later is a separate event, logged by the
+ * caller, not a second "finish".
+ */
+export async function closePrReadyJob(id: string, prState: 'merged' | 'closed'): Promise<boolean> {
+  const status = prState === 'merged' ? 'succeeded' : 'cancelled'
+  const [row] = await db
+    .update(jobs)
+    .set({ status })
+    .where(and(eq(jobs.id, id), eq(jobs.status, 'pr_ready')))
+    .returning({ id: jobs.id })
   return row !== undefined
 }
 

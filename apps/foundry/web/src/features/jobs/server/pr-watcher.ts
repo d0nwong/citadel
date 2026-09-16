@@ -25,13 +25,13 @@
  */
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { and, eq, gt, inArray, isNotNull, isNull, notExists, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNotNull, isNull, notExists, or, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobs, prWatches } from '@/db/schema'
 import { fetchPrState, probeMerge } from './forge-pr'
 import type { MergeProbe, PrState } from './forge-pr'
 import { appendLogs } from './job-logs'
-import { insertFollowUp } from './job-store'
+import { closePrReadyJob, insertFollowUp } from './job-store'
 import type { JobRow } from './job-store'
 import { shortId } from '../types'
 import type { Job } from '../types'
@@ -58,6 +58,8 @@ export interface WatcherDeps {
   originUrl: (repoPath: string) => Promise<string>
   /** `startJob`, fire-and-forget. */
   ignite: (jobId: string) => Promise<void>
+  /** `job-runner`'s `cancelJob` (kills the container too), for a follow-up whose PR just merged or closed (S-47). */
+  cancelFollowUp: (jobId: string, reason: string) => Promise<void>
   maxFollowUps: number
   lookbackDays: number
   now: () => Date
@@ -80,6 +82,10 @@ const realDeps = (): WatcherDeps => ({
   ignite: async (id) => {
     const { startJob } = await import('./job-runner')
     return startJob(id)
+  },
+  cancelFollowUp: async (id, reason) => {
+    const { cancelJob } = await import('./job-runner')
+    return cancelJob(id, reason)
   },
   maxFollowUps: Number(process.env.FOUNDRY_PR_RETRIES ?? DEFAULT_RETRIES),
   lookbackDays: LOOKBACK_DAYS,
@@ -168,14 +174,28 @@ export function reviewTrigger(pr: PrState, watch: Pick<WatchRow, 'reviewedAt'>):
 
 /**
  * The PRs worth a look this tick: each root job (never a follow-up — those
- * share their root's PR) that settled with a PR within the lookback, whose
- * watch has not stopped, and which has no follow-up queued or running right
- * now — a forge already on the branch will change everything the watcher
- * would otherwise act on. Oldest first, so a slow `gh` never starves one.
- * `pr_ready` counts alongside `succeeded`/`failed` (CTD-230): the watcher
- * follows a root waiting on its PR exactly as it follows one that already
- * settled, though moving a `pr_ready` job on when the PR merges or closes is
- * a later ticket's, not this one's.
+ * share their root's PR) whose watch has not stopped. Oldest first, so a
+ * slow `gh` never starves one. `pr_ready` counts alongside `succeeded`/
+ * `failed` (CTD-230): the watcher follows a root waiting on its PR exactly as
+ * it follows one that already settled.
+ *
+ * The lookback only bounds `succeeded` roots: once an old succeeded job's PR
+ * is somebody's, it is no longer this watcher's business. A `pr_ready` or
+ * `failed` root's PR is still open business regardless of age — S-45 follows
+ * it until the PR itself merges or closes, however long that takes.
+ *
+ * A PR with a follow-up already queued or running is still included, unlike
+ * before this revision: it must still be read for merge/close (AC2, AC4 —
+ * a forge left running on a branch the PR watcher stopped following would
+ * push to a dead branch and spend its budget for nothing). `launch`'s own
+ * in-transaction check is what actually stops a *second* follow-up from
+ * being queued while one is open — this list no longer needs to.
+ *
+ * `stopped` only excludes a PR once it is truly done — merged or closed.
+ * `'retries'` used to mean the same thing here, but a watch that only gave
+ * up on *launching* must still be read: its root still needs to notice the
+ * PR merging or closing (AC2). `inspect` is what keeps a retries-stopped
+ * watch from trying to decide and launch again on every tick.
  */
 async function watchedPrs(deps: WatcherDeps): Promise<Array<{ job: JobRow; watch: WatchRow | undefined }>> {
   const since = new Date(deps.now().getTime() - deps.lookbackDays * 86_400_000)
@@ -186,19 +206,12 @@ async function watchedPrs(deps: WatcherDeps): Promise<Array<{ job: JobRow; watch
       and(
         isNotNull(jobs.prUrl),
         isNull(jobs.sourceJobId),
-        inArray(jobs.status, ['succeeded', 'failed', 'pr_ready']),
-        gt(jobs.finishedAt, since),
+        or(and(eq(jobs.status, 'succeeded'), gt(jobs.finishedAt, since)), inArray(jobs.status, ['failed', 'pr_ready'])),
         notExists(
           db
             .select({ prUrl: prWatches.prUrl })
             .from(prWatches)
-            .where(and(eq(prWatches.prUrl, jobs.prUrl), isNotNull(prWatches.stopped))),
-        ),
-        notExists(
-          db
-            .select({ id: sql`o.id` })
-            .from(sql`${jobs} as o`)
-            .where(sql`o.pr_url = ${jobs.prUrl} and o.status in ('queued', 'running')`),
+            .where(and(eq(prWatches.prUrl, jobs.prUrl), inArray(prWatches.stopped, ['merged', 'closed']))),
         ),
       ),
     )
@@ -287,6 +300,38 @@ async function launch(job: JobRow, watch: WatchRow, trigger: Trigger, now: Date)
 /* The tick                                                           */
 /* ------------------------------------------------------------------ */
 
+/** Every queued or running follow-up of a PR — what a merge or close must cancel (S-47). */
+async function openFollowUpsOf(prUrl: string): Promise<Array<Pick<JobRow, 'id'>>> {
+  return db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.prUrl, prUrl), isNotNull(jobs.sourceJobId), inArray(jobs.status, ['queued', 'running'])))
+}
+
+/**
+ * The PR merged or closed (S-46, S-47): move a `pr_ready` root to
+ * `succeeded`/`cancelled` (a `failed` root stays `failed`), write one sys
+ * line on the root naming the outcome, and cancel every follow-up still
+ * queued or running on this PR — each settles `cancelled` with its own log
+ * line, and its container is gone, whether it means killing one or simply
+ * never starting it.
+ */
+async function closeOut(job: JobRow, prUrl: string, prState: 'merged' | 'closed', deps: WatcherDeps): Promise<void> {
+  if (job.status === 'pr_ready') {
+    const moved = await closePrReadyJob(job.id, prState)
+    if (moved) {
+      const to = prState === 'merged' ? 'succeeded' : 'cancelled'
+      await sys(job.id, `watcher: PR ${prState} — ${to}, no longer watching ${prUrl}`)
+    }
+  } else {
+    await sys(job.id, `watcher: PR ${prState} — no longer watching ${prUrl}`)
+  }
+
+  for (const f of await openFollowUpsOf(prUrl)) {
+    await deps.cancelFollowUp(f.id, `watcher: PR ${prState} — cancelled`)
+  }
+}
+
 async function inspect(job: JobRow, existing: WatchRow | undefined, deps: WatcherDeps): Promise<void> {
   if (job.repo.kind !== 'local' || !job.prUrl) return
   const prUrl = job.prUrl
@@ -295,9 +340,14 @@ async function inspect(job: JobRow, existing: WatchRow | undefined, deps: Watche
 
   if (pr.state !== 'open') {
     await stopWatch(prUrl, pr.state)
-    await sys(job.id, `watcher: PR ${pr.state} — no longer watching ${prUrl}`)
+    await closeOut(job, prUrl, pr.state, deps)
     return
   }
+
+  // Retries already spent: nothing left to decide or launch here, only to
+  // wait for the PR itself to merge or close (handled above). Without this,
+  // a still-open, still-failing PR would re-log "already spent" every tick.
+  if (watch.stopped) return
 
   // The dry run costs a fetch, so it waits until a review has not already
   // claimed this tick.

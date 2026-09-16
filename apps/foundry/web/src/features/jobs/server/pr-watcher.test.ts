@@ -18,7 +18,7 @@ import { CHECK_BLUEPRINT_ID, MERGE_BLUEPRINT_ID } from '@/features/blueprints/ty
 import { parseBitbucketPr, parseGitHubPr, parseMergeTree, probeMerge, stripGhLog, tailOf } from './forge-pr'
 import type { MergeProbe, PrCheck, PrReview, PrState } from './forge-pr'
 import { deleteLogs, readLogs } from './job-logs'
-import { createJob, followUpJob, getJobRow, settleJob } from './job-store'
+import { cancelJob as storeCancelJob, createJob, followUpJob, getJobRow, settleJob } from './job-store'
 import { decide, tick } from './pr-watcher'
 import type { WatcherDeps } from './pr-watcher'
 
@@ -254,6 +254,11 @@ const deps = (over: Partial<WatcherDeps> = {}): WatcherDeps => ({
   ignite: async (id) => {
     ignited.push(id)
   },
+  // The real store transition (guard + log), without a container to kill —
+  // mirrors job-runner's cancelJob closely enough for these tests' purposes.
+  cancelFollowUp: async (id, reason) => {
+    await storeCancelJob(id, reason)
+  },
   maxFollowUps: 3,
   lookbackDays: 14,
   now: () => new Date(),
@@ -384,6 +389,96 @@ test('a merged PR stops the watch and launches nothing', async () => {
   expect(await followUpsOf(root.prUrl)).toHaveLength(0)
   const [watch] = await db.select().from(prWatches).where(eq(prWatches.prUrl, root.prUrl))
   expect(watch?.stopped).toBe('merged')
+})
+
+/* ------------------------------------------------------------------ */
+/* CTD-231 — closing out a merged or closed PR                        */
+/* ------------------------------------------------------------------ */
+
+describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
+  test('AC3 — a merged pr_ready root becomes succeeded, and the ledger says so', async () => {
+    const root = await rootJob('pr_ready')
+    prs.set(root.prUrl, state({ state: 'merged' }))
+    await tick(deps())
+
+    expect((await getJobRow(root.id))?.status).toBe('succeeded')
+    const [watch] = await db.select().from(prWatches).where(eq(prWatches.prUrl, root.prUrl))
+    expect(watch?.stopped).toBe('merged')
+    expect((await readLogs(root.id)).some((l) => /watcher: PR merged — succeeded/.test(l.text))).toBe(true)
+  })
+
+  test('AC3 — a closed, unmerged pr_ready root becomes cancelled', async () => {
+    const root = await rootJob('pr_ready')
+    prs.set(root.prUrl, state({ state: 'closed' }))
+    await tick(deps())
+
+    expect((await getJobRow(root.id))?.status).toBe('cancelled')
+    expect((await readLogs(root.id)).some((l) => /watcher: PR closed — cancelled/.test(l.text))).toBe(true)
+  })
+
+  test('AC3 — a failed root stays failed once its PR merges, and the watcher stops following it', async () => {
+    const root = await rootJob('failed')
+    prs.set(root.prUrl, state({ state: 'merged' }))
+    await tick(deps())
+
+    expect((await getJobRow(root.id))?.status).toBe('failed')
+    const [watch] = await db.select().from(prWatches).where(eq(prWatches.prUrl, root.prUrl))
+    expect(watch?.stopped).toBe('merged')
+  })
+
+  test('AC1 — a pr_ready or failed root settled more than 14 days ago is still followed until its PR closes', async () => {
+    const root = await rootJob('failed')
+    await db
+      .update(jobs)
+      .set({ finishedAt: new Date(Date.now() - 20 * 86_400_000) })
+      .where(eq(jobs.id, root.id))
+    prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000, 'CHANGES_REQUESTED', 'rev')] }))
+    await tick(deps())
+    expect(await followUpsOf(root.prUrl)).toHaveLength(1)
+  })
+
+  test('a succeeded root settled more than 14 days ago is no longer followed', async () => {
+    const root = await rootJob('succeeded')
+    await db
+      .update(jobs)
+      .set({ finishedAt: new Date(Date.now() - 20 * 86_400_000) })
+      .where(eq(jobs.id, root.id))
+    prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000, 'CHANGES_REQUESTED', 'rev')] }))
+    await tick(deps())
+    expect(await followUpsOf(root.prUrl)).toHaveLength(0)
+  })
+
+  test('AC4 — a PR merging while a follow-up is queued cancels it and still moves the pr_ready root', async () => {
+    const root = await rootJob('pr_ready')
+    prs.set(root.prUrl, state({ checks: [check('failed')] }))
+    await tick(deps())
+    const [follow] = await followUpsOf(root.prUrl)
+    expect(follow?.status).toBe('queued')
+
+    prs.set(root.prUrl, state({ state: 'merged' }))
+    await tick(deps())
+
+    expect((await getJobRow(follow!.id))?.status).toBe('cancelled')
+    expect((await readLogs(follow!.id)).some((l) => /watcher: PR merged — cancelled/.test(l.text))).toBe(true)
+    expect((await getJobRow(root.id))?.status).toBe('succeeded')
+  })
+
+  test('AC2 — a pr_ready root whose retries are spent still moves on once its PR merges', async () => {
+    const root = await rootJob('pr_ready')
+    const limited = deps({ maxFollowUps: 1 })
+    prs.set(root.prUrl, state({ headSha: 's1', checks: [check('failed')] }))
+    await tick(limited)
+    await settleFollowUps(root.prUrl)
+    prs.set(root.prUrl, state({ headSha: 's2', checks: [check('failed')] }))
+    await tick(limited)
+    const [watch] = await db.select().from(prWatches).where(eq(prWatches.prUrl, root.prUrl))
+    expect(watch?.stopped).toBe('retries')
+    expect(await followUpsOf(root.prUrl)).toHaveLength(1)
+
+    prs.set(root.prUrl, state({ state: 'merged' }))
+    await tick(limited)
+    expect((await getJobRow(root.id))?.status).toBe('succeeded')
+  })
 })
 
 test('a review from before the PR was watched is not answered', async () => {
