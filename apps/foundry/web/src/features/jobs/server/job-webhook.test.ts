@@ -9,8 +9,8 @@ import { db } from '@/db/client'
 import { jobs } from '@/db/schema'
 import { deleteLogs, readLogs } from './job-logs'
 import { createJob, getJob, settleJob } from './job-store'
-import { EVENT_HEADER, SIGNATURE_HEADER, notifyCallback } from './job-webhook'
-import type { SettledEvent, WebhookDeps } from './job-webhook'
+import { EVENT_HEADER, PR_CLOSED_EVENT, SIGNATURE_HEADER, notifyCallback, notifyPrClosed } from './job-webhook'
+import type { PrClosedEvent, SettledEvent, WebhookDeps } from './job-webhook'
 
 const rand = randomUUID().slice(0, 8)
 const SECRET = `hook-secret-${rand}`
@@ -122,5 +122,57 @@ test('a job without a callback is a no-op', async () => {
   await settleJob(job.id, { status: 'failed' })
   let calls = 0
   await notifyCallback(job.id, { ...deps(), fetch: async () => (calls++, new Response()) })
+  expect(calls).toBe(0)
+})
+
+test('notifyPrClosed delivers one signed job.pr_closed event naming the job and the PR state', async () => {
+  const r = receiver()
+  try {
+    const id = await settledJob(r.url)
+    await notifyPrClosed(id, 'merged', deps())
+
+    expect(r.hits).toHaveLength(1)
+    const hit = r.hits[0]!
+    expect(hit.headers.get(EVENT_HEADER)).toBe('job.pr_closed')
+    const expected = `sha256=${createHmac('sha256', SECRET).update(hit.body).digest('hex')}`
+    expect(hit.headers.get(SIGNATURE_HEADER)).toBe(expected)
+
+    const event = JSON.parse(hit.body) as PrClosedEvent
+    expect(event.event).toBe(PR_CLOSED_EVENT)
+    expect(event.job.id).toBe(id)
+    expect(event.job.status).toBe('succeeded')
+    expect(event.prState).toBe('merged')
+    expect('logs' in event.job).toBe(false)
+
+    const logs = await readLogs(id)
+    expect(logs.some((l) => l.stream === 'sys' && /callback delivered/.test(l.text))).toBe(true)
+  } finally {
+    r.stop()
+  }
+})
+
+test('notifyPrClosed retries through failures, succeeds on the third attempt', async () => {
+  const r = receiver([500, 503])
+  try {
+    const id = await settledJob(r.url)
+    await notifyPrClosed(id, 'closed', deps())
+    expect(r.hits).toHaveLength(3)
+    const logs = await readLogs(id)
+    expect(logs.some((l) => l.stream === 'sys' && /attempt 3/.test(l.text))).toBe(true)
+  } finally {
+    r.stop()
+  }
+})
+
+test('notifyPrClosed on a job without a callback is a no-op', async () => {
+  const job = await createJob({
+    task: `TEST-${rand}: no hook pr_closed`,
+    repo: { kind: 'local', name: 'nowhere', path: '/tmp/nonexistent-webhook-test' },
+    baseBranch: 'main',
+    forge: 'orbstack',
+  })
+  await settleJob(job.id, { status: 'succeeded' })
+  let calls = 0
+  await notifyPrClosed(job.id, 'merged', { ...deps(), fetch: async () => (calls++, new Response()) })
   expect(calls).toBe(0)
 })
