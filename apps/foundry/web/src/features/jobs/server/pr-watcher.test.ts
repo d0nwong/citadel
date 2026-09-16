@@ -161,64 +161,89 @@ const review = (at: number, state: PrReview['state'] = 'COMMENTED', author = 'an
   body: 'please change',
   submittedAt: at,
 })
-const check = (outcome: PrCheck['outcome'], name = 'ci / check'): PrCheck => ({ name, outcome, url: '' })
+const check = (outcome: PrCheck['outcome'], name = 'ci / check', completedAt?: number): PrCheck => ({
+  name,
+  outcome,
+  url: '',
+  ...(completedAt !== undefined ? { completedAt } : {}),
+})
 const state = (over: Partial<PrState> = {}): PrState => ({ state: 'open', headSha: 'sha1', reviews: [], checks: [], ...over })
 const T0 = Date.parse('2026-09-12T10:00:00Z')
-const fresh = { reviewedAt: new Date(T0), checkedSha: null, mergedBaseSha: null }
+const fresh = { reviewedAt: new Date(T0), checkedSha: null, mergedBaseSha: null, rerunSha: null, rerunAt: null }
 const clean = { baseBranch: 'main', baseSha: 'base1', headSha: 'sha1', conflicts: [] }
 const conflict = (baseSha = 'base1', headSha = 'sha1') => ({ ...clean, baseSha, headSha, conflicts: ['src/a.ts', 'src/b.ts'] })
 
 describe('decide', () => {
   test('a review submitted after the mark triggers, naming the reviewer', () => {
-    const t = decide(state({ reviews: [review(T0 + 1000, 'CHANGES_REQUESTED')] }), fresh, null)
+    const t = decide(state({ reviews: [review(T0 + 1000, 'CHANGES_REQUESTED')] }), fresh, null, true)
     expect(t?.kind).toBe('review')
     expect(t?.reason).toMatch(/@ana \(changes requested\)/)
     if (t?.kind === 'review') expect(t.reviewedAt.getTime()).toBe(T0 + 1000)
   })
 
   test('reviews at or before the mark, and approvals, do not', () => {
-    expect(decide(state({ reviews: [review(T0)] }), fresh, null)).toBeNull()
-    expect(decide(state({ reviews: [review(T0 + 1000, 'APPROVED')] }), fresh, null)).toBeNull()
+    expect(decide(state({ reviews: [review(T0)] }), fresh, null, true)).toBeNull()
+    expect(decide(state({ reviews: [review(T0 + 1000, 'APPROVED')] }), fresh, null, true)).toBeNull()
   })
 
-  test('failed checks trigger only once every check has finished', () => {
-    expect(decide(state({ checks: [check('failed'), check('pending', 'lint')] }), fresh, null)).toBeNull()
-    const t = decide(state({ checks: [check('failed'), check('passed', 'lint')] }), fresh, null)
-    expect(t?.kind).toBe('check')
+  test('a first failure on a head, once every check has finished, calls for a rerun — not a follow-up (CTD-233)', () => {
+    expect(decide(state({ checks: [check('failed'), check('pending', 'lint')] }), fresh, null, true)).toBeNull()
+    const t = decide(state({ checks: [check('failed'), check('passed', 'lint')] }), fresh, null, true)
+    expect(t?.kind).toBe('rerun')
     expect(t?.reason).toMatch(/"ci \/ check" failed on sha1/)
+    if (t?.kind === 'rerun') expect(t.headSha).toBe('sha1')
+  })
+
+  test('a Bitbucket PR (no rerun) calls for a check follow-up at the first failure, as before (AC3)', () => {
+    const t = decide(state({ checks: [check('failed')] }), fresh, null, false)
+    expect(t?.kind).toBe('check')
+    if (t?.kind === 'check') expect(t.checkedSha).toBe('sha1')
+  })
+
+  test('a head already reran calls for check only once a failure finished after the rerun (AC2)', () => {
+    const reran = { ...fresh, rerunSha: 'sha1', rerunAt: new Date(T0) }
+    // The rollup still showing the pre-rerun failure: queues nothing.
+    expect(decide(state({ checks: [check('failed', 'ci / check', T0 - 1000)] }), reran, null, true)).toBeNull()
+    // No completion time at all: not yet confirmed as post-rerun.
+    expect(decide(state({ checks: [check('failed')] }), reran, null, true)).toBeNull()
+    // Finished after the rerun: the real second failure.
+    const t = decide(state({ checks: [check('failed', 'ci / check', T0 + 1000)] }), reran, null, true)
+    expect(t?.kind).toBe('check')
+    expect(t?.reason).toMatch(/failed again on sha1 after a rerun/)
+    if (t?.kind === 'check') expect(t.checkedSha).toBe('sha1')
   })
 
   test('a head commit whose checks already launched a job does not trigger again', () => {
-    expect(decide(state({ checks: [check('failed')] }), { ...fresh, checkedSha: 'sha1' }, null)).toBeNull()
+    expect(decide(state({ checks: [check('failed')] }), { ...fresh, checkedSha: 'sha1' }, null, true)).toBeNull()
   })
 
   test('a conflict with the base triggers a merge, naming the base commit and the files', () => {
-    const t = decide(state(), fresh, conflict('abcdef123'))
+    const t = decide(state(), fresh, conflict('abcdef123'), true)
     expect(t?.kind).toBe('merge')
     expect(t?.reason).toBe('branch conflicts with main @ abcdef1 in src/a.ts, src/b.ts')
-    expect(decide(state(), fresh, clean)).toBeNull()
+    expect(decide(state(), fresh, clean, true)).toBeNull()
   })
 
   test('a base whose conflict was answered does not trigger again; a moved base does', () => {
     const answered = { ...fresh, mergedBaseSha: 'base1' }
-    expect(decide(state(), answered, conflict('base1'))).toBeNull()
-    expect(decide(state(), answered, conflict('base2'))?.kind).toBe('merge')
+    expect(decide(state(), answered, conflict('base1'), true)).toBeNull()
+    expect(decide(state(), answered, conflict('base2'), true)?.kind).toBe('merge')
   })
 
   test('a review comes before a conflict, and a conflict before a red check', () => {
-    expect(decide(state({ reviews: [review(T0 + 1000)] }), fresh, conflict())?.kind).toBe('review')
-    expect(decide(state({ checks: [check('failed')] }), fresh, conflict())?.kind).toBe('merge')
-    expect(decide(state({ checks: [check('pending')] }), fresh, conflict())?.kind).toBe('merge')
+    expect(decide(state({ reviews: [review(T0 + 1000)] }), fresh, conflict(), true)?.kind).toBe('review')
+    expect(decide(state({ checks: [check('failed')] }), fresh, conflict(), true)?.kind).toBe('merge')
+    expect(decide(state({ checks: [check('pending')] }), fresh, conflict(), true)?.kind).toBe('merge')
   })
 
-  test("after a merge, the pre-merge head's red check does not trigger", () => {
+  test("after a merge, the pre-merge head's red check does not trigger, but a new head's does (a fresh rerun)", () => {
     const merged = { ...fresh, mergedBaseSha: 'base1', checkedSha: 'sha1' }
-    expect(decide(state({ checks: [check('failed')] }), merged, conflict())).toBeNull()
-    expect(decide(state({ headSha: 'sha2', checks: [check('failed')] }), merged, clean)?.kind).toBe('check')
+    expect(decide(state({ checks: [check('failed')] }), merged, conflict(), true)).toBeNull()
+    expect(decide(state({ headSha: 'sha2', checks: [check('failed')] }), merged, clean, true)?.kind).toBe('rerun')
   })
 
   test('green checks and no reviews: nothing to do', () => {
-    expect(decide(state({ checks: [check('passed')] }), fresh, null)).toBeNull()
+    expect(decide(state({ checks: [check('passed')] }), fresh, null, true)).toBeNull()
   })
 })
 
@@ -247,11 +272,20 @@ const prs = new Map<string, PrState>()
 const merges = new Map<string, MergeProbe>()
 const branchPr = new Map<string, string>()
 const ignited: Array<string> = []
+/** Every rerun the watcher asked for, by PR URL; a Map so a test can force one to be refused. */
+const reruns = new Map<string, { ok: boolean; reason?: string }>()
+const reran: Array<string> = []
 const prClosedNotified: Array<{ id: string; prState: 'merged' | 'closed' }> = []
 const deps = (over: Partial<WatcherDeps> = {}): WatcherDeps => ({
   fetchPr: async (_origin, prUrl) => prs.get(prUrl) ?? state(),
   probeMerge: async (_repo, _base, branch) => merges.get(branchPr.get(branch) ?? '') ?? { baseSha: 'base0', headSha: 'sha1', conflicts: [] },
   originUrl: async () => 'git@github.com:example/repo.git',
+  rerunChecks: async (_origin, prUrl) => {
+    reran.push(prUrl)
+    const forced = reruns.get(prUrl)
+    if (forced && !forced.ok) return { ok: false, reason: forced.reason ?? 'refused' }
+    return { ok: true, count: 1 }
+  },
   ignite: async (id) => {
     ignited.push(id)
   },
@@ -302,9 +336,37 @@ test('AC1 — a submitted review launches one review follow-up on the same branc
   expect((await readLogs(root.id)).some((l) => /watcher: review by @rev .*→ follow-up/.test(l.text))).toBe(true)
 })
 
-test('AC2 — a failed check launches one check follow-up running the "Fix failing check" blueprint', async () => {
+test('AC1 (CTD-233) — a first failed check reruns the commit\'s CI once and queues nothing', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ headSha: 'deadbeef', checks: [check('failed'), check('passed', 'lint')] }))
+  await tick(deps())
+
+  expect(await followUpsOf(root.prUrl)).toHaveLength(0)
+  expect(reran.filter((u) => u === root.prUrl)).toHaveLength(1)
+  const [watch] = await db.select().from(prWatches).where(eq(prWatches.prUrl, root.prUrl))
+  expect(watch?.rerunSha).toBe('deadbeef')
+  expect((await readLogs(root.id)).some((l) => /watcher: check "ci \/ check" failed on deadbee.* — reran 1 failed CI job/.test(l.text))).toBe(true)
+
+  // The rollup still showing the pre-rerun failure (no fresher completedAt) queues nothing.
+  await tick(deps())
+  expect(await followUpsOf(root.prUrl)).toHaveLength(0)
+  expect(reran.filter((u) => u === root.prUrl)).toHaveLength(1)
+})
+
+test('AC5 (CTD-233) — two watcher passes at once over a first failure rerun it only once', async () => {
+  const root = await rootJob()
+  prs.set(root.prUrl, state({ headSha: 'cafe02', checks: [check('failed')] }))
+  await Promise.all([tick(deps()), tick(deps())])
+
+  expect(reran.filter((u) => u === root.prUrl)).toHaveLength(1)
+  expect(await followUpsOf(root.prUrl)).toHaveLength(0)
+})
+
+test('AC2 — a check failing again after its rerun launches one check follow-up running the "Fix failing check" blueprint', async () => {
+  const root = await rootJob()
+  prs.set(root.prUrl, state({ headSha: 'deadbeef', checks: [check('failed'), check('passed', 'lint')] }))
+  await tick(deps()) // reruns
+  prs.set(root.prUrl, state({ headSha: 'deadbeef', checks: [check('failed', 'ci / check', Date.now() + 1000), check('passed', 'lint')] }))
   await tick(deps())
 
   const [f] = await followUpsOf(root.prUrl)
@@ -312,25 +374,58 @@ test('AC2 — a failed check launches one check follow-up running the "Fix faili
   expect(f?.task).toMatch(/^Fix failing check — TEST-/)
   expect(f?.blueprint?.id).toBe(CHECK_BLUEPRINT_ID)
   expect(f?.blueprint?.steps.map((s) => s.prompt)).toEqual(['/forge-debug {{task}}'])
-  expect((await readLogs(f!.id)).some((l) => /check "ci \/ check" failed on deadbee/.test(l.text))).toBe(true)
+  expect((await readLogs(f!.id)).some((l) => /check "ci \/ check" failed again on deadbee.*after a rerun/.test(l.text))).toBe(true)
 })
 
-test('AC3 — the same review or check failure never launches two jobs', async () => {
+test('AC3 — a rerun the forge refuses still counts as that commit\'s rerun, with an err line', async () => {
+  const root = await rootJob()
+  reruns.set(root.prUrl, { ok: false, reason: 'no rerunnable Actions run among the failed checks' })
+  prs.set(root.prUrl, state({ headSha: 'baadf00d', checks: [check('failed')] }))
+  await tick(deps())
+
+  const [watch] = await db.select().from(prWatches).where(eq(prWatches.prUrl, root.prUrl))
+  expect(watch?.rerunSha).toBe('baadf00d')
+  expect(await followUpsOf(root.prUrl)).toHaveLength(0)
+  expect((await readLogs(root.id)).some((l) => l.stream === 'err' && /CI rerun refused: no rerunnable Actions run/.test(l.text))).toBe(true)
+})
+
+test('AC3 — a Bitbucket PR (no rerun) launches a check follow-up at the first failure, as before', async () => {
+  const root = await rootJob()
+  prs.set(root.prUrl, state({ headSha: 'bb0001', checks: [check('failed')] }))
+  await tick(deps({ originUrl: async () => 'git@bitbucket.org:example/repo.git' }))
+
+  const [f] = await followUpsOf(root.prUrl)
+  expect(f?.followUp).toBe('check')
+  expect(reran.filter((u) => u === root.prUrl)).toHaveLength(0)
+})
+
+test('AC3 (CTD-233 AC5) — the same review is answered once, the same head reran once, and its next failure launches one check follow-up', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ headSha: 'cafe01', reviews: [review(Date.now() + 1000)], checks: [check('failed')] }))
 
-  // Two ticks at once — two server processes, say — then more after the follow-up settles.
+  // Two ticks at once — two server processes, say. `decide` picks the review
+  // first for both (it outranks a check that has not been reran yet); only
+  // one of the two launches it.
   await Promise.all([tick(deps()), tick(deps())])
   expect(await followUpsOf(root.prUrl)).toHaveLength(1)
   await settleFollowUps(root.prUrl)
+
+  // The review is answered now: two passes at once over the first check
+  // failure rerun it only once.
+  await Promise.all([tick(deps()), tick(deps())])
+  expect(reran.filter((u) => u === root.prUrl)).toHaveLength(1)
+  expect(await followUpsOf(root.prUrl)).toHaveLength(1)
+
+  // The rollup still shows the pre-rerun failure: nothing queues yet.
   await tick(deps())
-  // The review is answered; the check on the same commit is the one thing left.
+  expect(await followUpsOf(root.prUrl)).toHaveLength(1)
+
+  // The check fails again, finished after the rerun — two passes at once
+  // still launch the check follow-up only once.
+  prs.set(root.prUrl, state({ headSha: 'cafe01', checks: [check('failed', 'ci / check', Date.now() + 2000)] }))
+  await Promise.all([tick(deps()), tick(deps())])
   const after = await followUpsOf(root.prUrl)
   expect(after.map((f) => f.followUp)).toEqual(['review', 'check'])
-  await settleFollowUps(root.prUrl)
-  await tick(deps())
-  await tick(deps())
-  expect(await followUpsOf(root.prUrl)).toHaveLength(2)
 })
 
 test('AC1 (CTD-229) — a pass that reads the job list before another pass\'s follow-up commits, and the watch after, still launches at most one follow-up', async () => {
@@ -341,9 +436,10 @@ test('AC1 (CTD-229) — a pass that reads the job list before another pass\'s fo
   // Promise.all lands on it: this pass reads the job list (the follow-up
   // does not exist yet), then — via the hook, before it reads the watch —
   // a whole separate pass runs to completion and launches the review
-  // follow-up. This pass then reads the *moved* watch, decides the check
+  // follow-up. This pass then reads the *moved* watch, decides the rerun
   // trigger (a different one — the mark that stopped the review does not
-  // stop it), and must still be blocked: a follow-up is already queued.
+  // stop it either), and rerun's own guard — not the follow-up guard —
+  // is what has to hold here, since a rerun inserts no follow-up row at all.
   await tick(deps({ betweenListAndWatches: () => tick(deps()) }))
 
   const after = await followUpsOf(root.prUrl)
@@ -365,7 +461,9 @@ test('AC4 — retries stop at the configured count and the root job\'s ledger sa
   const limited = deps({ maxFollowUps: 2 })
   for (const sha of ['s1', 's2', 's3']) {
     prs.set(root.prUrl, state({ headSha: sha, checks: [check('failed')] }))
-    await tick(limited)
+    await tick(limited) // reruns; spends no retry
+    prs.set(root.prUrl, state({ headSha: sha, checks: [check('failed', 'ci / check', Date.now() + 1000)] }))
+    await tick(limited) // fails again after the rerun: spends one, or hits the limit on s3
     await settleFollowUps(root.prUrl)
   }
   expect(await followUpsOf(root.prUrl)).toHaveLength(2)
@@ -373,15 +471,18 @@ test('AC4 — retries stop at the configured count and the root job\'s ledger sa
   expect(watch?.stopped).toBe('retries')
   expect((await readLogs(root.id)).some((l) => l.stream === 'err' && /2 automatic follow-up\(s\) are already spent/.test(l.text))).toBe(true)
 
-  // Stopped means stopped: a new failure launches nothing.
+  // Stopped means stopped: a new failure launches nothing, not even a rerun.
   prs.set(root.prUrl, state({ headSha: 's4', checks: [check('failed')] }))
   await tick(limited)
   expect(await followUpsOf(root.prUrl)).toHaveLength(2)
+  expect(reran.filter((u) => u === root.prUrl)).toHaveLength(3)
 
   // A follow-up queued by hand starts the count over.
   const manual = await followUpJob(root.id)
   await settleJob(manual.id, { status: 'succeeded', exitCode: 0 })
   prs.set(root.prUrl, state({ headSha: 's5', checks: [check('failed')] }))
+  await tick(limited) // reruns s5
+  prs.set(root.prUrl, state({ headSha: 's5', checks: [check('failed', 'ci / check', Date.now() + 1000)] }))
   await tick(limited)
   expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['check', 'check', 'review', 'check'])
 })
@@ -454,7 +555,9 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
 
   test('AC4 — a PR merging while a follow-up is queued cancels it and still moves the pr_ready root', async () => {
     const root = await rootJob('pr_ready')
-    prs.set(root.prUrl, state({ checks: [check('failed')] }))
+    prs.set(root.prUrl, state({ headSha: 'sha1', checks: [check('failed')] }))
+    await tick(deps()) // reruns
+    prs.set(root.prUrl, state({ headSha: 'sha1', checks: [check('failed', 'ci / check', Date.now() + 1000)] }))
     await tick(deps())
     const [follow] = await followUpsOf(root.prUrl)
     expect(follow?.status).toBe('queued')
@@ -471,10 +574,14 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
     const root = await rootJob('pr_ready')
     const limited = deps({ maxFollowUps: 1 })
     prs.set(root.prUrl, state({ headSha: 's1', checks: [check('failed')] }))
-    await tick(limited)
+    await tick(limited) // reruns s1
+    prs.set(root.prUrl, state({ headSha: 's1', checks: [check('failed', 'ci / check', Date.now() + 1000)] }))
+    await tick(limited) // fails again: spends the one retry the budget allows
     await settleFollowUps(root.prUrl)
     prs.set(root.prUrl, state({ headSha: 's2', checks: [check('failed')] }))
-    await tick(limited)
+    await tick(limited) // reruns s2; spends no retry
+    prs.set(root.prUrl, state({ headSha: 's2', checks: [check('failed', 'ci / check', Date.now() + 2000)] }))
+    await tick(limited) // fails again: the budget is already spent
     const [watch] = await db.select().from(prWatches).where(eq(prWatches.prUrl, root.prUrl))
     expect(watch?.stopped).toBe('retries')
     expect(await followUpsOf(root.prUrl)).toHaveLength(1)
@@ -614,6 +721,10 @@ test('CTD-214 AC6 — a conflict and a red check: the merge first, the check onl
 
   prs.set(root.prUrl, state({ headSha: 'sha2', checks: [check('failed')] }))
   merges.set(root.prUrl, probe('base1', 'sha2', []))
+  await tick(deps()) // reruns sha2's failed check
+  expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['merge'])
+
+  prs.set(root.prUrl, state({ headSha: 'sha2', checks: [check('failed', 'ci / check', Date.now() + 1000)] }))
   await tick(deps())
   expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['merge', 'check'])
 })

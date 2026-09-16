@@ -206,6 +206,10 @@ export const prWatches = foundry.table('pr_watches', {
   checkedSha: text('checked_sha'),
   /** The base commit whose conflict with the branch already launched a merge follow-up (CTD-214). */
   mergedBaseSha: text('merged_base_sha'),
+  /** The head commit whose failed CI jobs the host already reran once (CTD-233). */
+  rerunSha: text('rerun_sha'),
+  /** When that rerun happened — a later failure counts only if it finished after this. */
+  rerunAt: timestamp('rerun_at', { withTimezone: true }),
   /** Automatic follow-ups launched for this PR, bounded by FOUNDRY_PR_RETRIES. */
   followUps: integer('follow_ups').notNull().default(0),
   /** Why watching ended — the PR merged or closed, or the retry budget spent. Null while watching. */

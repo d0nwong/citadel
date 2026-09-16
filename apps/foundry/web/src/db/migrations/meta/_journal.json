@@ -169,6 +169,20 @@
       "when": 1789562045743,
       "tag": "0023_pr_ready_status",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789564412867,
+      "tag": "0024_pr_watch_rerun",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789564449640,
+      "tag": "0025_check_blueprint_opus_medium",
+      "breakpoints": true
     }
   ]
 }

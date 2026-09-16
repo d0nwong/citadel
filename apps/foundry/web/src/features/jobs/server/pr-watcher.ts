@@ -7,6 +7,13 @@
  * `forge-merge` as the one step; on a failed check, with the failing steps'
  * log as the task and `forge-debug` as the one step.
  *
+ * A first red check (CTD-233) does not go straight to a forge: on a GitHub
+ * PR the host reruns that commit's failed CI jobs once and queues nothing —
+ * a rerun costs CI minutes, a forge costs a session — and only a *second*
+ * failure on the same commit, finished after the rerun, queues the check
+ * follow-up. Bitbucket Pipelines has no rerun here, so a Bitbucket PR keeps
+ * today's behaviour: a check follow-up at the first failure.
+ *
  * Polling, not a webhook: the Mac has no public endpoint, and a poll every
  * minute against the PRs of the last fortnight's jobs is a handful of `gh`
  * calls. Each PR is read with the host's own credentials (`forge-pr.ts`), the
@@ -14,22 +21,23 @@
  * read with git, not the forge: a dry-run merge on the host's checkout.
  *
  * Two rules make it safe to leave running. The same review, the same base's
- * conflict or the same commit's failed checks never launch two jobs:
+ * conflict, the same commit's rerun or its failed checks never happen twice:
  * `pr_watches` remembers the newest review answered, the base commit whose
- * conflict was, and the head commit whose checks were, and the
- * watermark moves in the same transaction that inserts the follow-up — with
- * an optimistic guard on the launch count, so two server processes cannot
- * both launch. And a red check cannot launch forever: after
- * `FOUNDRY_PR_RETRIES` automatic follow-ups the watch stops and the root
- * job's log says so; queuing a follow-up by hand starts it over.
+ * conflict was, the head commit already reran and when, and the head commit
+ * whose checks launched a follow-up — every watermark moving in the same
+ * atomic step that does the work (a rerun's guarded update, a follow-up's
+ * guarded insert), so two server processes cannot both act on one state. And
+ * a red check cannot launch forever: after `FOUNDRY_PR_RETRIES` automatic
+ * follow-ups the watch stops and the root job's log says so; queuing a
+ * follow-up by hand starts it over.
  */
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { and, eq, gt, inArray, isNotNull, isNull, notExists, or, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobs, prWatches } from '@/db/schema'
-import { fetchPrState, probeMerge } from './forge-pr'
-import type { MergeProbe, PrState } from './forge-pr'
+import { fetchPrState, originHost, prCliFor, probeMerge, rerunFailedChecks } from './forge-pr'
+import type { MergeProbe, PrState, RerunResult } from './forge-pr'
 import { appendLogs } from './job-logs'
 import { closePrReadyJob, insertFollowUp } from './job-store'
 import type { JobRow } from './job-store'
@@ -57,6 +65,8 @@ export interface WatcherDeps {
   probeMerge: (repoPath: string, baseBranch: string, branch: string) => Promise<MergeProbe>
   /** `git remote get-url origin` of the root job's checkout. */
   originUrl: (repoPath: string) => Promise<string>
+  /** A head commit's failed CI jobs, reran once each — `rerunFailedChecks`, or a stub. */
+  rerunChecks: (originUrl: string, prUrl: string) => Promise<RerunResult>
   /** `startJob`, fire-and-forget. */
   ignite: (jobId: string) => Promise<void>
   /** `job-runner`'s `cancelJob` (kills the container too), for a follow-up whose PR just merged or closed (S-47). */
@@ -82,6 +92,7 @@ const realDeps = (): WatcherDeps => ({
   probeMerge,
   originUrl: async (repoPath) =>
     (await exec('git', ['-C', repoPath, 'remote', 'get-url', 'origin'], { timeout: 15_000 })).stdout.trim(),
+  rerunChecks: rerunFailedChecks,
   ignite: async (id) => {
     const { startJob } = await import('./job-runner')
     return startJob(id)
@@ -106,6 +117,7 @@ const err = (id: string, text: string) => appendLogs(id, [{ stream: 'err', text 
 export type Trigger =
   | { kind: 'review'; reason: string; reviewedAt: Date }
   | { kind: 'merge'; reason: string; baseSha: string; headSha: string }
+  | { kind: 'rerun'; reason: string; headSha: string }
   | { kind: 'check'; reason: string; checkedSha: string }
 
 /** The review states that carry feedback. An approval has nothing to address; a dismissal is withdrawn. */
@@ -120,16 +132,27 @@ const NAMED_FILES = 3
  * What the PR's state calls for, against what the watch has already answered.
  * A review first: it is a person asking. Then a conflict with the base, once
  * per base commit — a check run on a branch that cannot merge is about to be
- * stale anyway. Then the checks, once every one of them has finished — a forge
- * lit on the first red check while others still run would fix half the
- * failures — and only for a head commit whose checks have not launched a job
- * yet. `merge` is null when the probe was not run: a review already answers
- * this tick. Pure, for the tests.
+ * stale anyway. Then the checks, once every one of them has finished — a
+ * forge lit on the first red check while others still run would fix half the
+ * failures.
+ *
+ * On a head not yet reran, a failure calls for `rerun`, not `check` (S-48):
+ * the host reruns the commit's failed CI once, for free next to a forge's
+ * cost, before spending a session on it. Only once that head has already
+ * been reran does a failure call for `check` — and only a failure that
+ * *finished after* the rerun (`completedAt`): the rollup can still be
+ * showing the pre-rerun failure for a tick or two, and that stale answer
+ * must queue nothing (AC2). `canRerun` is false on a Bitbucket PR, whose
+ * checks the host cannot rerun — there, a failure calls for `check` at the
+ * first sight, exactly as before this revision (AC3). `merge` is null when
+ * the probe was not run: a review already answers this tick. Pure, for the
+ * tests.
  */
 export function decide(
   pr: PrState,
-  watch: Pick<WatchRow, 'reviewedAt' | 'checkedSha' | 'mergedBaseSha'>,
+  watch: Pick<WatchRow, 'reviewedAt' | 'checkedSha' | 'mergedBaseSha' | 'rerunSha' | 'rerunAt'>,
   merge: (MergeProbe & { baseBranch: string }) | null,
+  canRerun: boolean,
 ): Trigger | null {
   const review = reviewTrigger(pr, watch)
   if (review) return review
@@ -149,6 +172,26 @@ export function decide(
   if (pr.checks.length === 0 || pr.checks.some((c) => c.outcome === 'pending')) return null
   const failed = pr.checks.filter((c) => c.outcome === 'failed')
   if (failed.length === 0) return null
+
+  if (canRerun && watch.rerunSha !== pr.headSha) {
+    return {
+      kind: 'rerun',
+      reason: `check ${failed.map((c) => `"${c.name}"`).join(', ')} failed on ${pr.headSha.slice(0, 7)}`,
+      headSha: pr.headSha,
+    }
+  }
+
+  if (canRerun) {
+    const rerunAt = watch.rerunAt?.getTime() ?? 0
+    const sinceRerun = failed.filter((c) => (c.completedAt ?? 0) > rerunAt)
+    if (sinceRerun.length === 0) return null
+    return {
+      kind: 'check',
+      reason: `check ${sinceRerun.map((c) => `"${c.name}"`).join(', ')} failed again on ${pr.headSha.slice(0, 7)} after a rerun`,
+      checkedSha: pr.headSha,
+    }
+  }
+
   return {
     kind: 'check',
     reason: `check ${failed.map((c) => `"${c.name}"`).join(', ')} failed on ${pr.headSha.slice(0, 7)}`,
@@ -272,15 +315,16 @@ async function stopWatch(prUrl: string, reason: string): Promise<void> {
  * What a launch answers. A merge also marks the head it found: that commit's
  * red checks were run on a branch that could not merge, and whether the merge
  * lands or gives up, they are not worth a forge of their own — only a head
- * pushed after it is.
+ * pushed after it is. Never called for `rerun` — that trigger never reaches
+ * `launch`; `claimRerun` marks its own watermark.
  */
-function markOf(trigger: Trigger): Partial<WatchRow> {
+function markOf(trigger: Exclude<Trigger, { kind: 'rerun' }>): Partial<WatchRow> {
   if (trigger.kind === 'review') return { reviewedAt: trigger.reviewedAt }
   if (trigger.kind === 'merge') return { mergedBaseSha: trigger.baseSha, checkedSha: trigger.headSha }
   return { checkedSha: trigger.checkedSha }
 }
 
-async function launch(job: JobRow, watch: WatchRow, trigger: Trigger, now: Date): Promise<Job | null> {
+async function launch(job: JobRow, watch: WatchRow, trigger: Exclude<Trigger, { kind: 'rerun' }>, now: Date): Promise<Job | null> {
   return db.transaction(async (tx) => {
     const [open] = await tx
       .select({ id: jobs.id })
@@ -298,6 +342,24 @@ async function launch(job: JobRow, watch: WatchRow, trigger: Trigger, now: Date)
     if (!claimed) return null
     return insertFollowUp(tx, job, trigger.kind, `${trigger.reason} on ${job.prUrl} — watcher follow-up of ${shortId(job.id)}`)
   })
+}
+
+/**
+ * The rerun's own claim (S-48, AC5, CTD-233): a guarded update of `rerun_sha`,
+ * mirroring `launch`'s guard on `follow_ups` — whichever pass's update lands
+ * first moves `rerun_sha` (and `rerun_at`) off the value both passes read, so
+ * the loser's own guarded update matches no row. No transaction needed: one
+ * `UPDATE … WHERE …` is already atomic, and there is no follow-up row to
+ * insert alongside it — a rerun spends no automatic follow-up.
+ */
+async function claimRerun(watch: Pick<WatchRow, 'prUrl' | 'rerunSha'>, headSha: string, now: Date): Promise<boolean> {
+  const guard = watch.rerunSha === null ? isNull(prWatches.rerunSha) : eq(prWatches.rerunSha, watch.rerunSha)
+  const [claimed] = await db
+    .update(prWatches)
+    .set({ rerunSha: headSha, rerunAt: now, updatedAt: now })
+    .where(and(eq(prWatches.prUrl, watch.prUrl), guard, isNull(prWatches.stopped)))
+    .returning({ prUrl: prWatches.prUrl })
+  return Boolean(claimed)
 }
 
 /* ------------------------------------------------------------------ */
@@ -340,7 +402,8 @@ async function closeOut(job: JobRow, prUrl: string, prState: 'merged' | 'closed'
 async function inspect(job: JobRow, existing: WatchRow | undefined, deps: WatcherDeps): Promise<void> {
   if (job.repo.kind !== 'local' || !job.prUrl) return
   const prUrl = job.prUrl
-  const pr = await deps.fetchPr(await deps.originUrl(job.repo.path), prUrl)
+  const origin = await deps.originUrl(job.repo.path)
+  const pr = await deps.fetchPr(origin, prUrl)
   const watch = existing ?? (await ensureWatch(job))
 
   if (pr.state !== 'open') {
@@ -360,8 +423,23 @@ async function inspect(job: JobRow, existing: WatchRow | undefined, deps: Watche
     reviewTrigger(pr, watch) === null
       ? { ...(await deps.probeMerge(job.repo.path, job.baseBranch, job.branch)), baseBranch: job.baseBranch }
       : null
-  const trigger = decide(pr, watch, merge)
+  const canRerun = prCliFor(originHost(origin)) === 'gh'
+  const trigger = decide(pr, watch, merge, canRerun)
   if (!trigger) return
+
+  // A rerun spends no automatic follow-up (S-48): claim the head, then ask
+  // the forge — a refusal still counts as this commit's rerun (AC3), so the
+  // claim stands either way and only the log line tells them apart.
+  if (trigger.kind === 'rerun') {
+    if (!(await claimRerun(watch, trigger.headSha, deps.now()))) return // another pass already reran this head
+    const result = await deps.rerunChecks(origin, prUrl)
+    if (result.ok) {
+      await sys(job.id, `watcher: ${trigger.reason} — reran ${result.count} failed CI job(s) on ${trigger.headSha.slice(0, 7)}`)
+    } else {
+      await err(job.id, `watcher: ${trigger.reason} — CI rerun refused: ${result.reason}`)
+    }
+    return
+  }
 
   if (watch.followUps >= deps.maxFollowUps) {
     await stopWatch(prUrl, 'retries')

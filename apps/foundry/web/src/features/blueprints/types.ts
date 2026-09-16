@@ -55,11 +55,15 @@ export const SIMPLIFY_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000005'
  * PR watcher's check follow-up runs — `forge-debug` alone, handed the failing
  * steps' logs as its task, so the failure is reproduced and its cause fixed
  * rather than the log pattern-matched. `CHECK_BLUEPRINT_STEPS` is the same
- * step list, for a follow-up queued after the row was deleted.
+ * step list, for a follow-up queued after the row was deleted. Moved to
+ * opus/medium by migration 0025 (CTD-233): a check follow-up now only ever
+ * fires on a *second* failure of the same head commit, after a plain CI
+ * rerun (S-48) has already had its chance, so the fable/high judgement the
+ * first red check used to need is spent less often and less is riding on it.
  */
 export const CHECK_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000006'
 export const CHECK_BLUEPRINT_STEPS: Array<BlueprintStep> = [
-  { name: 'debug', model: 'fable', effort: 'high', prompt: '/forge-debug {{task}}' },
+  { name: 'debug', model: 'opus', effort: 'medium', prompt: '/forge-debug {{task}}' },
 ]
 
 /**

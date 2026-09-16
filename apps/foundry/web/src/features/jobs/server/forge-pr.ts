@@ -251,6 +251,8 @@ export interface PrCheck {
   outcome: 'pending' | 'passed' | 'failed' | 'skipped'
   url: string
   log?: CheckLogRef
+  /** Epoch milliseconds this outcome was reached, when the forge says — a rerun's own failure needs this (CTD-233). */
+  completedAt?: number
 }
 
 export interface PrState {
@@ -291,6 +293,7 @@ interface GhRollupEntry {
   status?: string
   conclusion?: string
   detailsUrl?: string
+  completedAt?: string
   context?: string
   state?: string
   targetUrl?: string
@@ -336,8 +339,10 @@ export function parseGitHubPr(view: GhPrView, repo: string): PrState {
   }
 
   const checks: Array<PrCheck> = (view.statusCheckRollup ?? []).map((e) => {
+    const completedAt = e.completedAt ? Date.parse(e.completedAt) : undefined
+    const at = completedAt !== undefined && !Number.isNaN(completedAt) ? { completedAt } : {}
     if (e.__typename === 'StatusContext') {
-      return { name: e.context ?? 'status', outcome: statusContextOutcome(e), url: e.targetUrl ?? '' }
+      return { name: e.context ?? 'status', outcome: statusContextOutcome(e), url: e.targetUrl ?? '', ...at }
     }
     const name = e.workflowName ? `${e.workflowName} / ${e.name ?? 'check'}` : (e.name ?? 'check')
     const job = /\/actions\/runs\/\d+\/job\/(\d+)/.exec(e.detailsUrl ?? '')?.[1]
@@ -345,6 +350,7 @@ export function parseGitHubPr(view: GhPrView, repo: string): PrState {
       name,
       outcome: checkRunOutcome(e),
       url: e.detailsUrl ?? '',
+      ...at,
       ...(job ? { log: { kind: 'gh-job' as const, repo, jobId: job } } : {}),
     }
   })
@@ -549,6 +555,53 @@ export async function fetchFailedChecks(originUrl: string, req: FailedChecksRequ
     text: text.length > MAX_CHECKS_CHARS ? `${text.slice(0, MAX_CHECKS_CHARS)}\n\n[checks truncated]` : text,
     empty: false,
     headSha: pr.headSha,
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Rerunning a head commit's failed CI (CTD-233)                      */
+/* ------------------------------------------------------------------ */
+
+export type RerunResult = { ok: true; count: number } | { ok: false; reason: string }
+
+/** The Actions run id an Actions check's own url names — `.../actions/runs/<id>/job/<jobId>`. */
+const RUN_ID = /\/actions\/runs\/(\d+)/
+
+/**
+ * The commit's failed checks, rerun once each (S-48): `gh run rerun <id>
+ * --failed` per distinct Actions run a failed check's url names, so a run
+ * with several failed jobs is reran once, not once per job. Bitbucket
+ * Pipelines has no rerun here — the watcher never calls this for a
+ * Bitbucket PR, taking S-48's last sentence instead. A check with no
+ * Actions run behind it (an external status) cannot be reran by this at
+ * all; with nothing left to rerun, that counts as the forge refusing.
+ */
+export async function rerunFailedChecks(originUrl: string, prUrl: string): Promise<RerunResult> {
+  const cli = prCliFor(originHost(originUrl))
+  if (cli !== 'gh') return { ok: false, reason: `no CI rerun for ${originHost(originUrl) || 'this origin'}` }
+  const m = GH_PR.exec(prUrl)
+  if (!m) return { ok: false, reason: `cannot parse a GitHub PR number from ${prUrl}` }
+  const [, repo] = m
+
+  let pr: PrState
+  try {
+    pr = await fetchPrState(originUrl, prUrl)
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) }
+  }
+  const runIds = [...new Set(pr.checks.filter((c) => c.outcome === 'failed').map((c) => RUN_ID.exec(c.url)?.[1]))].filter(
+    (id): id is string => id !== undefined,
+  )
+  if (runIds.length === 0) return { ok: false, reason: 'no rerunnable Actions run among the failed checks' }
+
+  try {
+    for (const runId of runIds) {
+      await exec('gh', ['run', 'rerun', runId, '--failed', '--repo', repo], { timeout: 60_000 })
+    }
+    return { ok: true, count: runIds.length }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { ok: false, reason: `gh run rerun failed: ${trim1(msg, 300)}` }
   }
 }
 
