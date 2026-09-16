@@ -19,7 +19,7 @@ import { parseBitbucketPr, parseGitHubPr, parseMergeTree, probeMerge, stripGhLog
 import type { MergeProbe, PrCheck, PrReview, PrState } from './forge-pr'
 import { deleteLogs, readLogs } from './job-logs'
 import { cancelJob as storeCancelJob, createJob, followUpJob, getJobRow, settleJob } from './job-store'
-import { decide, tick } from './pr-watcher'
+import { clearMergeAttempt, decide, tick } from './pr-watcher'
 import type { WatcherDeps } from './pr-watcher'
 
 const rand = randomUUID().slice(0, 8)
@@ -641,4 +641,27 @@ test('CTD-214 AC7 — merges count against the budget, and the ledger names the 
   expect(
     (await readLogs(root.id)).some((l) => l.stream === 'err' && /branch conflicts with main @ base2 .*1 automatic follow-up\(s\) are already spent/.test(l.text)),
   ).toBe(true)
+})
+
+test('CTD-236 AC2 — clearMergeAttempt frees a base a merge follow-up never actually tried, so the next tick retries it', async () => {
+  const root = await rootJob()
+  merges.set(root.prUrl, probe('base1', 'sha1'))
+  await tick(deps())
+  const [watch] = await db.select().from(prWatches).where(eq(prWatches.prUrl, root.prUrl))
+  expect(watch?.mergedBaseSha).toBe('base1')
+  expect(watch?.followUps).toBe(1)
+
+  // job-runner's finishJob calls this once it learns the follow-up never
+  // really ran (a missing skill, or a 0-turn result) — the spent retry stays
+  // spent, only the "this base was answered" mark is cleared.
+  await settleFollowUps(root.prUrl)
+  await clearMergeAttempt(root.prUrl)
+  const [cleared] = await db.select().from(prWatches).where(eq(prWatches.prUrl, root.prUrl))
+  expect(cleared?.mergedBaseSha).toBeNull()
+  expect(cleared?.followUps).toBe(1)
+
+  await tick(deps())
+  expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['merge', 'merge'])
+  const [retried] = await db.select().from(prWatches).where(eq(prWatches.prUrl, root.prUrl))
+  expect(retried?.followUps).toBe(2)
 })

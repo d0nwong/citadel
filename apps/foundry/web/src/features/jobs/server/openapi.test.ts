@@ -204,6 +204,7 @@ test('the events route accepts exactly what image/forge-run.sh sends', () => {
     { stderr: ['boom'] },
     { step: 'commit', outcome: 'committed', exitCode: 0 },
     { step: 'commit', outcome: 'no-changes', exitCode: 1 },
+    { step: 'commit', outcome: 'no-changes', exitCode: 1, neverRan: true },
   ]
   for (const body of cases) expect(EventPayloadSchema.safeParse(body).success).toBe(true)
   expect(EventPayloadSchema.safeParse({ step: 'commit', outcome: 'exploded' }).success).toBe(false)
