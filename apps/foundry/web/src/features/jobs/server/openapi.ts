@@ -27,7 +27,7 @@ import { EVENT_HEADER, SETTLED_EVENT, SIGNATURE_HEADER } from './job-webhook'
 /** The completion webhook's body — `{ event, job }`, as job-webhook.ts sends it. */
 const SettledEventSchema = z
   .object({ event: z.literal(SETTLED_EVENT), job: JobSchema })
-  .describe('POSTed once to `callbackUrl` when the job leaves the open set — succeeded, failed or cancelled.')
+  .describe('POSTed once to `callbackUrl` when the job leaves the open set — succeeded, failed, cancelled or pr_ready.')
 
 /** The `200` from the forge's events route. */
 const AckSchema = z.object({ ok: z.literal(true) })
@@ -162,7 +162,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
                   operationId: 'jobSettled',
                   summary: 'The job settled',
                   description: [
-                    'Sent once when the job leaves the open set — succeeded, failed or cancelled, whichever path settled it.',
+                    'Sent once when the job leaves the open set — succeeded, failed, cancelled or pr_ready, whichever path settled it.',
                     'Signed, not authenticated: the body carries an HMAC-SHA256 under the same install token the caller used to reach Foundry, so the receiver verifies with a secret it already holds.',
                     'Best effort — three attempts, 1s then 5s apart, 10s each; a dead receiver costs an `err` line in the job\'s log, never its status.',
                   ].join(' '),

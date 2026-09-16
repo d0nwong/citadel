@@ -152,7 +152,7 @@ export async function countJobsByStatus(): Promise<Record<JobStatus, number>> {
     .from(jobs)
     .groupBy(jobs.status)
 
-  const counts: Record<JobStatus, number> = { queued: 0, running: 0, succeeded: 0, failed: 0, cancelled: 0 }
+  const counts: Record<JobStatus, number> = { queued: 0, running: 0, succeeded: 0, failed: 0, cancelled: 0, pr_ready: 0 }
   for (const row of rows) counts[row.status] = row.n
   return counts
 }
@@ -415,13 +415,13 @@ export async function cancelJob(id: string): Promise<boolean> {
 }
 
 /**
- * Deletes every settled job (never one that is still queued or running, so an
- * active container's row can't vanish from under it), and unlinks each one's
- * log file — the job that the FK cascade on `job_logs` used to do. Returns how
- * many rows were removed.
+ * Deletes every settled job (never one that is still queued, running or
+ * pr_ready, so an active container's row — or one still watched for its PR —
+ * can't vanish from under it), and unlinks each one's log file — the job that
+ * the FK cascade on `job_logs` used to do. Returns how many rows were removed.
  */
 export async function purgeJobs(): Promise<number> {
-  const rows = await db.delete(jobs).where(notInArray(jobs.status, OPEN)).returning({ id: jobs.id })
+  const rows = await db.delete(jobs).where(notInArray(jobs.status, [...OPEN, 'pr_ready'])).returning({ id: jobs.id })
   await deleteLogs(rows.map((r) => r.id))
   // A watch outlives its jobs only as clutter: with no row left carrying the
   // PR, nothing would ever be launched for it or read it.
@@ -473,7 +473,7 @@ export async function claimJob(id: string): Promise<boolean> {
 export async function settleJob(
   id: string,
   outcome: {
-    status: 'succeeded' | 'failed'
+    status: 'succeeded' | 'failed' | 'pr_ready'
     exitCode?: number
     diff?: { files: number; additions: number; deletions: number }
     prUrl?: string

@@ -15,6 +15,7 @@ const FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'running', label: 'Forging' },
   { key: 'queued', label: 'Queued' },
+  { key: 'pr_ready', label: 'PR ready' },
   { key: 'succeeded', label: 'Succeeded' },
   { key: 'failed', label: 'Failed' },
 ] as const
@@ -40,8 +41,8 @@ export function JobLedger() {
   }, [statusCounts])
 
   const active = counts.running ?? 0
-  // Mirrors the store's OPEN set: everything not queued/running is purgeable.
-  const purgeable = counts.all - active - (counts.queued ?? 0)
+  // Mirrors purgeJobs: everything but queued, running and pr_ready is purgeable.
+  const purgeable = counts.all - active - (counts.queued ?? 0) - (counts.pr_ready ?? 0)
 
   const {
     data,

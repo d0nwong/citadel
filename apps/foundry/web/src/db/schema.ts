@@ -15,7 +15,7 @@ import type { RepoRef } from '../features/repos/types'
 export const foundry = pgSchema('foundry')
 
 /* Mirrors of the unions in features/jobs/types.ts. Keep them in step. */
-export const jobStatus = foundry.enum('job_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled'])
+export const jobStatus = foundry.enum('job_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'pr_ready'])
 export const revisionSource = foundry.enum('revision_source', ['seed', 'user'])
 
 /**

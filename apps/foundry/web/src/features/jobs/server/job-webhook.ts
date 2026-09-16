@@ -2,7 +2,8 @@
  * Node-only. The completion webhook: a service that triggered a job over the
  * API (`job-api.ts`) can hand over a `callbackUrl` instead of polling, and
  * the host POSTs it one signed `job.settled` event when the job leaves the
- * open set — succeeded, failed or cancelled, whichever path settled it.
+ * open set — succeeded, failed, cancelled or pr_ready, whichever path
+ * settled it.
  *
  * Signed, not authenticated: the body carries an HMAC-SHA256 under the same
  * install token the caller used to reach us, GitHub-style, so the receiver

@@ -26,7 +26,8 @@ export type JobStatus =
   | "running"
   | "succeeded"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "pr_ready";
 
 /** The slice of Foundry's `Job` the page shows. Timestamps are epoch milliseconds. */
 export interface FoundryJob {

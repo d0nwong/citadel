@@ -1,0 +1,1 @@
+ALTER TYPE "foundry"."job_status" ADD VALUE 'pr_ready';

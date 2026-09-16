@@ -227,6 +227,7 @@ export function CommitError({ v }: { v: Refused | null }) {
 const JOB_TONE: Record<string, Tone> = {
   cancelled: "superseded",
   failed: "hold",
+  pr_ready: "decided",
   queued: "neutral",
   running: "implemented",
   succeeded: "documented",
