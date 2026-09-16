@@ -62,6 +62,18 @@ export const CHECK_BLUEPRINT_STEPS: Array<BlueprintStep> = [
   { name: 'debug', model: 'fable', effort: 'high', prompt: '/forge-debug {{task}}' },
 ]
 
+/**
+ * "Merge base into branch", seeded by migration 0022 (CTD-214): the one step
+ * the PR watcher's merge follow-up runs — `forge-merge`, handed the base commit
+ * and the conflicted files, merging the base in and resolving each hunk only
+ * where both sides' intent fits. `MERGE_BLUEPRINT_STEPS` is the fallback for a
+ * follow-up queued after the row was deleted.
+ */
+export const MERGE_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000007'
+export const MERGE_BLUEPRINT_STEPS: Array<BlueprintStep> = [
+  { name: 'merge', model: 'opus', effort: 'high', prompt: '/forge-merge {{task}}' },
+]
+
 export interface BlueprintStep {
   name: string
   model: StepModel

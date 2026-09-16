@@ -1,6 +1,6 @@
 /**
  * The seeded skill blueprints — "Spec → QA" (migration 0013, v2 in 0019, v3 in 0020), "Bug → Fix"
- * (0014) and "Simplify" (0016) — against the real database: each is there under its fixed id, its
+ * (0014), "Simplify" (0016), "Fix failing check" (0018) and "Merge base into branch" (0022) — against the real database: each is there under its fixed id, its
  * steps are ones the editor would accept, its history starts with a `seed`
  * revision, and seeding them did not move the ignite default. Needs the local
  * Postgres from `just up postgres`, migrated (`just migrate`). Reads only;
@@ -12,6 +12,8 @@ import {
   CHECK_BLUEPRINT_ID,
   CHECK_BLUEPRINT_STEPS,
   DEFAULT_BLUEPRINT_ID,
+  MERGE_BLUEPRINT_ID,
+  MERGE_BLUEPRINT_STEPS,
   QA_BLUEPRINT_ID,
   SIMPLIFY_BLUEPRINT_ID,
 } from '../types'
@@ -24,11 +26,17 @@ const SEEDED = [
   { id: BUG_BLUEPRINT_ID, name: 'Bug → Fix', steps: ['spec', 'debug', 'test', 'implement', 'verify'] },
   { id: SIMPLIFY_BLUEPRINT_ID, name: 'Simplify', steps: ['spec', 'simplify', 'verify'] },
   { id: CHECK_BLUEPRINT_ID, name: 'Fix failing check', steps: ['debug'] },
+  { id: MERGE_BLUEPRINT_ID, name: 'Merge base into branch', steps: ['merge'] },
 ]
 
 test('the check blueprint is forge-debug alone, the same step list the store falls back to', async () => {
   const row = await getBlueprintRow(CHECK_BLUEPRINT_ID)
   expect(row?.steps).toEqual(CHECK_BLUEPRINT_STEPS)
+})
+
+test('the merge blueprint is forge-merge alone, the same step list the store falls back to', async () => {
+  const row = await getBlueprintRow(MERGE_BLUEPRINT_ID)
+  expect(row?.steps).toEqual(MERGE_BLUEPRINT_STEPS)
 })
 
 describe.each(SEEDED)('the seeded "$name" blueprint', ({ id, name, steps }) => {

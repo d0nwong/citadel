@@ -452,7 +452,9 @@ task. Its push updates the existing PR — no new PR, no credentials in the cont
 and the comments are read fresh when the forge lights, like repo notes.
 
 You rarely need the button: the host **watches** every PR a job opened and queues the
-follow-up itself when a reviewer submits a review, or — with the failing check's log as
-the task and `forge-debug` as the step — when CI goes red. One review or one red commit
-launches one job; after three automatic follow-ups on a PR (`FOUNDRY_PR_RETRIES`) it
+follow-up itself when a reviewer submits a review; when the branch no longer merges
+into its base — with the conflicted files as the task and `forge-merge` as the step,
+which merges the base in and resolves what it can or stops and names the collision; or
+— with the failing check's log as the task and `forge-debug` as the step — when CI goes
+red. One review, one base commit's conflict or one red commit launches one job; after three automatic follow-ups on a PR (`FOUNDRY_PR_RETRIES`) it
 stops and says so in the job's log. See `web/README.md` for the details.

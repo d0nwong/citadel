@@ -204,6 +204,8 @@ export const prWatches = foundry.table('pr_watches', {
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull(),
   /** The head commit whose failed checks already launched a follow-up. */
   checkedSha: text('checked_sha'),
+  /** The base commit whose conflict with the branch already launched a merge follow-up (CTD-214). */
+  mergedBaseSha: text('merged_base_sha'),
   /** Automatic follow-ups launched for this PR, bounded by FOUNDRY_PR_RETRIES. */
   followUps: integer('follow_ups').notNull().default(0),
   /** Why watching ended — the PR merged or closed, or the retry budget spent. Null while watching. */

@@ -2,17 +2,21 @@
  * Node-only. The PR watcher (CTD-170): once a job has opened a pull request,
  * the host keeps an eye on it and launches the follow-up job itself — on a
  * submitted review, with the review's comments as the task (the same job the
- * detail sheet's "Address PR comments" queues); on a failed check, with the
- * failing steps' log as the task and `forge-debug` as the one step.
+ * detail sheet's "Address PR comments" queues); on a conflict with the base
+ * (CTD-214), with the base commit and the conflicted files as the task and
+ * `forge-merge` as the one step; on a failed check, with the failing steps'
+ * log as the task and `forge-debug` as the one step.
  *
  * Polling, not a webhook: the Mac has no public endpoint, and a poll every
  * minute against the PRs of the last fortnight's jobs is a handful of `gh`
  * calls. Each PR is read with the host's own credentials (`forge-pr.ts`), the
- * way its comments already are; the container still holds none.
+ * way its comments already are; the container still holds none. A conflict is
+ * read with git, not the forge: a dry-run merge on the host's checkout.
  *
- * Two rules make it safe to leave running. The same review or the same
- * commit's failed checks never launch two jobs: `pr_watches` remembers the
- * newest review answered and the head commit whose checks were, and the
+ * Two rules make it safe to leave running. The same review, the same base's
+ * conflict or the same commit's failed checks never launch two jobs:
+ * `pr_watches` remembers the newest review answered, the base commit whose
+ * conflict was, and the head commit whose checks were, and the
  * watermark moves in the same transaction that inserts the follow-up — with
  * an optimistic guard on the launch count, so two server processes cannot
  * both launch. And a red check cannot launch forever: after
@@ -24,8 +28,8 @@ import { promisify } from 'node:util'
 import { and, eq, gt, inArray, isNotNull, isNull, notExists, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobs, prWatches } from '@/db/schema'
-import { fetchPrState } from './forge-pr'
-import type { PrState } from './forge-pr'
+import { fetchPrState, probeMerge } from './forge-pr'
+import type { MergeProbe, PrState } from './forge-pr'
 import { appendLogs } from './job-logs'
 import { insertFollowUp } from './job-store'
 import type { JobRow } from './job-store'
@@ -48,6 +52,8 @@ const FIRST_PASS_MS = 5_000
 export interface WatcherDeps {
   /** The PR as it stands — `fetchPrState`, or a stub. */
   fetchPr: (originUrl: string, prUrl: string) => Promise<PrState>
+  /** A dry-run merge of origin's base into the PR branch — `probeMerge`, or a stub. */
+  probeMerge: (repoPath: string, baseBranch: string, branch: string) => Promise<MergeProbe>
   /** `git remote get-url origin` of the root job's checkout. */
   originUrl: (repoPath: string) => Promise<string>
   /** `startJob`, fire-and-forget. */
@@ -61,6 +67,7 @@ export interface WatcherDeps {
 
 const realDeps = (): WatcherDeps => ({
   fetchPr: fetchPrState,
+  probeMerge,
   originUrl: async (repoPath) =>
     (await exec('git', ['-C', repoPath, 'remote', 'get-url', 'origin'], { timeout: 15_000 })).stdout.trim(),
   ignite: async (id) => {
@@ -81,6 +88,7 @@ const err = (id: string, text: string) => appendLogs(id, [{ stream: 'err', text 
 
 export type Trigger =
   | { kind: 'review'; reason: string; reviewedAt: Date }
+  | { kind: 'merge'; reason: string; baseSha: string; headSha: string }
   | { kind: 'check'; reason: string; checkedSha: string }
 
 /** The review states that carry feedback. An approval has nothing to address; a dismissal is withdrawn. */
@@ -88,23 +96,35 @@ const ACTIONABLE = new Set(['COMMENTED', 'CHANGES_REQUESTED'])
 
 const stateWord = (s: string) => s.toLowerCase().replace('_', ' ')
 
+/** The files a conflict names in its reason, before the list is cut short. */
+const NAMED_FILES = 3
+
 /**
  * What the PR's state calls for, against what the watch has already answered.
- * A review first: it is a person asking. Then the checks, once every one of
- * them has finished — a forge lit on the first red check while others still
- * run would fix half the failures — and only for a head commit whose checks
- * have not launched a job yet. Pure, for the tests.
+ * A review first: it is a person asking. Then a conflict with the base, once
+ * per base commit — a check run on a branch that cannot merge is about to be
+ * stale anyway. Then the checks, once every one of them has finished — a forge
+ * lit on the first red check while others still run would fix half the
+ * failures — and only for a head commit whose checks have not launched a job
+ * yet. `merge` is null when the probe was not run: a review already answers
+ * this tick. Pure, for the tests.
  */
-export function decide(pr: PrState, watch: Pick<WatchRow, 'reviewedAt' | 'checkedSha'>): Trigger | null {
-  const since = watch.reviewedAt.getTime()
-  const fresh = pr.reviews.filter((r) => ACTIONABLE.has(r.state) && r.submittedAt > since)
-  if (fresh.length > 0) {
-    const newest = fresh.reduce((a, b) => (b.submittedAt > a.submittedAt ? b : a))
-    const who = [...new Set(fresh.map((r) => `@${r.author}`))].join(', ')
+export function decide(
+  pr: PrState,
+  watch: Pick<WatchRow, 'reviewedAt' | 'checkedSha' | 'mergedBaseSha'>,
+  merge: (MergeProbe & { baseBranch: string }) | null,
+): Trigger | null {
+  const review = reviewTrigger(pr, watch)
+  if (review) return review
+
+  if (merge && merge.conflicts.length > 0 && merge.baseSha !== watch.mergedBaseSha) {
+    const named = merge.conflicts.slice(0, NAMED_FILES).join(', ')
+    const more = merge.conflicts.length > NAMED_FILES ? ` and ${merge.conflicts.length - NAMED_FILES} more` : ''
     return {
-      kind: 'review',
-      reason: `review by ${who} (${stateWord(newest.state)}) submitted ${new Date(newest.submittedAt).toISOString()}`,
-      reviewedAt: new Date(newest.submittedAt),
+      kind: 'merge',
+      reason: `branch conflicts with ${merge.baseBranch} @ ${merge.baseSha.slice(0, 7)} in ${named}${more}`,
+      baseSha: merge.baseSha,
+      headSha: merge.headSha,
     }
   }
 
@@ -117,6 +137,22 @@ export function decide(pr: PrState, watch: Pick<WatchRow, 'reviewedAt' | 'checke
     reason: `check ${failed.map((c) => `"${c.name}"`).join(', ')} failed on ${pr.headSha.slice(0, 7)}`,
     checkedSha: pr.headSha,
   }
+}
+
+/** A review submitted since the watch's mark, if any — the first thing `decide` answers. */
+export function reviewTrigger(pr: PrState, watch: Pick<WatchRow, 'reviewedAt'>): Trigger | null {
+  const since = watch.reviewedAt.getTime()
+  const fresh = pr.reviews.filter((r) => ACTIONABLE.has(r.state) && r.submittedAt > since)
+  if (fresh.length > 0) {
+    const newest = fresh.reduce((a, b) => (b.submittedAt > a.submittedAt ? b : a))
+    const who = [...new Set(fresh.map((r) => `@${r.author}`))].join(', ')
+    return {
+      kind: 'review',
+      reason: `review by ${who} (${stateWord(newest.state)}) submitted ${new Date(newest.submittedAt).toISOString()}`,
+      reviewedAt: new Date(newest.submittedAt),
+    }
+  }
+  return null
 }
 
 /* ------------------------------------------------------------------ */
@@ -193,9 +229,21 @@ async function stopWatch(prUrl: string, reason: string): Promise<void> {
  * processes from both launching — the second finds the count moved and
  * inserts nothing. Null means exactly that.
  */
+/**
+ * What a launch answers. A merge also marks the head it found: that commit's
+ * red checks were run on a branch that could not merge, and whether the merge
+ * lands or gives up, they are not worth a forge of their own — only a head
+ * pushed after it is.
+ */
+function markOf(trigger: Trigger): Partial<WatchRow> {
+  if (trigger.kind === 'review') return { reviewedAt: trigger.reviewedAt }
+  if (trigger.kind === 'merge') return { mergedBaseSha: trigger.baseSha, checkedSha: trigger.headSha }
+  return { checkedSha: trigger.checkedSha }
+}
+
 async function launch(job: JobRow, watch: WatchRow, trigger: Trigger, now: Date): Promise<Job | null> {
   return db.transaction(async (tx) => {
-    const mark = trigger.kind === 'review' ? { reviewedAt: trigger.reviewedAt } : { checkedSha: trigger.checkedSha }
+    const mark = markOf(trigger)
     const [claimed] = await tx
       .update(prWatches)
       .set({ ...mark, followUps: sql`${prWatches.followUps} + 1`, updatedAt: now })
@@ -222,7 +270,13 @@ async function inspect(job: JobRow, existing: WatchRow | undefined, deps: Watche
     return
   }
 
-  const trigger = decide(pr, watch)
+  // The dry run costs a fetch, so it waits until a review has not already
+  // claimed this tick.
+  const merge =
+    reviewTrigger(pr, watch) === null
+      ? { ...(await deps.probeMerge(job.repo.path, job.baseBranch, job.branch)), baseBranch: job.baseBranch }
+      : null
+  const trigger = decide(pr, watch, merge)
   if (!trigger) return
 
   if (watch.followUps >= deps.maxFollowUps) {

@@ -225,6 +225,12 @@ fi
 # whatever is uncommitted so work survives a run that forgot, died, or timed
 # out, then judge the outcome by whether HEAD moved — not by the sweep alone,
 # or an agent that committed cleanly would read as "no changes".
+# A merge left half-done (CTD-214) is the exception: sweeping it would commit
+# conflict markers, so it is aborted and the run ends with nothing to push.
+if [ -f .git/MERGE_HEAD ] && [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+  post_line sys "merge left with unresolved conflicts — aborted, nothing committed"
+  git merge --abort || true
+fi
 git add -A
 if ! git diff --cached --quiet; then
   subject=$(printf '%s' "$FOUNDRY_TASK" | head -1 | cut -c1-72)
