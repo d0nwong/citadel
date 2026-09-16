@@ -41,6 +41,7 @@ import type { MergeProbe, PrState, RerunResult } from './forge-pr'
 import { appendLogs } from './job-logs'
 import { closePrReadyJob, insertFollowUp } from './job-store'
 import type { JobRow } from './job-store'
+import { notifyPrClosed } from './job-webhook'
 import { shortId } from '../types'
 import type { Job } from '../types'
 
@@ -70,6 +71,8 @@ export interface WatcherDeps {
   ignite: (jobId: string) => Promise<void>
   /** `job-runner`'s `cancelJob` (kills the container too), for a follow-up whose PR just merged or closed (S-47). */
   cancelFollowUp: (jobId: string, reason: string) => Promise<void>
+  /** `job-webhook`'s `notifyPrClosed`, fired once a `pr_ready` root actually moves (S-46, S-52). */
+  notifyPrClosed: (jobId: string, prState: 'merged' | 'closed') => Promise<void>
   maxFollowUps: number
   lookbackDays: number
   now: () => Date
@@ -98,6 +101,7 @@ const realDeps = (): WatcherDeps => ({
     const { cancelJob } = await import('./job-runner')
     return cancelJob(id, reason)
   },
+  notifyPrClosed,
   maxFollowUps: Number(process.env.FOUNDRY_PR_RETRIES ?? DEFAULT_RETRIES),
   lookbackDays: LOOKBACK_DAYS,
   now: () => new Date(),
@@ -384,6 +388,7 @@ async function closeOut(job: JobRow, prUrl: string, prState: 'merged' | 'closed'
     if (moved) {
       const to = prState === 'merged' ? 'succeeded' : 'cancelled'
       await sys(job.id, `watcher: PR ${prState} — ${to}, no longer watching ${prUrl}`)
+      void deps.notifyPrClosed(job.id, prState)
     }
   } else {
     await sys(job.id, `watcher: PR ${prState} — no longer watching ${prUrl}`)

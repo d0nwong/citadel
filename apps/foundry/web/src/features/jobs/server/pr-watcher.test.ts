@@ -275,6 +275,7 @@ const ignited: Array<string> = []
 /** Every rerun the watcher asked for, by PR URL; a Map so a test can force one to be refused. */
 const reruns = new Map<string, { ok: boolean; reason?: string }>()
 const reran: Array<string> = []
+const prClosedNotified: Array<{ id: string; prState: 'merged' | 'closed' }> = []
 const deps = (over: Partial<WatcherDeps> = {}): WatcherDeps => ({
   fetchPr: async (_origin, prUrl) => prs.get(prUrl) ?? state(),
   probeMerge: async (_repo, _base, branch) => merges.get(branchPr.get(branch) ?? '') ?? { baseSha: 'base0', headSha: 'sha1', conflicts: [] },
@@ -292,6 +293,9 @@ const deps = (over: Partial<WatcherDeps> = {}): WatcherDeps => ({
   // mirrors job-runner's cancelJob closely enough for these tests' purposes.
   cancelFollowUp: async (id, reason) => {
     await storeCancelJob(id, reason)
+  },
+  notifyPrClosed: async (id, prState) => {
+    prClosedNotified.push({ id, prState })
   },
   maxFollowUps: 3,
   lookbackDays: 14,
@@ -585,6 +589,44 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
     prs.set(root.prUrl, state({ state: 'merged' }))
     await tick(limited)
     expect((await getJobRow(root.id))?.status).toBe('succeeded')
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* CTD-232 — job.pr_closed                                            */
+/* ------------------------------------------------------------------ */
+
+describe('CTD-232 — the watcher\'s move fires job.pr_closed', () => {
+  test('AC1 — a merged pr_ready root fires job.pr_closed once, naming the merged state', async () => {
+    const root = await rootJob('pr_ready')
+    prs.set(root.prUrl, state({ state: 'merged' }))
+    await tick(deps())
+
+    expect(prClosedNotified.filter((n) => n.id === root.id)).toEqual([{ id: root.id, prState: 'merged' }])
+  })
+
+  test('AC1 — a closed, unmerged pr_ready root fires job.pr_closed naming the closed state', async () => {
+    const root = await rootJob('pr_ready')
+    prs.set(root.prUrl, state({ state: 'closed' }))
+    await tick(deps())
+
+    expect(prClosedNotified.filter((n) => n.id === root.id)).toEqual([{ id: root.id, prState: 'closed' }])
+  })
+
+  test('AC2 — a failed root\'s PR closing fires no job.pr_closed (the root never moved)', async () => {
+    const root = await rootJob('failed')
+    prs.set(root.prUrl, state({ state: 'merged' }))
+    await tick(deps())
+
+    expect(prClosedNotified.filter((n) => n.id === root.id)).toEqual([])
+  })
+
+  test('AC2 — two watcher passes at once over the same merge fire job.pr_closed at most once', async () => {
+    const root = await rootJob('pr_ready')
+    prs.set(root.prUrl, state({ state: 'merged' }))
+    await Promise.all([tick(deps()), tick(deps())])
+
+    expect(prClosedNotified.filter((n) => n.id === root.id)).toHaveLength(1)
   })
 })
 

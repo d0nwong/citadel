@@ -22,12 +22,17 @@ import {
   TriggerPayloadSchema,
 } from './job-api'
 import { EventPayloadSchema } from './job-events'
-import { EVENT_HEADER, SETTLED_EVENT, SIGNATURE_HEADER } from './job-webhook'
+import { EVENT_HEADER, PR_CLOSED_EVENT, SETTLED_EVENT, SIGNATURE_HEADER } from './job-webhook'
 
 /** The completion webhook's body — `{ event, job }`, as job-webhook.ts sends it. */
 const SettledEventSchema = z
   .object({ event: z.literal(SETTLED_EVENT), job: JobSchema })
   .describe('POSTed once to `callbackUrl` when the job leaves the open set — succeeded, failed, cancelled or pr_ready.')
+
+/** The watcher's later move of a `pr_ready` job (S-46) — `{ event, job, prState }`, as job-webhook.ts sends it. */
+const PrClosedEventSchema = z
+  .object({ event: z.literal(PR_CLOSED_EVENT), job: JobSchema, prState: z.enum(['merged', 'closed']) })
+  .describe('POSTed once a `pr_ready` job\'s PR merges or closes: `job` carries the status the job moved to (`succeeded` or `cancelled`), `prState` the PR\'s own outcome.')
 
 /** The `200` from the forge's events route. */
 const AckSchema = z.object({ ok: z.literal(true) })
@@ -190,6 +195,39 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
                 },
               },
             },
+            jobPrClosed: {
+              '{$request.body#/callbackUrl}': {
+                post: {
+                  operationId: 'jobPrClosed',
+                  summary: 'The job\'s PR merged or closed',
+                  description: [
+                    'Sent once a `pr_ready` job\'s PR merges or closes: the watcher moves the job to `succeeded` (merged) or `cancelled` (closed) and this is the second event a sender sees for that job — `job.settled` stays one per job.',
+                    'Signed and retried exactly as `job.settled` is; a failed delivery never changes the job.',
+                  ].join(' '),
+                  parameters: [
+                    {
+                      name: EVENT_HEADER,
+                      in: 'header',
+                      required: true,
+                      description: 'The event name.',
+                      schema: { type: 'string', enum: [PR_CLOSED_EVENT] },
+                    },
+                    {
+                      name: SIGNATURE_HEADER,
+                      in: 'header',
+                      required: false,
+                      description:
+                        '`sha256=<hex>` — HMAC-SHA256 of the raw body keyed with `FOUNDRY_API_TOKEN`. Absent only when the host has no token configured, in which case the job\'s log says so.',
+                      schema: { type: 'string', pattern: '^sha256=[0-9a-f]{64}$' },
+                    },
+                  ],
+                  requestBody: jsonBody('PrClosedEvent'),
+                  responses: {
+                    '2XX': { description: 'Acknowledged. Any 2xx counts as delivered; anything else is retried.' },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -283,6 +321,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
         Conflict: component(ConflictSchema, 'output'),
         TrackedRepo: component(TrackedRepoSchema, 'output'),
         SettledEvent: component(SettledEventSchema, 'output'),
+        PrClosedEvent: component(PrClosedEventSchema, 'output'),
         EventPayload: component(EventPayloadSchema, 'input'),
         Ack: component(AckSchema, 'output'),
       },
