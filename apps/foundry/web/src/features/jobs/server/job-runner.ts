@@ -15,7 +15,8 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { repoNotes } from '@/features/repos/server/repo-scan'
-import { createPullRequest, fetchFailedChecks, fetchPrComments, originHost, prCliFor, probeMerge } from './forge-pr'
+import { trim1 } from '@/shared/lib/format'
+import { commentOnPr, createPullRequest, fetchFailedChecks, fetchPrComments, originHost, prCliFor, probeMerge, rerunFailedChecks } from './forge-pr'
 import type { MergeProbe } from './forge-pr'
 import { forgeEnv, readFoundryEnv } from './foundry-env'
 import { FOUNDRY_HOME, appendLogs } from './job-logs'
@@ -592,7 +593,26 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
         `merge follow-up ${shortId(id)} could not resolve the conflict with ${job.baseBranch} — a person must merge it (its final message names the collision)`,
       )
     }
-    await settle(id, { status: agentFailed ? 'failed' : 'succeeded', exitCode })
+    // A check follow-up that could not make the failure happen (CTD-234)
+    // leaves a flaky verdict — .git/FLAKY.md — instead of a fix. It settles
+    // succeeded regardless of the agent's own exit code: nothing was wrong
+    // with the run, the failure just would not reproduce.
+    let status: 'succeeded' | 'failed' = agentFailed ? 'failed' : 'succeeded'
+    const root = job.sourceJobId
+    if (job.followUp === 'check' && root !== null && job.prUrl) {
+      const prUrl = job.prUrl
+      const verdict = await readFlakyVerdict(work)
+      if (verdict !== undefined) {
+        // Belt and braces: this sits outside finishJob's push/PR try, and a
+        // throw escaping here must not stop the follow-up settling succeeded
+        // (AC2) — same stance as linkTicket's own catch below.
+        await handleFlakyVerdict(root, prUrl, job.baseSha, work, verdict).catch((e: unknown) =>
+          err(root, `flaky verdict: ${e instanceof Error ? e.message : String(e)}`),
+        )
+        status = 'succeeded'
+      }
+    }
+    await settle(id, { status, exitCode })
     void pumpQueue()
     return
   }
@@ -726,6 +746,51 @@ async function prBody(work: string, job: JobRow): Promise<string> {
   return [...(closes ? [closes, ''] : []), '## Summary', '', summary, '', '---', `Created by foundry ${job.id}.`].join(
     '\n',
   )
+}
+
+/** The verdict a check follow-up's forge-debug leaves when it cannot reproduce the failure (CTD-234), or undefined when there is none. */
+async function readFlakyVerdict(work: string): Promise<string | undefined> {
+  const text = (await readFile(path.join(work, '.git', 'FLAKY.md'), 'utf8').catch(() => '')).trim()
+  return text === '' ? undefined : text
+}
+
+/** The verdict, capped before it goes on the log and the PR: FLAKY.md is meant to be short, and a runaway one should not blow up the comment. */
+const MAX_VERDICT_CHARS = 4_000
+
+/**
+ * A check follow-up that could not reproduce the failure (S-50, CTD-234):
+ * the verdict goes on the root job's log and the PR as a comment, and the
+ * commit gets one further CI rerun before the watcher stands down on it
+ * (S-51) — `markFlakySha` is what tells `decide` to queue no more rerun or
+ * check follow-up for this head. A comment or rerun failing here is only an
+ * `err` line (AC2): the follow-up already settled succeeded above, and
+ * nothing in this function may undo that.
+ */
+async function handleFlakyVerdict(root: string, prUrl: string, headSha: string | null, work: string, verdict: string): Promise<void> {
+  const text = trim1(verdict, MAX_VERDICT_CHARS)
+
+  await sys(root, `flaky verdict on ${prUrl}:\n${text}`)
+
+  let originUrl = ''
+  try {
+    originUrl = await git(work, ['remote', 'get-url', 'origin'])
+  } catch (e) {
+    await err(root, `flaky verdict: could not read origin — ${e instanceof Error ? e.message : String(e)}`)
+  }
+
+  if (originUrl !== '') {
+    const comment = await commentOnPr(originUrl, prUrl, `**Flaky check** — could not reproduce it:\n\n${text}`)
+    if (!comment.ok) await err(root, `flaky verdict: PR comment failed — ${comment.reason}`)
+
+    const rerun = await rerunFailedChecks(originUrl, prUrl)
+    if (rerun.ok) {
+      await sys(root, `flaky verdict: reran ${rerun.count} failed CI job(s) once more on ${prUrl}`)
+    } else {
+      await err(root, `flaky verdict: CI rerun failed — ${rerun.reason}`)
+    }
+  }
+
+  if (headSha) await store.markFlakySha(prUrl, headSha)
 }
 
 /**

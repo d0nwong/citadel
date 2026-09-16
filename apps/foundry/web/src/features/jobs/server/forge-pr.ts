@@ -7,8 +7,8 @@
  * disabled. The container commits; the host pushes and talks to the forge.
  */
 import { execFile } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { trim1 } from '@/shared/lib/format'
@@ -76,6 +76,36 @@ export async function createPullRequest(originUrl: string, req: PrRequest): Prom
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return { url: null, reason: `${cli} pr create failed: ${trim1(msg, 300)}` }
+  }
+}
+
+export type CommentResult = { ok: true } | { ok: false; reason: string }
+
+/**
+ * Posts one comment to a PR's timeline — the flaky-verdict path's write to
+ * the PR (CTD-234), the one write this file makes besides opening the PR
+ * itself. `--body-file` takes a real temp file rather than the raw text: a
+ * verdict is arbitrary markdown and this sidesteps both the arg-length limit
+ * and any shell-quoting a `--body` string would risk. Bitbucket has no
+ * comment-posting command in `bb` today, so it answers the same "cannot do
+ * this here" shape `rerunFailedChecks` does for its own unsupported host.
+ */
+export async function commentOnPr(originUrl: string, prUrl: string, body: string): Promise<CommentResult> {
+  const cli = prCliFor(originHost(originUrl))
+  if (cli !== 'gh') return { ok: false, reason: `no PR comment support for ${originHost(originUrl) || 'this origin'}` }
+
+  let dir = ''
+  try {
+    dir = await mkdtemp(path.join(tmpdir(), 'foundry-comment-'))
+    const file = path.join(dir, 'body.md')
+    await writeFile(file, body, 'utf8')
+    await exec('gh', ['pr', 'comment', prUrl, '--body-file', file], { timeout: 30_000 })
+    return { ok: true }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { ok: false, reason: `gh pr comment failed: ${trim1(msg, 300)}` }
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }
 }
 

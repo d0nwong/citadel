@@ -210,6 +210,13 @@ export const prWatches = foundry.table('pr_watches', {
   rerunSha: text('rerun_sha'),
   /** When that rerun happened — a later failure counts only if it finished after this. */
   rerunAt: timestamp('rerun_at', { withTimezone: true }),
+  /**
+   * The head commit a check follow-up could not reproduce (CTD-234), set by
+   * the host once it has posted the flaky verdict and spent that commit's one
+   * further CI rerun. `decide` queues no further rerun or check follow-up for
+   * this head; a later failure on it gets one `err` line instead.
+   */
+  flakySha: text('flaky_sha'),
   /** Automatic follow-ups launched for this PR, bounded by FOUNDRY_PR_RETRIES. */
   followUps: integer('follow_ups').notNull().default(0),
   /** Why watching ended — the PR merged or closed, or the retry budget spent. Null while watching. */
