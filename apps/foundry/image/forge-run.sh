@@ -136,6 +136,11 @@ $FOUNDRY_REPO_NOTES"
 fi
 
 agent_exit=0
+# Set once a step is caught never actually trying (CTD-236) — a missing skill
+# or a 0-turn result — so the host can tell that apart from a step that ran
+# and genuinely failed. A merge follow-up reads this to free its base for a
+# retry instead of treating the base as answered.
+NEVER_RAN=false
 i=0
 while [ "$i" -lt "$n" ]; do
   step=$(printf '%s' "$steps" | jq -c ".[$i]")
@@ -163,15 +168,43 @@ while [ "$i" -lt "$n" ]; do
   [ "$i" = 1 ] && session_flag=--session-id
 
   errfile=$(mktemp)
+  # A step whose slash command the image doesn't ship (the skill directory was
+  # added after this image was built) or that never actually turns still exits
+  # 0 — `claude -p` treats "I don't recognise that command" as a normal reply,
+  # not a failure. Both are caught here from the stream, not from agent_exit
+  # alone, and turned into a real failure below (CTD-236).
+  unknownfile=$(mktemp); : >"$unknownfile"
+  turnsfile=$(mktemp); : >"$turnsfile"
   timeout "$remaining" claude --dangerously-skip-permissions -p "$prompt" \
       ${model:+--model "$model"} ${effort:+--effort "$effort"} \
       "$session_flag" "$SID" \
       --append-system-prompt "$SYSTEM_PROMPT" \
       --output-format stream-json --verbose 2>"$errfile" \
     | while IFS= read -r line; do
-        [ -n "$line" ] && post_line ndjson "$line"
+        [ -n "$line" ] || continue
+        post_line ndjson "$line"
+        if [ ! -s "$unknownfile" ]; then
+          cmd=$(printf '%s' "$line" | grep -oE 'Unknown command: */[A-Za-z0-9_-]+' | head -1 | sed -E 's#.*/##')
+          [ -n "$cmd" ] && printf '%s' "$cmd" >"$unknownfile"
+        fi
+        turns=$(printf '%s' "$line" | jq -r 'select(.type == "result") | (.num_turns // -1)' 2>/dev/null)
+        [ -n "$turns" ] && printf '%s' "$turns" >"$turnsfile"
       done
   agent_exit=${PIPESTATUS[0]}
+
+  missing_cmd=$(cat "$unknownfile" 2>/dev/null)
+  num_turns=$(cat "$turnsfile" 2>/dev/null)
+  rm -f "$unknownfile" "$turnsfile"
+
+  if [ "$agent_exit" = 0 ] && [ -n "$missing_cmd" ]; then
+    agent_exit=1
+    NEVER_RAN=true
+    post_line sys "step $i/$n: unknown command /$missing_cmd — the forge image does not have this skill; run: foundry build"
+  elif [ "$agent_exit" = 0 ] && [ "$num_turns" = 0 ]; then
+    agent_exit=1
+    NEVER_RAN=true
+    post_line sys "step $i/$n: agent finished in 0 turns — treating as failed"
+  fi
 
   [ "$agent_exit" = 124 ] && post_line sys "step $i/$n timed out — ${TIMEOUT}s job budget exhausted"
   while IFS= read -r line; do
@@ -242,8 +275,8 @@ else
   outcome=no-changes
 fi
 
-jq -cn --arg o "$outcome" --argjson x "$agent_exit" \
-  '{step: "commit", outcome: $o, exitCode: $x}' | post
+jq -cn --arg o "$outcome" --argjson x "$agent_exit" --argjson never "$NEVER_RAN" \
+  '{step: "commit", outcome: $o, exitCode: $x, neverRan: $never}' | post
 
 # The container's own exit code is not the job's verdict — the commit event
 # above carries that. Exit 0 so `docker wait` only flags truly silent deaths.

@@ -18,12 +18,13 @@ import { repoNotes } from '@/features/repos/server/repo-scan'
 import { createPullRequest, fetchFailedChecks, fetchPrComments, originHost, prCliFor, probeMerge } from './forge-pr'
 import type { MergeProbe } from './forge-pr'
 import { forgeEnv, readFoundryEnv } from './foundry-env'
+import { imageSkills, missingSkills, namedSkills } from './image-skills'
 import { FOUNDRY_HOME, appendLogs } from './job-logs'
 import * as store from './job-store'
 import type { JobRow } from './job-store'
 import { notifyCallback } from './job-webhook'
 import { linkPrToTicket } from './linear-link'
-import { startPrWatcher } from './pr-watcher'
+import { clearMergeAttempt, startPrWatcher } from './pr-watcher'
 import { hostTickets } from './tickets'
 import { hydrateTask } from './task-context'
 import { getBaseline } from './baseline-store'
@@ -127,6 +128,24 @@ async function checkDocker(): Promise<void> {
   }
 }
 
+/**
+ * Every `/<skill>` a blueprint step's prompt starts with must be one the
+ * forge image actually ships (CTD-236) — an image built before the skill's
+ * ticket landed answers it "Unknown command" instead of running it, spending
+ * a job for nothing. A plain job (no blueprint) invokes no skill and has
+ * nothing to check here.
+ */
+async function checkSkills(job: JobRow): Promise<void> {
+  const named = namedSkills(job.blueprint?.steps ?? [])
+  if (named.length === 0) return
+  const available = await imageSkills(IMAGE)
+  const missing = missingSkills(named, available)
+  if (missing.length > 0) {
+    const skills = missing.map((s) => `/${s}`).join(', ')
+    throw new Error(`this job's blueprint needs ${skills}, which ${IMAGE} does not have — run: foundry build`)
+  }
+}
+
 /** The repo has a git dir, an origin to push to, and the base branch to diff against. */
 async function checkGit(repoPath: string, baseBranch: string): Promise<string> {
   try {
@@ -179,6 +198,7 @@ async function preflight(job: JobRow): Promise<{ credEnv: Record<string, string>
 
   const credEnv = await checkCredential()
   await checkDocker()
+  await checkSkills(job)
   const originUrl = await checkGit(repoPath, job.baseBranch)
   await checkPrCli(originUrl)
 
@@ -574,7 +594,12 @@ export async function startJob(id: string): Promise<void> {
  * Push with the user's own git credentials, open the PR with the right CLI,
  * measure the diff, settle.
  */
-export async function finishJob(id: string, outcome: 'committed' | 'no-changes', exitCode: number): Promise<void> {
+export async function finishJob(
+  id: string,
+  outcome: 'committed' | 'no-changes',
+  exitCode: number,
+  neverRan = false,
+): Promise<void> {
   const job = await store.getJobRow(id)
   if (!job) return
   await removeContainer(id)
@@ -584,13 +609,25 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
 
   if (outcome === 'no-changes') {
     await sys(id, agentFailed ? `agent exited ${exitCode} with no changes` : 'agent made no changes — nothing to push')
-    // A merge that commits nothing left the conflict where it was; the
-    // watcher will not try the same base again, so the PR's ledger says so.
     if (job.followUp === 'merge' && job.sourceJobId !== null) {
-      await err(
-        job.sourceJobId,
-        `merge follow-up ${shortId(id)} could not resolve the conflict with ${job.baseBranch} — a person must merge it (its final message names the collision)`,
-      )
+      if (neverRan) {
+        // The step never actually turned (a missing skill, or a 0-turn
+        // result — CTD-236): the merge was never tried, so `launch`'s
+        // optimistic mark of this base is wrong. Free it — the watcher's
+        // next pass may retry it, still bounded by the retry already spent.
+        await clearMergeAttempt(job.prUrl!)
+        await err(
+          job.sourceJobId,
+          `merge follow-up ${shortId(id)} exited without trying the merge (exit ${exitCode}) — the base is free to retry on the next watcher pass`,
+        )
+      } else {
+        // A merge that commits nothing left the conflict where it was; the
+        // watcher will not try the same base again, so the PR's ledger says so.
+        await err(
+          job.sourceJobId,
+          `merge follow-up ${shortId(id)} could not resolve the conflict with ${job.baseBranch} — a person must merge it (its final message names the collision)`,
+        )
+      }
     }
     await settle(id, { status: agentFailed ? 'failed' : 'succeeded', exitCode })
     void pumpQueue()

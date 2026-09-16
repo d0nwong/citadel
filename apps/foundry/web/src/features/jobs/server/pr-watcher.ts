@@ -297,6 +297,19 @@ async function stopWatch(prUrl: string, reason: string): Promise<void> {
 }
 
 /**
+ * A merge follow-up that never actually tried the merge — the image lacked
+ * `forge-merge`, or the step turned zero times (CTD-236) — must not read as
+ * "this base was answered": `launch` sets `mergedBaseSha` optimistically at
+ * queue time, alongside every other trigger's mark, so job-runner's
+ * `finishJob` calls this once it learns the follow-up never really ran,
+ * freeing the base for the watcher's next pass. The spent retry stays spent —
+ * only the mark is cleared.
+ */
+export async function clearMergeAttempt(prUrl: string): Promise<void> {
+  await db.update(prWatches).set({ mergedBaseSha: null, updatedAt: new Date() }).where(eq(prWatches.prUrl, prUrl))
+}
+
+/**
  * The launch, in one transaction: check no follow-up is already queued or
  * running on this PR, move the watermark and spend one retry, then insert
  * the follow-up. The `follow_ups` guard alone keeps two passes from

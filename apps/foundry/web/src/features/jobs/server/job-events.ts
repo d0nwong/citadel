@@ -33,6 +33,12 @@ export const EventPayloadSchema = z.object({
   sys: z.array(z.string()).optional().describe("The runner's own progress lines."),
   outcome: z.enum(['committed', 'no-changes']).optional().describe('Sent with `step: "commit"`.'),
   exitCode: z.number().int().nonnegative().optional().describe("The agent's exit code, sent with `step: \"commit\"`."),
+  neverRan: z
+    .boolean()
+    .optional()
+    .describe(
+      'A step exited without ever really turning — an unknown slash command or a 0-turn result (CTD-236) — as opposed to a step that ran and failed. Sent with `step: "commit"`.',
+    ),
   baseline: z
     .string()
     .max(65_536)
@@ -84,7 +90,7 @@ export async function handleJobEvent(jobId: string, request: Request): Promise<R
       exitCode: payload.exitCode ?? 0,
     })
     const { finishJob } = await import('./job-runner')
-    void finishJob(jobId, payload.outcome, payload.exitCode ?? 0)
+    void finishJob(jobId, payload.outcome, payload.exitCode ?? 0, payload.neverRan ?? false)
   }
 
   return json(200, { ok: true })
