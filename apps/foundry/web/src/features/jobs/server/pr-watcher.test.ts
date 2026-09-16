@@ -522,6 +522,18 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
     expect((await readLogs(root.id)).some((l) => /watcher: PR closed — cancelled/.test(l.text))).toBe(true)
   })
 
+  dbTest('AC1 (CTD-235) — a pr_ready root whose watch is already stopped merged still moves on', async () => {
+    const root = await rootJob('pr_ready')
+    // Simulates a stranded row: the watch was marked merged/closed on an
+    // earlier pass (or by a pre-CTD-231 watcher) whose move never landed.
+    await db.insert(prWatches).values({ prUrl: root.prUrl, jobId: root.id, reviewedAt: new Date(), stopped: 'merged' })
+    prs.set(root.prUrl, state({ state: 'merged' }))
+    await tick(deps())
+
+    expect((await getJobRow(root.id))?.status).toBe('succeeded')
+    expect((await readLogs(root.id)).some((l) => /watcher: PR merged — succeeded/.test(l.text))).toBe(true)
+  })
+
   dbTest('AC3 — a failed root stays failed once its PR merges, and the watcher stops following it', async () => {
     const root = await rootJob('failed')
     prs.set(root.prUrl, state({ state: 'merged' }))

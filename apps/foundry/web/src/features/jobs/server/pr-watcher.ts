@@ -243,6 +243,13 @@ export function reviewTrigger(pr: PrState, watch: Pick<WatchRow, 'reviewedAt'>):
  * up on *launching* must still be read: its root still needs to notice the
  * PR merging or closing (AC2). `inspect` is what keeps a retries-stopped
  * watch from trying to decide and launch again on every tick.
+ *
+ * A `pr_ready` root is selected regardless of `stopped` (CTD-235, S-46): the
+ * watcher may have marked the watch merged/closed on a pass whose move then
+ * threw, or a pre-CTD-231 watcher may have stopped it without moving the job
+ * at all — either way `pr_ready` means the move never actually landed, and
+ * the root must keep coming back until `closePrReadyJob` succeeds. Once the
+ * job is no longer `pr_ready` (the move landed), `stopped` excludes it again.
  */
 async function watchedPrs(deps: WatcherDeps): Promise<Array<{ job: JobRow; watch: WatchRow | undefined }>> {
   const since = new Date(deps.now().getTime() - deps.lookbackDays * 86_400_000)
@@ -254,11 +261,14 @@ async function watchedPrs(deps: WatcherDeps): Promise<Array<{ job: JobRow; watch
         isNotNull(jobs.prUrl),
         isNull(jobs.sourceJobId),
         or(and(eq(jobs.status, 'succeeded'), gt(jobs.finishedAt, since)), inArray(jobs.status, ['failed', 'pr_ready'])),
-        notExists(
-          db
-            .select({ prUrl: prWatches.prUrl })
-            .from(prWatches)
-            .where(and(eq(prWatches.prUrl, jobs.prUrl), inArray(prWatches.stopped, ['merged', 'closed']))),
+        or(
+          eq(jobs.status, 'pr_ready'),
+          notExists(
+            db
+              .select({ prUrl: prWatches.prUrl })
+              .from(prWatches)
+              .where(and(eq(prWatches.prUrl, jobs.prUrl), inArray(prWatches.stopped, ['merged', 'closed']))),
+          ),
         ),
       ),
     )
@@ -420,8 +430,13 @@ async function inspect(job: JobRow, existing: WatchRow | undefined, deps: Watche
   const watch = existing ?? (await ensureWatch(job))
 
   if (pr.state !== 'open') {
-    await stopWatch(prUrl, pr.state)
+    // The move first, the stop second (CTD-235, AC2): a `pr_ready` root whose
+    // move throws — a missing migration did once — must stay `pr_ready` and
+    // unstopped, so `watchedPrs` still selects it and the next pass retries
+    // the move, rather than the watch getting marked done for a job that
+    // never actually moved.
     await closeOut(job, prUrl, pr.state, deps)
+    await stopWatch(prUrl, pr.state)
     return
   }
 
@@ -499,21 +514,29 @@ export async function tick(deps: WatcherDeps = realDeps()): Promise<void> {
 
 /**
  * Held on `globalThis`: vite re-evaluates this module on edit, and a second
- * interval beside the first would poll twice and race itself. The newest
- * module's `tick` replaces the old one's; `unref` keeps the timer from
- * holding a process open that has nothing else to do.
+ * interval beside the first would poll twice and race itself. `startPrWatcher`
+ * itself only ever runs once per process (the runner's once-per-process
+ * reconcile is its one caller), so a reload never gets a chance to call it
+ * again and replace the running interval. Instead `run` looks the current
+ * `tick` up through `TICK_SLOT` on every beat, and every module evaluation —
+ * a reload included — writes its own `tick` there unconditionally (below), so
+ * the very next pass after a reload runs the new module's code (CTD-235, S-45
+ * AC3) without restarting the timer. `unref` keeps the timer from holding a
+ * process open that has nothing else to do.
  */
 const LOOP = Symbol.for('foundry.prWatcher')
+const TICK_SLOT = Symbol.for('foundry.prWatcherTick')
 type Loop = { timer: ReturnType<typeof setInterval>; busy: boolean }
-const slot = globalThis as unknown as Record<symbol, Loop | undefined>
+const loopSlot = globalThis as unknown as Record<symbol, Loop | undefined>
+const tickSlot = globalThis as unknown as Record<symbol, typeof tick | undefined>
 
 /** Start (or restart) the poll. Called from the runner's once-per-process reconcile. FOUNDRY_PR_WATCH=0 leaves it off. */
 export function startPrWatcher(): void {
   if (process.env.FOUNDRY_PR_WATCH === '0') return
-  const previous = slot[LOOP]
+  const previous = loopSlot[LOOP]
   if (previous) clearInterval(previous.timer)
   const loop: Loop = { timer: setInterval(run, POLL_SECONDS * 1000), busy: false }
-  slot[LOOP] = loop
+  loopSlot[LOOP] = loop
   loop.timer.unref?.()
   setTimeout(run, FIRST_PASS_MS).unref?.()
 
@@ -522,8 +545,12 @@ export function startPrWatcher(): void {
   function run() {
     if (loop.busy) return
     loop.busy = true
-    void tick().finally(() => {
+    void (tickSlot[TICK_SLOT] ?? tick)().finally(() => {
       loop.busy = false
     })
   }
 }
+
+// Every module evaluation, a reload included, points the loop at this
+// module's own `tick` — see the comment above.
+tickSlot[TICK_SLOT] = tick
