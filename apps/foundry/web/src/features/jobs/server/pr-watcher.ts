@@ -63,6 +63,13 @@ export interface WatcherDeps {
   now: () => Date
   /** Which PRs this watcher may touch — every one, except in the tests, which share the dev database. */
   scope?: (prUrl: string) => boolean
+  /**
+   * Fires between `watchedPrs`' job-list query and its watch query — a seam
+   * for the tests to force a second pass's whole launch into that window,
+   * proving the guard in `launch` closes it, rather than hoping `Promise.all`
+   * happens to land there. A no-op otherwise.
+   */
+  betweenListAndWatches?: () => Promise<void>
 }
 
 const realDeps = (): WatcherDeps => ({
@@ -193,6 +200,8 @@ async function watchedPrs(deps: WatcherDeps): Promise<Array<{ job: JobRow; watch
     )
     .orderBy(jobs.finishedAt)
 
+  await deps.betweenListAndWatches?.()
+
   // One root per PR — a rerun of a root opens a PR of its own, but a
   // hand-edited row could share one; the newest root speaks for the PR then.
   const byPr = new Map<string, JobRow>()
@@ -224,10 +233,19 @@ async function stopWatch(prUrl: string, reason: string): Promise<void> {
 }
 
 /**
- * The launch, in one transaction: move the watermark and spend one retry,
- * then insert the follow-up. The guard on `follow_ups` is what keeps two
- * processes from both launching — the second finds the count moved and
- * inserts nothing. Null means exactly that.
+ * The launch, in one transaction: check no follow-up is already queued or
+ * running on this PR, move the watermark and spend one retry, then insert
+ * the follow-up. The `follow_ups` guard alone keeps two passes from
+ * launching the *same* trigger twice, but `watchedPrs` reads the job list
+ * and the watch in two separate queries — a pass can read the job list
+ * before another pass's follow-up commits and read the watch after it, so
+ * it sees the moved mark, decides a *different* trigger (the mark that
+ * stopped the first trigger doesn't stop this one) and would otherwise
+ * pass its own `follow_ups` check cleanly, since it read the watch fresh.
+ * Re-checking for an open follow-up here, inside the same transaction that
+ * commits the launch, closes that window: the first pass's follow-up and
+ * its moved mark commit together, so any pass that can see the moved mark
+ * can also see the follow-up.
  */
 /**
  * What a launch answers. A merge also marks the head it found: that commit's
@@ -243,6 +261,13 @@ function markOf(trigger: Trigger): Partial<WatchRow> {
 
 async function launch(job: JobRow, watch: WatchRow, trigger: Trigger, now: Date): Promise<Job | null> {
   return db.transaction(async (tx) => {
+    const [open] = await tx
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.prUrl, watch.prUrl), isNotNull(jobs.sourceJobId), inArray(jobs.status, ['queued', 'running'])))
+      .limit(1)
+    if (open) return null // another pass already launched for this PR state
+
     const mark = markOf(trigger)
     const [claimed] = await tx
       .update(prWatches)
