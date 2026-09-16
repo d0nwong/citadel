@@ -170,7 +170,7 @@ const check = (outcome: PrCheck['outcome'], name = 'ci / check', completedAt?: n
 })
 const state = (over: Partial<PrState> = {}): PrState => ({ state: 'open', headSha: 'sha1', reviews: [], checks: [], ...over })
 const T0 = Date.parse('2026-09-12T10:00:00Z')
-const fresh = { reviewedAt: new Date(T0), checkedSha: null, mergedBaseSha: null, rerunSha: null, rerunAt: null }
+const fresh = { reviewedAt: new Date(T0), checkedSha: null, mergedBaseSha: null, rerunSha: null, rerunAt: null, flakySha: null }
 const clean = { baseBranch: 'main', baseSha: 'base1', headSha: 'sha1', conflicts: [] }
 const conflict = (baseSha = 'base1', headSha = 'sha1') => ({ ...clean, baseSha, headSha, conflicts: ['src/a.ts', 'src/b.ts'] })
 
@@ -245,6 +245,25 @@ describe('decide', () => {
 
   test('green checks and no reviews: nothing to do', () => {
     expect(decide(state({ checks: [check('passed')] }), fresh, null, true)).toBeNull()
+  })
+
+  test('a head already left a flaky verdict calls for flaky-red, not rerun or check (CTD-234, S-51)', () => {
+    // markFlakySha clears checkedSha to null so decide gets one more look.
+    const flaky = { ...fresh, checkedSha: null, rerunSha: 'sha1', rerunAt: new Date(T0), flakySha: 'sha1' }
+    const t = decide(state({ checks: [check('failed', 'ci / check', T0 + 1000)] }), flaky, null, true)
+    expect(t?.kind).toBe('flaky-red')
+    expect(t?.reason).toMatch(/still failing on sha1 after a flaky verdict — look by hand/)
+    if (t?.kind === 'flaky-red') expect(t.checkedSha).toBe('sha1')
+  })
+
+  test('a flaky head that has gone green triggers nothing', () => {
+    expect(decide(state({ checks: [check('passed')] }), { ...fresh, flakySha: 'sha1' }, null, true)).toBeNull()
+  })
+
+  test('a new head after a flaky verdict is judged fresh, not as flaky-red', () => {
+    const flaky = { ...fresh, checkedSha: null, rerunSha: 'sha1', rerunAt: new Date(T0), flakySha: 'sha1' }
+    const t = decide(state({ headSha: 'sha2', checks: [check('failed')] }), flaky, null, true)
+    expect(t?.kind).toBe('rerun')
   })
 })
 

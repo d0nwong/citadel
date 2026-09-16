@@ -30,6 +30,14 @@
  * a red check cannot launch forever: after `FOUNDRY_PR_RETRIES` automatic
  * follow-ups the watch stops and the root job's log says so; queuing a
  * follow-up by hand starts it over.
+ *
+ * A check follow-up that cannot reproduce the failure (CTD-234) leaves a
+ * flaky verdict instead of a fix — `job-runner.ts` posts it to the root job's
+ * log and the PR and spends that commit's one further CI rerun, then marks
+ * the head in `pr_watches.flaky_sha`. This watcher spends nothing more on
+ * that head — no further rerun, no further check follow-up — beyond the one
+ * `err` line it logs if the head is still red, telling a person to look by
+ * hand; a review or a conflict on the same PR is still answered as always.
  */
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -119,6 +127,7 @@ export type Trigger =
   | { kind: 'merge'; reason: string; baseSha: string; headSha: string }
   | { kind: 'rerun'; reason: string; headSha: string }
   | { kind: 'check'; reason: string; checkedSha: string }
+  | { kind: 'flaky-red'; reason: string; checkedSha: string }
 
 /** The review states that carry feedback. An approval has nothing to address; a dismissal is withdrawn. */
 const ACTIONABLE = new Set(['COMMENTED', 'CHANGES_REQUESTED'])
@@ -147,10 +156,17 @@ const NAMED_FILES = 3
  * first sight, exactly as before this revision (AC3). `merge` is null when
  * the probe was not run: a review already answers this tick. Pure, for the
  * tests.
+ *
+ * A head a check follow-up already left a flaky verdict on (CTD-234,
+ * `watch.flakySha`) calls for neither `rerun` nor `check` — the host already
+ * spent that commit's one further CI rerun when it posted the verdict —
+ * only `flaky-red`, once, if it is still failing: `markFlakySha` clears
+ * `checkedSha` so this head gets exactly one more look, and `flaky-red`
+ * itself is claimed the same way `rerun` is, so only one pass ever logs it.
  */
 export function decide(
   pr: PrState,
-  watch: Pick<WatchRow, 'reviewedAt' | 'checkedSha' | 'mergedBaseSha' | 'rerunSha' | 'rerunAt'>,
+  watch: Pick<WatchRow, 'reviewedAt' | 'checkedSha' | 'mergedBaseSha' | 'rerunSha' | 'rerunAt' | 'flakySha'>,
   merge: (MergeProbe & { baseBranch: string }) | null,
   canRerun: boolean,
 ): Trigger | null {
@@ -172,6 +188,14 @@ export function decide(
   if (pr.checks.length === 0 || pr.checks.some((c) => c.outcome === 'pending')) return null
   const failed = pr.checks.filter((c) => c.outcome === 'failed')
   if (failed.length === 0) return null
+
+  if (pr.headSha === watch.flakySha) {
+    return {
+      kind: 'flaky-red',
+      reason: `check ${failed.map((c) => `"${c.name}"`).join(', ')} still failing on ${pr.headSha.slice(0, 7)} after a flaky verdict — look by hand`,
+      checkedSha: pr.headSha,
+    }
+  }
 
   if (canRerun && watch.rerunSha !== pr.headSha) {
     return {
@@ -328,16 +352,22 @@ export async function clearMergeAttempt(prUrl: string): Promise<void> {
  * What a launch answers. A merge also marks the head it found: that commit's
  * red checks were run on a branch that could not merge, and whether the merge
  * lands or gives up, they are not worth a forge of their own — only a head
- * pushed after it is. Never called for `rerun` — that trigger never reaches
- * `launch`; `claimRerun` marks its own watermark.
+ * pushed after it is. Never called for `rerun` or `flaky-red` — neither
+ * trigger reaches `launch`; `claimRerun` and `claimFlakyRed` mark their own
+ * watermarks.
  */
-function markOf(trigger: Exclude<Trigger, { kind: 'rerun' }>): Partial<WatchRow> {
+function markOf(trigger: Exclude<Trigger, { kind: 'rerun' | 'flaky-red' }>): Partial<WatchRow> {
   if (trigger.kind === 'review') return { reviewedAt: trigger.reviewedAt }
   if (trigger.kind === 'merge') return { mergedBaseSha: trigger.baseSha, checkedSha: trigger.headSha }
   return { checkedSha: trigger.checkedSha }
 }
 
-async function launch(job: JobRow, watch: WatchRow, trigger: Exclude<Trigger, { kind: 'rerun' }>, now: Date): Promise<Job | null> {
+async function launch(
+  job: JobRow,
+  watch: WatchRow,
+  trigger: Exclude<Trigger, { kind: 'rerun' | 'flaky-red' }>,
+  now: Date,
+): Promise<Job | null> {
   return db.transaction(async (tx) => {
     const [open] = await tx
       .select({ id: jobs.id })
@@ -370,6 +400,24 @@ async function claimRerun(watch: Pick<WatchRow, 'prUrl' | 'rerunSha'>, headSha: 
   const [claimed] = await db
     .update(prWatches)
     .set({ rerunSha: headSha, rerunAt: now, updatedAt: now })
+    .where(and(eq(prWatches.prUrl, watch.prUrl), guard, isNull(prWatches.stopped)))
+    .returning({ prUrl: prWatches.prUrl })
+  return Boolean(claimed)
+}
+
+/**
+ * The `flaky-red` log line's own claim (S-51, CTD-234): a guarded update of
+ * `checked_sha`, mirroring `claimRerun`'s guard on `rerun_sha` — whichever
+ * pass's update lands first moves `checked_sha` off the value both passes
+ * read (`markFlakySha` cleared it to `null` for exactly this), so the
+ * loser's own guarded update matches no row and only one pass ever writes
+ * the line.
+ */
+async function claimFlakyRed(watch: Pick<WatchRow, 'prUrl' | 'checkedSha'>, headSha: string, now: Date): Promise<boolean> {
+  const guard = watch.checkedSha === null ? isNull(prWatches.checkedSha) : eq(prWatches.checkedSha, watch.checkedSha)
+  const [claimed] = await db
+    .update(prWatches)
+    .set({ checkedSha: headSha, updatedAt: now })
     .where(and(eq(prWatches.prUrl, watch.prUrl), guard, isNull(prWatches.stopped)))
     .returning({ prUrl: prWatches.prUrl })
   return Boolean(claimed)
@@ -451,6 +499,14 @@ async function inspect(job: JobRow, existing: WatchRow | undefined, deps: Watche
     } else {
       await err(job.id, `watcher: ${trigger.reason} — CI rerun refused: ${result.reason}`)
     }
+    return
+  }
+
+  // A head already left a flaky verdict on (CTD-234): one look-by-hand line,
+  // claimed the same way a rerun is, never a rerun or a follow-up.
+  if (trigger.kind === 'flaky-red') {
+    if (!(await claimFlakyRed(watch, trigger.checkedSha, deps.now()))) return // another pass already logged this head
+    await err(job.id, `watcher: ${trigger.reason}`)
     return
   }
 

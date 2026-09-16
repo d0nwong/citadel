@@ -400,6 +400,19 @@ export async function followUpJob(sourceId: string): Promise<Job> {
 }
 
 /**
+ * The head commit a check follow-up could not reproduce (CTD-234), once the
+ * host has posted the flaky verdict and spent that commit's one further CI
+ * rerun. No guard needed: only `finishJob` calls this, once, for the one
+ * follow-up job that read this PR's `.git/FLAKY.md`. Clears `checkedSha` —
+ * already at this same head from the check trigger that launched this very
+ * follow-up — so the watcher's `decide` gets exactly one more look at this
+ * head to log the `flaky-red` line if it is still failing (pr-watcher.ts).
+ */
+export async function markFlakySha(prUrl: string, headSha: string): Promise<void> {
+  await db.update(prWatches).set({ flakySha: headSha, checkedSha: null, updatedAt: new Date() }).where(eq(prWatches.prUrl, prUrl))
+}
+
+/**
  * No-op unless the job is still open — a settled job keeps its outcome.
  * Returns whether this call made the transition, like `settleJob`. `logText`
  * lets a caller other than the UI's cancel button (the PR watcher, S-47) say
