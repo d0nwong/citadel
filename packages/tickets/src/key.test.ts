@@ -11,13 +11,14 @@ describe("splitKey", () => {
 });
 
 describe("providerNameFor", () => {
-  test("ALD and CTD route to Linear, AP to Trello", () => {
+  test("ALD, CTD and the retired LIA route to Linear, AP to Trello", () => {
     expect(providerNameFor("ALD-45")).toBe("linear");
+    expect(providerNameFor("LIA-1")).toBe("linear");
     expect(providerNameFor("CTD-179")).toBe("linear");
     expect(providerNameFor("AP-12")).toBe("trello");
   });
   test("a team no provider owns, and anything that is not a ticket key, route nowhere", () => {
-    expect(providerNameFor("LIA-1")).toBeNull();
+    expect(providerNameFor("ZZZ-1")).toBeNull();
     expect(providerNameFor("fe#437")).toBeNull();
   });
 });
@@ -27,6 +28,7 @@ describe("providerNameForTeam", () => {
     expect(providerNameForTeam("ALD")).toBe("linear");
     expect(providerNameForTeam("CTD")).toBe("linear");
     expect(providerNameForTeam("AP")).toBe("trello");
-    expect(providerNameForTeam("LIA")).toBeNull();
+    expect(providerNameForTeam("LIA")).toBe("linear");
+    expect(providerNameForTeam("ZZZ")).toBeNull();
   });
 });
