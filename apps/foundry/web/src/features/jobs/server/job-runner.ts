@@ -779,8 +779,8 @@ async function diffStats(work: string, baseBranch: string): Promise<{ files: num
  * watcher fires — and if the row still reads running at that point, the
  * watcher's `failed` wins the guarded transition instead of this cancel.
  */
-export async function cancelJob(id: string): Promise<void> {
-  if (await store.cancelJob(id)) void notifyCallback(id)
+export async function cancelJob(id: string, logText?: string): Promise<void> {
+  if (await store.cancelJob(id, logText)) void notifyCallback(id)
   await removeContainer(id)
   void pumpQueue()
 }
