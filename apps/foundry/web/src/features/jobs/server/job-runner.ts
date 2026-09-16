@@ -622,17 +622,36 @@ export async function finishJob(id: string, outcome: 'committed' | 'no-changes',
         title,
         body,
       })
-      if (pr.url !== null) await sys(id, `PR opened: ${pr.url}`)
-      else await err(id, pr.reason)
+      if (pr.url !== null) {
+        await sys(id, `PR opened: ${pr.url}`)
+      } else {
+        await err(id, pr.reason)
+        await err(id, `branch ${job.branch} pushed — no PR opened, and nothing retries it`)
+      }
       prUrl = pr.url ?? undefined
 
       if (pr.url !== null && prCliFor(originHost(originUrl)) === 'bb') await linkTicket(id, pr.url, title, body, job.task)
     }
 
-    // An agent that errored still gets its work pushed, but the job is failed:
-    // the outcome should not read clean when the run wasn't.
+    // A follow-up settles succeeded/failed by the agent's exit code, as
+    // before. A root job whose PR opened waits in pr_ready instead of reading
+    // succeeded — its PR is open, not merged — unless the agent itself
+    // errored, which still reads failed with the PR linked. A root job whose
+    // PR could not be opened settles failed even on a clean exit: the branch
+    // is pushed but nothing shows for it (CTD-230).
+    const status: Parameters<typeof settle>[1]['status'] =
+      job.sourceJobId !== null
+        ? agentFailed
+          ? 'failed'
+          : 'succeeded'
+        : prUrl === undefined
+          ? 'failed'
+          : agentFailed
+            ? 'failed'
+            : 'pr_ready'
+
     await settle(id, {
-      status: agentFailed ? 'failed' : 'succeeded',
+      status,
       exitCode,
       diff,
       prUrl,

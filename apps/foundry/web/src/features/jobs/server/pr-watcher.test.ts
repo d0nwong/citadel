@@ -228,7 +228,7 @@ describe('decide', () => {
 
 let prNo = 0
 /** A settled root job with a PR of its own; the PR's state is whatever `prs` holds for its URL. */
-async function rootJob(): Promise<{ id: string; prUrl: string }> {
+async function rootJob(status: 'succeeded' | 'failed' | 'pr_ready' = 'succeeded'): Promise<{ id: string; prUrl: string }> {
   prNo++
   const prUrl = `${PR_HOST}${prNo}`
   const job = await createJob({
@@ -237,7 +237,7 @@ async function rootJob(): Promise<{ id: string; prUrl: string }> {
     baseBranch: 'main',
     forge: 'orbstack',
   })
-  await settleJob(job.id, { status: 'succeeded', exitCode: 0, prUrl })
+  await settleJob(job.id, { status, exitCode: 0, prUrl })
   branchPr.set(job.branch, prUrl)
   return { id: job.id, prUrl }
 }
@@ -373,6 +373,16 @@ test('a review from before the PR was watched is not answered', async () => {
   prs.set(root.prUrl, state({ reviews: [review(Date.now() - 60_000)] }))
   await tick(deps())
   expect(await followUpsOf(root.prUrl)).toHaveLength(0)
+})
+
+test('CTD-230 — a pr_ready root is watched exactly as a succeeded one is', async () => {
+  const root = await rootJob('pr_ready')
+  prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000, 'CHANGES_REQUESTED', 'rev')] }))
+  await tick(deps())
+
+  const [f] = await followUpsOf(root.prUrl)
+  expect(f?.followUp).toBe('review')
+  expect(f?.sourceJobId).toBe(root.id)
 })
 
 test('a PR that cannot be read is skipped, not fatal to the rest', async () => {

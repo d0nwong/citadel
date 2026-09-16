@@ -195,7 +195,7 @@ const BlueprintSnapshotSchema = z
   })
   .describe('What a job keeps of the blueprint it ran — immune to later edits or deletion of the blueprint row.')
 
-export const JobStatusSchema = z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled'])
+export const JobStatusSchema = z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'pr_ready'])
 const JobStepSchema = z
   .enum(['prepare', 'agent', 'commit', 'push', 'pr', 'done'])
   .describe('Where the pipeline is. The container owns agent+commit; the host owns the rest.')

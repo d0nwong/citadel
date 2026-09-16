@@ -1,7 +1,14 @@
 import type { BlueprintSnapshot } from '@/features/blueprints/types'
 import type { RepoRef } from '@/features/repos/types'
 
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+/**
+ * `pr_ready` (CTD-230): a root job whose agent exited clean and whose PR
+ * opened. No container, does not count against FOUNDRY_MAX_JOBS, untouched by
+ * a restart, cannot be cancelled, kept by purge. The PR watcher follows it
+ * until the PR merges or closes (CTD-215); a follow-up job never carries it —
+ * only a root job does.
+ */
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'pr_ready'
 
 /** Where the pipeline is. The container owns agent+commit; the host owns the rest. */
 export type JobStep = 'prepare' | 'agent' | 'commit' | 'push' | 'pr' | 'done'

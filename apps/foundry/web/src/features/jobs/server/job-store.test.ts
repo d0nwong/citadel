@@ -11,14 +11,14 @@ import { eq, like, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobs } from '@/db/schema'
 import { deleteLogs } from './job-logs'
-import { createJob, getJobRow, insertFollowUp, listJobs, settleJob } from './job-store'
+import { createJob, followUpJob, getJobRow, insertFollowUp, listJobs, settleJob } from './job-store'
 import type { FollowUp, JobGroup, JobStatus } from '../types'
 
 const rand = randomUUID().slice(0, 8)
 let n = 0
 
 /** A settled root job with a PR of its own, as a job that opened one ends up. */
-async function root(status: 'succeeded' | 'failed' = 'succeeded') {
+async function root(status: 'succeeded' | 'failed' | 'pr_ready' = 'succeeded') {
   n++
   const job = await createJob({
     task: `TEST-${rand}: root ${n}`,
@@ -111,4 +111,14 @@ test('paging a small page at a time repeats and skips no group', async () => {
         or not exists (select 1 from ${jobs} s where s.id = j.source_job_id)
   `)
   expect(ids.length).toBe(roots)
+})
+
+test('CTD-230 — a follow-up can be queued from a pr_ready job, reusing its branch and PR', async () => {
+  const waiting = await root('pr_ready')
+  const rootRow = await getJobRow(waiting)
+
+  const follow = await followUpJob(waiting)
+  expect(follow.sourceJobId).toBe(waiting)
+  expect(follow.branch).toBe(rootRow?.branch ?? 'root job missing')
+  expect(follow.prUrl).toBe(rootRow?.prUrl ?? 'root job missing')
 })

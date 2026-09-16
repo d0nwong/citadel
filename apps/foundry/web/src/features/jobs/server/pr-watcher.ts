@@ -165,6 +165,10 @@ export function reviewTrigger(pr: PrState, watch: Pick<WatchRow, 'reviewedAt'>):
  * watch has not stopped, and which has no follow-up queued or running right
  * now — a forge already on the branch will change everything the watcher
  * would otherwise act on. Oldest first, so a slow `gh` never starves one.
+ * `pr_ready` counts alongside `succeeded`/`failed` (CTD-230): the watcher
+ * follows a root waiting on its PR exactly as it follows one that already
+ * settled, though moving a `pr_ready` job on when the PR merges or closes is
+ * a later ticket's, not this one's.
  */
 async function watchedPrs(deps: WatcherDeps): Promise<Array<{ job: JobRow; watch: WatchRow | undefined }>> {
   const since = new Date(deps.now().getTime() - deps.lookbackDays * 86_400_000)
@@ -175,7 +179,7 @@ async function watchedPrs(deps: WatcherDeps): Promise<Array<{ job: JobRow; watch
       and(
         isNotNull(jobs.prUrl),
         isNull(jobs.sourceJobId),
-        inArray(jobs.status, ['succeeded', 'failed']),
+        inArray(jobs.status, ['succeeded', 'failed', 'pr_ready']),
         gt(jobs.finishedAt, since),
         notExists(
           db
