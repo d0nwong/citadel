@@ -551,3 +551,59 @@ export async function fetchFailedChecks(originUrl: string, req: FailedChecksRequ
     headSha: pr.headSha,
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Mergeability (CTD-214)                                             */
+/* ------------------------------------------------------------------ */
+
+/** Whether a PR branch merges cleanly into its base, as origin has them. */
+export interface MergeProbe {
+  baseSha: string
+  headSha: string
+  /** Paths git could not merge on its own; empty when the merge is clean. */
+  conflicts: Array<string>
+}
+
+/**
+ * `git merge-tree --write-tree --name-only --no-messages` output → the
+ * conflicted paths: the first line is the merged tree's oid, the rest (up to a
+ * blank line) name the files. Pure, for the tests.
+ */
+export function parseMergeTree(stdout: string): Array<string> {
+  const lines = stdout.split('\n').slice(1)
+  const end = lines.indexOf('')
+  return [...new Set(end === -1 ? lines : lines.slice(0, end))]
+}
+
+/**
+ * A dry-run merge of origin's base into origin's PR branch, on the HOST's
+ * checkout. Neither forge answers this well — GitHub's `mergeable` is UNKNOWN
+ * for a while after each push, Bitbucket has no such field — while git answers
+ * it the same for both, and hands over the base sha the watcher keys on. The
+ * fetch writes only remote-tracking refs: the user's branches and working tree
+ * are untouched, and `merge-tree` writes no files. Throws on anything but a
+ * clean or conflicting answer.
+ */
+export async function probeMerge(repoPath: string, baseBranch: string, branch: string): Promise<MergeProbe> {
+  const ref = (b: string) => `refs/remotes/origin/${b}`
+  await exec(
+    'git',
+    ['-C', repoPath, 'fetch', '--quiet', '--no-tags', 'origin', `+refs/heads/${baseBranch}:${ref(baseBranch)}`, `+refs/heads/${branch}:${ref(branch)}`],
+    { timeout: 120_000 },
+  )
+  const sha = async (r: string) => (await exec('git', ['-C', repoPath, 'rev-parse', '--verify', `${r}^{commit}`])).stdout.trim()
+  const baseSha = await sha(ref(baseBranch))
+  const headSha = await sha(ref(branch))
+  try {
+    await exec('git', ['-C', repoPath, 'merge-tree', '--write-tree', '--name-only', '--no-messages', baseSha, headSha], {
+      timeout: 60_000,
+      maxBuffer: 8 * 1024 * 1024,
+    })
+    return { baseSha, headSha, conflicts: [] }
+  } catch (e) {
+    // Exit 1 is git's "merged with conflicts"; its stdout is the answer.
+    const failed = e as { code?: number; stdout?: string }
+    if (failed.code !== 1 || typeof failed.stdout !== 'string') throw e
+    return { baseSha, headSha, conflicts: parseMergeTree(failed.stdout.trim()) }
+  }
+}

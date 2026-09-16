@@ -6,13 +6,17 @@
  * the tick's scope confines it to; both are swept below.
  */
 import { afterAll, describe, expect, test } from 'bun:test'
+import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { eq, like } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { jobs, prWatches } from '@/db/schema'
-import { CHECK_BLUEPRINT_ID } from '@/features/blueprints/types'
-import { parseBitbucketPr, parseGitHubPr, stripGhLog, tailOf } from './forge-pr'
-import type { PrCheck, PrReview, PrState } from './forge-pr'
+import { CHECK_BLUEPRINT_ID, MERGE_BLUEPRINT_ID } from '@/features/blueprints/types'
+import { parseBitbucketPr, parseGitHubPr, parseMergeTree, probeMerge, stripGhLog, tailOf } from './forge-pr'
+import type { MergeProbe, PrCheck, PrReview, PrState } from './forge-pr'
 import { deleteLogs, readLogs } from './job-logs'
 import { createJob, followUpJob, getJobRow, settleJob } from './job-store'
 import { decide, tick } from './pr-watcher'
@@ -98,6 +102,55 @@ test('stripGhLog drops the job/step columns and timestamps; tailOf keeps the end
   expect(tailOf(long, 7)).toBe('[earlier log lines omitted]\nTHE END')
 })
 
+describe('merge probe (CTD-214)', () => {
+  test('parseMergeTree reads the conflicted paths after the tree oid', () => {
+    expect(parseMergeTree('4b825dc\nsrc/a.ts\nsrc/b.ts')).toEqual(['src/a.ts', 'src/b.ts'])
+    expect(parseMergeTree('4b825dc\nsrc/a.ts\n\nAuto-merging src/a.ts')).toEqual(['src/a.ts'])
+    expect(parseMergeTree('4b825dc')).toEqual([])
+  })
+
+  // A bare origin and a checkout of it, as any provider's would be: the probe
+  // reads git, never the forge (AC9).
+  test('probeMerge finds a conflict on origin without touching the checkout', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'probe-'))
+    const g = (cwd: string, ...args: Array<string>) =>
+      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' }).trim()
+    try {
+      const origin = path.join(dir, 'origin.git')
+      const seed = path.join(dir, 'seed')
+      g(dir, 'init', '--bare', '-b', 'main', origin)
+      g(dir, 'clone', origin, seed)
+      writeFileSync(path.join(seed, 'a.txt'), 'one\n')
+      g(seed, 'add', '.')
+      g(seed, 'commit', '-m', 'base')
+      g(seed, 'push', 'origin', 'main')
+      const checkout = path.join(dir, 'checkout')
+      g(dir, 'clone', origin, checkout)
+
+      g(seed, 'checkout', '-b', 'feat')
+      writeFileSync(path.join(seed, 'a.txt'), 'feature\n')
+      g(seed, 'commit', '-am', 'feat')
+      g(seed, 'push', 'origin', 'feat')
+      expect((await probeMerge(checkout, 'main', 'feat')).conflicts).toEqual([])
+
+      g(seed, 'checkout', 'main')
+      writeFileSync(path.join(seed, 'a.txt'), 'main\n')
+      g(seed, 'commit', '-am', 'main moves')
+      g(seed, 'push', 'origin', 'main')
+      const head = g(checkout, 'rev-parse', 'HEAD')
+
+      const probe = await probeMerge(checkout, 'main', 'feat')
+      expect(probe.conflicts).toEqual(['a.txt'])
+      expect(probe.baseSha).toBe(g(seed, 'rev-parse', 'main'))
+      expect(probe.headSha).toBe(g(seed, 'rev-parse', 'feat'))
+      expect(g(checkout, 'rev-parse', 'HEAD')).toBe(head)
+      expect(g(checkout, 'status', '--porcelain')).toBe('')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 /* ------------------------------------------------------------------ */
 /* Deciding                                                           */
 /* ------------------------------------------------------------------ */
@@ -111,34 +164,61 @@ const review = (at: number, state: PrReview['state'] = 'COMMENTED', author = 'an
 const check = (outcome: PrCheck['outcome'], name = 'ci / check'): PrCheck => ({ name, outcome, url: '' })
 const state = (over: Partial<PrState> = {}): PrState => ({ state: 'open', headSha: 'sha1', reviews: [], checks: [], ...over })
 const T0 = Date.parse('2026-09-12T10:00:00Z')
-const fresh = { reviewedAt: new Date(T0), checkedSha: null }
+const fresh = { reviewedAt: new Date(T0), checkedSha: null, mergedBaseSha: null }
+const clean = { baseBranch: 'main', baseSha: 'base1', headSha: 'sha1', conflicts: [] }
+const conflict = (baseSha = 'base1', headSha = 'sha1') => ({ ...clean, baseSha, headSha, conflicts: ['src/a.ts', 'src/b.ts'] })
 
 describe('decide', () => {
   test('a review submitted after the mark triggers, naming the reviewer', () => {
-    const t = decide(state({ reviews: [review(T0 + 1000, 'CHANGES_REQUESTED')] }), fresh)
+    const t = decide(state({ reviews: [review(T0 + 1000, 'CHANGES_REQUESTED')] }), fresh, null)
     expect(t?.kind).toBe('review')
     expect(t?.reason).toMatch(/@ana \(changes requested\)/)
     if (t?.kind === 'review') expect(t.reviewedAt.getTime()).toBe(T0 + 1000)
   })
 
   test('reviews at or before the mark, and approvals, do not', () => {
-    expect(decide(state({ reviews: [review(T0)] }), fresh)).toBeNull()
-    expect(decide(state({ reviews: [review(T0 + 1000, 'APPROVED')] }), fresh)).toBeNull()
+    expect(decide(state({ reviews: [review(T0)] }), fresh, null)).toBeNull()
+    expect(decide(state({ reviews: [review(T0 + 1000, 'APPROVED')] }), fresh, null)).toBeNull()
   })
 
   test('failed checks trigger only once every check has finished', () => {
-    expect(decide(state({ checks: [check('failed'), check('pending', 'lint')] }), fresh)).toBeNull()
-    const t = decide(state({ checks: [check('failed'), check('passed', 'lint')] }), fresh)
+    expect(decide(state({ checks: [check('failed'), check('pending', 'lint')] }), fresh, null)).toBeNull()
+    const t = decide(state({ checks: [check('failed'), check('passed', 'lint')] }), fresh, null)
     expect(t?.kind).toBe('check')
     expect(t?.reason).toMatch(/"ci \/ check" failed on sha1/)
   })
 
   test('a head commit whose checks already launched a job does not trigger again', () => {
-    expect(decide(state({ checks: [check('failed')] }), { ...fresh, checkedSha: 'sha1' })).toBeNull()
+    expect(decide(state({ checks: [check('failed')] }), { ...fresh, checkedSha: 'sha1' }, null)).toBeNull()
+  })
+
+  test('a conflict with the base triggers a merge, naming the base commit and the files', () => {
+    const t = decide(state(), fresh, conflict('abcdef123'))
+    expect(t?.kind).toBe('merge')
+    expect(t?.reason).toBe('branch conflicts with main @ abcdef1 in src/a.ts, src/b.ts')
+    expect(decide(state(), fresh, clean)).toBeNull()
+  })
+
+  test('a base whose conflict was answered does not trigger again; a moved base does', () => {
+    const answered = { ...fresh, mergedBaseSha: 'base1' }
+    expect(decide(state(), answered, conflict('base1'))).toBeNull()
+    expect(decide(state(), answered, conflict('base2'))?.kind).toBe('merge')
+  })
+
+  test('a review comes before a conflict, and a conflict before a red check', () => {
+    expect(decide(state({ reviews: [review(T0 + 1000)] }), fresh, conflict())?.kind).toBe('review')
+    expect(decide(state({ checks: [check('failed')] }), fresh, conflict())?.kind).toBe('merge')
+    expect(decide(state({ checks: [check('pending')] }), fresh, conflict())?.kind).toBe('merge')
+  })
+
+  test("after a merge, the pre-merge head's red check does not trigger", () => {
+    const merged = { ...fresh, mergedBaseSha: 'base1', checkedSha: 'sha1' }
+    expect(decide(state({ checks: [check('failed')] }), merged, conflict())).toBeNull()
+    expect(decide(state({ headSha: 'sha2', checks: [check('failed')] }), merged, clean)?.kind).toBe('check')
   })
 
   test('green checks and no reviews: nothing to do', () => {
-    expect(decide(state({ checks: [check('passed')] }), fresh)).toBeNull()
+    expect(decide(state({ checks: [check('passed')] }), fresh, null)).toBeNull()
   })
 })
 
@@ -158,13 +238,18 @@ async function rootJob(): Promise<{ id: string; prUrl: string }> {
     forge: 'orbstack',
   })
   await settleJob(job.id, { status: 'succeeded', exitCode: 0, prUrl })
+  branchPr.set(job.branch, prUrl)
   return { id: job.id, prUrl }
 }
 
 const prs = new Map<string, PrState>()
+/** The dry-run merge each PR's branch gives, by PR URL; clean when unset. */
+const merges = new Map<string, MergeProbe>()
+const branchPr = new Map<string, string>()
 const ignited: Array<string> = []
 const deps = (over: Partial<WatcherDeps> = {}): WatcherDeps => ({
   fetchPr: async (_origin, prUrl) => prs.get(prUrl) ?? state(),
+  probeMerge: async (_repo, _base, branch) => merges.get(branchPr.get(branch) ?? '') ?? { baseSha: 'base0', headSha: 'sha1', conflicts: [] },
   originUrl: async () => 'git@github.com:example/repo.git',
   ignite: async (id) => {
     ignited.push(id)
@@ -304,4 +389,91 @@ test('a PR that cannot be read is skipped, not fatal to the rest', async () => {
   )
   expect(await followUpsOf(bad.prUrl)).toHaveLength(0)
   expect(await followUpsOf(good.prUrl)).toHaveLength(1)
+})
+
+/* ------------------------------------------------------------------ */
+/* Conflicts (CTD-214)                                                */
+/* ------------------------------------------------------------------ */
+
+const probe = (baseSha: string, headSha: string, conflicts = ['src/a.ts']): MergeProbe => ({ baseSha, headSha, conflicts })
+
+test('CTD-214 AC1 — a conflict launches one merge follow-up running the seeded blueprint, and the root ledger names the base', async () => {
+  const root = await rootJob()
+  merges.set(root.prUrl, probe('b4se000111', 'sha1'))
+  await tick(deps())
+
+  const [f] = await followUpsOf(root.prUrl)
+  expect(f?.followUp).toBe('merge')
+  expect(f?.task).toMatch(/^Merge base into branch — TEST-/)
+  expect(f?.blueprint?.id).toBe(MERGE_BLUEPRINT_ID)
+  expect(f?.blueprint?.steps.map((s) => s.prompt)).toEqual(['/forge-merge {{task}}'])
+  expect(ignited).toContain(f!.id)
+  expect((await readLogs(root.id)).some((l) => /watcher: branch conflicts with main @ b4se000 in src\/a\.ts → follow-up/.test(l.text))).toBe(true)
+})
+
+test('CTD-214 AC4 — the same base launches one merge; a moved base that conflicts again launches another', async () => {
+  const root = await rootJob()
+  merges.set(root.prUrl, probe('base1', 'sha1'))
+  await tick(deps())
+  await settleFollowUps(root.prUrl)
+  // The merge gave up: head and base are where they were.
+  await tick(deps())
+  expect(await followUpsOf(root.prUrl)).toHaveLength(1)
+
+  merges.set(root.prUrl, probe('base2', 'sha2'))
+  await tick(deps())
+  expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['merge', 'merge'])
+})
+
+test('CTD-214 AC5 — a review and a conflict: the review first, the conflict on a later tick', async () => {
+  const root = await rootJob()
+  prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000)] }))
+  merges.set(root.prUrl, probe('base1', 'sha1'))
+  await tick(deps())
+  expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['review'])
+  await tick(deps()) // the review follow-up is still open: nothing
+  expect(await followUpsOf(root.prUrl)).toHaveLength(1)
+  await settleFollowUps(root.prUrl)
+  await tick(deps())
+  expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['review', 'merge'])
+})
+
+test('CTD-214 AC6 — a conflict and a red check: the merge first, the check only for a head pushed after it', async () => {
+  const root = await rootJob()
+  prs.set(root.prUrl, state({ headSha: 'sha1', checks: [check('failed')] }))
+  merges.set(root.prUrl, probe('base1', 'sha1'))
+  await tick(deps())
+  await settleFollowUps(root.prUrl)
+  await tick(deps()) // the merge gave up: the old head's red check stays unanswered
+  expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['merge'])
+
+  prs.set(root.prUrl, state({ headSha: 'sha2', checks: [check('failed')] }))
+  merges.set(root.prUrl, probe('base1', 'sha2', []))
+  await tick(deps())
+  expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['merge', 'check'])
+})
+
+test('CTD-214 — queuing a follow-up by hand lets a merge that gave up be tried again', async () => {
+  const root = await rootJob()
+  merges.set(root.prUrl, probe('base1', 'sha1'))
+  await tick(deps())
+  await settleFollowUps(root.prUrl)
+  const manual = await followUpJob(root.id)
+  await settleJob(manual.id, { status: 'succeeded', exitCode: 0 })
+  await tick(deps())
+  expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['merge', 'review', 'merge'])
+})
+
+test('CTD-214 AC7 — merges count against the budget, and the ledger names the conflict at exhaustion', async () => {
+  const root = await rootJob()
+  const limited = deps({ maxFollowUps: 1 })
+  merges.set(root.prUrl, probe('base1', 'sha1'))
+  await tick(limited)
+  await settleFollowUps(root.prUrl)
+  merges.set(root.prUrl, probe('base2', 'sha1'))
+  await tick(limited)
+  expect(await followUpsOf(root.prUrl)).toHaveLength(1)
+  expect(
+    (await readLogs(root.id)).some((l) => l.stream === 'err' && /branch conflicts with main @ base2 .*1 automatic follow-up\(s\) are already spent/.test(l.text)),
+  ).toBe(true)
 })

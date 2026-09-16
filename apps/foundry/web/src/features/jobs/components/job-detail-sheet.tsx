@@ -14,8 +14,11 @@ import { blueprintLabel, stepsSummary } from '@/features/blueprints/types'
 import { repoDestination, repoLabel } from '@/features/repos/types'
 import { cn } from '@/shared/lib/utils'
 import { shortId } from '../types'
-import type { LogLine, LogStream } from '../types'
+import type { FollowUp, LogLine, LogStream } from '../types'
 import type { BlueprintStep } from '@/features/blueprints/types'
+
+/** What a follow-up answers, as the header says it. */
+const FOLLOW_UP_WORD: Record<FollowUp, string> = { review: 'review', check: 'failing check', merge: 'base merge' }
 
 const STREAM_TONE: Record<LogStream, string> = {
   sys: 'text-ember-soft',
@@ -167,7 +170,7 @@ export function JobDetailSheet({
                     className="font-mono text-[11px] text-txt-faint underline-offset-2 transition-colors hover:text-ember-soft hover:underline"
                   >
                     follow-up of {shortId(job.sourceJobId)}
-                    {job.followUp && ` · ${job.followUp === 'check' ? 'failing check' : 'review'}`}
+                    {job.followUp && ` · ${FOLLOW_UP_WORD[job.followUp]}`}
                   </button>
                 )}
                 {job.callbackUrl && (

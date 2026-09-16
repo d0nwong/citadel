@@ -8,10 +8,11 @@ export type JobStep = 'prepare' | 'agent' | 'commit' | 'push' | 'pr' | 'done'
 
 /**
  * What a follow-up job answers (CTD-170): `review` — the PR's review comments
- * are its task; `check` — a failed check's log is, triaged by `forge-debug`.
+ * are its task; `check` — a failed check's log is, triaged by `forge-debug`;
+ * `merge` — the branch conflicts with its base, merged in by `forge-merge` (CTD-214).
  */
-export type FollowUp = 'review' | 'check'
-export const FOLLOW_UPS = ['review', 'check'] as const satisfies ReadonlyArray<FollowUp>
+export type FollowUp = 'review' | 'check' | 'merge'
+export const FOLLOW_UPS = ['review', 'check', 'merge'] as const satisfies ReadonlyArray<FollowUp>
 
 export type LogStream = 'sys' | 'out' | 'tool' | 'err'
 

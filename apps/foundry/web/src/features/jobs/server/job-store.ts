@@ -10,7 +10,8 @@ import { and, asc, desc, eq, inArray, isNull, ne, notExists, notInArray, or, sql
 import { db } from '@/db/client'
 import { jobs, prWatches, repos } from '@/db/schema'
 import { getBlueprintRow, toSnapshot } from '@/features/blueprints/server/blueprint-store'
-import { CHECK_BLUEPRINT_ID, CHECK_BLUEPRINT_STEPS } from '@/features/blueprints/types'
+import { CHECK_BLUEPRINT_ID, CHECK_BLUEPRINT_STEPS, MERGE_BLUEPRINT_ID, MERGE_BLUEPRINT_STEPS } from '@/features/blueprints/types'
+import type { BlueprintStep } from '@/features/blueprints/types'
 import { appendLogs, deleteLogs, readLogs } from './job-logs'
 import { shortId } from '../types'
 import type { FollowUp, Job, JobCursor, JobDetail, JobPage, JobStatus, JobStep, NewJobInput } from '../types'
@@ -319,8 +320,19 @@ export async function rerunJob(sourceId: string): Promise<Job> {
 }
 
 /** What each follow-up kind's task label opens with; stripped before re-prefixing a follow-up of a follow-up. */
-const FOLLOW_UP_LABEL: Record<FollowUp, string> = { review: 'Address PR comments', check: 'Fix failing check' }
-const LABEL_PREFIX = /^(Address PR comments|Fix failing check) — /
+const FOLLOW_UP_LABEL: Record<FollowUp, string> = {
+  review: 'Address PR comments',
+  check: 'Fix failing check',
+  merge: 'Merge base into branch',
+}
+const LABEL_PREFIX = /^(Address PR comments|Fix failing check|Merge base into branch) — /
+
+/** The seeded blueprint each follow-up kind runs, with its steps for when the row is gone. A review is one bare step. */
+const FOLLOW_UP_BLUEPRINT: Record<FollowUp, { id: string; name: string; steps: Array<BlueprintStep> } | null> = {
+  review: null,
+  check: { id: CHECK_BLUEPRINT_ID, name: 'Fix failing check', steps: CHECK_BLUEPRINT_STEPS },
+  merge: { id: MERGE_BLUEPRINT_ID, name: 'Merge base into branch', steps: MERGE_BLUEPRINT_STEPS },
+}
 
 /**
  * The follow-up row itself (LIA-40, CTD-170), for the detail sheet's action
@@ -330,13 +342,14 @@ const LABEL_PREFIX = /^(Address PR comments|Fix failing check) — /
  * comments nor the failing log are stored: the runner fetches them fresh at
  * launch, the way repo notes are read. A `review` follow-up is one bare step;
  * a `check` one runs the seeded "Fix failing check" blueprint — `forge-debug`
- * alone — snapshotted like any other, or its built-in step list if the row
- * has been deleted. `reason` is the follow-up's first log line: which review
+ * alone — and a `merge` one "Merge base into branch" — `forge-merge` alone —
+ * each snapshotted like any other, or its built-in step list if the row has
+ * been deleted. `reason` is the follow-up's first log line: which review
  * or check it answers.
  */
 export async function insertFollowUp(tx: Db, src: JobRow, kind: FollowUp, reason: string): Promise<Job> {
-  const bp = kind === 'check' ? await getBlueprintRow(CHECK_BLUEPRINT_ID) : undefined
-  const fallback = kind === 'check' ? { id: CHECK_BLUEPRINT_ID, name: 'Fix failing check', steps: CHECK_BLUEPRINT_STEPS } : null
+  const fallback = FOLLOW_UP_BLUEPRINT[kind]
+  const bp = fallback ? await getBlueprintRow(fallback.id) : undefined
   const [row] = await tx
     .insert(jobs)
     .values({
@@ -364,7 +377,8 @@ export async function insertFollowUp(tx: Db, src: JobRow, kind: FollowUp, reason
  * Queue a follow-up that addresses review comments on a settled job's PR
  * (LIA-40) — the detail sheet's action. Queuing one by hand also restarts the
  * PR watcher for that PR (CTD-170): its retry count goes back to zero, a
- * stopped watch resumes, and its review mark moves to now — the person has
+ * stopped watch resumes, a conflict it gave up on may be tried again, and its
+ * review mark moves to now — the person has
  * read the reviews there are, so the watcher must not answer them a second
  * time once this job has pushed.
  */
@@ -379,7 +393,7 @@ export async function followUpJob(sourceId: string): Promise<Job> {
     const now = new Date()
     await tx
       .update(prWatches)
-      .set({ followUps: 0, stopped: null, reviewedAt: now, updatedAt: now })
+      .set({ followUps: 0, stopped: null, mergedBaseSha: null, reviewedAt: now, updatedAt: now })
       .where(eq(prWatches.prUrl, prUrl))
     return insertFollowUp(tx, src, 'review', `addressing PR comments of ${shortId(src.id)}`)
   })

@@ -7,7 +7,7 @@ import { JobStatusChip } from './job-status-chip'
 import { shortId } from '../types'
 import type { FollowUp, Job, JobGroup } from '../types'
 
-const KIND: Record<FollowUp, string> = { review: 'review', check: 'failing check' }
+const KIND: Record<FollowUp, string> = { review: 'review', check: 'failing check', merge: 'base merge' }
 
 /** What a follow-up answered, in the ledger's words; undefined on rows from before CTD-170. */
 const kindLabel = (job: Job) => (job.followUp ? KIND[job.followUp] : undefined)

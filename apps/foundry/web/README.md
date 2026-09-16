@@ -124,13 +124,21 @@ Ignite ─► insert row (queued, with a per-job callback token)
   (`follow_up = 'check'`) runs the seeded "Fix failing check" blueprint — `/forge-debug`
   alone — and preflight hands it the failing steps' logs (`gh run view --job
   --log-failed`, or the Pipelines step logs) instead of comments; a check that went green
-  meanwhile fails preflight with nothing to fix. `pr_watches` remembers, per PR, the
-  newest review answered and the head commit whose checks were, and moves that mark in
-  the transaction that inserts the follow-up, so one review or one red commit never
-  launches two jobs — nor anything while a follow-up is still open on the PR. After
+  meanwhile fails preflight with nothing to fix. Between the two, a **conflict with the
+  base** (CTD-214) — read with git, not the forge: `git fetch` into the root job's
+  checkout's remote-tracking refs, then a dry-run `git merge-tree` — queues a merge
+  follow-up (`follow_up = 'merge'`) running the seeded "Merge base into branch"
+  blueprint, `/forge-merge` alone. Its clone also fetches `origin/<base>`; the forge
+  merges (never rebases), resolves each hunk where both sides' intent fits, and commits —
+  or aborts, and the root job's log says a person must merge. `pr_watches` remembers, per
+  PR, the newest review answered, the base commit whose conflict was (a merge also marks
+  the head it found, so that commit's red checks wait for a push after it), and the head
+  commit whose checks were, and moves that mark in the transaction that inserts the
+  follow-up, so one review, conflict or red commit never launches two jobs — nor
+  anything while a follow-up is still open on the PR. After
   `FOUNDRY_PR_RETRIES` automatic follow-ups (default 3) the watch stops with an `err`
   line on the root job; a merged or closed PR stops it too. Queuing "Address PR comments"
-  by hand starts the count over. `FOUNDRY_PR_WATCH=0` turns it off. It starts with the
+  by hand starts the count over and lets a merge that gave up be tried again. `FOUNDRY_PR_WATCH=0` turns it off. It starts with the
   runner's first reconcile — the first time the ledger is opened after a restart.
 - The **callback endpoint** (`src/routes/api/jobs.$id.events.ts`) is the container's
   server route. It maps Claude's stream-json onto the `sys|out|tool|err` log streams
