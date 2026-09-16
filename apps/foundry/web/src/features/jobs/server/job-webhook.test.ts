@@ -2,10 +2,11 @@
  * The completion webhook against a real receiver (Bun.serve on an ephemeral
  * port) and the real store. Needs the stack's Postgres: `just up postgres`.
  */
-import { afterAll, expect, test } from 'bun:test'
+import { expect } from 'bun:test'
 import { createHmac, randomUUID } from 'node:crypto'
 import { like } from 'drizzle-orm'
 import { db } from '@/db/client'
+import { dbAfterAll, dbTest } from '@/db/test-db'
 import { jobs } from '@/db/schema'
 import { deleteLogs, readLogs } from './job-logs'
 import { createJob, getJob, settleJob } from './job-store'
@@ -54,12 +55,12 @@ const settledJob = async (callbackUrl: string) => {
   return job.id
 }
 
-afterAll(async () => {
+dbAfterAll(async () => {
   const swept = await db.delete(jobs).where(like(jobs.task, `TEST-${rand}%`)).returning({ id: jobs.id })
   await deleteLogs(swept.map((r) => r.id))
 })
 
-test('delivers one signed job.settled event and logs it', async () => {
+dbTest('delivers one signed job.settled event and logs it', async () => {
   const r = receiver()
   try {
     const id = await settledJob(r.url)
@@ -85,7 +86,7 @@ test('delivers one signed job.settled event and logs it', async () => {
   }
 })
 
-test('retries through failures, succeeds on the third attempt', async () => {
+dbTest('retries through failures, succeeds on the third attempt', async () => {
   const r = receiver([500, 503])
   try {
     const id = await settledJob(r.url)
@@ -98,7 +99,7 @@ test('retries through failures, succeeds on the third attempt', async () => {
   }
 })
 
-test('a receiver that never answers costs an err line, never the status', async () => {
+dbTest('a receiver that never answers costs an err line, never the status', async () => {
   const r = receiver(['hang', 'hang', 'hang'])
   try {
     const id = await settledJob(r.url)
@@ -112,7 +113,7 @@ test('a receiver that never answers costs an err line, never the status', async 
   }
 })
 
-test('a job without a callback is a no-op', async () => {
+dbTest('a job without a callback is a no-op', async () => {
   const job = await createJob({
     task: `TEST-${rand}: no hook`,
     repo: { kind: 'local', name: 'nowhere', path: '/tmp/nonexistent-webhook-test' },
@@ -125,7 +126,7 @@ test('a job without a callback is a no-op', async () => {
   expect(calls).toBe(0)
 })
 
-test('notifyPrClosed delivers one signed job.pr_closed event naming the job and the PR state', async () => {
+dbTest('notifyPrClosed delivers one signed job.pr_closed event naming the job and the PR state', async () => {
   const r = receiver()
   try {
     const id = await settledJob(r.url)
@@ -151,7 +152,7 @@ test('notifyPrClosed delivers one signed job.pr_closed event naming the job and 
   }
 })
 
-test('notifyPrClosed retries through failures, succeeds on the third attempt', async () => {
+dbTest('notifyPrClosed retries through failures, succeeds on the third attempt', async () => {
   const r = receiver([500, 503])
   try {
     const id = await settledJob(r.url)
@@ -164,7 +165,7 @@ test('notifyPrClosed retries through failures, succeeds on the third attempt', a
   }
 })
 
-test('notifyPrClosed on a job without a callback is a no-op', async () => {
+dbTest('notifyPrClosed on a job without a callback is a no-op', async () => {
   const job = await createJob({
     task: `TEST-${rand}: no hook pr_closed`,
     repo: { kind: 'local', name: 'nowhere', path: '/tmp/nonexistent-webhook-test' },

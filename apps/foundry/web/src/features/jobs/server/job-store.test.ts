@@ -5,10 +5,11 @@
  * reads the whole table, so each assertion looks for this file's own groups
  * among whatever else is there.
  */
-import { afterAll, expect, test } from 'bun:test'
+import { expect } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { eq, like, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
+import { dbAfterAll, dbTest } from '@/db/test-db'
 import { jobs } from '@/db/schema'
 import { deleteLogs } from './job-logs'
 import { createJob, followUpJob, getJobRow, insertFollowUp, listJobs, settleJob } from './job-store'
@@ -54,12 +55,12 @@ async function allGroups(status?: JobStatus): Promise<Array<JobGroup>> {
   return out
 }
 
-afterAll(async () => {
+dbAfterAll(async () => {
   const swept = await db.delete(jobs).where(like(jobs.task, `%TEST-${rand}%`)).returning({ id: jobs.id })
   await deleteLogs(swept.map((r) => r.id))
 })
 
-test('a follow-up is listed under its root, oldest first, never beside it', async () => {
+dbTest('a follow-up is listed under its root, oldest first, never beside it', async () => {
   const r = await root()
   const first = await followUp(r, 'review')
   const second = await followUp(r, 'check')
@@ -71,7 +72,7 @@ test('a follow-up is listed under its root, oldest first, never beside it', asyn
   expect(all.some((g) => g.id === first || g.id === second)).toBe(false)
 })
 
-test('a follow-up whose root was purged stands as its own group', async () => {
+dbTest('a follow-up whose root was purged stands as its own group', async () => {
   const r = await root()
   const orphan = await followUp(r)
   await db.delete(jobs).where(eq(jobs.id, r))
@@ -81,7 +82,7 @@ test('a follow-up whose root was purged stands as its own group', async () => {
   expect(group?.followUps).toEqual([])
 })
 
-test('a status filter keeps a group when only a follow-up has that status', async () => {
+dbTest('a status filter keeps a group when only a follow-up has that status', async () => {
   const r = await root('succeeded')
   await followUp(r, 'check', 'failed')
 
@@ -90,7 +91,7 @@ test('a status filter keeps a group when only a follow-up has that status', asyn
   expect((await allGroups('running')).some((g) => g.id === r)).toBe(false)
 })
 
-test("a new follow-up brings its group ahead of a newer root's", async () => {
+dbTest("a new follow-up brings its group ahead of a newer root's", async () => {
   const older = await root()
   const newer = await root()
   const position = async (id: string) => (await allGroups()).findIndex((g) => g.id === id)
@@ -100,7 +101,7 @@ test("a new follow-up brings its group ahead of a newer root's", async () => {
   expect(await position(older)).toBeLessThan(await position(newer))
 })
 
-test('paging a small page at a time repeats and skips no group', async () => {
+dbTest('paging a small page at a time repeats and skips no group', async () => {
   const all = await allGroups()
   const ids = all.map((g) => g.id)
   expect(new Set(ids).size).toBe(ids.length)
@@ -113,7 +114,7 @@ test('paging a small page at a time repeats and skips no group', async () => {
   expect(ids.length).toBe(roots)
 })
 
-test('CTD-230 — a follow-up can be queued from a pr_ready job, reusing its branch and PR', async () => {
+dbTest('CTD-230 — a follow-up can be queued from a pr_ready job, reusing its branch and PR', async () => {
   const waiting = await root('pr_ready')
   const rootRow = await getJobRow(waiting)
 

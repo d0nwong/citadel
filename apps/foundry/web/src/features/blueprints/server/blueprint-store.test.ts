@@ -6,7 +6,8 @@
  * Postgres from `just up postgres`, migrated (`just migrate`). Reads only;
  * nothing here to sweep.
  */
-import { describe, expect, test } from 'bun:test'
+import { describe, expect } from 'bun:test'
+import { dbTest } from '@/db/test-db'
 import {
   BUG_BLUEPRINT_ID,
   CHECK_BLUEPRINT_ID,
@@ -29,18 +30,18 @@ const SEEDED = [
   { id: MERGE_BLUEPRINT_ID, name: 'Merge base into branch', steps: ['merge'] },
 ]
 
-test('the check blueprint is forge-debug alone, the same step list the store falls back to', async () => {
+dbTest('the check blueprint is forge-debug alone, the same step list the store falls back to', async () => {
   const row = await getBlueprintRow(CHECK_BLUEPRINT_ID)
   expect(row?.steps).toEqual(CHECK_BLUEPRINT_STEPS)
 })
 
-test('the merge blueprint is forge-merge alone, the same step list the store falls back to', async () => {
+dbTest('the merge blueprint is forge-merge alone, the same step list the store falls back to', async () => {
   const row = await getBlueprintRow(MERGE_BLUEPRINT_ID)
   expect(row?.steps).toEqual(MERGE_BLUEPRINT_STEPS)
 })
 
 describe.each(SEEDED)('the seeded "$name" blueprint', ({ id, name, steps }) => {
-  test('is seeded with its steps, each invoking a /forge-* skill', async () => {
+  dbTest('is seeded with its steps, each invoking a /forge-* skill', async () => {
     const row = await getBlueprintRow(id)
     expect(row?.name).toBe(name)
     expect(row?.steps.map((s) => s.name)).toEqual(steps)
@@ -49,14 +50,14 @@ describe.each(SEEDED)('the seeded "$name" blueprint', ({ id, name, steps }) => {
     expect(row?.steps[0].prompt).toContain('{{task}}')
   })
 
-  test("its steps pass the editor's own validation unchanged", async () => {
+  dbTest("its steps pass the editor's own validation unchanged", async () => {
     const row = await getBlueprintRow(id)
     if (!row) throw new Error(`${name} not seeded — run \`just migrate\``)
     const v = validate({ name: row.name, description: row.description ?? undefined, steps: row.steps })
     expect(v.steps).toEqual(row.steps)
   })
 
-  test('its history opens with a seed revision at the version the row claims', async () => {
+  dbTest('its history opens with a seed revision at the version the row claims', async () => {
     const row = await getBlueprintRow(id)
     if (!row) throw new Error(`${name} not seeded — run \`just migrate\``)
     const revisions = await listRevisions(id)
@@ -68,19 +69,19 @@ describe.each(SEEDED)('the seeded "$name" blueprint', ({ id, name, steps }) => {
   })
 })
 
-test('the bug blueprint runs spec in bug mode, so the reproduction is the criterion', async () => {
+dbTest('the bug blueprint runs spec in bug mode, so the reproduction is the criterion', async () => {
   const row = await getBlueprintRow(BUG_BLUEPRINT_ID)
   expect(row?.steps[0].prompt).toMatch(/^\/forge-spec bug: /)
   expect(row?.steps[1].prompt).toMatch(/^\/forge-debug\b/)
 })
 
-test('the simplify blueprint runs spec in refactor mode, so the unchanged suite is the criterion', async () => {
+dbTest('the simplify blueprint runs spec in refactor mode, so the unchanged suite is the criterion', async () => {
   const row = await getBlueprintRow(SIMPLIFY_BLUEPRINT_ID)
   expect(row?.steps[0].prompt).toMatch(/^\/forge-spec refactor: /)
   expect(row?.steps[1].prompt).toMatch(/^\/forge-simplify\b/)
 })
 
-test('Spec → QA v3 writes the tests red and implements them in one step, starting from what the session holds, and keeps v1 and v2 to restore', async () => {
+dbTest('Spec → QA v3 writes the tests red and implements them in one step, starting from what the session holds, and keeps v1 and v2 to restore', async () => {
   const row = await getBlueprintRow(QA_BLUEPRINT_ID)
   expect(row?.steps[1].prompt).toMatch(/^\/forge-test\b/)
   expect(row?.steps[1].prompt).toContain('~/.claude/skills/forge-implement/SKILL.md')
@@ -95,7 +96,7 @@ test('Spec → QA v3 writes the tests red and implements them in one step, start
   expect(v2?.steps[1].prompt).not.toContain('already in this session')
 })
 
-test('seeding them left the ignite default on "Plan → Execute"', async () => {
+dbTest('seeding them left the ignite default on "Plan → Execute"', async () => {
   const row = await getBlueprintRow(DEFAULT_BLUEPRINT_ID)
   expect(row?.name).toBe('Plan → Execute')
   expect(new Set([DEFAULT_BLUEPRINT_ID, QA_BLUEPRINT_ID, BUG_BLUEPRINT_ID, SIMPLIFY_BLUEPRINT_ID]).size).toBe(4)

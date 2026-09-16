@@ -4,10 +4,11 @@
  * the first. Needs the stack's Postgres: `just up postgres`. Rows are keyed
  * TEST-… and swept below.
  */
-import { afterAll, expect, test } from 'bun:test'
+import { expect } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { like } from 'drizzle-orm'
 import { db } from '@/db/client'
+import { dbAfterAll, dbTest } from '@/db/test-db'
 import { baselines } from '@/db/schema'
 import { getBaseline, putBaseline } from './baseline-store'
 
@@ -16,11 +17,11 @@ const sha = 'a'.repeat(40)
 const jobA = randomUUID()
 const jobB = randomUUID()
 
-afterAll(async () => {
+dbAfterAll(async () => {
   await db.delete(baselines).where(like(baselines.repo, `${repo}%`))
 })
 
-test('a baseline is found by its repo and sha, and by nothing else', async () => {
+dbTest('a baseline is found by its repo and sha, and by nothing else', async () => {
   await putBaseline({ baseSha: sha, body: `# Base state: ${sha}\n`, jobId: jobA, repo })
   const row = await getBaseline(repo, sha)
   expect(row?.body).toBe(`# Base state: ${sha}\n`)
@@ -29,7 +30,7 @@ test('a baseline is found by its repo and sha, and by nothing else', async () =>
   expect(await getBaseline(`${repo}-fork`, sha)).toBeUndefined()
 })
 
-test('a second measurement of the same commit replaces the first', async () => {
+dbTest('a second measurement of the same commit replaces the first', async () => {
   await putBaseline({ baseSha: sha, body: 'measured again', jobId: jobB, repo })
   const row = await getBaseline(repo, sha)
   expect(row?.body).toBe('measured again')

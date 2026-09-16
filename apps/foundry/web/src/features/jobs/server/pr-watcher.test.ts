@@ -5,7 +5,7 @@
  * migrated. Rows are keyed TEST-… and their PRs live on example.test, which
  * the tick's scope confines it to; both are swept below.
  */
-import { afterAll, describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { eq, like } from 'drizzle-orm'
 import { db } from '@/db/client'
+import { dbAfterAll, dbTest } from '@/db/test-db'
 import { jobs, prWatches } from '@/db/schema'
 import { CHECK_BLUEPRINT_ID, MERGE_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { parseBitbucketPr, parseGitHubPr, parseMergeTree, probeMerge, stripGhLog, tailOf } from './forge-pr'
@@ -313,13 +314,13 @@ async function settleFollowUps(prUrl: string) {
   for (const f of await followUpsOf(prUrl)) await settleJob(f.id, { status: 'succeeded', exitCode: 0 })
 }
 
-afterAll(async () => {
+dbAfterAll(async () => {
   const swept = await db.delete(jobs).where(like(jobs.task, `%TEST-${rand}%`)).returning({ id: jobs.id })
   await deleteLogs(swept.map((r) => r.id))
   await db.delete(prWatches).where(like(prWatches.prUrl, `${PR_HOST}%`))
 })
 
-test('AC1 — a submitted review launches one review follow-up on the same branch, and the ledger says why', async () => {
+dbTest('AC1 — a submitted review launches one review follow-up on the same branch, and the ledger says why', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000, 'CHANGES_REQUESTED', 'rev')] }))
   await tick(deps())
@@ -336,7 +337,7 @@ test('AC1 — a submitted review launches one review follow-up on the same branc
   expect((await readLogs(root.id)).some((l) => /watcher: review by @rev .*→ follow-up/.test(l.text))).toBe(true)
 })
 
-test('AC1 (CTD-233) — a first failed check reruns the commit\'s CI once and queues nothing', async () => {
+dbTest('AC1 (CTD-233) — a first failed check reruns the commit\'s CI once and queues nothing', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ headSha: 'deadbeef', checks: [check('failed'), check('passed', 'lint')] }))
   await tick(deps())
@@ -353,7 +354,7 @@ test('AC1 (CTD-233) — a first failed check reruns the commit\'s CI once and qu
   expect(reran.filter((u) => u === root.prUrl)).toHaveLength(1)
 })
 
-test('AC5 (CTD-233) — two watcher passes at once over a first failure rerun it only once', async () => {
+dbTest('AC5 (CTD-233) — two watcher passes at once over a first failure rerun it only once', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ headSha: 'cafe02', checks: [check('failed')] }))
   await Promise.all([tick(deps()), tick(deps())])
@@ -362,7 +363,7 @@ test('AC5 (CTD-233) — two watcher passes at once over a first failure rerun it
   expect(await followUpsOf(root.prUrl)).toHaveLength(0)
 })
 
-test('AC2 — a check failing again after its rerun launches one check follow-up running the "Fix failing check" blueprint', async () => {
+dbTest('AC2 — a check failing again after its rerun launches one check follow-up running the "Fix failing check" blueprint', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ headSha: 'deadbeef', checks: [check('failed'), check('passed', 'lint')] }))
   await tick(deps()) // reruns
@@ -377,7 +378,7 @@ test('AC2 — a check failing again after its rerun launches one check follow-up
   expect((await readLogs(f!.id)).some((l) => /check "ci \/ check" failed again on deadbee.*after a rerun/.test(l.text))).toBe(true)
 })
 
-test('AC3 — a rerun the forge refuses still counts as that commit\'s rerun, with an err line', async () => {
+dbTest('AC3 — a rerun the forge refuses still counts as that commit\'s rerun, with an err line', async () => {
   const root = await rootJob()
   reruns.set(root.prUrl, { ok: false, reason: 'no rerunnable Actions run among the failed checks' })
   prs.set(root.prUrl, state({ headSha: 'baadf00d', checks: [check('failed')] }))
@@ -389,7 +390,7 @@ test('AC3 — a rerun the forge refuses still counts as that commit\'s rerun, wi
   expect((await readLogs(root.id)).some((l) => l.stream === 'err' && /CI rerun refused: no rerunnable Actions run/.test(l.text))).toBe(true)
 })
 
-test('AC3 — a Bitbucket PR (no rerun) launches a check follow-up at the first failure, as before', async () => {
+dbTest('AC3 — a Bitbucket PR (no rerun) launches a check follow-up at the first failure, as before', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ headSha: 'bb0001', checks: [check('failed')] }))
   await tick(deps({ originUrl: async () => 'git@bitbucket.org:example/repo.git' }))
@@ -399,7 +400,7 @@ test('AC3 — a Bitbucket PR (no rerun) launches a check follow-up at the first 
   expect(reran.filter((u) => u === root.prUrl)).toHaveLength(0)
 })
 
-test('AC3 (CTD-233 AC5) — the same review is answered once, the same head reran once, and its next failure launches one check follow-up', async () => {
+dbTest('AC3 (CTD-233 AC5) — the same review is answered once, the same head reran once, and its next failure launches one check follow-up', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ headSha: 'cafe01', reviews: [review(Date.now() + 1000)], checks: [check('failed')] }))
 
@@ -428,7 +429,7 @@ test('AC3 (CTD-233 AC5) — the same review is answered once, the same head rera
   expect(after.map((f) => f.followUp)).toEqual(['review', 'check'])
 })
 
-test('AC1 (CTD-229) — a pass that reads the job list before another pass\'s follow-up commits, and the watch after, still launches at most one follow-up', async () => {
+dbTest('AC1 (CTD-229) — a pass that reads the job list before another pass\'s follow-up commits, and the watch after, still launches at most one follow-up', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ headSha: 'cafe01', reviews: [review(Date.now() + 1000)], checks: [check('failed')] }))
 
@@ -447,7 +448,7 @@ test('AC1 (CTD-229) — a pass that reads the job list before another pass\'s fo
   expect(after[0]?.followUp).toBe('review')
 })
 
-test('no second launch while a follow-up is still open on the PR', async () => {
+dbTest('no second launch while a follow-up is still open on the PR', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000)] }))
   await tick(deps())
@@ -456,7 +457,7 @@ test('no second launch while a follow-up is still open on the PR', async () => {
   expect(await followUpsOf(root.prUrl)).toHaveLength(1)
 })
 
-test('AC4 — retries stop at the configured count and the root job\'s ledger says so', async () => {
+dbTest('AC4 — retries stop at the configured count and the root job\'s ledger says so', async () => {
   const root = await rootJob()
   const limited = deps({ maxFollowUps: 2 })
   for (const sha of ['s1', 's2', 's3']) {
@@ -487,7 +488,7 @@ test('AC4 — retries stop at the configured count and the root job\'s ledger sa
   expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['check', 'check', 'review', 'check'])
 })
 
-test('a merged PR stops the watch and launches nothing', async () => {
+dbTest('a merged PR stops the watch and launches nothing', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ state: 'merged', reviews: [review(Date.now() + 1000)] }))
   await tick(deps())
@@ -501,7 +502,7 @@ test('a merged PR stops the watch and launches nothing', async () => {
 /* ------------------------------------------------------------------ */
 
 describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
-  test('AC3 — a merged pr_ready root becomes succeeded, and the ledger says so', async () => {
+  dbTest('AC3 — a merged pr_ready root becomes succeeded, and the ledger says so', async () => {
     const root = await rootJob('pr_ready')
     prs.set(root.prUrl, state({ state: 'merged' }))
     await tick(deps())
@@ -512,7 +513,7 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
     expect((await readLogs(root.id)).some((l) => /watcher: PR merged — succeeded/.test(l.text))).toBe(true)
   })
 
-  test('AC3 — a closed, unmerged pr_ready root becomes cancelled', async () => {
+  dbTest('AC3 — a closed, unmerged pr_ready root becomes cancelled', async () => {
     const root = await rootJob('pr_ready')
     prs.set(root.prUrl, state({ state: 'closed' }))
     await tick(deps())
@@ -521,7 +522,7 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
     expect((await readLogs(root.id)).some((l) => /watcher: PR closed — cancelled/.test(l.text))).toBe(true)
   })
 
-  test('AC3 — a failed root stays failed once its PR merges, and the watcher stops following it', async () => {
+  dbTest('AC3 — a failed root stays failed once its PR merges, and the watcher stops following it', async () => {
     const root = await rootJob('failed')
     prs.set(root.prUrl, state({ state: 'merged' }))
     await tick(deps())
@@ -531,7 +532,7 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
     expect(watch?.stopped).toBe('merged')
   })
 
-  test('AC1 — a pr_ready or failed root settled more than 14 days ago is still followed until its PR closes', async () => {
+  dbTest('AC1 — a pr_ready or failed root settled more than 14 days ago is still followed until its PR closes', async () => {
     const root = await rootJob('failed')
     await db
       .update(jobs)
@@ -542,7 +543,7 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
     expect(await followUpsOf(root.prUrl)).toHaveLength(1)
   })
 
-  test('a succeeded root settled more than 14 days ago is no longer followed', async () => {
+  dbTest('a succeeded root settled more than 14 days ago is no longer followed', async () => {
     const root = await rootJob('succeeded')
     await db
       .update(jobs)
@@ -553,7 +554,7 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
     expect(await followUpsOf(root.prUrl)).toHaveLength(0)
   })
 
-  test('AC4 — a PR merging while a follow-up is queued cancels it and still moves the pr_ready root', async () => {
+  dbTest('AC4 — a PR merging while a follow-up is queued cancels it and still moves the pr_ready root', async () => {
     const root = await rootJob('pr_ready')
     prs.set(root.prUrl, state({ headSha: 'sha1', checks: [check('failed')] }))
     await tick(deps()) // reruns
@@ -570,7 +571,7 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
     expect((await getJobRow(root.id))?.status).toBe('succeeded')
   })
 
-  test('AC2 — a pr_ready root whose retries are spent still moves on once its PR merges', async () => {
+  dbTest('AC2 — a pr_ready root whose retries are spent still moves on once its PR merges', async () => {
     const root = await rootJob('pr_ready')
     const limited = deps({ maxFollowUps: 1 })
     prs.set(root.prUrl, state({ headSha: 's1', checks: [check('failed')] }))
@@ -597,7 +598,7 @@ describe('CTD-231 — the watcher closes out a merged or closed PR', () => {
 /* ------------------------------------------------------------------ */
 
 describe('CTD-232 — the watcher\'s move fires job.pr_closed', () => {
-  test('AC1 — a merged pr_ready root fires job.pr_closed once, naming the merged state', async () => {
+  dbTest('AC1 — a merged pr_ready root fires job.pr_closed once, naming the merged state', async () => {
     const root = await rootJob('pr_ready')
     prs.set(root.prUrl, state({ state: 'merged' }))
     await tick(deps())
@@ -605,7 +606,7 @@ describe('CTD-232 — the watcher\'s move fires job.pr_closed', () => {
     expect(prClosedNotified.filter((n) => n.id === root.id)).toEqual([{ id: root.id, prState: 'merged' }])
   })
 
-  test('AC1 — a closed, unmerged pr_ready root fires job.pr_closed naming the closed state', async () => {
+  dbTest('AC1 — a closed, unmerged pr_ready root fires job.pr_closed naming the closed state', async () => {
     const root = await rootJob('pr_ready')
     prs.set(root.prUrl, state({ state: 'closed' }))
     await tick(deps())
@@ -613,7 +614,7 @@ describe('CTD-232 — the watcher\'s move fires job.pr_closed', () => {
     expect(prClosedNotified.filter((n) => n.id === root.id)).toEqual([{ id: root.id, prState: 'closed' }])
   })
 
-  test('AC2 — a failed root\'s PR closing fires no job.pr_closed (the root never moved)', async () => {
+  dbTest('AC2 — a failed root\'s PR closing fires no job.pr_closed (the root never moved)', async () => {
     const root = await rootJob('failed')
     prs.set(root.prUrl, state({ state: 'merged' }))
     await tick(deps())
@@ -621,7 +622,7 @@ describe('CTD-232 — the watcher\'s move fires job.pr_closed', () => {
     expect(prClosedNotified.filter((n) => n.id === root.id)).toEqual([])
   })
 
-  test('AC2 — two watcher passes at once over the same merge fire job.pr_closed at most once', async () => {
+  dbTest('AC2 — two watcher passes at once over the same merge fire job.pr_closed at most once', async () => {
     const root = await rootJob('pr_ready')
     prs.set(root.prUrl, state({ state: 'merged' }))
     await Promise.all([tick(deps()), tick(deps())])
@@ -630,14 +631,14 @@ describe('CTD-232 — the watcher\'s move fires job.pr_closed', () => {
   })
 })
 
-test('a review from before the PR was watched is not answered', async () => {
+dbTest('a review from before the PR was watched is not answered', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ reviews: [review(Date.now() - 60_000)] }))
   await tick(deps())
   expect(await followUpsOf(root.prUrl)).toHaveLength(0)
 })
 
-test('CTD-230 — a pr_ready root is watched exactly as a succeeded one is', async () => {
+dbTest('CTD-230 — a pr_ready root is watched exactly as a succeeded one is', async () => {
   const root = await rootJob('pr_ready')
   prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000, 'CHANGES_REQUESTED', 'rev')] }))
   await tick(deps())
@@ -647,7 +648,7 @@ test('CTD-230 — a pr_ready root is watched exactly as a succeeded one is', asy
   expect(f?.sourceJobId).toBe(root.id)
 })
 
-test('a PR that cannot be read is skipped, not fatal to the rest', async () => {
+dbTest('a PR that cannot be read is skipped, not fatal to the rest', async () => {
   const bad = await rootJob()
   const good = await rootJob()
   prs.set(good.prUrl, state({ reviews: [review(Date.now() + 1000)] }))
@@ -669,7 +670,7 @@ test('a PR that cannot be read is skipped, not fatal to the rest', async () => {
 
 const probe = (baseSha: string, headSha: string, conflicts = ['src/a.ts']): MergeProbe => ({ baseSha, headSha, conflicts })
 
-test('CTD-214 AC1 — a conflict launches one merge follow-up running the seeded blueprint, and the root ledger names the base', async () => {
+dbTest('CTD-214 AC1 — a conflict launches one merge follow-up running the seeded blueprint, and the root ledger names the base', async () => {
   const root = await rootJob()
   merges.set(root.prUrl, probe('b4se000111', 'sha1'))
   await tick(deps())
@@ -683,7 +684,7 @@ test('CTD-214 AC1 — a conflict launches one merge follow-up running the seeded
   expect((await readLogs(root.id)).some((l) => /watcher: branch conflicts with main @ b4se000 in src\/a\.ts → follow-up/.test(l.text))).toBe(true)
 })
 
-test('CTD-214 AC4 — the same base launches one merge; a moved base that conflicts again launches another', async () => {
+dbTest('CTD-214 AC4 — the same base launches one merge; a moved base that conflicts again launches another', async () => {
   const root = await rootJob()
   merges.set(root.prUrl, probe('base1', 'sha1'))
   await tick(deps())
@@ -697,7 +698,7 @@ test('CTD-214 AC4 — the same base launches one merge; a moved base that confli
   expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['merge', 'merge'])
 })
 
-test('CTD-214 AC5 — a review and a conflict: the review first, the conflict on a later tick', async () => {
+dbTest('CTD-214 AC5 — a review and a conflict: the review first, the conflict on a later tick', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000)] }))
   merges.set(root.prUrl, probe('base1', 'sha1'))
@@ -710,7 +711,7 @@ test('CTD-214 AC5 — a review and a conflict: the review first, the conflict on
   expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['review', 'merge'])
 })
 
-test('CTD-214 AC6 — a conflict and a red check: the merge first, the check only for a head pushed after it', async () => {
+dbTest('CTD-214 AC6 — a conflict and a red check: the merge first, the check only for a head pushed after it', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ headSha: 'sha1', checks: [check('failed')] }))
   merges.set(root.prUrl, probe('base1', 'sha1'))
@@ -729,7 +730,7 @@ test('CTD-214 AC6 — a conflict and a red check: the merge first, the check onl
   expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['merge', 'check'])
 })
 
-test('CTD-214 — queuing a follow-up by hand lets a merge that gave up be tried again', async () => {
+dbTest('CTD-214 — queuing a follow-up by hand lets a merge that gave up be tried again', async () => {
   const root = await rootJob()
   merges.set(root.prUrl, probe('base1', 'sha1'))
   await tick(deps())
@@ -740,7 +741,7 @@ test('CTD-214 — queuing a follow-up by hand lets a merge that gave up be tried
   expect((await followUpsOf(root.prUrl)).map((f) => f.followUp)).toEqual(['merge', 'review', 'merge'])
 })
 
-test('CTD-214 AC7 — merges count against the budget, and the ledger names the conflict at exhaustion', async () => {
+dbTest('CTD-214 AC7 — merges count against the budget, and the ledger names the conflict at exhaustion', async () => {
   const root = await rootJob()
   const limited = deps({ maxFollowUps: 1 })
   merges.set(root.prUrl, probe('base1', 'sha1'))

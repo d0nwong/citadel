@@ -5,12 +5,13 @@
  * Postgres from `just up postgres`. Rows are keyed TEST-… / a TEST repo path
  * and swept below.
  */
-import { afterAll, beforeAll, expect, test } from 'bun:test'
+import { expect } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { MissingCredentialError } from '@citadel/tickets'
 import type { Ticket } from '@citadel/tickets'
 import { eq, like } from 'drizzle-orm'
 import { db } from '@/db/client'
+import { dbAfterAll, dbBeforeAll, dbTest } from '@/db/test-db'
 import { jobs, repos } from '@/db/schema'
 import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
@@ -110,29 +111,29 @@ const valid = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 })
 
-beforeAll(async () => {
+dbBeforeAll(async () => {
   await db.insert(repos).values({ path: REPO_PATH, name: REPO_NAME }).onConflictDoNothing()
 })
 
-afterAll(async () => {
+dbAfterAll(async () => {
   const swept = await db.delete(jobs).where(like(jobs.task, `TEST-${rand}%`)).returning({ id: jobs.id })
   await deleteLogs(swept.map((r) => r.id))
   await db.delete(repos).where(eq(repos.path, REPO_PATH))
 })
 
-test('no token configured → 503, and nothing is queued', async () => {
+dbTest('no token configured → 503, and nothing is queued', async () => {
   const res = await handleTriggerJob(post(valid()), { ...deps, token: async () => undefined })
   expect(res.status).toBe(503)
   expect(ignited).toHaveLength(0)
 })
 
-test('missing or wrong bearer → 401', async () => {
+dbTest('missing or wrong bearer → 401', async () => {
   expect((await handleTriggerJob(post(valid(), null), deps)).status).toBe(401)
   expect((await handleTriggerJob(post(valid(), 'nope'), deps)).status).toBe(401)
   expect(ignited).toHaveLength(0)
 })
 
-test('bad payloads → 400 with a reason', async () => {
+dbTest('bad payloads → 400 with a reason', async () => {
   const cases: Array<[unknown, RegExp]> = [
     ['not json', /invalid json/],
     [[], /JSON object/],
@@ -154,7 +155,7 @@ test('bad payloads → 400 with a reason', async () => {
   expect(ignited).toHaveLength(0)
 })
 
-test('valid trigger → 202, a queued row on the default blueprint, ignited once', async () => {
+dbTest('valid trigger → 202, a queued row on the default blueprint, ignited once', async () => {
   const res = await handleTriggerJob(post(valid({ callbackUrl: 'https://example.test/hook' })), deps)
   expect(res.status).toBe(202)
   const job = (await res.json()) as Job
@@ -174,7 +175,7 @@ test('valid trigger → 202, a queued row on the default blueprint, ignited once
   expect(row?.callbackUrl).toBe('https://example.test/hook')
 })
 
-test('repo by ~ path and blueprintId "none" → a bare job', async () => {
+dbTest('repo by ~ path and blueprintId "none" → a bare job', async () => {
   const res = await handleTriggerJob(post(valid({ repo: REPO_PATH, blueprintId: 'none' })), deps)
   expect(res.status).toBe(202)
   const job = (await res.json()) as Job
@@ -182,7 +183,7 @@ test('repo by ~ path and blueprintId "none" → a bare job', async () => {
   expect(job.repo).toMatchObject({ path: REPO_PATH })
 })
 
-test('ticketId claims once; the second trigger is a 409 naming the holder, and claims nothing in Linear', async () => {
+dbTest('ticketId claims once; the second trigger is a 409 naming the holder, and claims nothing in Linear', async () => {
   const ticketId = `TEST-${rand}`
   const first = await handleTriggerJob(post(valid({ ticketId })), deps)
   expect(first.status).toBe(202)
@@ -201,7 +202,7 @@ test('ticketId claims once; the second trigger is a 409 naming the holder, and c
 /* CTD-176 — a cancelled job releases its ticket claim                 */
 /* ------------------------------------------------------------------ */
 
-test('CTD-176 C1: a cancelled job releases its ticket claim — the next trigger is 202 with a new job', async () => {
+dbTest('CTD-176 C1: a cancelled job releases its ticket claim — the next trigger is 202 with a new job', async () => {
   const ticketId = `TEST-${rand}-C1`
   const first = await handleTriggerJob(post(valid({ ticketId })), deps)
   expect(first.status).toBe(202)
@@ -216,7 +217,7 @@ test('CTD-176 C1: a cancelled job releases its ticket claim — the next trigger
   expect(jobB.ticketId).toBe(ticketId)
 })
 
-test('CTD-176 C2: after the ticket is retriggered, the cancelled job stays cancelled with its ticketId intact', async () => {
+dbTest('CTD-176 C2: after the ticket is retriggered, the cancelled job stays cancelled with its ticketId intact', async () => {
   const ticketId = `TEST-${rand}-C2`
   const first = await handleTriggerJob(post(valid({ ticketId })), deps)
   const jobA = (await first.json()) as Job
@@ -231,7 +232,7 @@ test('CTD-176 C2: after the ticket is retriggered, the cancelled job stays cance
   expect(rowA?.ticketId).toBe(ticketId)
 })
 
-test('CTD-176 C3: two concurrent first triggers for one ticketId still insert exactly one job', async () => {
+dbTest('CTD-176 C3: two concurrent first triggers for one ticketId still insert exactly one job', async () => {
   const ticketId = `TEST-${rand}-C3`
   const before = await rowCount()
 
@@ -253,7 +254,7 @@ test('CTD-176 C3: two concurrent first triggers for one ticketId still insert ex
 /* LIA-92 — the brief and the Linear claim from a ticketId             */
 /* ------------------------------------------------------------------ */
 
-test('LIA-92 AC1/AC2 — ticketId without instructions composes the brief, claims the ticket, then ignites', async () => {
+dbTest('LIA-92 AC1/AC2 — ticketId without instructions composes the brief, claims the ticket, then ignites', async () => {
   const ticketId = `TEST-${rand}-A1`
   const res = await handleTriggerJob(post({ repo: REPO_NAME, ticketId, baseBranch: 'main' }), deps)
   expect(res.status).toBe(202)
@@ -274,7 +275,7 @@ test('LIA-92 AC1/AC2 — ticketId without instructions composes the brief, claim
   expect(logs.some((l) => l.stream === 'sys' && l.text.includes(`claimed ${ticketId} —`))).toBe(true)
 })
 
-test('LIA-92 AC3 — ticketId with instructions keeps the instructions as task and still claims the ticket', async () => {
+dbTest('LIA-92 AC3 — ticketId with instructions keeps the instructions as task and still claims the ticket', async () => {
   const ticketId = `TEST-${rand}-A3`
   const res = await handleTriggerJob(post(valid({ ticketId })), deps)
   expect(res.status).toBe(202)
@@ -284,7 +285,7 @@ test('LIA-92 AC3 — ticketId with instructions keeps the instructions as task a
   expect((await logsOf(job.id)).some((l) => l.stream === 'sys' && l.text.includes(`claimed ${ticketId} —`))).toBe(true)
 })
 
-test('LIA-92 AC4 — no LINEAR_API_KEY: 503 without instructions; 202 with them, the skipped claim logged as err', async () => {
+dbTest('LIA-92 AC4 — no LINEAR_API_KEY: 503 without instructions; 202 with them, the skipped claim logged as err', async () => {
   const before = await rowCount()
   const ignitedBefore = ignited.length
 
@@ -305,7 +306,7 @@ test('LIA-92 AC4 — no LINEAR_API_KEY: 503 without instructions; 202 with them,
   expect(logs.some((l) => l.stream === 'err' && l.text.includes(`claim for ${ticketId} skipped`) && l.text.includes('no LINEAR_API_KEY in the citadel .env'))).toBe(true)
 })
 
-test('LIA-92 AC5 — a ticketId Linear does not know is a 400 naming it, and inserts nothing', async () => {
+dbTest('LIA-92 AC5 — a ticketId Linear does not know is a 400 naming it, and inserts nothing', async () => {
   const before = await rowCount()
   const ignitedBefore = ignited.length
   for (const body of [{ repo: REPO_NAME, ticketId: UNKNOWN }, valid({ ticketId: UNKNOWN })]) {
@@ -317,7 +318,7 @@ test('LIA-92 AC5 — a ticketId Linear does not know is a 400 naming it, and ins
   expect(ignited.length).toBe(ignitedBefore)
 })
 
-test('LIA-92 — the provider unreachable while fetching the ticket is a 502, and inserts nothing', async () => {
+dbTest('LIA-92 — the provider unreachable while fetching the ticket is a 502, and inserts nothing', async () => {
   const before = await rowCount()
   const res = await handleTriggerJob(post({ repo: REPO_NAME, ticketId: DOWN }), deps)
   expect(res.status).toBe(502)
@@ -325,7 +326,7 @@ test('LIA-92 — the provider unreachable while fetching the ticket is a 502, an
   expect(await rowCount()).toBe(before)
 })
 
-test('LIA-92 AC6 — a claim that fails after the insert leaves the job queued, answers 202, logs err', async () => {
+dbTest('LIA-92 AC6 — a claim that fails after the insert leaves the job queued, answers 202, logs err', async () => {
   const ticketId = `TEST-${rand}-A6`
   claimFails = true
   try {
@@ -344,7 +345,7 @@ test('LIA-92 AC6 — a claim that fails after the insert leaves the job queued, 
   }
 })
 
-test('AC1 — a replay with the same key and body answers 200 with the first job, ignited once', async () => {
+dbTest('AC1 — a replay with the same key and body answers 200 with the first job, ignited once', async () => {
   const key = `k1-${rand}`
   const body = JSON.stringify(valid())
   const before = await rowCount()
@@ -369,7 +370,7 @@ test('AC1 — a replay with the same key and body answers 200 with the first job
   expect(row?.idempotencyFingerprint).toMatch(/^[0-9a-f]{64}$/)
 })
 
-test('AC2 — the same key with a different body is a 422 naming the header, and inserts nothing', async () => {
+dbTest('AC2 — the same key with a different body is a 422 naming the header, and inserts nothing', async () => {
   const key = `k2-${rand}`
   expect((await handleTriggerJob(postKeyed(key, JSON.stringify(valid())), deps)).status).toBe(202)
   const before = await rowCount()
@@ -387,7 +388,7 @@ test('AC2 — the same key with a different body is a 422 naming the header, and
   expect(ignited.length).toBe(ignitedBefore)
 })
 
-test('AC4 — an empty or over-long key is a 400 before the body is looked at', async () => {
+dbTest('AC4 — an empty or over-long key is a 400 before the body is looked at', async () => {
   const before = await rowCount()
   for (const key of ['', 'k'.repeat(IDEMPOTENCY_KEY_MAX + 1)]) {
     const res = await handleTriggerJob(postKeyed(key, valid()), deps)
@@ -399,7 +400,7 @@ test('AC4 — an empty or over-long key is a 400 before the body is looked at', 
   expect(await rowCount()).toBe(before + 1)
 })
 
-test('AC5 — a ticket job replayed with its key is 200; a different key for the ticket is still 409', async () => {
+dbTest('AC5 — a ticket job replayed with its key is 200; a different key for the ticket is still 409', async () => {
   const ticketId = `TEST-${rand}-K5`
   const key = `k5-${rand}`
   const body = JSON.stringify(valid({ ticketId }))
@@ -421,7 +422,7 @@ test('AC5 — a ticket job replayed with its key is 200; a different key for the
   expect(bare.status).toBe(409)
 })
 
-test('AC6 — two concurrent first requests with one key make one job; the loser gets 200 with the winner', async () => {
+dbTest('AC6 — two concurrent first requests with one key make one job; the loser gets 200 with the winner', async () => {
   const key = `k6-${rand}`
   const body = JSON.stringify(valid())
   const before = await rowCount()
@@ -443,7 +444,7 @@ test('AC6 — two concurrent first requests with one key make one job; the loser
 /* LIA-119 — GET /api/repos                                           */
 /* ------------------------------------------------------------------ */
 
-test('LIA-119 AC1/AC2/AC4/AC6 — GET /api/repos lists name+path ordered by name, and every name triggers a job', async () => {
+dbTest('LIA-119 AC1/AC2/AC4/AC6 — GET /api/repos lists name+path ordered by name, and every name triggers a job', async () => {
   // AC4 — the same gate as the job routes, with the same bodies.
   const noToken = await handleListRepos(listRepos(), { ...deps, token: async () => undefined })
   expect(noToken.status).toBe(503)
@@ -477,7 +478,7 @@ test('LIA-119 AC1/AC2/AC4/AC6 — GET /api/repos lists name+path ordered by name
   }
 })
 
-test('GET returns the job, with logs only when asked', async () => {
+dbTest('GET returns the job, with logs only when asked', async () => {
   const created = (await (await handleTriggerJob(post(valid()), deps)).json()) as Job
 
   expect((await handleGetJob(created.id, get(created.id, '', null), deps)).status).toBe(401)

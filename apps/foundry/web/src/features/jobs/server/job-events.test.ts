@@ -5,10 +5,11 @@
  * caches nothing. Needs the stack's Postgres: `just up postgres`. Rows are
  * keyed TEST-… and swept below.
  */
-import { afterAll, expect, test } from 'bun:test'
+import { expect } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { like } from 'drizzle-orm'
 import { db } from '@/db/client'
+import { dbAfterAll, dbTest } from '@/db/test-db'
 import { baselines, jobs } from '@/db/schema'
 import { getBaseline } from './baseline-store'
 import { handleJobEvent } from './job-events'
@@ -41,13 +42,13 @@ const post = async (id: string, body: unknown) => {
   )
 }
 
-afterAll(async () => {
+dbAfterAll(async () => {
   const swept = await db.delete(jobs).where(like(jobs.task, `TEST-${rand}%`)).returning({ id: jobs.id })
   await deleteLogs(swept.map((r) => r.id))
   await db.delete(baselines).where(like(baselines.repo, `TEST-${rand}%`))
 })
 
-test("a baseline event is cached under the job's repo and base sha, and the log says so", async () => {
+dbTest("a baseline event is cached under the job's repo and base sha, and the log says so", async () => {
   const repoName = `TEST-${rand}-repo`
   const job = await newJob(repoName)
   await patchJob(job.id, { baseSha: sha })
@@ -61,7 +62,7 @@ test("a baseline event is cached under the job's repo and base sha, and the log 
   expect(log.some((l) => l.stream === 'sys' && l.text.includes(`cached for ${repoName} @ ${sha.slice(0, 7)}`))).toBe(true)
 })
 
-test('a baseline for a job with no base sha is logged and not cached', async () => {
+dbTest('a baseline for a job with no base sha is logged and not cached', async () => {
   const repoName = `TEST-${rand}-nosha`
   const job = await newJob(repoName)
   const res = await post(job.id, { baseline: '# Base state: none\n' })
