@@ -324,6 +324,24 @@ test('AC3 — the same review or check failure never launches two jobs', async (
   expect(await followUpsOf(root.prUrl)).toHaveLength(2)
 })
 
+test('AC1 (CTD-229) — a pass that reads the job list before another pass\'s follow-up commits, and the watch after, still launches at most one follow-up', async () => {
+  const root = await rootJob()
+  prs.set(root.prUrl, state({ headSha: 'cafe01', reviews: [review(Date.now() + 1000)], checks: [check('failed')] }))
+
+  // Force the exact interleaving the flake needs, instead of hoping
+  // Promise.all lands on it: this pass reads the job list (the follow-up
+  // does not exist yet), then — via the hook, before it reads the watch —
+  // a whole separate pass runs to completion and launches the review
+  // follow-up. This pass then reads the *moved* watch, decides the check
+  // trigger (a different one — the mark that stopped the review does not
+  // stop it), and must still be blocked: a follow-up is already queued.
+  await tick(deps({ betweenListAndWatches: () => tick(deps()) }))
+
+  const after = await followUpsOf(root.prUrl)
+  expect(after).toHaveLength(1)
+  expect(after[0]?.followUp).toBe('review')
+})
+
 test('no second launch while a follow-up is still open on the PR', async () => {
   const root = await rootJob()
   prs.set(root.prUrl, state({ reviews: [review(Date.now() + 1000)] }))
