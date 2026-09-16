@@ -9,7 +9,7 @@ import path from 'node:path'
 import { Validator } from '@seriousme/openapi-schema-validator'
 import { IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX, TrackedRepoSchema, TriggerPayloadSchema } from './job-api'
 import { EventPayloadSchema } from './job-events'
-import { EVENT_HEADER, SETTLED_EVENT, SIGNATURE_HEADER } from './job-webhook'
+import { EVENT_HEADER, PR_CLOSED_EVENT, SETTLED_EVENT, SIGNATURE_HEADER } from './job-webhook'
 import { openapiDocument } from './openapi'
 
 const ROUTES_DIR = path.resolve(import.meta.dir, '../../../routes/api')
@@ -111,6 +111,32 @@ test('AC3 — POST /api/jobs documents the body, every status, and the job.settl
   expect(schemas(doc).SettledEvent).toMatchObject({
     required: ['event', 'job'],
     properties: { event: { const: SETTLED_EVENT }, job: { properties: { id: expect.anything(), status: expect.anything() } } },
+  })
+})
+
+test('CTD-232 AC1 — POST /api/jobs also documents the job.pr_closed callback', async () => {
+  const doc = await openapiDocument()
+  const create = paths(doc)['/api/jobs']!.post as {
+    callbacks: Record<string, Record<string, { post: Record<string, unknown> }>>
+  }
+
+  const [expr, callback] = Object.entries(create.callbacks.jobPrClosed!)[0]!
+  expect(expr).toBe('{$request.body#/callbackUrl}')
+  const post = callback.post as {
+    parameters: Array<{ name: string; in: string; schema: Record<string, unknown> }>
+    requestBody: { content: Record<string, { schema: { $ref: string } }> }
+  }
+  const headers = Object.fromEntries(post.parameters.filter((p) => p.in === 'header').map((p) => [p.name, p.schema]))
+  expect(headers[EVENT_HEADER]).toEqual({ type: 'string', enum: [PR_CLOSED_EVENT] })
+  expect(headers[SIGNATURE_HEADER]).toMatchObject({ type: 'string', pattern: expect.stringContaining('sha256=') })
+  expect(post.requestBody.content['application/json']!.schema.$ref).toBe('#/components/schemas/PrClosedEvent')
+  expect(schemas(doc).PrClosedEvent).toMatchObject({
+    required: ['event', 'job', 'prState'],
+    properties: {
+      event: { const: PR_CLOSED_EVENT },
+      job: { properties: { id: expect.anything(), status: expect.anything() } },
+      prState: { enum: ['merged', 'closed'] },
+    },
   })
 })
 
