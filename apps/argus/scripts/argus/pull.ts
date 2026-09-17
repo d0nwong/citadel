@@ -2,7 +2,9 @@
  * `argus pull`: one batch file from Slack and both repos. The Slack window is the cursor;
  * the landing window per repo is the newest landing any ledger already holds, else
  * `--since`, else seven days back, and landings a ledger already lists are dropped so an
- * overlapping window is harmless. Nothing new means no batch file. The advanced cursor
+ * overlapping window is harmless. Nothing new means no batch file, unless a backend
+ * landing's pipeline finished since the last run: that is news for its feature's reader,
+ * and `place` carries it. The advanced cursor
  * goes to `cursor.next.json`; `argus commit` promotes it, so a crashed run replays.
  *
  * The fetchers are injected so a test can run this against fixtures and no network.
@@ -12,13 +14,17 @@ import { mkdir } from "node:fs/promises";
 import { type Batch, batchId, batchPath } from "./batch.ts";
 import { batchesDir, cursorNextPath, listFeatures } from "./paths.ts";
 import { fetchOrigin, type Landing, landingsSince, repoOf } from "./pr-facts.ts";
-import type { Repo } from "./schema.ts";
+import { awaitsDeploy } from "./blockers.ts";
+import { type Deploy, deployedAt } from "./deploy.ts";
+import type { Landing as RecordedLanding, Repo } from "./schema.ts";
 import { flatten, type Pull, pullSlack } from "./slack-pull.ts";
 import { readLedger } from "./write.ts";
 
 export type PullSources = {
   slack: (since?: string) => Promise<Pull>;
   landings: (kind: Repo, since: string) => Promise<Landing[]>;
+  /** a backend merge's finished pipeline, or null */
+  deployed: (sha: string) => Promise<Deploy | null>;
 };
 
 export type PullOptions = {
@@ -38,18 +44,22 @@ export type PullResult = { batch: Batch | null; path: string | null; reason?: st
 
 const daysAgo = (n: number, now: Date) => new Date(now.getTime() - n * 86400_000).toISOString().slice(0, 10);
 
-/** the newest landing date each ledger holds per repo, and every sha already recorded */
-async function known(): Promise<{ newest: Record<Repo, string | null>; shas: Set<string> }> {
+/** the newest landing date each ledger holds per repo, every sha already recorded, and the deploy news pending */
+async function known(): Promise<{ newest: Record<Repo, string | null>; shas: Set<string>; untold: boolean; waiting: RecordedLanding[] }> {
   const newest: Record<Repo, string | null> = { fe: null, be: null };
   const shas = new Set<string>();
+  let untold = false;
+  const waiting: RecordedLanding[] = [];
   for (const f of await listFeatures()) {
     const l = await readLedger(f);
     for (const ld of l?.landings ?? []) {
       shas.add(ld.sha);
+      if (ld.deployed && !ld.deployed.told) untold = true;
+      if (awaitsDeploy(ld)) waiting.push(ld);
       if (!newest[ld.repo] || ld.at > newest[ld.repo]!) newest[ld.repo] = ld.at;
     }
   }
-  return { newest, shas };
+  return { newest, shas, untold, waiting };
 }
 
 export const defaultSources = (fetch = true): PullSources => ({
@@ -59,12 +69,22 @@ export const defaultSources = (fetch = true): PullSources => ({
     if (fetch) fetchOrigin(repo);
     return landingsSince(repo, since);
   },
+  deployed: (sha) => deployedAt("be", sha),
 });
+
+/** true when a reader has a deploy to hear about: one recorded and untold, or a recent one that just finished */
+async function deployNews(k: { untold: boolean; waiting: RecordedLanding[] }, deployed: PullSources["deployed"], now: Date): Promise<boolean> {
+  if (k.untold) return true;
+  const recent = daysAgo(7, now);
+  for (const ld of k.waiting) if (ld.at >= recent && (await deployed(ld.sha))) return true;
+  return false;
+}
 
 export async function pullBatch(opts: PullOptions = {}): Promise<PullResult> {
   const now = opts.now ?? new Date();
   const sources = { ...defaultSources(opts.fetch ?? true), ...opts.sources };
-  const { newest, shas } = await known();
+  const k = await known();
+  const { newest, shas } = k;
 
   const slack = opts.noSlack ? null : await sources.slack(opts.since);
   const landings: Landing[] = [];
@@ -79,7 +99,7 @@ export async function pullBatch(opts: PullOptions = {}): Promise<PullResult> {
   landings.sort((a, b) => a.at.localeCompare(b.at));
 
   const messages = slack ? flatten(slack).length : 0;
-  if (!messages && !landings.length) return { batch: null, path: null, reason: "nothing new" };
+  if (!messages && !landings.length && !(await deployNews(k, sources.deployed, now))) return { batch: null, path: null, reason: "nothing new" };
 
   const batch: Batch = { id: batchId(now), pulled_at: now.toISOString(), since, slack, landings };
   const dir = opts.outDir ?? batchesDir();

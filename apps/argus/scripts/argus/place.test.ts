@@ -105,6 +105,25 @@ describe("placeBatch", () => {
     expect(p.unplaced[0]?.candidates).toEqual(features);
   });
 
+  test("huddle notes posted under a dismissed or placed root are their own thread, and unplaced", () => {
+    const notes = { ...msg("2", "AI huddle notes are ready", "1", "Slackbot"), canvas: "## Summary\n- x" };
+    const b = flat([notes, msg("3", "follow-up in the huddle thread", "1")]);
+    const dismissed = placeBatch(b, ledgers, { "1": { feature: null, by: "user", at: "x" } }, features, NOW);
+    expect(dismissed.unplaced.map((u) => [u.id, u.thread])).toEqual([["2", undefined]]);
+    expect([...dismissed.slices.keys()]).toEqual([]);
+    const placed = placeBatch(b, ledgers, { "1": { feature: "admin/usage", by: "user", at: "x" } }, features, NOW);
+    expect(placed.slices.get("admin/usage")?.messages.map((m) => m.ts)).toEqual(["3"]);
+    expect(placed.unplaced.map((u) => u.id)).toEqual(["2"]);
+    expect(placed.threads).toEqual({});
+  });
+
+  test("huddle notes the user placed or dismissed stay where they were put", () => {
+    const b = flat([{ ...msg("2", "AI huddle notes are ready", "1", "Slackbot"), canvas: "## Summary" }]);
+    const p = placeBatch(b, ledgers, { "1": { feature: null, by: "user", at: "x" }, "2": { feature: "tasks", by: "user", at: "x" } }, features, NOW);
+    expect(p.slices.get("tasks")?.messages.map((m) => m.ts)).toEqual(["2"]);
+    expect(placeBatch(b, ledgers, { "2": { feature: null, by: "user", at: "x" } }, features, NOW).unplaced).toEqual([]);
+  });
+
   test("the same batch twice is byte-identical", () => {
     const b = flat([msg("2", "b", "2"), msg("1", "ALD-41", "1"), msg("3", "c", "3")], [landing("be", 1, ["tasks"]), landing("fe", 2, ["tasks", "admin/usage"])]);
     const a = JSON.stringify([...placeBatch(b, ledgers, {}, features, NOW).slices.values()]);
@@ -114,6 +133,8 @@ describe("placeBatch", () => {
 });
 
 describe("place (on disk)", () => {
+  /** Bitbucket, for a pipeline that has not finished */
+  const waiting = async () => null;
   let ws: string;
   beforeEach(async () => {
     ws = mkdtempSync(join(tmpdir(), "argus-place-"));
@@ -132,13 +153,13 @@ describe("place (on disk)", () => {
     const b = flat([msg("1", "hello", "1"), msg("2", "ALD-41 reply", "0.9")]);
     const path = join(ws, "state/batches", `${b.id}.json`);
     await Bun.write(path, JSON.stringify(b));
-    const placed = await place(b.id, { now: NOW });
+    const placed = await place(b.id, { now: NOW, deployed: waiting });
     expect(placed.slices.map((s) => s.feature)).toEqual(["admin/invoicing"]);
     expect(placed.unplaced).toEqual(["1"]);
     expect(await Bun.file(join(ws, "state/batches", `${b.id}.placed.json`)).exists()).toBe(true);
     expect((await readThreads())["0.9"]?.feature).toBe("admin/invoicing");
     expect((await readUnplaced()).map((u) => u.id)).toEqual(["1"]);
-    const again = await place(b.id, { now: NOW });
+    const again = await place(b.id, { now: NOW, deployed: waiting });
     expect(again).toEqual(placed);
     expect((await readUnplaced()).map((u) => u.id)).toEqual(["1"]);
   });
@@ -146,10 +167,38 @@ describe("place (on disk)", () => {
     const b = flat([], [landing("fe", 431, ["admin/invoicing"])]);
     const path = join(ws, "state/batches", `${b.id}.json`);
     await Bun.write(path, JSON.stringify(b));
-    await place(b.id, { now: NOW });
+    await place(b.id, { now: NOW, deployed: waiting });
     const l = (await readLedger("admin/invoicing"))!;
     expect(l.landings.map((x) => x.ref)).toEqual(["be#771", "fe#431"]);
-    await place(b.id, { now: NOW });
+    await place(b.id, { now: NOW, deployed: waiting });
     expect((await readLedger("admin/invoicing"))!.landings).toHaveLength(2);
+  });
+  test("an earlier landing whose deploy finished reaches the reader once, with nothing new in the batch", async () => {
+    const b = flat([]);
+    await Bun.write(join(ws, "state/batches", `${b.id}.json`), JSON.stringify(b));
+    const live = async () => ({ result: "SUCCESSFUL" as const, at: "2026-09-11T09:30:00Z", build: 2142, url: "u" });
+    // still running: nothing to tell, nothing written
+    expect((await place(b.id, { now: NOW, deployed: waiting })).slices).toEqual([]);
+    expect((await readLedger("admin/invoicing"))!.landings[0]!.deployed).toBeUndefined();
+    // finished: the ledger records it untold, and the feature gets a slice carrying it
+    const placed = await place(b.id, { now: NOW, deployed: live });
+    expect(placed.slices).toEqual([
+      { feature: "admin/invoicing", messages: [], landings: [], deploys: [{ ref: "be#771", title: "credit emails link to the production domain", landed: "2026-09-10", deploy: { result: "SUCCESSFUL", at: "2026-09-11T09:30:00Z", build: 2142, url: "u" } }] },
+    ]);
+    expect((await readLedger("admin/invoicing"))!.landings[0]!.deployed).toMatchObject({ build: 2142, told: false });
+    // placed again before the reader ran: the same slice, from the ledger, Bitbucket not asked
+    const never = async () => {
+      throw new Error("asked");
+    };
+    expect(await place(b.id, { now: NOW, deployed: never })).toEqual(placed);
+  });
+  test("a new backend landing that already deployed is told by its own slice", async () => {
+    const b = flat([], [landing("be", 801, ["admin/invoicing"])]);
+    await Bun.write(join(ws, "state/batches", `${b.id}.json`), JSON.stringify(b));
+    const live = async (_r: string, sha: string) => (sha.startsWith("801") ? { result: "SUCCESSFUL" as const, at: "2026-09-11T09:30:00Z", build: 2150, url: "u" } : null);
+    const placed = await place(b.id, { now: NOW, deployed: live });
+    expect(placed.slices[0]!.deploys).toBeUndefined();
+    const ld = (await readLedger("admin/invoicing"))!.landings.find((x) => x.ref === "be#801")!;
+    expect(ld.deployed).toMatchObject({ build: 2150, told: true });
   });
 });

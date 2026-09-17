@@ -20,6 +20,8 @@ import { archDocPath, isFeature, listApps, specDocPath } from "./argus/paths.ts"
 import { dropRevision, fileRevision, listRevisions, newRevision, readRevision, validateRevisionDir } from "./argus/revision.ts";
 import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
+import { type Check, deployCheck } from "./argus/deploy.ts";
+import { repoPath } from "./argus/pr-facts.ts";
 import { commitRun } from "./argus/commit.ts";
 import { draftFor, draftForAsk } from "./argus/file.ts";
 import { applyPatch, parsePatch } from "./argus/patch.ts";
@@ -59,7 +61,8 @@ const USAGE = `argus — the ledger CLI
 
   argus pull [--since <date>] [--no-slack] [--no-landings] [--no-fetch] [--out <dir>]
   argus place <batch-id|path>        the deterministic joins → <batch>.placed.json + state/unplaced.json
-  argus reconcile [<feature>...]     clear the blockers and settle the tickets the facts allow (asks Bitbucket whether a landing deployed, each ticket's provider — Linear or Trello — whether it is Done or Canceled); a filed revision whose parent is Done folds into its features' specs, Canceled archives it
+  argus reconcile [<feature>...]     clear the blockers and settle the tickets the facts allow (records each backend landing's finished dev pipeline, asking again every run until there is one; each ticket's provider — Linear or Trello — whether it is Done or Canceled); a filed revision whose parent is Done folds into its features' specs, Canceled archives it
+  argus deployed <be#N>|<sha>        whether a backend merge is live on dev, from its Bitbucket pipeline (--json for skills); exits 1 when nobody can ask
   argus prompt attribute [<batch>]   the attribution step's prompt over state/unplaced.json
   argus prompt reader <feature> <batch>   the reader's prompt for one feature's slice
   argus patch <feature> <file>|-     apply a reader's patch to the ledger (validated whole)
@@ -240,6 +243,17 @@ const verbs: Record<string, Verb> = {
     return r.some((x) => x.error) ? 1 : 0;
   },
 
+  async deployed(f) {
+    const [what] = f.rest;
+    if (!what) throw new Usage("deployed <be#N>|<sha>");
+    const t = await resolveLanding(what);
+    if (!t) throw new Error(`${what}: not a backend landing on any ledger or on origin/dev`);
+    const c = await deployCheck("be", t.sha);
+    if (f.json) console.log(JSON.stringify({ ok: c.state !== "unknown", ref: t.ref, sha: t.sha, ...c }));
+    else console.log(`${t.ref ?? t.sha.slice(0, 9)}: ${checkWords(c)}`);
+    return c.state === "unknown" ? 1 : 0;
+  },
+
   async prompt(f) {
     const [what, a, b] = f.rest;
     if (what === "attribute") {
@@ -268,7 +282,10 @@ const verbs: Record<string, Verb> = {
     const patch = parsePatch(JSON.parse((fenced ? fenced[1] : text)!.trim()));
     const current = await readLedger(feature);
     if (!current) throw new Error(`${feature}: no ledger`);
-    const r = await writeLedger(feature, applyPatch(current, patch), { actor: f.actor, dryRun: f.dryRun });
+    const next = applyPatch(current, patch);
+    // the reader's prompt carried every untold deploy, so they are told now
+    for (const ld of next.landings) if (ld.deployed) ld.deployed.told = true;
+    const r = await writeLedger(feature, next, { actor: f.actor, dryRun: f.dryRun });
     if (patch.notes?.length && !f.json) console.log(`notes:\n  ${patch.notes.join("\n  ")}`);
     return report(f, feature, r);
   },
@@ -443,6 +460,30 @@ const verbs: Record<string, Verb> = {
 };
 
 class Usage extends Error {}
+
+/** `be#N` or a sha → the merge commit on the backend's dev: a ledger's landing first, then the checkout's history */
+async function resolveLanding(what: string): Promise<{ ref: string | null; sha: string } | null> {
+  const pr = what.match(/^be#(\d+)$/i);
+  if (!pr && !/^[0-9a-f]{7,40}$/i.test(what)) return null;
+  for (const feature of await listFeatures()) {
+    const l = await readLedger(feature);
+    const ld = l?.landings.find((x) => x.repo === "be" && (pr ? x.ref === `be#${pr[1]}` : x.sha.startsWith(what.toLowerCase())));
+    if (ld) return { ref: ld.ref, sha: ld.sha };
+  }
+  if (!pr) return { ref: null, sha: what.toLowerCase() };
+  const git = Bun.spawnSync(["git", "-C", repoPath("be"), "log", "origin/dev", "-1", "--format=%H", `--grep=(pull request #${pr[1]})`]);
+  const sha = git.stdout.toString().trim();
+  return sha ? { ref: `be#${pr[1]}`, sha } : null;
+}
+
+function checkWords(c: Check): string {
+  if (c.state === "running") return "not deployed yet, the dev pipeline is running";
+  if (c.state === "not-found") return "not deployed, no dev pipeline among Bitbucket's newest 100";
+  if (c.state === "unknown") return `unknown: ${c.why}`;
+  const d = c.deploy;
+  const at = `${d.at.slice(0, 10)} ${d.at.slice(11, 16)} UTC`;
+  return d.result === "SUCCESSFUL" ? `deployed to dev ${at}, build ${d.build} ${d.url}` : `not deployed, the dev pipeline ${d.result.toLowerCase()} ${at}, build ${d.build} ${d.url}`;
+}
 
 function report(f: Flags, feature: string, r: { wrote: boolean; path: string; diff: string[] }): number {
   if (f.json) console.log(JSON.stringify({ ok: true, wrote: r.wrote, path: r.path, diff: r.diff }));

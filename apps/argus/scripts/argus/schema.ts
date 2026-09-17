@@ -119,6 +119,18 @@ export type Landing = {
   files: string[];
   /** ticket keys the branch or title named, so a landing can close the ask its ticket serves */
   tickets?: string[];
+  /** a backend landing's finished `dev` pipeline; absent until there is one, and argus asks every run */
+  deployed?: LandingDeploy;
+};
+
+export const DEPLOY_RESULTS = ["SUCCESSFUL", "FAILED", "STOPPED", "ERROR"] as const;
+export type LandingDeploy = {
+  result: (typeof DEPLOY_RESULTS)[number];
+  at: string;
+  build: number;
+  url: string;
+  /** false until a reader has been shown it, so a deploy that finished after the read still reaches the prose */
+  told: boolean;
 };
 
 export type Proposal = {
@@ -377,6 +389,18 @@ function landing(v: unknown, path: string): Landing {
     asks: strs(o, "asks", path),
     files: strs(o, "files", path),
     ...(o.tickets !== undefined ? { tickets: strs(o, "tickets", path) } : {}),
+    ...(o.deployed !== undefined ? { deployed: landingDeploy(o.deployed, `${path}.deployed`) } : {}),
+  };
+}
+
+function landingDeploy(v: unknown, path: string): LandingDeploy {
+  const o = obj(v, path);
+  return {
+    result: oneOf(o, "result", DEPLOY_RESULTS, path),
+    at: str(o, "at", path),
+    build: num(o, "build", path),
+    url: str(o, "url", path),
+    told: bool(o, "told", path),
   };
 }
 

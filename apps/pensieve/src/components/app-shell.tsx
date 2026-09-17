@@ -1,7 +1,7 @@
 /**
  * The shell: shadcn's Sidebar on the left — grouped nav, with every feature doc listed
  * under its app the way a docs site lists its pages — and, over the content, a sticky top
- * bar with the breadcrumb, the theme switch, the workspace path and a way to ask Argus.
+ * bar with the breadcrumb, the sweep's status, the theme switch, the workspace path and a way to ask Argus.
  * Below `md` the sidebar is a sheet behind the trigger in the top bar.
  *
  * The docs tree and the workspace path come from the root route's loader
@@ -27,6 +27,7 @@ import {
   Waypoints,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SweepStatus } from "#/components/sweep-status";
 import { ThemeToggle } from "#/components/theme";
 import { Button } from "#/components/ui/button";
 import {
@@ -461,7 +462,8 @@ function TopBar() {
       <SidebarTrigger className="-ml-1 md:hidden" />
       <Breadcrumb />
       <div className="ml-auto flex items-center gap-2">
-        <span className="mono hidden text-subtle md:inline" title={workspace}>
+        <SweepStatus />
+        <span className="mono hidden text-subtle xl:inline" title={workspace}>
           {workspace.replace(/^\/Users\/[^/]+/, "~")}
         </span>
         <ThemeToggle />

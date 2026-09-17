@@ -205,8 +205,46 @@ describe("patch and prompt", () => {
     expect(bad.code).toBe(1);
     expect(bad.err).toContain("patch.asks.remove");
   });
+  test("patch marks every recorded deploy told, since the reader's prompt carried them", async () => {
+    const path = join(ws, "alden/alden-portal/features/admin/invoicing/ledger.json");
+    const l = await Bun.file(path).json();
+    l.landings[0].deployed = { result: "SUCCESSFUL", at: "2026-09-11T09:30:00Z", build: 2142, url: "u", told: false };
+    writeFileSync(path, JSON.stringify(l));
+    const f = join(ws, "patch.json");
+    writeFileSync(f, '{ "summary": "Sam\'s credit email fix is live on dev." }');
+    expect((await argus("patch", "admin/invoicing", f)).code).toBe(0);
+    expect((await Bun.file(path).json()).landings[0].deployed.told).toBe(true);
+  });
   test("prompt attribute says when nothing is unplaced", async () => {
     const r = await argus("prompt", "attribute");
     expect(r.out.trim()).toBe("nothing unplaced");
+  });
+});
+
+describe("deployed", () => {
+  const run = (...args: string[]) => {
+    const p = Bun.spawn(["bun", join(ROOT, "scripts/argus.ts"), "deployed", ...args], {
+      env: { ...process.env, ARGUS_ROOT: ws, BITBUCKET_CONFIG: join(ws, "no-bb.json"), BE_REPO: ws },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return Promise.all([p.exited, new Response(p.stdout).text(), new Response(p.stderr).text()]).then(([code, out, err]) => ({ code, out, err }));
+  };
+  test("answers from the cache by PR ref or sha, and says so when nobody can ask", async () => {
+    mkdirSync(join(ws, "state"), { recursive: true });
+    const noCache = await run("be#771");
+    expect(noCache.code).toBe(1);
+    expect(noCache.out.trim()).toBe("be#771: unknown: no Bitbucket credentials");
+    writeFileSync(join(ws, "state/deploys.json"), JSON.stringify({ "be@0fa428a1": { result: "SUCCESSFUL", at: "2026-09-16T10:02:11Z", build: 2142, url: "https://bb/2142" } }));
+    const byRef = await run("be#771");
+    expect(byRef.code).toBe(0);
+    expect(byRef.out.trim()).toBe("be#771: deployed to dev 2026-09-16 10:02 UTC, build 2142 https://bb/2142");
+    const bySha = await run("0fa428a", "--json");
+    expect(JSON.parse(bySha.out)).toMatchObject({ ok: true, ref: "be#771", sha: "0fa428a1", state: "done", deploy: { build: 2142 } });
+  });
+  test("refuses what is not a backend landing", async () => {
+    expect((await run("be#99999")).code).toBe(1);
+    expect((await run("nope")).code).toBe(1);
+    expect((await run()).code).toBe(1);
   });
 });

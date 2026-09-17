@@ -45,6 +45,7 @@ describe("pullBatch", () => {
     const asked: string[] = [];
     const sources: PullSources = {
       slack: async (since) => onePull(since ?? "1789000000.000000"),
+      deployed: async () => null,
       landings: async (kind, since) => {
         asked.push(`${kind}:${since}`);
         return kind === "be" ? [landing("be", 771, "2026-09-10T12:00:00Z"), landing("be", 772, "2026-09-11T09:00:00Z")] : [landing("fe", 430, "2026-09-11T08:00:00Z")];
@@ -61,9 +62,30 @@ describe("pullBatch", () => {
   });
 
   test("nothing new writes nothing", async () => {
-    const r = await pullBatch({ now: NOW, sources: { slack: async () => emptyPull("1789000000.000000"), landings: async () => [] } });
+    const r = await pullBatch({ now: NOW, sources: { slack: async () => emptyPull("1789000000.000000"), landings: async () => [], deployed: async () => null } });
     expect(r).toEqual({ batch: null, path: null, reason: "nothing new" });
     expect(existsSync(join(ws, "state"))).toBe(false);
+  });
+
+  test("a recent backend deploy that finished, or one recorded and untold, is news enough for a batch", async () => {
+    const quiet = { slack: async () => emptyPull("1789000000.000000"), landings: async () => [] };
+    const asked: string[] = [];
+    const live = async (sha: string) => (asked.push(sha), { result: "SUCCESSFUL" as const, at: "2026-09-11T09:30:00Z", build: 2142, url: "u" });
+    const r = await pullBatch({ now: NOW, dryRun: true, sources: { ...quiet, deployed: live } });
+    expect(r.batch?.landings).toEqual([]);
+    expect(asked).toEqual(["0fa428a1"]);
+    // too old to be news: the window is a week
+    asked.length = 0;
+    expect((await pullBatch({ now: new Date("2026-09-30T00:00:00Z"), dryRun: true, sources: { ...quiet, deployed: live } })).batch).toBeNull();
+    // recorded but no reader has seen it: news without asking Bitbucket
+    const path = join(ws, "alden/alden-portal/features/admin/invoicing/ledger.json");
+    const l = await Bun.file(path).json();
+    l.landings[0].deployed = { result: "SUCCESSFUL", at: "2026-09-11T09:30:00Z", build: 2142, url: "u", told: false };
+    await Bun.write(path, JSON.stringify(l));
+    const never = async () => {
+      throw new Error("asked");
+    };
+    expect((await pullBatch({ now: NOW, dryRun: true, sources: { ...quiet, deployed: never } })).batch).not.toBeNull();
   });
 
   test("--since overrides both windows and leaves the cursor alone; an outDir is a fixture run", async () => {

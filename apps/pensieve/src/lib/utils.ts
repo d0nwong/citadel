@@ -35,6 +35,28 @@ export function prettyStamp(iso: string) {
   });
 }
 
+/** "3m ago", "in 12m", "2h ago" — how far `iso` is from `now`, to the minute. */
+export function relativeTime(iso: string, now = Date.now()) {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) {
+    return iso;
+  }
+  const diff = t - now;
+  const mins = Math.round(Math.abs(diff) / 60_000);
+  let span: string;
+  if (mins < 1) {
+    return diff < 0 ? "just now" : "any moment";
+  }
+  if (mins < 60) {
+    span = `${mins}m`;
+  } else if (mins < 48 * 60) {
+    span = `${Math.floor(mins / 60)}h${mins % 60 ? ` ${mins % 60}m` : ""}`;
+  } else {
+    span = `${Math.floor(mins / 1440)}d`;
+  }
+  return diff < 0 ? `${span} ago` : `in ${span}`;
+}
+
 export function daysSince(day?: string): number | null {
   if (!day) {
     return null;

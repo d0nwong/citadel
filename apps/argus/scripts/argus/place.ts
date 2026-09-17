@@ -7,9 +7,15 @@
  * ticket key went. A reply follows its root within the batch. Everything else goes to
  * `state/unplaced.json` with the features that were active in the batch as candidates.
  * The same batch placed twice gives the same placed file, byte for byte.
+ *
+ * Every placing also records the backend deploys that finished since the last run
+ * (`recordDeploys`), and a feature with one no reader has seen gets a slice carrying it,
+ * with or without anything new in the batch, so its prose catches up the same sweep.
  */
 
-import { type Batch, type Placed, placedPath, readBatch, type Slice } from "./batch.ts";
+import { type Batch, type Placed, placedPath, readBatch, type Slice, type SliceDeploy } from "./batch.ts";
+import { type DeployedOf, recordDeploys } from "./blockers.ts";
+import { deployedAt } from "./deploy.ts";
 import { listFeatures } from "./paths.ts";
 import type { Landing } from "./pr-facts.ts";
 import type { Ledger } from "./schema.ts";
@@ -18,7 +24,7 @@ import { readThreads, readUnplaced, type ThreadMap, type Unplaced, writeThreads,
 import { applyPatch } from "./patch.ts";
 import { readLedger, writeLedger } from "./write.ts";
 
-export type PlaceOptions = { now?: Date; dryRun?: boolean; outDir?: string; ledgers?: Map<string, Ledger>; threads?: ThreadMap };
+export type PlaceOptions = { now?: Date; dryRun?: boolean; outDir?: string; ledgers?: Map<string, Ledger>; threads?: ThreadMap; deployed?: DeployedOf };
 
 const PR_RE = /\b(fe|be)#(\d+)\b|pull-requests\/(\d+)\b|\bPR\s*#?(\d+)\b/gi;
 const TICKET_RE = /\b(ALD|ARG|LIA)-\d+\b/g;
@@ -84,9 +90,15 @@ export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: 
   const unplaced: Unplaced[] = [];
   const messages = batch.slack ? flatten(batch.slack) : [];
   const placedThread = new Map<string, string>();
-  const resolveThread = (m: Msg) => threads[m.thread]?.feature ?? learned[m.thread]?.feature ?? placedThread.get(m.thread) ?? null;
+  /**
+   * Huddle notes are their own thread. Slackbot posts them as a reply under its "huddle
+   * started" message, which is chat a reader dismisses before the notes exist; and a
+   * meeting covers several features, so it never follows the root's placement either.
+   */
+  const threadOf = (m: Msg) => (m.canvas ? m.ts : m.thread);
+  const resolveThread = (m: Msg) => threads[threadOf(m)]?.feature ?? learned[threadOf(m)]?.feature ?? placedThread.get(threadOf(m)) ?? null;
   /** the user said this thread belongs to no feature: its messages are neither sliced nor unplaced */
-  const nobodys = (m: Msg) => m.thread in threads && threads[m.thread]!.feature === null;
+  const nobodys = (m: Msg) => threadOf(m) in threads && threads[threadOf(m)]!.feature === null;
 
   for (const m of messages) {
     if (nobodys(m)) continue;
@@ -95,14 +107,14 @@ export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: 
     if (feature) {
       slice(feature).messages.push(m);
       if (!byThread) {
-        placedThread.set(m.thread, feature);
-        if (!threads[m.thread]) learned[m.thread] = { feature, by: "sweep", at };
+        placedThread.set(threadOf(m), feature);
+        if (!threads[threadOf(m)]) learned[threadOf(m)] = { feature, by: "sweep", at };
       }
     } else {
       unplaced.push({
         id: m.ts,
         kind: "message",
-        ...(m.thread !== m.ts ? { thread: m.thread } : {}),
+        ...(threadOf(m) !== m.ts ? { thread: threadOf(m) } : {}),
         by: m.author,
         at: m.date,
         text: m.canvas ? `${m.text}\n\n${m.canvas}` : m.text,
@@ -156,18 +168,42 @@ export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<
   const threads = opts.threads ?? (await readThreads());
   const features = await listFeatures();
   const p = placeBatch(batch, ledgers, threads, features, now);
-  const placed: Placed = { batch: batch.id, placed_at: now.toISOString(), slices: [...p.slices.values()], unplaced: p.unplaced.map((u) => u.id) };
-  if (!opts.dryRun) {
-    // code owns the landings: every slice's new landings go onto its ledger now, so the
-    // reader only ever links them to asks
-    for (const s of p.slices.values()) {
-      const l = ledgers.get(s.feature) ?? (await readLedger(s.feature));
-      if (!l || !s.landings.length) continue;
-      const fresh = s.landings
-        .filter((ld) => !l.landings.some((x) => x.ref === ld.ref))
-        .map((ld) => ({ at: ld.at, repo: ld.repo, ref: ld.ref, number: ld.number, sha: ld.sha, title: ld.title, by: ld.by, url: ld.url, asks: [], files: ld.files, tickets: ld.ticketKeys }));
-      if (fresh.length) await writeLedger(s.feature, applyPatch(l, { landings: { add: fresh } }), { actor: "model", now });
+  const deployed = opts.deployed ?? ((repo, sha) => deployedAt(repo, sha));
+  const current = new Map(ledgers);
+  const writes: [string, Ledger][] = [];
+  // code owns the landings: every slice's new landings go onto its ledger now, so the
+  // reader only ever links them to asks; a deploy recorded for one is told by the slice
+  for (const s of p.slices.values()) {
+    const l = current.get(s.feature) ?? (await readLedger(s.feature));
+    if (!l || !s.landings.length) continue;
+    const fresh = s.landings
+      .filter((ld) => !l.landings.some((x) => x.ref === ld.ref))
+      .map((ld) => ({ at: ld.at, repo: ld.repo, ref: ld.ref, number: ld.number, sha: ld.sha, title: ld.title, by: ld.by, url: ld.url, asks: [], files: ld.files, tickets: ld.ticketKeys }));
+    current.set(s.feature, fresh.length ? applyPatch(l, { landings: { add: fresh } }) : l);
+  }
+  for (const [feature, l] of current) {
+    const next = structuredClone(l);
+    await recordDeploys(next, deployed, now);
+    const inSlice = new Set(p.slices.get(feature)?.landings.map((ld) => ld.ref));
+    const deploys: SliceDeploy[] = [];
+    for (const ld of next.landings) {
+      if (!ld.deployed || ld.deployed.told) continue;
+      if (inSlice.has(ld.ref)) ld.deployed.told = true;
+      else {
+        const { told: _t, ...deploy } = ld.deployed;
+        deploys.push({ ref: ld.ref, title: ld.title, landed: ld.at, deploy });
+      }
     }
+    if (deploys.length) {
+      if (!p.slices.has(feature)) p.slices.set(feature, { feature, messages: [], landings: [] });
+      p.slices.get(feature)!.deploys = deploys;
+    }
+    if (JSON.stringify(next) !== JSON.stringify(ledgers.get(feature))) writes.push([feature, next]);
+  }
+  const slices = [...p.slices.values()].sort((a, b) => a.feature.localeCompare(b.feature));
+  const placed: Placed = { batch: batch.id, placed_at: now.toISOString(), slices, unplaced: p.unplaced.map((u) => u.id) };
+  if (!opts.dryRun) {
+    for (const [feature, next] of writes) await writeLedger(feature, next, { actor: "model", now });
     await Bun.write(placedPath(batch.id, opts.outDir ?? (idOrPath.endsWith(".json") ? idOrPath.replace(/[^/]+$/, "").replace(/\/$/, "") : undefined)), JSON.stringify(placed, null, 2) + "\n");
     if (Object.keys(p.threads).length) await writeThreads({ ...threads, ...p.threads });
     const existing = await readUnplaced();

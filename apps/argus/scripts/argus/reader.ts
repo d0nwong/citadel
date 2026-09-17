@@ -9,7 +9,7 @@
 
 import { join } from "node:path";
 import type { Batch, Placed, Slice } from "./batch.ts";
-import { type Deploy, deployedAt } from "./deploy.ts";
+import { type Check, type Deploy, deployCheck } from "./deploy.ts";
 import { featureDirOf, loadManifest } from "./manifest.ts";
 import { archDocPath, REPO_ROOT } from "./paths.ts";
 import type { Ledger } from "./schema.ts";
@@ -41,7 +41,11 @@ export function renderSlice(s: Slice, deploys: Record<string, string> = {}): str
       return `[${l.ref}] ${l.date} ${l.by} ${l.url ?? ""}\n${l.title}${tickets}\nsha ${l.sha}${deployed}\nfiles: ${files}${routes}`;
     })
     .join("\n\n");
-  return `## Messages (${s.messages.length})\n\n${renderMessages(s.messages) || "none"}\n\n## Landings (${s.landings.length})\n\n${landings || "none"}`;
+  const finished = (s.deploys ?? [])
+    .map((d) => `[${d.ref}] landed ${d.landed.slice(0, 10)}: ${d.title}\n${deployWords(d.deploy)}, build ${d.deploy.build} ${d.deploy.url}`)
+    .join("\n\n");
+  const earlier = finished ? `\n\n## Earlier landings whose deploy finished (${s.deploys!.length})\n\n${finished}` : "";
+  return `## Messages (${s.messages.length})\n\n${renderMessages(s.messages) || "none"}\n\n## Landings (${s.landings.length})\n\n${landings || "none"}${earlier}`;
 }
 
 /** the arch doc's mismatch and gap sections, capped */
@@ -104,14 +108,25 @@ export async function attributePrompt(unplaced: Unplaced[], features: string[], 
   return `${await skill("attribute.md")}\n\n# Features\n\n${await featureSummaries(features)}\n\n# Unplaced (${unplaced.length} messages in ${groups.size} threads)\n\n${items.join("\n\n")}\n\nAnswer with the JSON object only, one entry per message id.`;
 }
 
+const deployWords = (d: Deploy) => (d.result === "SUCCESSFUL" ? `deployed to dev ${d.at.slice(0, 10)}` : `not deployed: the dev pipeline ${d.result.toLowerCase()}`);
+
 /** each backend landing's deploy, in words the reader can act on; the cache answers first */
-export async function deploysFor(slice: Slice, lookup: (repo: "fe" | "be", sha: string) => Promise<Deploy | null> = deployedAt): Promise<Record<string, string>> {
+export async function deploysFor(slice: Slice, lookup: (repo: "fe" | "be", sha: string) => Promise<Check> = deployCheck): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (const l of slice.landings) {
     if (l.repo !== "be") continue;
     try {
-      const d = await lookup(l.repo, l.sha);
-      out[l.ref] = d ? (d.result === "SUCCESSFUL" ? `yes, ${d.at.slice(0, 10)} (on dev)` : `no, the pipeline ${d.result.toLowerCase()}`) : "not yet";
+      const c = await lookup(l.repo, l.sha);
+      out[l.ref] =
+        c.state === "done"
+          ? c.deploy.result === "SUCCESSFUL"
+            ? `yes, ${c.deploy.at.slice(0, 10)} (on dev)`
+            : `no, the pipeline ${c.deploy.result.toLowerCase()}`
+          : c.state === "running"
+            ? "not yet, the pipeline is running; argus reports when it finishes"
+            : c.state === "not-found"
+              ? "not yet, no pipeline has started; argus reports when one finishes"
+              : `unknown (${c.why})`;
     } catch {
       out[l.ref] = "unknown";
     }

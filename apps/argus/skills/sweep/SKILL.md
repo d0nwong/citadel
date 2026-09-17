@@ -19,9 +19,12 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
 
 ## Process
 
-1. **Pull.** `argus pull`. Nothing new prints "nothing new"; stop there.
+1. **Pull.** `argus pull`. Nothing new prints "nothing new"; stop there. A backend
+   deploy that finished since the last run counts as new.
 2. **Place.** `argus place <batch>`. Code joins landings by files, replies by thread,
-   messages by ticket key or PR. The rest goes to `state/unplaced.json`.
+   messages by ticket key or PR. The rest goes to `state/unplaced.json`. Each backend
+   landing on a ledger gets its finished `dev` pipeline. A feature whose landing finished
+   deploying gets a slice for it, even with nothing else new.
 3. **Attribute.** `argus prompt attribute <batch>` prints the unplaced messages with the
    feature list; answer it yourself, then `argus place <id> <feature>` for each message
    you would bet on. Leave the rest. Then `argus place <batch>` once more, so the slices
@@ -30,8 +33,8 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
    subagent with `model: "opus"` whose whole prompt is `argus prompt reader <feature>
    <batch>`. Save its reply to a file and `argus patch <feature> <file>`. A refusal names
    the path; hand it back to the subagent once with that text, then give up on it.
-5. **Reconcile.** `argus reconcile`. Landing blockers clear when Bitbucket says the
-   merge deployed; ticket blockers when their asks closed. An open ticket settles when
+5. **Reconcile.** `argus reconcile`. Backend landings still waiting are checked again.
+   Landing blockers clear when Bitbucket says the merge deployed; ticket blockers when their asks closed. An open ticket settles when
    Linear says Done (closes its asks) or Canceled (drops them), or, with no asks, when a
    landing carrying its key is live. A filed revision whose parent is Done folds into its
    features' `docs/spec.md`; Canceled archives it.

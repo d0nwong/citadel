@@ -1,14 +1,15 @@
 /**
  * Whether a landing is live. The backend deploys to App Engine from every merge to `dev`
  * through a Bitbucket pipeline, and Bitbucket's pipelines API says for each merge commit
- * whether that pipeline succeeded and when. That answer is the `deployed` fact on a
- * landing blocker. Credentials are the ones `bb` keeps in
+ * whether that pipeline finished, how, and when, or is still running. A finished answer is
+ * the `deployed` fact on a backend landing and on a landing blocker; argus asks again every
+ * run until there is one. Credentials are the ones `bb` keeps in
  * `~/.bitbucket-rest-cli-config.json` (`BITBUCKET_CONFIG` overrides the path); read here
- * and nowhere else. Terminal answers are cached in `state/deploys.json`, so a sha is asked
- * about once.
+ * and nowhere else. Finished answers are cached in `state/deploys.json`, so a sha is
+ * settled once.
  *
- * The frontend's deploy is not read yet: `deployedAt("fe", ...)` answers null, unknown, and
- * a frontend landing blocker waits for a person until that is decided.
+ * The frontend's deploy is not read yet: `deployCheck("fe", ...)` answers unknown, and a
+ * frontend landing blocker waits for a person until that is decided.
  */
 
 import { homedir } from "node:os";
@@ -47,51 +48,85 @@ type Pipeline = {
   created_on: string;
 };
 
-/** the pipeline that ran for `sha` on `branch`, if Bitbucket lists one among the newest; undefined without credentials */
+/**
+ * What Bitbucket says about one sha: its pipeline finished (`done`, any result), is still
+ * going (`running`), or is not among the newest pipelines on the branch (`not-found`).
+ * `unknown` is a question nobody could ask: no credentials, or the frontend.
+ */
+export type Check = { state: "done"; deploy: Deploy } | { state: "running" } | { state: "not-found" } | { state: "unknown"; why: string };
+
+/** Bitbucket's largest page, so a busy week's merges are still on it */
+const PAGELEN = 100;
+/** one page per branch per minute: a run asks about many shas, and they share it */
+const pages = new Map<string, { at: number; values: Promise<Pipeline[]> }>();
+
+async function newestPipelines(slug: string, branch: string, auth: string, f: typeof fetch, pagelen: number): Promise<Pipeline[]> {
+  const url = `https://api.bitbucket.org/2.0/repositories/${slug}/pipelines/?target.branch=${encodeURIComponent(branch)}&sort=-created_on&pagelen=${pagelen}`;
+  const res = await f(url, { headers: { Authorization: auth } });
+  if (!res.ok) throw new Error(`bitbucket pipelines: ${res.status}`);
+  return ((await res.json()) as { values: Pipeline[] }).values;
+}
+
+/** the pipeline that ran for `sha` on `branch`, among the newest; undefined without credentials */
 export async function pipelineFor(
   slug: string,
   branch: string,
   sha: string,
   opts: { fetch?: typeof fetch; auth?: string | null; pagelen?: number } = {},
-): Promise<Deploy | null | undefined> {
+): Promise<Check | undefined> {
   const auth = opts.auth === undefined ? await bitbucketAuth() : opts.auth;
   if (!auth) return undefined;
-  const f = opts.fetch ?? fetch;
-  const url = `https://api.bitbucket.org/2.0/repositories/${slug}/pipelines/?target.branch=${encodeURIComponent(branch)}&sort=-created_on&pagelen=${opts.pagelen ?? 30}`;
-  const res = await f(url, { headers: { Authorization: auth } });
-  if (!res.ok) throw new Error(`bitbucket pipelines: ${res.status}`);
-  const d = (await res.json()) as { values: Pipeline[] };
-  const hit = d.values.find((v) => {
+  let values: Promise<Pipeline[]>;
+  if (opts.fetch) values = newestPipelines(slug, branch, auth, opts.fetch, opts.pagelen ?? PAGELEN);
+  else {
+    const key = `${slug}@${branch}`;
+    const hit = pages.get(key);
+    if (hit && Date.now() - hit.at < 60_000) values = hit.values;
+    else {
+      values = newestPipelines(slug, branch, auth, fetch, opts.pagelen ?? PAGELEN);
+      pages.set(key, { at: Date.now(), values });
+      values.catch(() => pages.delete(key));
+    }
+  }
+  const hit = (await values).find((v) => {
     const h = v.target?.commit?.hash ?? "";
     return h.length > 0 && (h.startsWith(sha) || sha.startsWith(h));
   });
-  if (!hit) return null;
+  if (!hit) return { state: "not-found" };
   const result = (hit.state.result?.name ?? "") as Deploy["result"] | "";
-  if (!result) return null; // still running
+  if (!result) return { state: "running" };
   return {
-    result,
-    at: hit.completed_on ?? hit.created_on,
-    build: hit.build_number,
-    url: `https://bitbucket.org/${slug}/addon/pipelines/home#!/results/${hit.build_number}`,
+    state: "done",
+    deploy: {
+      result,
+      at: hit.completed_on ?? hit.created_on,
+      build: hit.build_number,
+      url: `https://bitbucket.org/${slug}/addon/pipelines/home#!/results/${hit.build_number}`,
+    },
   };
 }
 
 const BRANCH: Record<Repo, string | null> = { be: "dev", fe: null };
 
-/** the deploy of a landing, null when it has not happened or is unknown, with the cache in front */
-export async function deployedAt(
-  repo: Repo,
-  sha: string,
-  opts: { fetch?: typeof fetch; auth?: string | null; cache?: DeployCache } = {},
-): Promise<Deploy | null> {
+export type CheckOptions = { fetch?: typeof fetch; auth?: string | null; cache?: DeployCache };
+
+/** what Bitbucket says about a landing's deploy, with the cache in front; only a finished pipeline is cached */
+export async function deployCheck(repo: Repo, sha: string, opts: CheckOptions = {}): Promise<Check> {
   const branch = BRANCH[repo];
-  if (!branch) return null;
+  if (!branch) return { state: "unknown", why: "the frontend's deploy is not read" };
   const cache = opts.cache ?? (await readDeployCache());
   const key = `${repo}@${sha}`;
-  if (cache[key]) return cache[key];
-  const d = await pipelineFor(REPOS[repo].slug, branch, sha, opts);
-  if (!d) return null;
-  cache[key] = d;
+  if (cache[key]) return { state: "done", deploy: cache[key] };
+  const c = await pipelineFor(REPOS[repo].slug, branch, sha, opts);
+  if (!c) return { state: "unknown", why: "no Bitbucket credentials" };
+  if (c.state !== "done") return c;
+  cache[key] = c.deploy;
   if (!opts.cache) await writeDeployCache(cache);
-  return d;
+  return c;
+}
+
+/** the deploy of a landing, null when it has not finished or is unknown */
+export async function deployedAt(repo: Repo, sha: string, opts: CheckOptions = {}): Promise<Deploy | null> {
+  const c = await deployCheck(repo, sha, opts);
+  return c.state === "done" ? c.deploy : null;
 }
