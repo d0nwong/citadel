@@ -13,7 +13,7 @@ import { type Check, type Deploy, deployCheck } from "./deploy.ts";
 import { isGrounded } from "./grounding.ts";
 import { featureDirOf, loadManifest } from "./manifest.ts";
 import { archDocPath, REPO_ROOT } from "./paths.ts";
-import { REPOS, repoPath } from "./pr-facts.ts";
+import { fetchOrigin, REPOS, repoOf, repoPath } from "./pr-facts.ts";
 import type { Ledger } from "./schema.ts";
 import { flatten, type Msg } from "./slack-pull.ts";
 import type { Unplaced } from "./state.ts";
@@ -160,7 +160,10 @@ export async function ungroundedProposals(features: string[]): Promise<{ feature
   return out;
 }
 
+/** a fresh pin: the checkouts are shared and their remote refs go stale between pulls */
 const head = (kind: "fe" | "be") => {
+  // offline, the fetch fails quietly and the stale ref is still a pin the Verified line names
+  if (process.env.ARGUS_NO_FETCH !== "1") fetchOrigin(repoOf(kind));
   const r = Bun.spawnSync(["git", "-C", repoPath(kind), "rev-parse", "--short=9", REPOS[kind].ref]);
   return r.success ? r.stdout.toString().trim() : "unknown";
 };

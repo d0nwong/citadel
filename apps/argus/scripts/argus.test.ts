@@ -15,7 +15,7 @@ let ws: string;
 
 const argus = async (...args: string[]) => {
   const p = Bun.spawn(["bun", join(ROOT, "scripts/argus.ts"), ...args], {
-    env: { ...process.env, ARGUS_ROOT: ws },
+    env: { ...process.env, ARGUS_ROOT: ws, ARGUS_NO_FETCH: "1" },
     stdout: "pipe",
     stderr: "pipe",
   });
