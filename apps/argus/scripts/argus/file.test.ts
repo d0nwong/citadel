@@ -28,6 +28,8 @@ describe("file", () => {
     expect(d).toMatchObject({ provider: "trello", board: "Alden SWE Ticketing System", list: "Pipeline", label: "Admin - Invoicing", title: "[FE] Payment term on the billing profile", asks: ["A-2"] });
     expect(d.assignee).toBeUndefined();
     expect(d.body.startsWith("## Summary")).toBe(true);
+    // the fixture's body has no Technical Notes: the grounding step has not run
+    expect(d.grounded).toBe(false);
   });
   test("an unknown proposal is refused", async () => {
     await expect(draftFor("admin/invoicing", "P-9")).rejects.toThrow("no proposal P-9");

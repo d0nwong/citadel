@@ -10,8 +10,10 @@
 import { join } from "node:path";
 import type { Batch, Placed, Slice } from "./batch.ts";
 import { type Check, type Deploy, deployCheck } from "./deploy.ts";
+import { isGrounded } from "./grounding.ts";
 import { featureDirOf, loadManifest } from "./manifest.ts";
 import { archDocPath, REPO_ROOT } from "./paths.ts";
+import { REPOS, repoPath } from "./pr-facts.ts";
 import type { Ledger } from "./schema.ts";
 import { flatten, type Msg } from "./slack-pull.ts";
 import type { Unplaced } from "./state.ts";
@@ -148,6 +150,40 @@ export async function readerPrompt(feature: string, slice: Slice, day: string, d
     `# What is new (${day})\n\n${renderSlice(slice, deploys ?? (await deploysFor(slice)))}`,
     `# From docs/arch.md\n\n${arch}`,
     `Today is ${day}. Return the patch as one JSON object in a \`\`\`json fence, nothing else.`,
+  ].join("\n\n");
+}
+
+/** every proposal on the named ledgers whose Technical Notes do not yet point at code */
+export async function ungroundedProposals(features: string[]): Promise<{ feature: string; id: string }[]> {
+  const out: { feature: string; id: string }[] = [];
+  for (const feature of features) for (const p of (await readLedger(feature))?.proposals ?? []) if (!isGrounded(p.body)) out.push({ feature, id: p.id });
+  return out;
+}
+
+const head = (kind: "fe" | "be") => {
+  const r = Bun.spawnSync(["git", "-C", repoPath(kind), "rev-parse", "--short=9", REPOS[kind].ref]);
+  return r.success ? r.stdout.toString().trim() : "unknown";
+};
+
+/** the grounding step's prompt: one proposal, what the ledger knows about where its asks live in code, and the pins */
+export async function groundPrompt(feature: string, id: string): Promise<string> {
+  const ledger = await readLedger(feature);
+  if (!ledger) throw new Error(`${feature}: no ledger`);
+  const p = ledger.proposals.find((x) => x.id === id);
+  if (!p) throw new Error(`${feature}: no proposal ${id}`);
+  const asks = ledger.asks.filter((a) => p.asks.includes(a.id));
+  const reqIds = new Set(asks.flatMap((a) => a.requirements ?? []));
+  const pointers = ledger.requirements
+    .filter((r) => reqIds.has(r.id) && r.code?.length)
+    .map((r) => `- ${r.id} ${r.text}\n${r.code!.map((c) => `  - ${c.repo} ${c.path}${c.line ? `:${c.line}` : ""} @ ${c.sha}`).join("\n")}`);
+  return [
+    await skill("ground.md"),
+    `# FORMAT.md\n\n${await Bun.file(join(REPO_ROOT, "skills/linear-ticket/FORMAT.md")).text()}`,
+    `# The proposal: ${feature} ${p.id}\n\nTitle: ${p.title}\n\n${p.body}`,
+    `# The asks it serves\n\n${asks.map((a) => `- ${a.id} (${a.status}) ${a.text}`).join("\n") || "none"}`,
+    `# Where the ledger already says the code is\n\n${pointers.join("\n") || "nothing recorded; find it with accio"}`,
+    `# Pins\n\nfrontend ${repoPath("fe")} ${REPOS.fe.ref}@${head("fe")}\nbackend ${repoPath("be")} ${REPOS.be.ref}@${head("be")}\narch doc ${archDocPath(feature)}`,
+    `Return the patch as one JSON object in a \`\`\`json fence, nothing else: { "proposals": { "update": [ { "id": "${p.id}", "body": "<the whole body>" } ] } }`,
   ].join("\n\n");
 }
 

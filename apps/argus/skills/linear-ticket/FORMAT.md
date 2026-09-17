@@ -88,6 +88,11 @@ Verified at FE <branch>@<sha>, BE dev@<sha>.
 
 ## Length budget
 
+- **Every note leads with its file.** A bullet opens with a backticked repo path
+  (`src/hooks/projects/use-create-project.ts`), then the function or line range and what
+  changes there. A product fact with no file, like a multiplier or who may set a field,
+  belongs in Background or an AC. An unresolved point is written "Open question: …". The
+  validator refuses a proposal with any other kind of note.
 - **Technical Notes are what the code won't tell you.** At most eight bullets, each a
   fact the implementer could not learn by opening the files Scope names: a payload that
   arrives wrapped, a mapper that returns null, a field that exists twice under two
@@ -97,7 +102,8 @@ Verified at FE <branch>@<sha>, BE dev@<sha>.
   is a reference by its MM / BR number, never a paragraph. The docs are where the long
   version lives; the ticket carries the pointer and the AC it matters to.
 - **Recurring mechanics live here, once.** The regen steps in the section below are the
-  copy; a Technical Note says "regen per FORMAT.md against `dev@<sha>`" and names the hook.
+  copy; a Technical Note on `src/http/generated/` says "regen per `FORMAT.md` against
+  `dev@<sha>`" and names the hook.
 - **Target under 800 words** for the whole body. The worked example below is about
   910 including its sub-issue position line and twelve ACs; most tickets land lower.
 
@@ -152,8 +158,9 @@ fact lives in a different section in each:
   mechanics live here and nowhere else: confirm the change is live on
   `https://dev-alden-portal.uc.r.appspot.com/api-docs/swagger-ui-init.js`, export the
   `swaggerDoc` object to `./openapi.json`, run Orval, commit `src/http/generated/`. A
-  Technical Note says "regen per FORMAT.md against `dev@<sha>`" and names the generated
-  hook or type the FE consumes beside the AC it serves.
+  Technical Note on `src/http/generated/` says "regen per `FORMAT.md` against
+  `dev@<sha>`" and names the generated hook or type the FE consumes beside the AC it
+  serves.
   Landed-but-not-deployed stays Pending: an export from a stale server looks done and
   isn't. Before you write a backend Pending bullet, run `argus deployed <be#N>` (or the
   merge sha). If it prints "deployed", the regen is the first Scope bullet. If it prints
@@ -246,25 +253,28 @@ Out of scope:
 
 ## Technical Notes
 
-- Regen per FORMAT.md against `dev@5ca2ed71`; the roster hook `useGetEntities` already
-  exists, the current-cycle hook is new — AC1, AC3.
-- Orval hook payloads arrive double-wrapped; `use-usage.ts` unwraps once
-  (`usageQuery.data?.data`, no `unwrapOrvalHookPayload`). One request per entity means
-  `useQueries` replaces the single `useQuery` — AC1, AC2.
-- `mapUsageActiveRow` returns `null` on an empty `clientName`: join the roster's name and
-  code onto each response before mapping — AC3.
-- The payload carries both `invoiceField.rolloverCredits` (banked) and
-  `credits.availableRollover` (zero once the four-month window closes);
-  `buildStackedMeter` reads the banked one today (arch MM-11) — AC8.
-- `assetEntities[].id` is the asset type's id, and the join is not unique per entity and
-  type, so two configured rows can collapse into one column; `collectAssetTypeColumns`
-  keys on `assetTypeId` already (arch MM-3, MM-5) — AC6, AC10.
-- `tasks[].name` is JSON (`object` in the swagger): reduce it as the dashboard task table
-  does. `multiplierTask` is nullable; `assignedUsers[]` carries `isPrimary`;
-  `SubTaskStatus.submitted` has no `STATUS_CONFIG` entry (arch MM-8) — AC4, AC5, AC9.
-- A missing entity is a bare `Error` in `getEntityCurrentBillingCycle`, so the FE sees 500
-  where the swagger says 404 (admin-invoicing arch MM-29); a null `billingCycleDay` is a
-  real 400 — AC11.
+- `src/http/generated/` — regen per `FORMAT.md` against `dev@5ca2ed71`; the roster hook
+  in `src/hooks/entity/use-get-entities.ts` already exists, the current-cycle hook is
+  new — AC1, AC3.
+- `src/features/usage/hooks/use-usage-entities.ts` — Orval hook payloads arrive
+  double-wrapped; unwrap once (`usageQuery.data?.data`, no `unwrapOrvalHookPayload`). One
+  request per entity means `useQueries` replaces the single `useQuery` — AC1, AC2.
+- `src/features/usage/lib/map-usage-response.ts` `mapUsageActiveRow` returns `null` on an
+  empty `clientName`: join the roster's name and code onto each response before mapping —
+  AC3.
+- `src/features/usage/lib/map-usage-response.ts` `buildStackedMeter` reads
+  `invoiceField.rolloverCredits` (banked); the payload also carries
+  `credits.availableRollover` (zero once the four-month window closes) (arch MM-11) — AC8.
+- `src/features/usage/lib/map-usage-response.ts` `collectAssetTypeColumns` keys on
+  `assetTypeId` already: `assetEntities[].id` is the asset type's id, and the join is not
+  unique per entity and type, so two configured rows can collapse (arch MM-3, MM-5) — AC6,
+  AC10.
+- `src/features/usage/components/usage-task-status.ts` — `SubTaskStatus.submitted` has no
+  `STATUS_CONFIG` entry; `tasks[].name` is JSON (`object` in the swagger), reduced as the
+  dashboard task table does (arch MM-8) — AC4, AC5, AC9.
+- `src/services/invoiceService.ts` (backend) `getEntityCurrentBillingCycle` throws a bare
+  `Error` for a missing entity, so the FE sees 500 where the swagger says 404
+  (admin-invoicing arch MM-29); a null `billingCycleDay` is a real 400 — AC11.
 - Open question: `contactName` has no counterpart on the wire and nothing renders it; it
   stays null.
 

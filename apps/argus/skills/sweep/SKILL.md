@@ -33,6 +33,11 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
    subagent with `model: "opus"` whose whole prompt is `argus prompt reader <feature>
    <batch>`. Save its reply to a file and `argus patch <feature> <file>`. A refusal names
    the path; hand it back to the subagent once with that text, then give up on it.
+   **Ground.** `argus prompt ground` lists each proposal whose Technical Notes name no
+   file. For each one, one general-purpose subagent with `model: "opus"` gets
+   `argus prompt ground <feature> <P-n>` as its whole prompt. It reads the code and
+   returns the body. Save the reply and `argus patch` it. A refusal is handed back once,
+   then the proposal stays ungrounded for the next run.
 5. **Reconcile.** `argus reconcile`. Backend landings still waiting are checked again.
    Landing blockers clear when Bitbucket says the merge deployed; ticket blockers when their asks closed. An open ticket settles when
    Linear says Done (closes its asks) or Canceled (drops them), or, with no asks, when a
@@ -81,3 +86,4 @@ Or "quiet run" when nothing changed.
 - [ ] `argus validate` is clean for every feature the run touched
 - [ ] `git log -1` is this run's commit and `state/cursor.json` moved after it
 - [ ] Every reader call was one feature; every placement was a bet, not a tidy-up
+- [ ] `argus prompt ground` lists only proposals whose grounding was refused twice

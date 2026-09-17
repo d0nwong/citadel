@@ -64,7 +64,9 @@ can be named by a revision as `<app>/<dir>`.
    corrects the prose.
 3. Attribute — the model places what it would bet on (`skills/sweep/attribute.md`).
 4. Read — one Opus subagent per feature with a slice returns a patch
-   (`skills/sweep/reader.md`, `shapes.md`); code applies and validates the whole.
+   (`skills/sweep/reader.md`, `shapes.md`); code applies and validates the whole. Then one
+   subagent per proposal whose Technical Notes name no file reads the code and writes
+   them (`skills/sweep/ground.md`, `argus prompt ground`).
 5. `argus reconcile` — a landing blocker clears when Bitbucket says the merge deployed. An
    open ticket settles when its provider says Done (its asks close) or Canceled (they drop),
    or, with no asks, once the landing carrying its key is live — Linear for `CTD` and `ALD`,

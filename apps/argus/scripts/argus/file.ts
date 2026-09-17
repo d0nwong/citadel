@@ -12,6 +12,7 @@
  */
 
 import { TRELLO_BOARD_NAME, TRELLO_PIPELINE_LIST } from "@citadel/tickets";
+import { isGrounded } from "./grounding.ts";
 import { readLedger } from "./write.ts";
 
 const word = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
@@ -33,6 +34,8 @@ export type Draft = {
   board: string;
   list: string;
   label: string;
+  /** its Technical Notes point at code; false until the sweep's grounding step has run */
+  grounded: boolean;
   /** left unset here — Ask (ticket 5) offers a board member, or files unassigned */
   assignee?: string;
 };
@@ -47,7 +50,7 @@ export async function draftFor(feature: string, proposalId: string): Promise<Dra
     const filed = l.tickets.find((t) => t.asks.some((a) => l.proposals.every((q) => !q.asks.includes(a))));
     throw new Error(`${feature}: no proposal ${proposalId}${filed ? "; it may already be filed" : ""}`);
   }
-  return { feature, proposal: p.id, title: p.title, body: p.body, asks: p.asks, ...destination(feature) };
+  return { feature, proposal: p.id, title: p.title, body: p.body, asks: p.asks, grounded: isGrounded(p.body), ...destination(feature) };
 }
 
 /**
@@ -63,5 +66,5 @@ export async function draftForAsk(feature: string, askId: string): Promise<Draft
   if (a.ticket) throw new Error(`${askId} already has ${a.ticket}`);
   const p = l.proposals.find((x) => x.asks.includes(askId));
   if (!p) throw new Error(`${askId} has no proposal yet; have the reader draft one before filing`);
-  return { feature, proposal: a.id, title: p.title, body: p.body, asks: p.asks, ...destination(feature) };
+  return { feature, proposal: a.id, title: p.title, body: p.body, asks: p.asks, grounded: isGrounded(p.body), ...destination(feature) };
 }
