@@ -19,6 +19,7 @@ import type {
 } from "#/server/ask";
 import type { FoundryJob, FoundryRepo } from "#/server/foundry";
 import type { Home, HomeShell, LedgerRef, PipelineCard } from "#/server/ledger";
+import type { SweepStatus } from "#/server/sweep";
 import type { Json } from "#/server/workspace";
 import type { WorktreeDiscardCounts } from "#/server/worktrees";
 
@@ -73,6 +74,26 @@ export const getNavigation = createServerFn({ method: "GET" }).handler(
       unsorted: unplaced.length,
       workspace: ws.WORKSPACE_DIR,
     };
+  }
+);
+
+/** The top bar's sweep line: running, or when it last ran and runs next. */
+export const getSweepStatus = createServerFn({ method: "GET" }).handler(
+  async (): Promise<SweepStatus | null> => {
+    const sw = await import("#/server/sweep");
+    return sw.readSweepStatus();
+  }
+);
+
+/** `/sweep` — the running (or last) tick's output, tailed. */
+export const getSweepLog = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const sw = await import("#/server/sweep");
+    const [status, log] = await Promise.all([
+      sw.readSweepStatus(),
+      sw.readSweepLog(),
+    ]);
+    return { log, status };
   }
 );
 
