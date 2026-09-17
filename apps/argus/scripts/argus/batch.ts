@@ -6,6 +6,7 @@
  */
 
 import { join } from "node:path";
+import type { Deploy } from "./deploy.ts";
 import { batchesDir } from "./paths.ts";
 import type { Landing } from "./pr-facts.ts";
 import type { Msg, Pull } from "./slack-pull.ts";
@@ -18,8 +19,11 @@ export type Batch = {
   landings: Landing[];
 };
 
-/** one feature's share of a batch */
-export type Slice = { feature: string; messages: Msg[]; landings: Landing[] };
+/** an earlier landing whose pipeline finished since a reader last saw the ledger */
+export type SliceDeploy = { ref: string; title: string; landed: string; deploy: Deploy };
+
+/** one feature's share of a batch; `deploys` is news about landings the ledger already has */
+export type Slice = { feature: string; messages: Msg[]; landings: Landing[]; deploys?: SliceDeploy[] };
 
 export type Placed = {
   batch: string;

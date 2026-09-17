@@ -1,5 +1,9 @@
 /**
- * The blockers code can clear. A `landing` blocker clears when the landing it names is on
+ * The blockers code can clear, and the deploys code can record. A backend landing carries
+ * its finished `dev` pipeline once Bitbucket has one (`recordDeploys`); until then every
+ * run asks again, so a merge read while its pipeline ran is not "not deployed" for good.
+ *
+ * A `landing` blocker clears when the landing it names is on
  * the ledger and its deploy succeeded; a `ticket` blocker clears when every ask the named
  * ticket serves is closed. An `answer` blocker is a person's to clear, through the reader
  * or a click. `argus reconcile` runs this over every ledger after a batch is placed.
@@ -35,10 +39,36 @@ const unknown: TicketStates = () => ({ state: "unknown" });
 
 export type Reconciled = { ledger: Ledger; cleared: string[] };
 
+/** a deploy this old when first recorded is history, not news for the reader */
+const NEWS_DAYS = 7;
+
+/** true for a backend landing whose pipeline has not been seen to finish */
+export const awaitsDeploy = (ld: Landing) => ld.repo === "be" && !ld.deployed;
+
+/**
+ * Mutates `l`: every backend landing still waiting gets its finished pipeline, if there is
+ * one now, and one line per landing that got one. A recent one is marked untold, so the
+ * next reader rewrites whatever the ledger says about it.
+ */
+export async function recordDeploys(l: Ledger, deployed: DeployedOf, now = new Date()): Promise<string[]> {
+  const out: string[] = [];
+  const recent = new Date(now.getTime() - NEWS_DAYS * 86_400_000).toISOString();
+  for (const ld of l.landings) {
+    if (!awaitsDeploy(ld)) continue;
+    const d = await deployed(ld.repo, ld.sha);
+    if (!d) continue;
+    ld.deployed = { ...d, told: ld.at < recent };
+    out.push(d.result === "SUCCESSFUL" ? `${ld.ref}: deployed to dev (${day(d.at)}, build ${d.build})` : `${ld.ref}: dev pipeline ${d.result.toLowerCase()} (build ${d.build})`);
+  }
+  return out;
+}
+
 /** pure: the ledger with every clearable blocker cleared, and one line per clearance */
 export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new Date(), states: TicketStates = unknown): Promise<Reconciled> {
   const next: Ledger = structuredClone(l);
-  const cleared: string[] = [];
+  const cleared: string[] = await recordDeploys(next, deployed, now);
+  /** the ledger's fact first; Bitbucket only for a landing still waiting */
+  const deployOf = async (ld: Landing): Promise<Deploy | null> => ld.deployed ?? (ld.repo === "be" ? null : deployed(ld.repo, ld.sha));
   const settledAsk = (id: string) => {
     const a = next.asks.find((x) => x.id === id);
     return !!a && (a.status === "closed" || a.status === "dropped");
@@ -54,7 +84,7 @@ export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new
     ld.url && ld.number ? [{ kind: "pr", repo: ld.repo, number: ld.number, url: ld.url }] : [{ kind: "commit", repo: ld.repo, sha: ld.sha }];
   const liveAt = async (ld: Landing): Promise<string | null> => {
     if (ld.repo === "fe") return ld.at;
-    const d = await deployed(ld.repo, ld.sha);
+    const d = await deployOf(ld);
     return d?.result === "SUCCESSFUL" ? d.at : null;
   };
   const day0 = day(now.toISOString());
@@ -95,7 +125,7 @@ export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new
     if (b.kind === "landing") {
       const ld = next.landings.find((x) => x.ref === b.ref);
       if (!ld) return;
-      const d = await deployed(ld.repo, ld.sha);
+      const d = await deployOf(ld);
       if (!d || d.result !== "SUCCESSFUL") return;
       b.deployed = true;
       b.cleared = { at: day(d.at), evidence: evidenceOf(ld) };
@@ -148,6 +178,7 @@ export type ReconcileOptions = {
 export function needsReconcile(l: Ledger): boolean {
   const open = (bs: Blocker[]) => bs.some((b) => !b.cleared);
   return (
+    l.landings.some(awaitsDeploy) ||
     l.tickets.some((t) => !t.settled) ||
     l.asks.some((a) => a.ticket && a.status !== "closed" && a.status !== "dropped") ||
     l.tickets.some((t) => open(t.blockers)) ||

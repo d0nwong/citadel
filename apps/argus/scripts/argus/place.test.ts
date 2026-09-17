@@ -133,6 +133,8 @@ describe("placeBatch", () => {
 });
 
 describe("place (on disk)", () => {
+  /** Bitbucket, for a pipeline that has not finished */
+  const waiting = async () => null;
   let ws: string;
   beforeEach(async () => {
     ws = mkdtempSync(join(tmpdir(), "argus-place-"));
@@ -151,13 +153,13 @@ describe("place (on disk)", () => {
     const b = flat([msg("1", "hello", "1"), msg("2", "ALD-41 reply", "0.9")]);
     const path = join(ws, "state/batches", `${b.id}.json`);
     await Bun.write(path, JSON.stringify(b));
-    const placed = await place(b.id, { now: NOW });
+    const placed = await place(b.id, { now: NOW, deployed: waiting });
     expect(placed.slices.map((s) => s.feature)).toEqual(["admin/invoicing"]);
     expect(placed.unplaced).toEqual(["1"]);
     expect(await Bun.file(join(ws, "state/batches", `${b.id}.placed.json`)).exists()).toBe(true);
     expect((await readThreads())["0.9"]?.feature).toBe("admin/invoicing");
     expect((await readUnplaced()).map((u) => u.id)).toEqual(["1"]);
-    const again = await place(b.id, { now: NOW });
+    const again = await place(b.id, { now: NOW, deployed: waiting });
     expect(again).toEqual(placed);
     expect((await readUnplaced()).map((u) => u.id)).toEqual(["1"]);
   });
@@ -165,10 +167,38 @@ describe("place (on disk)", () => {
     const b = flat([], [landing("fe", 431, ["admin/invoicing"])]);
     const path = join(ws, "state/batches", `${b.id}.json`);
     await Bun.write(path, JSON.stringify(b));
-    await place(b.id, { now: NOW });
+    await place(b.id, { now: NOW, deployed: waiting });
     const l = (await readLedger("admin/invoicing"))!;
     expect(l.landings.map((x) => x.ref)).toEqual(["be#771", "fe#431"]);
-    await place(b.id, { now: NOW });
+    await place(b.id, { now: NOW, deployed: waiting });
     expect((await readLedger("admin/invoicing"))!.landings).toHaveLength(2);
+  });
+  test("an earlier landing whose deploy finished reaches the reader once, with nothing new in the batch", async () => {
+    const b = flat([]);
+    await Bun.write(join(ws, "state/batches", `${b.id}.json`), JSON.stringify(b));
+    const live = async () => ({ result: "SUCCESSFUL" as const, at: "2026-09-11T09:30:00Z", build: 2142, url: "u" });
+    // still running: nothing to tell, nothing written
+    expect((await place(b.id, { now: NOW, deployed: waiting })).slices).toEqual([]);
+    expect((await readLedger("admin/invoicing"))!.landings[0]!.deployed).toBeUndefined();
+    // finished: the ledger records it untold, and the feature gets a slice carrying it
+    const placed = await place(b.id, { now: NOW, deployed: live });
+    expect(placed.slices).toEqual([
+      { feature: "admin/invoicing", messages: [], landings: [], deploys: [{ ref: "be#771", title: "credit emails link to the production domain", landed: "2026-09-10", deploy: { result: "SUCCESSFUL", at: "2026-09-11T09:30:00Z", build: 2142, url: "u" } }] },
+    ]);
+    expect((await readLedger("admin/invoicing"))!.landings[0]!.deployed).toMatchObject({ build: 2142, told: false });
+    // placed again before the reader ran: the same slice, from the ledger, Bitbucket not asked
+    const never = async () => {
+      throw new Error("asked");
+    };
+    expect(await place(b.id, { now: NOW, deployed: never })).toEqual(placed);
+  });
+  test("a new backend landing that already deployed is told by its own slice", async () => {
+    const b = flat([], [landing("be", 801, ["admin/invoicing"])]);
+    await Bun.write(join(ws, "state/batches", `${b.id}.json`), JSON.stringify(b));
+    const live = async (_r: string, sha: string) => (sha.startsWith("801") ? { result: "SUCCESSFUL" as const, at: "2026-09-11T09:30:00Z", build: 2150, url: "u" } : null);
+    const placed = await place(b.id, { now: NOW, deployed: live });
+    expect(placed.slices[0]!.deploys).toBeUndefined();
+    const ld = (await readLedger("admin/invoicing"))!.landings.find((x) => x.ref === "be#801")!;
+    expect(ld.deployed).toMatchObject({ build: 2150, told: true });
   });
 });

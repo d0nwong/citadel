@@ -58,7 +58,10 @@ can be named by a revision as `<app>/<dir>`.
 
 1. `argus pull` — Slack since the cursor, landings on `origin/staging` and `origin/dev`.
 2. `argus place <batch>` — the deterministic joins: files to features, replies to threads,
-   ticket keys and PRs to the ledger that lists them. The rest is unplaced.
+   ticket keys and PRs to the ledger that lists them. The rest is unplaced. Each backend
+   landing gets its finished `dev` pipeline, checked again every run until it has one. A
+   feature whose earlier landing just finished deploying gets a slice, so its reader
+   corrects the prose.
 3. Attribute — the model places what it would bet on (`skills/sweep/attribute.md`).
 4. Read — one Opus subagent per feature with a slice returns a patch
    (`skills/sweep/reader.md`, `shapes.md`); code applies and validates the whole.
@@ -118,6 +121,7 @@ just sweep-on                 # the loop: one tick per SWEEP_INTERVAL (900s)
 argus pull                    # the batch, or "nothing new"
 argus place <batch>           # the joins
 argus reconcile               # clear what deployed, settle what each ticket's provider closed
+argus deployed be#797         # is a backend merge live on dev? (--json for skills)
 argus validate                # every ledger and arch doc
 argus show admin/usage        # one ledger
 argus close admin/usage A-7 --reason "..."         # the click verbs, as Pensieve runs them

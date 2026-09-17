@@ -155,7 +155,10 @@ fact lives in a different section in each:
   Technical Note says "regen per FORMAT.md against `dev@<sha>`" and names the generated
   hook or type the FE consumes beside the AC it serves.
   Landed-but-not-deployed stays Pending: an export from a stale server looks done and
-  isn't. Delete the Pending bullet when you move it; the journal owns the history.
+  isn't. Before you write a backend Pending bullet, run `argus deployed <be#N>` (or the
+  merge sha). If it prints "deployed", the regen is the first Scope bullet. If it prints
+  "running", it stays Pending, and the bullet says the pipeline is running. Never write
+  that you cannot tell whether the change is live. Delete the Pending bullet when you move it; the journal owns the history.
 
 ## Worked example (the reference — match this register)
 
