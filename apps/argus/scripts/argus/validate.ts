@@ -10,6 +10,7 @@
  * the one rule on the arch tier, its length.
  */
 
+import { ungroundedNotes } from "./grounding.ts";
 import { ASK_DONE, type Ask, type Evidence, type Ledger, parseLedger, SchemaError } from "./schema.ts";
 
 export type Problem = { path: string; rule: string };
@@ -201,6 +202,15 @@ export function validateLedger(input: unknown, opts: ValidateOptions = {}): Prob
     if (propIds.has(p.id)) out.push({ path: `${path}.id`, rule: `${p.id} appears twice` });
     propIds.add(p.id);
     for (const a of p.asks) if (!askIds.has(a)) out.push({ path: `${path}.asks`, rule: `${a} is not an ask in this ledger` });
+  });
+
+  // a proposal a write adds or rewrites names a file on every Technical Notes bullet; what
+  // is already on disk is judged when it was written
+  const prevBodies = new Map((prev?.proposals ?? []).map((p) => [p.id, p.body]));
+  l.proposals.forEach((p, i) => {
+    if (!prev || prevBodies.get(p.id) === p.body) return;
+    for (const n of ungroundedNotes(p.body))
+      out.push({ path: `ledger.proposals[${i}].body`, rule: `${p.id || "a new proposal"}: a Technical Notes bullet names no file: "${n.slice(0, 60)}"` });
   });
 
   // against the previous ledger

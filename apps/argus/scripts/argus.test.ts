@@ -215,6 +215,17 @@ describe("patch and prompt", () => {
     expect((await argus("patch", "admin/invoicing", f)).code).toBe(0);
     expect((await Bun.file(path).json()).landings[0].deployed.told).toBe(true);
   });
+  test("prompt ground lists the proposals whose notes name no file, and prints one's prompt", async () => {
+    const list = await argus("prompt", "ground", "--json");
+    expect(JSON.parse(list.out).proposals).toEqual([{ feature: "admin/invoicing", id: "P-1" }]);
+    const one = await argus("prompt", "ground", "admin/invoicing", "P-1");
+    expect(one.code).toBe(0);
+    expect(one.out).toContain("# ground — point a proposal's Technical Notes at code");
+    expect(one.out).toContain("# The proposal: admin/invoicing P-1");
+    expect(one.out).toContain("Payment term on the billing profile");
+    expect(one.out).toContain('"update": [ { "id": "P-1"');
+    expect((await argus("prompt", "ground", "admin/invoicing", "P-9")).code).toBe(1);
+  });
   test("prompt attribute says when nothing is unplaced", async () => {
     const r = await argus("prompt", "attribute");
     expect(r.out.trim()).toBe("nothing unplaced");

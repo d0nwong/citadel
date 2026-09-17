@@ -29,7 +29,7 @@ export type Patch = {
     block?: { key: string; blocker: Blocker }[];
   };
   landings?: { add?: Landing[]; link?: { ref: string; asks: string[] }[] };
-  proposals?: { add?: Omit<Proposal, "id">[] };
+  proposals?: { add?: Omit<Proposal, "id">[]; update?: { id: string; body: string }[] };
   /** what the reader could not settle; goes to the terminal, never to the ledger */
   notes?: string[];
 };
@@ -149,8 +149,14 @@ export function parsePatch(v: unknown): Patch {
       p.landings!.link!.push({ ref: l.ref, asks: l.asks as string[] });
     });
   }
-  const proposals = section("proposals", ["add"]);
-  if (proposals) p.proposals = { add: (list(proposals, "proposals", "add") as Omit<Proposal, "id">[]).map((pr) => ({ ...pr, asks: Array.isArray(pr.asks) ? pr.asks : [] })) };
+  const proposals = section("proposals", ["add", "update"]);
+  if (proposals) {
+    p.proposals = { add: (list(proposals, "proposals", "add") as Omit<Proposal, "id">[]).map((pr) => ({ ...pr, asks: Array.isArray(pr.asks) ? pr.asks : [] })), update: [] };
+    list(proposals, "proposals", "update").forEach((u, i) => {
+      if (!isObj(u) || typeof u.id !== "string" || typeof u.body !== "string") throw err(`patch.proposals.update[${i}]`, "expected { id, body }");
+      p.proposals!.update!.push({ id: u.id, body: u.body });
+    });
+  }
   if (v.notes !== undefined) {
     if (!Array.isArray(v.notes) || v.notes.some((n) => typeof n !== "string")) throw err("patch.notes", "expected an array of strings");
     p.notes = v.notes as string[];
@@ -226,5 +232,10 @@ export function applyPatch(l: Ledger, p: Patch): Ledger {
     ld.asks = [...new Set([...ld.asks, ...lk.asks])];
   }
   for (const pr of p.proposals?.add ?? []) next.proposals.push({ id: "", ...pr });
+  for (const u of p.proposals?.update ?? []) {
+    const pr = next.proposals.find((x) => x.id === u.id);
+    if (!pr) throw err("patch.proposals.update", `${u.id} is not a proposal in this ledger`);
+    pr.body = u.body;
+  }
   return next;
 }

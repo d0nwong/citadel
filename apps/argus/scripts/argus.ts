@@ -25,7 +25,7 @@ import { repoPath } from "./argus/pr-facts.ts";
 import { commitRun } from "./argus/commit.ts";
 import { draftFor, draftForAsk } from "./argus/file.ts";
 import { applyPatch, parsePatch } from "./argus/patch.ts";
-import { attributePrompt, readerPrompt, sliceOf } from "./argus/reader.ts";
+import { attributePrompt, groundPrompt, readerPrompt, sliceOf, ungroundedProposals } from "./argus/reader.ts";
 import { readUnplaced } from "./argus/state.ts";
 import { place as placeBatchFile } from "./argus/place.ts";
 import { pullBatch } from "./argus/pull.ts";
@@ -65,6 +65,7 @@ const USAGE = `argus — the ledger CLI
   argus deployed <be#N>|<sha>        whether a backend merge is live on dev, from its Bitbucket pipeline (--json for skills); exits 1 when nobody can ask
   argus prompt attribute [<batch>]   the attribution step's prompt over state/unplaced.json
   argus prompt reader <feature> <batch>   the reader's prompt for one feature's slice
+  argus prompt ground [<feature> <P-n>]   the proposals whose Technical Notes name no file, or the grounding prompt for one
   argus patch <feature> <file>|-     apply a reader's patch to the ledger (validated whole)
   argus commit [-m "<message>"]      stage ledgers, state and docs, commit, promote the cursor
 
@@ -271,7 +272,17 @@ const verbs: Record<string, Verb> = {
       console.log(await readerPrompt(a, slice, batch.pulled_at.slice(0, 10)));
       return 0;
     }
-    throw new Usage("prompt attribute [<batch>] | prompt reader <feature> <batch>");
+    if (what === "ground") {
+      if (a && b) {
+        console.log(await groundPrompt(a, b));
+        return 0;
+      }
+      const list = await ungroundedProposals(await listFeatures());
+      if (f.json) console.log(JSON.stringify({ ok: true, proposals: list }));
+      else console.log(list.map((x) => `${x.feature} ${x.id}`).join("\n") || "every proposal is grounded");
+      return 0;
+    }
+    throw new Usage("prompt attribute [<batch>] | prompt reader <feature> <batch> | prompt ground [<feature> <P-n>]");
   },
 
   async patch(f) {

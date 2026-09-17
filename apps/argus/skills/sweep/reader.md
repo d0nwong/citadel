@@ -58,7 +58,10 @@ is not final, and argus tells you when it changes. Under "Earlier landings whose
 finished", rewrite every sentence that still calls that change undeployed.
 
 ### Tickets are proposed
-You write proposals with the ticket body in the house format; a person files them.
+You write proposals with the ticket body in the house format; a person files them. Leave
+out `## Technical Notes`: you cannot see the code, and the grounding step that can writes
+them. A file, a route or a product fact you would have put there goes in Background or an
+Acceptance Criterion.
 
 ### A live backend with no frontend on it is a ticket
 When a backend landing is on its branch and deployed, and the frontend work it needs has
