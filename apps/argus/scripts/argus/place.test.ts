@@ -105,6 +105,25 @@ describe("placeBatch", () => {
     expect(p.unplaced[0]?.candidates).toEqual(features);
   });
 
+  test("huddle notes posted under a dismissed or placed root are their own thread, and unplaced", () => {
+    const notes = { ...msg("2", "AI huddle notes are ready", "1", "Slackbot"), canvas: "## Summary\n- x" };
+    const b = flat([notes, msg("3", "follow-up in the huddle thread", "1")]);
+    const dismissed = placeBatch(b, ledgers, { "1": { feature: null, by: "user", at: "x" } }, features, NOW);
+    expect(dismissed.unplaced.map((u) => [u.id, u.thread])).toEqual([["2", undefined]]);
+    expect([...dismissed.slices.keys()]).toEqual([]);
+    const placed = placeBatch(b, ledgers, { "1": { feature: "admin/usage", by: "user", at: "x" } }, features, NOW);
+    expect(placed.slices.get("admin/usage")?.messages.map((m) => m.ts)).toEqual(["3"]);
+    expect(placed.unplaced.map((u) => u.id)).toEqual(["2"]);
+    expect(placed.threads).toEqual({});
+  });
+
+  test("huddle notes the user placed or dismissed stay where they were put", () => {
+    const b = flat([{ ...msg("2", "AI huddle notes are ready", "1", "Slackbot"), canvas: "## Summary" }]);
+    const p = placeBatch(b, ledgers, { "1": { feature: null, by: "user", at: "x" }, "2": { feature: "tasks", by: "user", at: "x" } }, features, NOW);
+    expect(p.slices.get("tasks")?.messages.map((m) => m.ts)).toEqual(["2"]);
+    expect(placeBatch(b, ledgers, { "2": { feature: null, by: "user", at: "x" } }, features, NOW).unplaced).toEqual([]);
+  });
+
   test("the same batch twice is byte-identical", () => {
     const b = flat([msg("2", "b", "2"), msg("1", "ALD-41", "1"), msg("3", "c", "3")], [landing("be", 1, ["tasks"]), landing("fe", 2, ["tasks", "admin/usage"])]);
     const a = JSON.stringify([...placeBatch(b, ledgers, {}, features, NOW).slices.values()]);

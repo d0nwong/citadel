@@ -84,9 +84,15 @@ export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: 
   const unplaced: Unplaced[] = [];
   const messages = batch.slack ? flatten(batch.slack) : [];
   const placedThread = new Map<string, string>();
-  const resolveThread = (m: Msg) => threads[m.thread]?.feature ?? learned[m.thread]?.feature ?? placedThread.get(m.thread) ?? null;
+  /**
+   * Huddle notes are their own thread. Slackbot posts them as a reply under its "huddle
+   * started" message, which is chat a reader dismisses before the notes exist; and a
+   * meeting covers several features, so it never follows the root's placement either.
+   */
+  const threadOf = (m: Msg) => (m.canvas ? m.ts : m.thread);
+  const resolveThread = (m: Msg) => threads[threadOf(m)]?.feature ?? learned[threadOf(m)]?.feature ?? placedThread.get(threadOf(m)) ?? null;
   /** the user said this thread belongs to no feature: its messages are neither sliced nor unplaced */
-  const nobodys = (m: Msg) => m.thread in threads && threads[m.thread]!.feature === null;
+  const nobodys = (m: Msg) => threadOf(m) in threads && threads[threadOf(m)]!.feature === null;
 
   for (const m of messages) {
     if (nobodys(m)) continue;
@@ -95,14 +101,14 @@ export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: 
     if (feature) {
       slice(feature).messages.push(m);
       if (!byThread) {
-        placedThread.set(m.thread, feature);
-        if (!threads[m.thread]) learned[m.thread] = { feature, by: "sweep", at };
+        placedThread.set(threadOf(m), feature);
+        if (!threads[threadOf(m)]) learned[threadOf(m)] = { feature, by: "sweep", at };
       }
     } else {
       unplaced.push({
         id: m.ts,
         kind: "message",
-        ...(m.thread !== m.ts ? { thread: m.thread } : {}),
+        ...(threadOf(m) !== m.ts ? { thread: threadOf(m) } : {}),
         by: m.author,
         at: m.date,
         text: m.canvas ? `${m.text}\n\n${m.canvas}` : m.text,
