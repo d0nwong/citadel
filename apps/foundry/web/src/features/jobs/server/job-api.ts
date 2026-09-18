@@ -32,8 +32,8 @@ import path from 'node:path'
 import { MissingCredentialError } from '@citadel/tickets'
 import type { Ticket } from '@citadel/tickets'
 import { z } from 'zod'
-import { DEFAULT_BLUEPRINT_ID, STEP_EFFORTS, STEP_MODELS } from '@/features/blueprints/types'
-import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
+import { DEFAULT_BLUEPRINT_ID, STEP_EFFORTS, STEP_MODELS, stepsSummary } from '@/features/blueprints/types'
+import { getBlueprintRow, listBlueprints } from '@/features/blueprints/server/blueprint-store'
 import { defaultBranchOf, trackedRepos } from '@/features/repos/server/repo-scan'
 import { tilde } from '@/features/repos/types'
 import { apiToken, tokenMatches } from './auth'
@@ -253,6 +253,22 @@ export const TrackedRepoSchema = z.object({
   name: z.string().describe("The repo's basename — accepted as `repo` by `POST /api/jobs` when no other tracked repo shares it."),
   path: z.string().describe('The absolute path of the checkout on the host — always accepted as `repo`.'),
 })
+
+/**
+ * One row of `GET /api/blueprints` — a blueprint as `POST /api/jobs` accepts
+ * it, so `id` is what travels as `blueprintId`. The steps come as `summary`
+ * rather than as themselves: a caller picks a blueprint, it does not
+ * re-implement one, and the prompts are long enough to drown a picker.
+ */
+export const ApiBlueprintSchema = z.object({
+  id: z.uuid().describe('What `POST /api/jobs` takes as `blueprintId`.'),
+  name: z.string().describe("The blueprint's name, as the Blueprints page shows it."),
+  description: z.string().optional().describe('What it is for, when whoever wrote it said.'),
+  version: z.number().int().positive().describe('The revision a job started now would run — every save bumps it.'),
+  summary: z.string().describe('The step list in one line — `plan · fable → execute · sonnet`.'),
+})
+
+export type ApiBlueprint = z.output<typeof ApiBlueprintSchema>
 
 /*
  * The schemas must describe exactly the domain types the store returns. This
@@ -486,5 +502,26 @@ export async function handleListRepos(request: Request, deps: ApiDeps = realDeps
   const rows = (await trackedRepos())
     .map(({ name, path: repoPath }) => ({ name, path: repoPath }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path))
+  return json(200, rows)
+}
+
+/**
+ * `GET /api/blueprints` — the blueprints a job may run, ordered by name, as
+ * the read half of `blueprintId` (what `/api/repos` is to `repo`). A caller
+ * can offer the same picker the ignite dialog does instead of hard-coding a
+ * uuid; `"none"` — one bare step — is not a row here, since it is the absence
+ * of one. An empty table is `[]`, not an error.
+ */
+export async function handleListBlueprints(request: Request, deps: ApiDeps = realDeps()): Promise<Response> {
+  const denied = await authorize(request, deps)
+  if (denied) return denied
+
+  const rows: Array<ApiBlueprint> = (await listBlueprints()).map((bp) => ({
+    id: bp.id,
+    name: bp.name,
+    ...(bp.description ? { description: bp.description } : {}),
+    version: bp.version,
+    summary: stepsSummary(bp.steps),
+  }))
   return json(200, rows)
 }

@@ -16,7 +16,7 @@ import { jobs, repos } from '@/db/schema'
 import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
 import { deleteLogs } from './job-logs'
-import { handleGetJob, handleListRepos, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX, ticketBrief } from './job-api'
+import { handleGetJob, handleListBlueprints, handleListRepos, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX, ticketBrief } from './job-api'
 import { cancelJob, closePrReadyJob, getJob } from './job-store'
 import type { ApiDeps } from './job-api'
 import type { Job, LogLine } from '../types'
@@ -105,6 +105,9 @@ const get = (id: string, query = '', token: string | null = SECRET) =>
 
 const listRepos = (token: string | null = SECRET) =>
   new Request('http://foundry.test/api/repos', { headers: token === null ? {} : { authorization: `Bearer ${token}` } })
+
+const listBlueprints = (token: string | null = SECRET) =>
+  new Request('http://foundry.test/api/blueprints', { headers: token === null ? {} : { authorization: `Bearer ${token}` } })
 
 /** A trigger payload that is valid by construction; tests override one field at a time. */
 const valid = (extra: Record<string, unknown> = {}) => ({
@@ -588,6 +591,41 @@ dbTest('LIA-119 AC1/AC2/AC4/AC6 — GET /api/repos lists name+path ordered by na
     expect(body.error ?? '').not.toMatch(/not tracked/)
     expect([202, 400]).toContain(trigger.status)
     if (trigger.status === 400) expect(body.error).toMatch(/ambiguous/)
+  }
+})
+
+/* ------------------------------------------------------------------ */
+/* GET /api/blueprints                                                */
+/* ------------------------------------------------------------------ */
+
+dbTest('GET /api/blueprints lists the blueprints ordered by name, and every id triggers a job', async () => {
+  // The same gate as every other api route, with the same bodies.
+  const noToken = await handleListBlueprints(listBlueprints(), { ...deps, token: async () => undefined })
+  expect(noToken.status).toBe(503)
+  expect((await handleListBlueprints(listBlueprints(null), deps)).status).toBe(401)
+  expect(await (await handleListBlueprints(listBlueprints('nope'), deps)).json()).toEqual({ error: 'unauthorized' })
+
+  const res = await handleListBlueprints(listBlueprints(), deps)
+  expect(res.status).toBe(200)
+  const rows = (await res.json()) as Array<Record<string, unknown>>
+  expect(Array.isArray(rows)).toBe(true)
+
+  const seeded = rows.find((r) => r.id === DEFAULT_BLUEPRINT_ID)
+  expect(seeded).toBeDefined()
+  // The steps come as one line, never as their prompts.
+  expect(seeded?.summary).toMatch(/ · /)
+  for (const row of rows) {
+    expect(Object.keys(row).every((k) => ['id', 'name', 'description', 'version', 'summary'].includes(k))).toBe(true)
+    expect(JSON.stringify(row)).not.toMatch(/\{\{task\}\}/)
+  }
+
+  const names = rows.map((r) => r.name as string)
+  expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)))
+
+  // Every id the list offers is one `POST /api/jobs` accepts as `blueprintId`.
+  for (const row of rows) {
+    const trigger = await handleTriggerJob(post(valid({ blueprintId: row.id })), deps)
+    expect(trigger.status).toBe(202)
   }
 })
 
