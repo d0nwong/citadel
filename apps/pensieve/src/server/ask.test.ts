@@ -1214,11 +1214,14 @@ describe("CTD-219 — the run mode: container keeps the sandbox, local runs free
     expect(SCOPE_ADAPTER_CONFIG.permissionMode).toBe("default");
   });
 
-  test("the local prompts drop the sandbox rules and add the commit/push/PR rule", () => {
+  test("the local prompts drop the sandbox rules and say the worktree is read-only", () => {
     for (const prompt of [LOCAL_ASK_SYSTEM_PROMPT, LOCAL_SCOPE_SYSTEM_PROMPT]) {
       expect(prompt).not.toMatch(/not a terminal/i);
       expect(prompt).not.toMatch(/no permission dialog/i);
-      expect(prompt).toMatch(/only when the user asks/i);
+      expect(prompt).toMatch(/read-only/i);
+      expect(prompt).not.toMatch(/you may commit/i);
+      expect(prompt).not.toMatch(/push a branch/i);
+      expect(prompt).not.toMatch(/pull request/i);
     }
     expect(LOCAL_ASK_SYSTEM_PROMPT).not.toMatch(
       /argus verbs that write are denied/i
@@ -1228,6 +1231,60 @@ describe("CTD-219 — the run mode: container keeps the sandbox, local runs free
     // Still argus's own working directory and the ask/scope skills — that part carries over.
     expect(LOCAL_ASK_SYSTEM_PROMPT).toMatch(/skills\/ask\/SKILL\.md/);
     expect(LOCAL_SCOPE_SYSTEM_PROMPT).toMatch(/skills\/scope\/SKILL\.md/);
+  });
+
+  describe("CTD-249 — local mode's prompt: no product code, a ticket instead, the sweep's commits", () => {
+    test("AC1 (S-39) — neither local prompt offers a commit, a push or a PR, and both say the conversation leaves none", () => {
+      for (const prompt of [
+        LOCAL_ASK_SYSTEM_PROMPT,
+        LOCAL_SCOPE_SYSTEM_PROMPT,
+      ]) {
+        expect(prompt).toMatch(
+          /leaves no commit on its branch and nothing pushed, whatever the user asks for/
+        );
+      }
+    });
+
+    test("AC2 (S-53) — asked to change product code, the plain prompt says it cannot and offers a ticket; the record is unaffected", () => {
+      expect(LOCAL_ASK_SYSTEM_PROMPT).toMatch(
+        /you cannot change product code/i
+      );
+      expect(LOCAL_ASK_SYSTEM_PROMPT).toMatch(
+        /offer to draft a ticket for it instead/i
+      );
+      // The record path (propose_decision/propose_ticket) is untouched by CTD-249.
+      expect(LOCAL_ASK_SYSTEM_PROMPT).toMatch(
+        /call `propose_decision` once as the ask skill's Correcting section says/
+      );
+      expect(LOCAL_ASK_SYSTEM_PROMPT).toMatch(
+        /then call `propose_ticket` once with it/
+      );
+      expect(LOCAL_SCOPE_SYSTEM_PROMPT).toMatch(
+        /you cannot change product code/i
+      );
+    });
+
+    test("AC3 (S-57) — both local prompts name argus commit and argus reconcile as the sweep's, not the conversation's", () => {
+      for (const prompt of [
+        LOCAL_ASK_SYSTEM_PROMPT,
+        LOCAL_SCOPE_SYSTEM_PROMPT,
+      ]) {
+        expect(prompt).toMatch(/`argus commit`/);
+        expect(prompt).toMatch(/`argus reconcile`/);
+        expect(prompt).toMatch(/sweep/i);
+      }
+    });
+
+    test("container mode's prompts are untouched: still the sandboxed 'cannot write' contract", () => {
+      expect(ASK_SYSTEM_PROMPT).toMatch(
+        /cannot write files, edit tickets or comments, or run the sweep/i
+      );
+      expect(SCOPE_SYSTEM_PROMPT).toMatch(
+        /never run the sweep, reconcile or commit/
+      );
+      expect(ASK_SYSTEM_PROMPT).not.toMatch(/read-only/i);
+      expect(SCOPE_SYSTEM_PROMPT).not.toMatch(/read-only/i);
+    });
   });
 
   test("a run picks its prompt from PENSIEVE_RUNNER on that request, not the process default", async () => {
@@ -2236,10 +2293,10 @@ describe("CTD-222 — Finish lands a local conversation's data on main and remov
     expect(gitOut(citadelDataDir, "show", "main:ledger.json")).toBe("{}");
   });
 
-  test("AC4 (S-48) — both worktrees and both local branches are gone; a pushed citadel branch and its PR stay", async () => {
+  test("AC4 (S-48) — both worktrees and both local branches are gone", async () => {
     const store = conversationStore(await scratch());
     const worktreesDir = await scratch();
-    const { dir: citadelDir, origin } = await makeCitadelRepo();
+    const { dir: citadelDir } = await makeCitadelRepo();
     const citadelDataDir = await makeCitadelDataRepo();
 
     await collect(
@@ -2256,10 +2313,6 @@ describe("CTD-222 — Finish lands a local conversation's data on main and remov
     );
     const citadel = join(worktreesDir, "fin-4", "citadel");
     const citadelData = join(worktreesDir, "fin-4", "citadel-data");
-    // A code change the user asked to ship (S-40): pushed to origin as its own branch.
-    execFileSync("git", ["push", "--quiet", "origin", "ask/fin-4"], {
-      cwd: citadel,
-    });
 
     await finishConversation(
       "fin-4",
@@ -2270,10 +2323,6 @@ describe("CTD-222 — Finish lands a local conversation's data on main and remov
     expect(await pathExists(citadelData)).toBe(false);
     expect(gitOut(citadelDir, "branch", "--list", "ask/fin-4")).toBe("");
     expect(gitOut(citadelDataDir, "branch", "--list", "ask/fin-4")).toBe("");
-    // The pushed branch on origin is untouched — only the local ref was removed.
-    expect(gitOut(origin, "branch", "--list", "ask/fin-4")).toContain(
-      "ask/fin-4"
-    );
   });
 
   test("AC2 + AC3 (S-42, S-49) — a rebase conflict is resolved by one Claude turn, named in the thread, and Finish rebases again when main moved on before the fast-forward", async () => {

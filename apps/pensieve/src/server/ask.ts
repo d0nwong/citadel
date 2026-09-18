@@ -32,8 +32,9 @@
  * `finishConversation` (CTD-222) is local mode's other way of ending a turn at the data: it
  * commits everything in the conversation's citadel-data worktree, rebases it onto main —
  * resolving a conflict with one more Claude turn, reusing `askStream` — fast-forwards the live
- * checkout's main onto it, and then removes both worktrees and both local branches. A code
- * change still leaves only as the PR the user asked for.
+ * checkout's main onto it, and then removes both worktrees and both local branches. The citadel
+ * worktree is read-only (CTD-247), so there is no code change to land or a branch to push;
+ * the data Finish lands is all a conversation ever leaves behind.
  */
 
 import { execFile } from "node:child_process";
@@ -268,9 +269,13 @@ You cannot write files, edit tickets or comments, or run the sweep; the argus ve
 /**
  * Local mode's plain-Ask prompt (CTD-219): the same working directory and retrieval recipes,
  * but no sandbox to work around — the session runs on the operator's own machine, with their
- * own tools and credentials, so it drops the "no permission dialog" and "cannot write" lines
- * and adds the one rule local mode still needs: a commit, a push or a PR only on the user's
- * word, never on its own initiative.
+ * own tools and credentials, so it drops the "no permission dialog" and "cannot write" lines.
+ * In their place (CTD-249) is the fact CTD-247 made true on disk: the citadel worktree is
+ * read-only, so a conversation cannot change product code and leaves no commit and nothing
+ * pushed, whatever the user asks — asked for a code change, it offers a ticket instead of a
+ * PR that was never on offer. `argus commit` and `argus reconcile` are named as the sweep's,
+ * not the conversation's own — a rule the prompt states because nothing on disk enforces it,
+ * citadel-data being writable by design (S-57).
  */
 export const LOCAL_ASK_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve — a web app that reads the argus ledgers. Your working directory is argus's code (its skills, CLAUDE.md and scripts); its data (the ledgers, the arch docs and state/) is in ${WORKSPACE_DIR}, which the argus and accio verbs read on their own. This session runs on the operator's own machine, with their own tools and credentials, like a terminal.
 
@@ -278,7 +283,9 @@ To answer, load the \`ask\` skill (skills/ask/SKILL.md) and follow it. A feature
 
 Cite every path and command you used. "The files don't say" beats a guess. Keep the answer short: it is read in a chat panel.
 
-To change the record — close an ask, confirm or contradict a requirement, place an unplaced message — call \`propose_decision\` once as the ask skill's Correcting section says; the user confirms it on the card, so never say it is done. To open a ticket, draft it per the linear-ticket skill, confirm its feature with the user (none for Citadel apps), then call \`propose_ticket\` once with it; say the draft is ready, never that it is filed. You may commit, push a branch or open a pull request, but only when the user asks for it in this conversation — never on your own initiative.`;
+To change the record — close an ask, confirm or contradict a requirement, place an unplaced message — call \`propose_decision\` once as the ask skill's Correcting section says; the user confirms it on the card, so never say it is done. To open a ticket, draft it per the linear-ticket skill, confirm its feature with the user (none for Citadel apps), then call \`propose_ticket\` once with it; say the draft is ready, never that it is filed.
+
+Your working directory is read-only: you cannot change product code, and this conversation leaves no commit on its branch and nothing pushed, whatever the user asks for. Asked to change product code, say you cannot and offer to draft a ticket for it instead. Changing the record is unaffected — write it in the data as always. Never run \`argus commit\` or \`argus reconcile\`: those commit the data's main on the sweep's own tick, not this conversation's.`;
 
 /**
  * A conversation whose first turn starts `/scope` runs the scope skill (CTD-192's Ask
@@ -320,15 +327,18 @@ ARGUS_ROOT is already ${WORKSPACE_DIR}: run \`argus\` and \`accio\` bare, one co
 /**
  * Local mode's `/scope` prompt (CTD-219): the same skill, the same wait for an explicit yes
  * before a step's file is written or anything is filed, but no sandbox rule to work around —
- * the skill's own commands run as written, pipes, redirects and \`&&\` included (AC6). Adds the
- * same commit/push/PR rule the plain local prompt does, since the skill's own steps stop at
- * filing a ticket and never commit or push on their own.
+ * the skill's own commands run as written, pipes, redirects and \`&&\` included (AC6). Carries
+ * the same read-only fact the plain local prompt does (CTD-249): the citadel worktree cannot
+ * be written to, so this conversation cannot change product code either, and its own writes —
+ * `revisions/`, the tracker — are what land, never a commit or a push.
  */
 export const LOCAL_SCOPE_SYSTEM_PROMPT = `You are Argus, a panel inside Pensieve, running the scope skill with the user. Your working directory is argus's code; its data is in ${WORKSPACE_DIR}. This session runs on the operator's own machine, with their own tools and credentials, like a terminal.
 
 This is a \`/scope\` conversation: load the \`scope\` skill (skills/scope/SKILL.md), if it is not loaded already, and follow it with the user in this chat. Every step waits for their explicit yes, in a message here, before its file is written or anything is filed.
 
-ARGUS_ROOT is already ${WORKSPACE_DIR}: run \`argus\` and \`accio\` exactly as the skill shows, pipes, redirects and \`&&\` included. You may commit, push a branch or open a pull request, but only when the user asks for it in this conversation, and never as part of a step the skill did not ask you to commit.`;
+ARGUS_ROOT is already ${WORKSPACE_DIR}: run \`argus\` and \`accio\` exactly as the skill shows, pipes, redirects and \`&&\` included.
+
+Your working directory is read-only: you cannot change product code, and this conversation leaves no commit on its branch and nothing pushed, whatever the user asks for. Asked to change product code, say you cannot and offer to draft a ticket for it instead. Never run the sweep, \`argus commit\` or \`argus reconcile\`: those are the sweep's, on its own tick, not this conversation's.`;
 
 /**
  * The extra system prompt a conversation opened from a feature page carries (LIA-162 AC4,
@@ -1656,7 +1666,8 @@ async function resolveConflictTurn(
  * it, committed or not, rebase onto main — resolving a conflict with one Claude turn (S-42) —
  * then fast-forward the live checkout's main onto the branch, rebasing again rather than
  * merging when live main raced ahead in between (S-49). Once it lands, remove both worktrees
- * and both local branches (S-48); a pushed citadel branch and its PR are untouched.
+ * and both local branches (S-48); the citadel worktree was read-only and never carried a
+ * commit of its own to lose.
  * Idempotent: a conversation with no worktrees — never started locally, or already finished —
  * is a no-op, the same shape as `deleteConversation` removing a file that is not there.
  *
