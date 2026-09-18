@@ -260,14 +260,15 @@ export async function fastForwardMain(
 /**
  * Remove both of a conversation's worktrees and delete `ask/<id>` from both live checkouts
  * (S-48) — the last step of Finish, once citadel-data has landed on main, and Delete's other
- * half (S-44, CTD-223), discarding whatever `discardCounts` counted. `--force` discards
- * whatever the citadel worktree's code changes leave behind (uncommitted or mid-conflict-
- * rebase); `-D` because that branch, even when pushed, was never merged into the *local*
- * checkout. A pushed citadel branch and its PR live on the remote and are untouched by removing
- * the local ref. Restoring write permission on the citadel tree (S-52) has to happen first: it
- * was created read-only, and `git worktree remove` deletes files through the directory, which a
- * read-only directory refuses. A no-op when the conversation never got worktrees, so a
- * container-mode or fresh thread costs nothing.
+ * half (S-44, CTD-223), discarding whatever `discardCounts` counted. `--force` discards what
+ * git still calls dirty in each worktree: citadel-data's uncommitted files or a mid-conflict
+ * rebase, and the `settings.local.json` this module wrote into citadel, which was never
+ * committed there. `-D` because that branch was never merged into the *local* checkout — and,
+ * citadel being read-only (S-52), never carried a commit of its own to lose either. Restoring
+ * write permission on the citadel tree has to happen first: it was created read-only, and
+ * `git worktree remove` deletes files through the directory, which a read-only directory
+ * refuses. A no-op when the conversation never got worktrees, so a container-mode or fresh
+ * thread costs nothing.
  */
 export async function removeWorktrees(
   paths: WorktreePaths,
