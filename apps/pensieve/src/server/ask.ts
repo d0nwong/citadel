@@ -219,19 +219,15 @@ export const ADAPTER_CONFIG = {
 /**
  * Local mode (CTD-219): the host's own Claude Code, with no allowlist — `bypassPermissions`
  * needs no rule per command (AC6). `allowedTools`/`disallowedTools` are explicitly `undefined`
- * so spreading this over `ADAPTER_CONFIG` in `askAdapter` clears the container's lists rather
- * than leaving them in place. `cwd` stays `/workspace`: the sandbox (below) is pinned to
- * `ARGUS_DIR` regardless of mode, so `/workspace` already resolves to argus's own directory in
- * the live checkout — the same directory a literal path would name.
+ * so spreading this over `ADAPTER_CONFIG` in `askAdapter` clears the container's lists. `cwd`
+ * stays `/workspace`: the sandbox (below) pins to `ARGUS_DIR` regardless of mode, so it already
+ * resolves to argus's own directory in the live checkout.
  *
- * CTD-248: `settingSources` stays at `ADAPTER_CONFIG`'s `['project']` rather than adding
- * `'user'` and `'local'` — the host's `~/.claude` stays out in local mode too (S-3), so the
- * skills a conversation can invoke are argus's own and Claude Code's built-ins, not the
- * operator's personal skills and installed plugins (S-56), and the only MCP servers are argus's
- * gateway ones from `apps/argus/.claude/settings.json`'s `enabledMcpjsonServers` (S-50); with no
- * `'user'` source to prefer, there is nothing left to disable it in favour of. `maxTurns` is
- * `undefined` so no `--max-turns` reaches the CLI at all (`adapters/text.js`'s `buildArgv` only
- * pushes the flag when it is set): a local run, including `/scope`, has no turn cap (S-51).
+ * CTD-248: `settingSources` stays `['project']` — the host's `~/.claude` stays out in local
+ * mode too (S-3), so skills are argus's own plus Claude Code's built-ins, not the operator's
+ * personal skills and plugins (S-56), and MCP servers are only argus's gateway ones from
+ * `apps/argus/.claude/settings.json` (S-50). `maxTurns` is `undefined` so no `--max-turns`
+ * reaches the CLI: a local run, including `/scope`, has no turn cap (S-51).
  */
 export const LOCAL_ADAPTER_CONFIG = {
   ...ADAPTER_CONFIG,
