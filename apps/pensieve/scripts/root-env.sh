@@ -7,7 +7,7 @@
 # before a package script runs) wins.
 set -euo pipefail
 root_env="${CITADEL_ENV:-$(cd "$(dirname "$0")/../../.." && pwd)/.env}"
-keys="LINEAR_API_KEY TRELLO_API_KEY TRELLO_TOKEN FOUNDRY_API_TOKEN FOUNDRY_URL WORKSPACE_DIR ARGUS_DIR PORT PENSIEVE_HOME FE_REPO BE_REPO ASK_DEBUG"
+keys="LINEAR_API_KEY TRELLO_API_KEY TRELLO_TOKEN FOUNDRY_API_TOKEN FOUNDRY_URL WORKSPACE_DIR ARGUS_DIR PORT PENSIEVE_HOME ALDEN_FE_REPO ALDEN_BE_REPO ASK_DEBUG"
 if [[ -f "$root_env" ]]; then
   for k in $keys; do
     if [[ -n "${!k:-}" ]]; then continue; fi

@@ -18,8 +18,8 @@ export const APP_DIR = join(DATA_ROOT, "alden/alden-portal");
 export const MANIFEST_PATH = join(APP_DIR, ".doc-workspace/feature-manifest.json");
 export const FEATURES_DIR = join(APP_DIR, "features");
 export const STATE = join(DATA_ROOT, ".state");
-export const DEFAULT_FE_REPO = "~/git/alden-portal-fe";
-export const DEFAULT_BE_REPO = "~/git/alden-connect-portal-be";
+export const DEFAULT_ALDEN_FE_REPO = "~/git/alden-portal-fe";
+export const DEFAULT_ALDEN_BE_REPO = "~/git/alden-connect-portal-be";
 export const expand = (p: string) => p.replace(/^~/, process.env.HOME ?? "~");
 
 export type Component = { slug: string; does?: string; files?: string[]; aliases?: string[] };

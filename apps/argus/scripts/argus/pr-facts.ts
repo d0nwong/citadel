@@ -12,7 +12,7 @@
  *   pr-facts --since 2026-08-27 [--be]   landings since that date, as JSON
  *   pr-facts 363 [--be]                  one landing's facts
  *
- * Repo paths: FE_REPO and BE_REPO in the environment, else ~/git/alden-portal-fe and
+ * Repo paths: ALDEN_FE_REPO and ALDEN_BE_REPO in the environment, else ~/git/alden-portal-fe and
  * ~/git/alden-connect-portal-be.
  */
 
@@ -24,7 +24,7 @@ import type { Repo as RepoKind } from "./schema.ts";
 
 const expand = (p: string) => p.replace(/^~/, homedir());
 export const repoPath = (kind: RepoKind) =>
-  expand(kind === "fe" ? (process.env.FE_REPO ?? "~/git/alden-portal-fe") : (process.env.BE_REPO ?? "~/git/alden-connect-portal-be"));
+  expand(kind === "fe" ? (process.env.ALDEN_FE_REPO ?? "~/git/alden-portal-fe") : (process.env.ALDEN_BE_REPO ?? "~/git/alden-connect-portal-be"));
 
 export const REPOS = {
   fe: { slug: "aldenstudios/alden-portal-fe", ref: "origin/staging" },

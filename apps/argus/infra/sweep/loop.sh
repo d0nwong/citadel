@@ -57,8 +57,8 @@ clone() { # url dir
 
 setup() {
   clone "${ARGUS_DATA_REPO:-https://github.com/d0nwong/citadel-data.git}" "$DATA"
-  clone "${FE_REPO_URL:-https://bitbucket.org/aldenstudios/alden-portal-fe.git}" "${FE_REPO:-$HOME/git/alden-portal-fe}"
-  clone "${BE_REPO_URL:-https://bitbucket.org/aldenstudios/alden-connect-portal-be.git}" "${BE_REPO:-$HOME/git/alden-connect-portal-be}"
+  clone "${ALDEN_FE_REPO_URL:-https://bitbucket.org/aldenstudios/alden-portal-fe.git}" "${ALDEN_FE_REPO:-$HOME/git/alden-portal-fe}"
+  clone "${ALDEN_BE_REPO_URL:-https://bitbucket.org/aldenstudios/alden-connect-portal-be.git}" "${ALDEN_BE_REPO:-$HOME/git/alden-connect-portal-be}"
 }
 
 tick() {
