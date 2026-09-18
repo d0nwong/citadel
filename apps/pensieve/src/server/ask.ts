@@ -8,7 +8,7 @@
  * read-only allowlist, so the checkout is never touched; the adapter's per-run runner files
  * land in the checkout for the run's duration and are removed in its `finally` — `git status`
  * is unchanged afterwards. In local mode — the host's default — the process runs with
- * `bypassPermissions` and the operator's own `~/.claude`, exactly as a terminal session would,
+ * `bypassPermissions` and the operator's own credentials, exactly as a terminal session would,
  * but never against the live checkouts: a conversation's first question cuts its own
  * `citadel` and `citadel-data` worktrees on branch `ask/<id>` under `PENSIEVE_HOME/worktrees/`
  * (CTD-221; see `worktrees.ts`), and every run in that conversation works there — the citadel
@@ -217,22 +217,21 @@ export const ADAPTER_CONFIG = {
 } satisfies ClaudeCodeTextConfig;
 
 /**
- * Local mode (CTD-219): the host's own Claude Code, with no allowlist and the operator's
- * settings — `bypassPermissions` needs no rule per command (AC6), and `['user', 'project']`
- * loads `~/.claude/skills` alongside argus's own (AC7). `allowedTools`/`disallowedTools` are
- * explicitly `undefined` so spreading this over `ADAPTER_CONFIG` in `askAdapter` clears the
- * container's lists rather than leaving them in place. `cwd` stays `/workspace`: the sandbox
- * (below) is pinned to `ARGUS_DIR` regardless of mode, so `/workspace` already resolves to
- * argus's own directory in the live checkout — the same directory a literal path would name.
+ * Local mode (CTD-219): the host's own Claude Code, with no allowlist — `bypassPermissions`
+ * needs no rule per command (AC6). `allowedTools`/`disallowedTools` are explicitly `undefined`
+ * so spreading this over `ADAPTER_CONFIG` in `askAdapter` clears the container's lists rather
+ * than leaving them in place. `cwd` stays `/workspace`: the sandbox (below) is pinned to
+ * `ARGUS_DIR` regardless of mode, so `/workspace` already resolves to argus's own directory in
+ * the live checkout — the same directory a literal path would name.
  *
- * CTD-226: `'local'` is added to `settingSources` so `--setting-sources` also loads
- * `<citadel worktree>/apps/argus/.claude/settings.local.json`, which `worktrees.ts` writes
- * alongside the citadel worktree with `disabledMcpjsonServers: ["linear", "slack"]` — that
- * beats the project's `enabledMcpjsonServers` (`apps/argus/.claude/settings.json`), so argus's
- * gateway servers never load and the conversation gets only the operator's own MCP servers
- * and plugins, the ones a terminal session on the host has (S-50). `maxTurns` is `undefined`
- * so no `--max-turns` reaches the CLI at all (`adapters/text.js`'s `buildArgv` only pushes the
- * flag when it is set): a local run, including `/scope`, has no turn cap (S-51).
+ * CTD-248: `settingSources` stays at `ADAPTER_CONFIG`'s `['project']` rather than adding
+ * `'user'` and `'local'` — the host's `~/.claude` stays out in local mode too (S-3), so the
+ * skills a conversation can invoke are argus's own and Claude Code's built-ins, not the
+ * operator's personal skills and installed plugins (S-56), and the only MCP servers are argus's
+ * gateway ones from `apps/argus/.claude/settings.json`'s `enabledMcpjsonServers` (S-50); with no
+ * `'user'` source to prefer, there is nothing left to disable it in favour of. `maxTurns` is
+ * `undefined` so no `--max-turns` reaches the CLI at all (`adapters/text.js`'s `buildArgv` only
+ * pushes the flag when it is set): a local run, including `/scope`, has no turn cap (S-51).
  */
 export const LOCAL_ADAPTER_CONFIG = {
   ...ADAPTER_CONFIG,
@@ -240,7 +239,6 @@ export const LOCAL_ADAPTER_CONFIG = {
   disallowedTools: undefined,
   maxTurns: undefined,
   permissionMode: "bypassPermissions",
-  settingSources: ["user", "project", "local"],
 } satisfies ClaudeCodeTextConfig;
 
 // Once per process, so the value the running server uses is on record (a dev server keeps

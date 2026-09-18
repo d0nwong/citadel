@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { constants } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -106,17 +105,6 @@ describe("CTD-221 AC2 — the first question creates both worktrees on ask/<id>"
       "{}\n"
     );
 
-    // CTD-226 S-50: the fresh citadel worktree disables argus's gateway MCP servers, so a
-    // local run's settingSources ('local') picks up the operator's own instead.
-    expect(
-      JSON.parse(
-        await readFile(
-          join(paths.citadel, "apps/argus/.claude/settings.local.json"),
-          "utf8"
-        )
-      )
-    ).toEqual({ disabledMcpjsonServers: ["linear", "slack"] });
-
     // The live checkouts are untouched: the worktree is a separate directory.
     expect(git(citadelDir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
     expect(git(citadelDataDir, "rev-parse", "--abbrev-ref", "HEAD")).toBe(
@@ -151,6 +139,25 @@ describe("CTD-221 AC2 — the first question creates both worktrees on ask/<id>"
     expect(await readFile(join(result.citadel, "SKILL.md"), "utf8")).toBe(
       "a new skill\n"
     );
+  });
+});
+
+describe("CTD-248 — Pensieve writes nothing into the citadel worktree (S-50)", () => {
+  test("no settings.local.json is written, and a fresh worktree is clean per git status", async () => {
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    const { citadel } = await ensureWorktrees({
+      citadelDataDir,
+      citadelDir,
+      threadId: "conv-3",
+      worktreesDir,
+    });
+
+    await expect(
+      access(join(citadel, "apps/argus/.claude/settings.local.json"))
+    ).rejects.toThrow(/ENOENT/);
+    expect(git(citadel, "status", "--porcelain")).toBe("");
   });
 });
 
@@ -440,19 +447,9 @@ describe("CTD-247 — the citadel worktree is read-only on disk (S-52)", () => {
       writeFile(join(citadel, "README.md"), "changed\n")
     ).rejects.toThrow(/EACCES|permission denied/i);
 
-    // The nested settings file writeLocalArgusSettings wrote before the chmod is write-denied
-    // too — the -R reached it.
-    await expect(
-      access(
-        join(citadel, "apps/argus/.claude/settings.local.json"),
-        constants.W_OK
-      )
-    ).rejects.toThrow(/EACCES|permission denied/i);
-
-    // A read surface, not a dead one: git and plain reads still work. (The untracked
-    // `apps/` directory the settings file lives under is the only thing status reports —
-    // nothing else was ever written here.)
-    expect(git(citadel, "status", "--porcelain")).toBe("?? apps/");
+    // A read surface, not a dead one: git and plain reads still work. Pensieve itself writes
+    // nothing into the worktree (CTD-248), so status is clean.
+    expect(git(citadel, "status", "--porcelain")).toBe("");
     expect(await readFile(join(citadel, "README.md"), "utf8")).toContain(
       "citadel"
     );

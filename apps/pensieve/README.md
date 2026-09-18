@@ -213,9 +213,11 @@ as `~/…` and as the absolute path, since a `Bash(...)` rule is a literal comma
 bare `argus` rule would carry the write verbs with it — and the hosted Slack server's read
 tools. Every Slack and Linear write tool is denied by name, as are the harness's own write
 tools and `argus tracker create` / `edit`. **Local** mode — the host's default — runs as the
-operator's own Claude Code with `bypassPermissions`, their `~/.claude` and their MCP servers,
-but never against the live checkouts: a conversation's first question cuts `citadel` and
-`citadel-data` worktrees on branch `ask/<id>` under `PENSIEVE_HOME/worktrees/<id>/`
+operator's own Claude Code with `bypassPermissions` and their own credentials, but project
+settings only, same as container mode — the host's `~/.claude` stays out, so the session sees
+argus's skills and gateway MCP servers, not the operator's personal skills, plugins or
+servers — and never against the live checkouts: a conversation's first question cuts `citadel`
+and `citadel-data` worktrees on branch `ask/<id>` under `PENSIEVE_HOME/worktrees/<id>/`
 (`src/server/worktrees.ts`), and every run in that conversation works there. Each later
 question rebases the citadel-data branch onto main, so a ledger the sweep committed since is
 what the run reads; a conflict is left in the worktree for the run itself to resolve. A
@@ -225,10 +227,11 @@ fast-forwards the live checkout's main and removes both worktrees and both branc
 Two tools are bridged into the run from Pensieve itself, `propose_decision` and
 `propose_ticket`, allowed as `mcp__tanstack__…` (below). The session sees argus's skills
 (`ask`, `sweep`, `linear-ticket`, `scope`, …) because argus links them into its own
-`.claude/skills`, and its `.mcp.json` because `settingSources` includes `'project'`. A
-conversation whose first turn starts `/scope` runs on a wider config: Ask's reads plus
-`Edit` and `Write` under the data's `revisions/`, the `argus revision` verbs and
-`argus tracker create` / `edit`, with the skill's own "wait for the user's yes" as the gate.
+`.claude/skills`, and its `.mcp.json` because `settingSources` is `['project']` and only
+`['project']`, in both modes. A conversation whose first turn starts `/scope` runs on a wider
+config: Ask's reads plus `Edit` and `Write` under the data's `revisions/`, the `argus revision`
+verbs and `argus tracker create` / `edit`, with the skill's own "wait for the user's yes" as
+the gate.
 
 A system prompt is appended to Claude Code's own (`ASK_SYSTEM_PROMPT` in `src/server/ask.ts`;
 `LOCAL_ASK_SYSTEM_PROMPT` for local mode). It names the working directory and the data
