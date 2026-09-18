@@ -136,6 +136,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
                 'A caller-chosen key, unique per intent (a retrying client keeps the key; a cockpit uses the id of the thing being sent).',
                 'The same key with the same body is a replay: `200` with the existing job, nothing new queued. The same key with a different body is `422`.',
                 'Bodies are compared as the raw bytes sent, so the same JSON serialised differently counts as different.',
+                'A cancelled job releases its key — the next call with it queues a new job rather than replaying or refusing.',
               ].join(' '),
               schema: { type: 'string', minLength: 1, maxLength: IDEMPOTENCY_KEY_MAX },
             },

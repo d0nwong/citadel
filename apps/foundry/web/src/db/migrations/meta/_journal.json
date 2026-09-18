@@ -190,6 +190,13 @@
       "when": 1789567136187,
       "tag": "0026_pr_watch_flaky",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789731394006,
+      "tag": "0027_job_idempotency_key_excludes_cancelled",
+      "breakpoints": true
     }
   ]
 }

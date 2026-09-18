@@ -274,9 +274,15 @@ export async function getJobByTicketId(ticketId: string): Promise<JobRow | undef
 /**
  * The job an `Idempotency-Key` already made, with the fingerprint of the body
  * that made it so the API can tell a replay from a reuse of the key.
+ * Excludes cancelled rows (CTD-254): they no longer hold the key, so a
+ * cancelled job never comes back as a replay, even if a cancelled and a live
+ * row for the same key exist side by side (the live one made after release).
  */
 export async function findJobByIdempotencyKey(key: string): Promise<{ job: Job; fingerprint: string } | undefined> {
-  const [row] = await db.select().from(jobs).where(eq(jobs.idempotencyKey, key))
+  const [row] = await db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.idempotencyKey, key), ne(jobs.status, 'cancelled')))
   if (!row) return undefined
   return { job: toJob(row), fingerprint: row.idempotencyFingerprint ?? '' }
 }
@@ -416,7 +422,11 @@ export async function markFlakySha(prUrl: string, headSha: string): Promise<void
  * No-op unless the job is still open — a settled job keeps its outcome.
  * Returns whether this call made the transition, like `settleJob`. `logText`
  * lets a caller other than the UI's cancel button (the PR watcher, S-47) say
- * why in its own words.
+ * why in its own words. The `cancelled` status drops the row out of both
+ * `jobs_ticket_id_unique`'s (CTD-176) and `jobs_idempotency_key_unique`'s
+ * (CTD-254) partial predicates in the same update, releasing the ticket
+ * claim and the idempotency key at once — the row keeps both values, only
+ * the index stops arbitrating on them.
  */
 export async function cancelJob(id: string, logText = 'cancelled by user'): Promise<boolean> {
   const [row] = await db
@@ -436,7 +446,10 @@ export async function cancelJob(id: string, logText = 'cancelled by user'): Prom
  * pass (or settled some other way) is left alone. Returns whether this call
  * made the transition. `finishedAt` is left as it was set when the run
  * itself finished; the PR closing later is a separate event, logged by the
- * caller, not a second "finish".
+ * caller, not a second "finish". A close (never a merge) also releases the
+ * root's ticket claim and idempotency key the same way `cancelJob` does
+ * (CTD-254) — both partial indexes key on `status`, not on which write got
+ * it there.
  */
 export async function closePrReadyJob(id: string, prState: 'merged' | 'closed'): Promise<boolean> {
   const status = prState === 'merged' ? 'succeeded' : 'cancelled'

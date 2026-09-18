@@ -134,10 +134,13 @@ export const jobs = foundry.table(
      */
     callbackUrl: text('callback_url'),
     /**
-     * The trigger API's `Idempotency-Key` header (LIA-91), unique so a replay
-     * finds the job it already made — and so two concurrent first requests
-     * insert one row, the same way `ticket_id` arbitrates a claim. NULL for
-     * UI jobs, and for API calls that sent no header.
+     * The trigger API's `Idempotency-Key` header (LIA-91), unique among
+     * non-cancelled rows so a replay finds the job it already made — and so
+     * two concurrent first requests insert one row, the same way `ticket_id`
+     * arbitrates a claim. NULL for UI jobs, and for API calls that sent no
+     * header. Cancelling a job (CTD-254) drops it out of
+     * `jobs_idempotency_key_unique`'s predicate below, releasing the key,
+     * while the row itself keeps the key it ran.
      */
     idempotencyKey: text('idempotency_key'),
     /**
@@ -184,7 +187,12 @@ export const jobs = foundry.table(
     uniqueIndex('jobs_ticket_id_unique')
       .on(t.ticketId)
       .where(sql`${t.status} <> 'cancelled'`),
-    uniqueIndex('jobs_idempotency_key_unique').on(t.idempotencyKey),
+    // Partial (CTD-254): a cancelled row keeps its idempotency_key for the
+    // record but drops out of the index, so the next trigger with that key
+    // queues a new job instead of replaying the cancelled one.
+    uniqueIndex('jobs_idempotency_key_unique')
+      .on(t.idempotencyKey)
+      .where(sql`${t.status} <> 'cancelled'`),
   ],
 )
 
