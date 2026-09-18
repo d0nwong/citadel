@@ -84,6 +84,7 @@ The parent's key and URL, each sub-issue's key and title in order with what bloc
 ## Red Flags
 
 - A question without a guess, or more than one question in a message
+- A restate, or an `intent.md`, below 95% confidence
 - A file written, or a ticket filed, before that step's yes
 - A reused id, or a new criterion that did not take `next_id`
 - A ticket whose acceptance criteria cite no `S-n`

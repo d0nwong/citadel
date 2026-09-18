@@ -1,6 +1,6 @@
 # Spec: citadel, step 1 (one repo, one stack)
 
-Status: draft for review. Intent: `docs/intent/monorepo.md` (confirmed 2026-09-11).
+Status: landed 2026-09-12. Intent: `docs/intent/monorepo.md` (confirmed 2026-09-11).
 Step 2, moving the ledgers to Postgres, gets its own spec once this lands.
 
 ## Objective

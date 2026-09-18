@@ -15,6 +15,9 @@ RUN bun install --frozen-lockfile
 COPY apps/argus apps/argus
 COPY apps/pensieve apps/pensieve
 COPY packages/tickets packages/tickets
+# Baked into the bundle, not read at runtime: the browser builds a Linear issue url from it.
+ARG VITE_LINEAR_WORKSPACE=liamai
+ENV VITE_LINEAR_WORKSPACE=$VITE_LINEAR_WORKSPACE
 RUN cd apps/pensieve && bun run build
 
 FROM oven/bun:1.4-slim

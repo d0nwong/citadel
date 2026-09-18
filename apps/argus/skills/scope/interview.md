@@ -2,11 +2,11 @@
 
 Adapted from `interview-me` in addy-agent-skills (MIT, © 2025 Addy Osmani): the grounding comes first, and the restate ends in `intent.md`.
 
-What people ask for and what they want are different things. They say "a dashboard" because that is what one asks for, and "make it faster" without a number. The cheapest moment to find the gap is now, before a spec exists. You are done when you can predict the user's reaction to the next three questions you would ask.
+What people ask for and what they want are different things. They say "a dashboard" because that is what one asks for, and "make it faster" without a number. The cheapest moment to find the gap is now, before a spec exists. You are done at 95%: when you can predict the user's reaction to the next three questions you would ask.
 
 ## 1. Commit to a hypothesis, with a number
 
-After the grounding in step 1 of `SKILL.md`, write your best read in one sentence and an honest confidence. Below about 70%, say on the same line what is missing.
+After the grounding in step 1 of `SKILL.md`, write your best read in one sentence and an honest confidence. Report the number again every round, so the gap is visible. Below 95%, say on the same line what is missing: that list is the interview's agenda, and it is worked through one question at a time.
 
 ```
 HYPOTHESIS: You want a failed job to be re-runnable from its page on the same base, without retyping.
@@ -27,6 +27,8 @@ Wait for the answer. The third question depends on the first; a batch buries you
 
 Ground every guess in what you read: the spec's criterion, the arch doc's contract, the code at its base branch. A guess that cites `S-20` or a file is one the user can check.
 
+Pitch every question to a junior engineer who is ready for senior: they will follow any reasoning, and they have not read the spec. So name the thing, not its id — what happens today, what would change, and what it costs either way. An `S-n` or a file path is a citation at the end of a sentence, never the sentence itself. A question the user must open a file to understand is a question that gets a polite, uninformed yes.
+
 ## 3. When two readings lead to different work, show them
 
 A question whose answers change the shape of the work — a new record or a field on an old one, a page or a command — gets two or three short options, your recommendation first and why, then the user's pick. This is the interview's divergent move; use it at the forks, not on every question.
@@ -39,7 +41,7 @@ When the user asks something in return — a claim to check, what others do, wha
 
 ## 5. Restate, in their words
 
-When you can predict the next three answers, write it back, one line each, so it can be corrected line by line:
+At 95% or better, and not before, write it back, one line each, so it can be corrected line by line:
 
 ```
 Outcome:      <one line>

@@ -68,4 +68,11 @@ export function daysSince(day?: string): number | null {
   return Math.floor((Date.now() - d.getTime()) / 86_400_000);
 }
 
-export const LINEAR_ISSUE = "https://linear.app/liamai/issue/";
+/**
+ * The Linear workspace an issue url is built under, for the keys a ledger records without one
+ * (`linear.app/<workspace>/issue/<KEY>`). Read in the browser, so it is baked at build time:
+ * changing it means rebuilding the image, not restarting it.
+ */
+export const LINEAR_ISSUE = `https://linear.app/${
+  import.meta.env.VITE_LINEAR_WORKSPACE || "liamai"
+}/issue/`;
