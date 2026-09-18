@@ -87,6 +87,9 @@ describe("AC3 — one POST /api/jobs with ticketId, repo, no instructions, Idemp
     expect(seen[0].url).toBe("http://foundry.test/api/jobs");
     expect(seen[0].init.method).toBe("POST");
     expect(JSON.parse(String(seen[0].init.body))).toEqual({
+      // "none" runs the ticket as a plain job; omitting it would resolve Foundry's
+      // default blueprint instead, so the literal is part of the contract.
+      blueprintId: "none",
       repo: "alden-portal-fe",
       ticketId: "LIA-86",
     });
