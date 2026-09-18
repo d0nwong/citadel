@@ -275,8 +275,11 @@ with the key), before any parsing, so the same JSON serialised differently — k
 reordered, whitespace changed — counts as a different body. Two concurrent first calls
 with one key insert one row; the loser is answered `200` with the winner. A replayed
 `ticketId` job with the same key is `200` too, not `409`; `409` remains for a *different*
-key (or none) on a ticket that already has a job. Keys live on the job row and go with it
-on purge — the cockpit sends the point id, so a decision can be re-sent without a second job.
+key (or none) on a ticket that already has a job. A cancelled job releases its key, the
+same way it releases its ticket claim — the next call with that key queues a new job
+rather than replaying the cancelled one or refusing it. Keys live on the job row and go
+with it on purge — the cockpit sends the point id, so a decision can be re-sent without a
+second job.
 
 `GET /api/jobs/<id>` (same bearer) returns the job — status, step, branch, `prUrl`,
 `exitCode`, `diff` — and `?logs=1` adds its log lines.

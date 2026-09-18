@@ -17,13 +17,16 @@ import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
 import { deleteLogs } from './job-logs'
 import { handleGetJob, handleListRepos, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX, ticketBrief } from './job-api'
-import { cancelJob, getJob } from './job-store'
+import { cancelJob, closePrReadyJob, getJob } from './job-store'
 import type { ApiDeps } from './job-api'
 import type { Job, LogLine } from '../types'
 
 const rand = randomUUID().slice(0, 8)
 const REPO_PATH = `/tmp/foundry-test-${rand}/api-repo`
 const REPO_NAME = 'api-repo'
+/** A second tracked repo, for CTD-254 C2 — a key must be reusable against a different repo. */
+const REPO2_PATH = `/tmp/foundry-test-${rand}/api-repo-2`
+const REPO2_NAME = 'api-repo-2'
 const SECRET = `test-secret-${rand}`
 
 /**
@@ -112,13 +115,20 @@ const valid = (extra: Record<string, unknown> = {}) => ({
 })
 
 dbBeforeAll(async () => {
-  await db.insert(repos).values({ path: REPO_PATH, name: REPO_NAME }).onConflictDoNothing()
+  await db
+    .insert(repos)
+    .values([
+      { path: REPO_PATH, name: REPO_NAME },
+      { path: REPO2_PATH, name: REPO2_NAME },
+    ])
+    .onConflictDoNothing()
 })
 
 dbAfterAll(async () => {
   const swept = await db.delete(jobs).where(like(jobs.task, `TEST-${rand}%`)).returning({ id: jobs.id })
   await deleteLogs(swept.map((r) => r.id))
   await db.delete(repos).where(eq(repos.path, REPO_PATH))
+  await db.delete(repos).where(eq(repos.path, REPO2_PATH))
 })
 
 dbTest('no token configured → 503, and nothing is queued', async () => {
@@ -438,6 +448,109 @@ dbTest('AC6 — two concurrent first requests with one key make one job; the los
 
   expect(await rowCount()).toBe(before + 1)
   expect(ignited.slice(ignitedBefore)).toEqual([ja.id])
+})
+
+/* ------------------------------------------------------------------ */
+/* CTD-254 — a cancelled job releases its idempotency key              */
+/* ------------------------------------------------------------------ */
+
+dbTest('CTD-254 AC1/AC5 — a cancelled job releases its key: re-triggering with it is 202 with a new job, and the first stays cancelled', async () => {
+  const key = `k254-1-${rand}`
+  const ticketId = `TEST-${rand}-K254-1`
+  const body = JSON.stringify(valid({ ticketId }))
+
+  const first = await handleTriggerJob(postKeyed(key, body), deps)
+  expect(first.status).toBe(202)
+  const jobA = (await first.json()) as Job
+
+  expect(await cancelJob(jobA.id)).toBe(true)
+
+  const second = await handleTriggerJob(postKeyed(key, body), deps)
+  expect(second.status).toBe(202)
+  const jobB = (await second.json()) as Job
+  expect(jobB.id).not.toBe(jobA.id)
+  expect(ignited).toContain(jobB.id)
+
+  // AC5 — the first job is untouched: still cancelled, its ticketId and logs intact.
+  const rowA = await getJob(jobA.id)
+  expect(rowA?.status).toBe('cancelled')
+  expect(rowA?.ticketId).toBe(ticketId)
+  expect((await logsOf(jobA.id)).some((l) => l.text.startsWith('queued on orbstack'))).toBe(true)
+})
+
+dbTest('CTD-254 AC2 — after a cancel, the same key with a different repo is 202 with a new job, not a 422', async () => {
+  const key = `k254-2-${rand}`
+  const first = await handleTriggerJob(postKeyed(key, JSON.stringify(valid({ repo: REPO_NAME }))), deps)
+  expect(first.status).toBe(202)
+  const jobA = (await first.json()) as Job
+  expect(await cancelJob(jobA.id)).toBe(true)
+
+  const second = await handleTriggerJob(postKeyed(key, JSON.stringify(valid({ repo: REPO2_NAME }))), deps)
+  expect(second.status).toBe(202)
+  const jobB = (await second.json()) as Job
+  expect(jobB.id).not.toBe(jobA.id)
+  expect(jobB.repo).toMatchObject({ path: REPO2_PATH })
+})
+
+dbTest('CTD-254 AC3 — a job cancelled by the PR watcher closing its PR unmerged also releases its key', async () => {
+  const key = `k254-3-${rand}`
+  const body = JSON.stringify(valid())
+  const first = await handleTriggerJob(postKeyed(key, body), deps)
+  expect(first.status).toBe(202)
+  const jobA = (await first.json()) as Job
+
+  // Stand in for the watcher's own path to `cancelled`: a settled `pr_ready`
+  // root whose PR closed unmerged (pr-watcher.ts calls closePrReadyJob the
+  // same way once it sees the PR's state).
+  await db.update(jobs).set({ status: 'pr_ready' }).where(eq(jobs.id, jobA.id))
+  expect(await closePrReadyJob(jobA.id, 'closed')).toBe(true)
+
+  const second = await handleTriggerJob(postKeyed(key, body), deps)
+  expect(second.status).toBe(202)
+  const jobB = (await second.json()) as Job
+  expect(jobB.id).not.toBe(jobA.id)
+
+  const rowA = await getJob(jobA.id)
+  expect(rowA?.status).toBe('cancelled')
+})
+
+dbTest('CTD-254: a pr_ready job that merges keeps its key — a re-trigger with it still replays', async () => {
+  const key = `k254-3m-${rand}`
+  const body = JSON.stringify(valid())
+  const first = await handleTriggerJob(postKeyed(key, body), deps)
+  const jobA = (await first.json()) as Job
+
+  await db.update(jobs).set({ status: 'pr_ready' }).where(eq(jobs.id, jobA.id))
+  expect(await closePrReadyJob(jobA.id, 'merged')).toBe(true)
+
+  const replay = await handleTriggerJob(postKeyed(key, body), deps)
+  expect(replay.status).toBe(200)
+  expect(((await replay.json()) as Job).id).toBe(jobA.id)
+})
+
+dbTest('CTD-254 AC4 — while a job is queued, running or pr_ready, re-triggering its key is still a replay', async () => {
+  const key = `k254-4-${rand}`
+  const body = JSON.stringify(valid())
+  const before = await rowCount()
+
+  const first = await handleTriggerJob(postKeyed(key, body), deps)
+  expect(first.status).toBe(202)
+  const job = (await first.json()) as Job
+
+  // queued
+  expect((await handleTriggerJob(postKeyed(key, body), deps)).status).toBe(200)
+
+  // running
+  await db.update(jobs).set({ status: 'running' }).where(eq(jobs.id, job.id))
+  expect((await handleTriggerJob(postKeyed(key, body), deps)).status).toBe(200)
+
+  // pr_ready
+  await db.update(jobs).set({ status: 'pr_ready' }).where(eq(jobs.id, job.id))
+  const replay = await handleTriggerJob(postKeyed(key, body), deps)
+  expect(replay.status).toBe(200)
+  expect(((await replay.json()) as Job).id).toBe(job.id)
+
+  expect(await rowCount()).toBe(before + 1)
 })
 
 /* ------------------------------------------------------------------ */

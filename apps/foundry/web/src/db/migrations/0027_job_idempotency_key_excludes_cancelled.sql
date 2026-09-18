@@ -1,0 +1,2 @@
+DROP INDEX "foundry"."jobs_idempotency_key_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "jobs_idempotency_key_unique" ON "foundry"."jobs" USING btree ("idempotency_key") WHERE "foundry"."jobs"."status" <> 'cancelled';
