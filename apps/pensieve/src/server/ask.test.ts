@@ -1487,7 +1487,9 @@ describe("CTD-223 — Delete removes a local conversation's worktrees and says w
       citadel: join(worktreesDir, "wt-count", "citadel"),
       citadelData: join(worktreesDir, "wt-count", "citadel-data"),
     };
-    // citadel: one committed (unpushed) change, plus one untracked (uncommitted) file.
+    // citadel: one committed (unpushed) change, plus one untracked (uncommitted) file. Read-only
+    // by S-52; stand in for the operator's own chmod to set up the scenario for the count.
+    execFileSync("chmod", ["-R", "u+w", paths.citadel]);
     await commitFile(paths.citadel, "NOTES.md", "notes\n", "wip");
     await writeFile(join(paths.citadel, "scratch.md"), "scratch\n");
     // citadel-data: one committed change ahead of main (unmerged), plus one untracked file.

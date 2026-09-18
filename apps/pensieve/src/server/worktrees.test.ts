@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -40,6 +41,11 @@ async function commitFile(
 
 const git = (dir: string, ...args: string[]) =>
   execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" }).trim();
+
+/** Stands in for the operator's own `chmod u+w` (S-52's escape hatch) so a test can write into
+ * an otherwise-read-only citadel worktree to set up a scenario unrelated to the read-only bit
+ * itself. */
+const allowWrites = (dir: string) => execFileSync("chmod", ["-R", "u+w", dir]);
 
 /** citadel: an "origin" bare repo plus a clone tracking it, both with one commit on main. */
 async function makeCitadelRepo(): Promise<{ dir: string; origin: string }> {
@@ -246,6 +252,9 @@ describe("CTD-223 — discardCounts and removeWorktrees", () => {
       citadelData: { uncommitted: 0, unmerged: 0 },
     });
 
+    // Read-only by S-52; this test is about the counts, not the bit, so stand in for the
+    // operator's own chmod to set up the scenario.
+    allowWrites(citadel);
     await commitFile(citadel, "NOTES.md", "wip\n", "wip");
     await writeFile(join(citadel, "scratch.md"), "scratch\n");
     await commitFile(citadelData, "draft.json", "{}\n", "draft");
@@ -287,6 +296,8 @@ describe("CTD-223 — discardCounts and removeWorktrees", () => {
       threadId: "conv-6",
       worktreesDir,
     });
+    // Read-only by S-52; stand in for the operator's own chmod to leave a dirty file behind.
+    allowWrites(paths.citadel);
     await writeFile(join(paths.citadel, "dirty.md"), "dirty\n");
 
     await removeWorktrees(paths, {
@@ -395,6 +406,8 @@ describe("CTD-222 — the git steps behind Finish", () => {
       threadId: "rm-2",
       worktreesDir,
     });
+    // Read-only by S-52; stand in for the operator's own chmod to leave an uncommitted file.
+    allowWrites(result.citadel);
     await writeFile(join(result.citadel, "SCRATCH.md"), "uncommitted\n");
 
     await removeWorktrees(paths, {
@@ -404,5 +417,70 @@ describe("CTD-222 — the git steps behind Finish", () => {
     });
 
     expect(await hasWorktrees(paths)).toBe(false);
+  });
+});
+
+describe("CTD-247 — the citadel worktree is read-only on disk (S-52)", () => {
+  test("AC1 — every file and directory in the citadel worktree has write removed, reads still work, and citadel-data is unaffected", async () => {
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    const { citadel, citadelData } = await ensureWorktrees({
+      citadelDataDir,
+      citadelDir,
+      threadId: "ro-1",
+      worktreesDir,
+    });
+
+    // A new file, and overwriting a tracked one, both fail on disk.
+    await expect(writeFile(join(citadel, "new.md"), "new\n")).rejects.toThrow(
+      /EACCES|permission denied/i
+    );
+    await expect(
+      writeFile(join(citadel, "README.md"), "changed\n")
+    ).rejects.toThrow(/EACCES|permission denied/i);
+
+    // The nested settings file writeLocalArgusSettings wrote before the chmod is write-denied
+    // too — the -R reached it.
+    await expect(
+      access(
+        join(citadel, "apps/argus/.claude/settings.local.json"),
+        constants.W_OK
+      )
+    ).rejects.toThrow(/EACCES|permission denied/i);
+
+    // A read surface, not a dead one: git and plain reads still work. (The untracked
+    // `apps/` directory the settings file lives under is the only thing status reports —
+    // nothing else was ever written here.)
+    expect(git(citadel, "status", "--porcelain")).toBe("?? apps/");
+    expect(await readFile(join(citadel, "README.md"), "utf8")).toContain(
+      "citadel"
+    );
+
+    // citadel-data is untouched — still writable.
+    await writeFile(join(citadelData, "note.md"), "note\n");
+    expect(await readFile(join(citadelData, "note.md"), "utf8")).toBe("note\n");
+  });
+
+  test("AC2 — removeWorktrees still removes both worktrees and both branches with citadel read-only, exactly as created", async () => {
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    const paths = await ensureWorktrees({
+      citadelDataDir,
+      citadelDir,
+      threadId: "ro-2",
+      worktreesDir,
+    });
+
+    await removeWorktrees(paths, {
+      citadelDataDir,
+      citadelDir,
+      threadId: "ro-2",
+    });
+
+    expect(await hasWorktrees(paths)).toBe(false);
+    expect(git(citadelDir, "branch", "--list", "ask/ro-2")).toBe("");
+    expect(git(citadelDataDir, "branch", "--list", "ask/ro-2")).toBe("");
   });
 });
