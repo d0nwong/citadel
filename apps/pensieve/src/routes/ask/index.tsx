@@ -9,7 +9,7 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 import { MoreHorizontalIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { Empty, PageHeader } from "#/components/bits";
+import { Empty, PageHeader, Tag } from "#/components/bits";
 import { DocLayout } from "#/components/toc";
 import { Button } from "#/components/ui/button";
 import {
@@ -81,6 +81,15 @@ function AskListPage() {
               <span className="min-w-0 font-medium text-foreground max-sm:line-clamp-2 sm:truncate">
                 {c.title}
               </span>
+              {c.hasWorktrees && (
+                <Tag
+                  className="shrink-0 self-start sm:self-auto"
+                  title="Still holds its worktrees on disk"
+                  tone="neutral"
+                >
+                  worktrees
+                </Tag>
+              )}
             </Link>
             {/* Beside the link, not in it, so opening the menu never opens the conversation.
                 Always there on a phone; from sm up it shows on the row's hover or focus. */}
