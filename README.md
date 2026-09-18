@@ -40,6 +40,7 @@ apps/argus/          the ledger CLIs, the skills, the sweep image, the MCP gatew
 apps/foundry/        the forge CLI, its web UI (web/), postgres (infra/)
 apps/pensieve/       the reading room
 packages/tickets/    one ticket provider interface, routed by a key's prefix; the Linear and Trello adapters
+skills/               skills that are the operator's, not an app's; nothing installs them
 compose.yaml         the stack; each app's compose file is included from here
 justfile             every command
 scripts/             what the recipes call when they outgrow one line
