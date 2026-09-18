@@ -21,6 +21,14 @@
  * (`ask.ts`) loads it as the `'local'` source, which wins, so a local run gets the operator's
  * own MCP servers and not argus's gateway ones (S-50). The file sits only in this worktree,
  * never in the live checkout.
+ *
+ * CTD-247 (S-52): `createWorktrees` ends the citadel half by `chmod -R a-w`ing the whole tree,
+ * once everything Pensieve itself writes into it is down — so from before the session ever
+ * runs, an edit, a redirect or a `git commit` into the citadel worktree fails on disk, not on
+ * a sentence in the prompt. Removing that worktree needs write permission back, since `git
+ * worktree remove` deletes files through the directory and a read-only directory refuses it;
+ * `removeWorktrees` restores it with `chmod -R u+w` immediately before that call. citadel-data
+ * is never touched — it stays writable by design.
  */
 
 import { execFile } from "node:child_process";
@@ -49,6 +57,22 @@ async function exists(p: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * `chmod -R <mode> <dir>` through `execFile` — one spawn rather than a walk, since Node's
+ * `fs.chmod` is per-path (S-52). `mode` is a raw `chmod` symbolic mode (`"a-w"`, `"u+w"`).
+ */
+async function chmodTree(mode: string, dir: string): Promise<void> {
+  try {
+    await exec("chmod", ["-R", mode, dir]);
+  } catch (e) {
+    const err = e as { stderr?: string; message: string };
+    throw new Error(
+      `chmod -R ${mode} ${dir}: ${(err.stderr || err.message).trim()}`,
+      { cause: e }
+    );
   }
 }
 
@@ -108,6 +132,8 @@ async function createWorktrees(
     "origin/main",
   ]);
   await writeLocalArgusSettings(paths.citadel);
+  // Last step for the citadel tree (S-52): everything above writes into it, nothing below does.
+  await chmodTree("a-w", paths.citadel);
   await git(opts.citadelDataDir, [
     "worktree",
     "add",
@@ -264,12 +290,13 @@ export async function fastForwardMain(
  * Remove both of a conversation's worktrees and delete `ask/<id>` from both live checkouts
  * (S-48) — the last step of Finish, once citadel-data has landed on main, and Delete's other
  * half (S-44, CTD-223), discarding whatever `discardCounts` counted. `--force` discards
- * whatever the citadel worktree's code changes leave behind (uncommitted, not pushed, or
- * mid-conflict-rebase): a code change leaves only as the PR the user already asked for (S-40);
- * `-D` because that branch, even when pushed, was never merged into the *local* checkout. A
- * pushed citadel branch and its PR live on the remote and are untouched by removing the local
- * ref. A no-op when the conversation never got worktrees, so a container-mode or fresh thread
- * costs nothing.
+ * whatever the citadel worktree's code changes leave behind (uncommitted or mid-conflict-
+ * rebase); `-D` because that branch, even when pushed, was never merged into the *local*
+ * checkout. A pushed citadel branch and its PR live on the remote and are untouched by removing
+ * the local ref. Restoring write permission on the citadel tree (S-52) has to happen first: it
+ * was created read-only, and `git worktree remove` deletes files through the directory, which a
+ * read-only directory refuses. A no-op when the conversation never got worktrees, so a
+ * container-mode or fresh thread costs nothing.
  */
 export async function removeWorktrees(
   paths: WorktreePaths,
@@ -279,6 +306,7 @@ export async function removeWorktrees(
     return;
   }
   const branch = branchOf(opts.threadId);
+  await chmodTree("u+w", paths.citadel);
   await git(opts.citadelDir, ["worktree", "remove", "--force", paths.citadel]);
   await git(opts.citadelDir, ["branch", "-D", branch]);
   await git(opts.citadelDataDir, [
