@@ -13,7 +13,7 @@ import type { TicketStates } from "@citadel/tickets";
 import type { Ledger } from "#/lib/ledger";
 import type { PipelineCard } from "./ledger";
 import { home, listLedgers, readLedger, readUnplaced } from "./ledger";
-import type { AppRoot } from "./workspace";
+import { ALDEN_CHECKOUTS, type AppRoot } from "./workspace";
 
 const FIXTURE = new URL("../test/fixtures/ledger.json", import.meta.url)
   .pathname;
@@ -199,11 +199,45 @@ describe("home", () => {
     const h = await home(roots, join(root, "state/unplaced.json"));
     const ready = h.ready.find((t) => t.key === "ALD-41");
     expect(ready?.repo).toBe("alden-connect-portal-be");
-    // A feature nobody has sent from leaves the field to be chosen.
+    // With that send gone the feature falls back to what ALD-41's own [FE] tag names — the
+    // ledger's record wins over the tag while there is one.
     l.tickets = l.tickets.filter((t) => t.key !== "ALD-99");
     await put(`${APP}/features/admin/invoicing/ledger.json`, l);
     const fresh = await home(roots, join(root, "state/unplaced.json"));
-    expect(fresh.ready.find((t) => t.key === "ALD-41")?.repo).toBeUndefined();
+    expect(fresh.ready.find((t) => t.key === "ALD-41")?.repo).toBe(
+      ALDEN_CHECKOUTS.FE
+    );
+  });
+  test("a ready ticket with no send yet falls back to the repo its [FE]/[BE] tag names", async () => {
+    const l = await fixture();
+    for (const b of l.tickets[0].blockers) {
+      b.cleared = { at: "2026-09-11", evidence: [{ kind: "slack", url: "u" }] };
+    }
+    l.tickets[0].ready = true;
+    l.tickets[0].title = "[BE] Due header follows the payment term";
+    l.asks[0].status = "asked";
+    l.asks[0].history = [];
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
+    const h = await home(roots, join(root, "state/unplaced.json"));
+    expect(h.ready.find((t) => t.key === "ALD-41")?.repo).toBe(
+      ALDEN_CHECKOUTS.BE
+    );
+
+    // A tag on a feature that is not alden's names none of the product checkouts: the two
+    // env vars are the product's, and a wrong repo is worse than an unfilled field.
+    const elsewhere: AppRoot[] = [
+      { app: "citadel", dir: join(root, APP, "features") },
+    ];
+    const other = await home(elsewhere, join(root, "state/unplaced.json"));
+    expect(other.ready.find((t) => t.key === "ALD-41")?.repo).toBeUndefined();
+
+    // And a title with no tag asks rather than guesses.
+    l.tickets[0].title = "Due header follows the payment term";
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
+    const untagged = await home(roots, join(root, "state/unplaced.json"));
+    expect(
+      untagged.ready.find((t) => t.key === "ALD-41")?.repo
+    ).toBeUndefined();
   });
   test("a ticket with no asks leaves Ready once reconcile marked it done", async () => {
     const l = await fixture();

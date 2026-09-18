@@ -21,8 +21,14 @@ import {
   type Ticket,
   type Unplaced,
 } from "#/lib/ledger";
+import { repoTag } from "#/lib/send";
 import type { FiledTicketRow } from "./ask";
-import { type AppRoot, listApps, WORKSPACE_DIR } from "./workspace";
+import {
+  ALDEN_CHECKOUTS,
+  type AppRoot,
+  listApps,
+  WORKSPACE_DIR,
+} from "./workspace";
 
 export const LEDGER_FILE = "ledger.json";
 export const UNPLACED_FILE = join(WORKSPACE_DIR, "state", "unplaced.json");
@@ -113,6 +119,23 @@ export async function readUnplaced(file = UNPLACED_FILE): Promise<Unplaced[]> {
     return [];
   }
 }
+
+/**
+ * The product checkout a ticket's `[FE]` / `[BE]` tag names, for an alden feature — the
+ * repo it would be sent to, before anything on that feature has been sent and recorded.
+ *
+ * Only alden's features: `ALDEN_FE_REPO` and `ALDEN_BE_REPO` are the two product checkouts, so a `[BE]`
+ * ticket on citadel's or foundry's own features gets nothing rather than a repo it has no
+ * business landing in. Blank over wrong — an unfilled picker costs one click, and a wrong
+ * one sends a job at the wrong checkout.
+ */
+const taggedCheckout = (app: string, title: string): string | undefined => {
+  if (!app.startsWith("alden/")) {
+    return;
+  }
+  const tag = repoTag(title);
+  return tag ? ALDEN_CHECKOUTS[tag] : undefined;
+};
 
 export interface HomeAsk extends Ask {
   dir: string;
@@ -279,16 +302,18 @@ export async function home(
   const shell = await homeShell(roots, unplacedFile);
   const { ledgers } = await listLedgers(roots);
   const ready: HomeTicket[] = [];
-  for (const { feature, dir, ledger } of ledgers) {
-    // One read per ledger, not per ticket: every ready ticket on a feature is offered the
-    // same repo, because it is the feature's, not theirs.
-    const repo = lastSentRepo(ledger);
+  for (const { app, feature, dir, ledger } of ledgers) {
+    // One read per ledger, not per ticket: where this feature's work has landed is the
+    // feature's own, not any one ticket's. The tag below is the ticket's, and only stands
+    // in until a feature has been sent once.
+    const sentTo = lastSentRepo(ledger);
     for (const t of readyTickets(ledger)) {
       const state = states(t.key);
       const verdict = assigneeVerdict(state, liam);
       if (verdict === "drop") {
         continue;
       }
+      const repo = sentTo || taggedCheckout(app, t.title);
       ready.push({
         ...t,
         dir,

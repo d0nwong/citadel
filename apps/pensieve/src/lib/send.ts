@@ -71,6 +71,16 @@ export const NO_BLUEPRINT = "none";
  */
 export const REPO_REQUIRED = "a repo is required — choose one Foundry tracks";
 
+/**
+ * Which side of the product a ticket is for, from the tag the house format puts in every
+ * title (`[FE] Due header follows the payment term`). Undefined when it carries neither —
+ * the tag is a convention, not a guarantee, and nothing here guesses from the words.
+ */
+export const repoTag = (title: string): "FE" | "BE" | undefined => {
+  const hit = /^\s*\[(FE|BE)\]/i.exec(title);
+  return hit ? (hit[1].toUpperCase() as "FE" | "BE") : undefined;
+};
+
 /** One row of the repo picker: what is shown, and what `POST /api/jobs` is sent. */
 export interface RepoOption {
   label: string;
