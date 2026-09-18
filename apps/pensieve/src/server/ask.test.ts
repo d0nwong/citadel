@@ -1602,6 +1602,51 @@ describe("CTD-223 — Delete removes a local conversation's worktrees and says w
   });
 });
 
+describe("CTD-251 — the list marks a conversation that still holds worktrees", () => {
+  test("hasWorktrees is true only for a thread whose worktrees dir exists, and only in local mode", async () => {
+    const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    const adapter = new FakeClaude({ sessionId: "s1" });
+    for (const id of ["wt-held", "wt-gone"] as const) {
+      await collect(
+        askStream(
+          { messages: [user("where does it stand")], threadId: id },
+          { adapter, middleware: [], status: available, store }
+        )
+      );
+    }
+    // No worktrees were actually cut (askStream ran in container mode above); the mark is a
+    // plain `stat`, so faking the one directory `hasWorktrees` checks is enough.
+    await mkdir(join(worktreesDir, "wt-held", "citadel"), { recursive: true });
+
+    const local = await listConversations(store, {
+      env: { PENSIEVE_RUNNER: "local" },
+      worktreesDir,
+    });
+    expect(local.find((c) => c.threadId === "wt-held")).toMatchObject({
+      hasWorktrees: true,
+    });
+    expect(
+      local.find((c) => c.threadId === "wt-gone")?.hasWorktrees
+    ).toBeUndefined();
+
+    const container = await listConversations(store, {
+      env: { PENSIEVE_RUNNER: "container" },
+      worktreesDir,
+    });
+    expect(container.every((c) => c.hasWorktrees === undefined)).toBe(true);
+
+    // deleteConversation answers the same marked list.
+    const afterDelete = await deleteConversation("wt-gone", store, {
+      env: { PENSIEVE_RUNNER: "local" },
+      worktreesDir,
+    });
+    expect(afterDelete.find((c) => c.threadId === "wt-held")).toMatchObject({
+      hasWorktrees: true,
+    });
+  });
+});
+
 describe("AC6 (LIA-102) / AC5 (LIA-104) — auth mode, availability, and what the probe said", () => {
   test("ANTHROPIC_API_KEY decides api-key; otherwise host", () => {
     expect(authMode({ ANTHROPIC_API_KEY: "sk-ant-x" })).toBe("api-key");

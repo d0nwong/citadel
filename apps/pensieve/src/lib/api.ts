@@ -187,7 +187,10 @@ export const askStatus = createServerFn({ method: "GET" }).handler(
   }
 );
 
-/** Every stored conversation, newest first, titled by its first user turn. */
+/**
+ * Every stored conversation, newest first, titled by its first user turn. In local mode each
+ * row also says whether it still holds its worktrees on disk (S-55, CTD-251).
+ */
 export const listConversations = createServerFn({ method: "GET" }).handler(
   async (): Promise<ConversationSummary[]> => {
     const ask = await import("#/server/ask");

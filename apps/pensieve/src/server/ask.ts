@@ -598,6 +598,8 @@ const idOfFileName = (name: string) =>
   decodeURIComponent(name.slice(0, -".json".length));
 
 export interface ConversationSummary {
+  /** Local mode only: its worktrees are still on disk (S-55) — one `stat`, nothing about what is in them. */
+  hasWorktrees?: boolean;
   threadId: string;
   /** The first user turn. */
   title: string;
@@ -1530,7 +1532,29 @@ export async function getConversation(
   };
 }
 
-export const listConversations = (store = askStore) => store.list();
+/**
+ * Every stored conversation, newest first. In local mode each row also says whether its
+ * worktrees are still on disk (S-55, CTD-251) — one `stat` per row via `hasWorktrees`, never
+ * a `git status`; container mode never has worktrees to mark, so its rows pass through as is.
+ */
+export async function listConversations(
+  store = askStore,
+  opts: Pick<AskRunOptions, "env" | "worktreesDir"> = {}
+): Promise<ConversationSummary[]> {
+  const rows = await store.list();
+  if (runMode(opts.env ?? process.env) !== "local") {
+    return rows;
+  }
+  const worktreesDir = opts.worktreesDir ?? WORKTREES_DIR;
+  return Promise.all(
+    rows.map(async (row) => {
+      const held = await hasWorktrees(
+        worktreePaths(worktreesDir, row.threadId)
+      );
+      return held ? { ...row, hasWorktrees: true } : row;
+    })
+  );
+}
 
 /**
  * Remove that one file; answer the remaining list. In local mode the conversation's worktrees
@@ -1557,7 +1581,7 @@ export async function deleteConversation(
     );
   }
   await store.remove(threadId);
-  return store.list();
+  return listConversations(store, opts);
 }
 
 // ── Finish (CTD-222) ─────────────────────────────────────────────────────────────
