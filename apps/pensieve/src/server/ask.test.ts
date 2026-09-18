@@ -1524,7 +1524,7 @@ describe("CTD-223 — Delete removes a local conversation's worktrees and says w
     ).toBeNull();
   });
 
-  test("counts the citadel worktree's uncommitted and unpushed changes, and citadel-data's uncommitted files and commits not on main", async () => {
+  test("counts the citadel-data worktree's uncommitted files and commits not on main", async () => {
     const store = conversationStore(await scratch());
     const worktreesDir = await scratch();
     const { dir: citadelDir } = await makeCitadelRepo();
@@ -1549,11 +1549,6 @@ describe("CTD-223 — Delete removes a local conversation's worktrees and says w
       citadel: join(worktreesDir, "wt-count", "citadel"),
       citadelData: join(worktreesDir, "wt-count", "citadel-data"),
     };
-    // citadel: one committed (unpushed) change, plus one untracked (uncommitted) file. Read-only
-    // by S-52; stand in for the operator's own chmod to set up the scenario for the count.
-    execFileSync("chmod", ["-R", "u+w", paths.citadel]);
-    await commitFile(paths.citadel, "NOTES.md", "notes\n", "wip");
-    await writeFile(join(paths.citadel, "scratch.md"), "scratch\n");
     // citadel-data: one committed change ahead of main (unmerged), plus one untracked file.
     await commitFile(paths.citadelData, "draft.json", "{}\n", "draft");
     await writeFile(join(paths.citadelData, "scratch.json"), "{}\n");
@@ -1563,7 +1558,6 @@ describe("CTD-223 — Delete removes a local conversation's worktrees and says w
       worktreesDir,
     });
     expect(counts).toEqual({
-      citadel: { uncommitted: 1, unpushed: 1 },
       citadelData: { uncommitted: 1, unmerged: 1 },
     });
   });

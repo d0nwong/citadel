@@ -243,7 +243,7 @@ describe("CTD-221 AC3 / AC4 — a later question rebases citadel-data onto main;
 });
 
 describe("CTD-223 — discardCounts and removeWorktrees", () => {
-  test("discardCounts counts citadel's uncommitted and unpushed changes, and citadel-data's uncommitted files and commits not on main", async () => {
+  test("discardCounts counts only citadel-data's uncommitted files and commits not on main", async () => {
     const { dir: citadelDir } = await makeCitadelRepo();
     const citadelDataDir = await makeCitadelDataRepo();
     const worktreesDir = await scratch("worktrees-root-");
@@ -255,20 +255,13 @@ describe("CTD-223 — discardCounts and removeWorktrees", () => {
     });
 
     expect(await discardCounts({ citadel, citadelData })).toEqual({
-      citadel: { uncommitted: 0, unpushed: 0 },
       citadelData: { uncommitted: 0, unmerged: 0 },
     });
 
-    // Read-only by S-52; this test is about the counts, not the bit, so stand in for the
-    // operator's own chmod to set up the scenario.
-    allowWrites(citadel);
-    await commitFile(citadel, "NOTES.md", "wip\n", "wip");
-    await writeFile(join(citadel, "scratch.md"), "scratch\n");
     await commitFile(citadelData, "draft.json", "{}\n", "draft");
     await writeFile(join(citadelData, "scratch.json"), "{}\n");
 
     expect(await discardCounts({ citadel, citadelData })).toEqual({
-      citadel: { uncommitted: 1, unpushed: 1 },
       citadelData: { uncommitted: 1, unmerged: 1 },
     });
   });

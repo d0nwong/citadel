@@ -6,21 +6,19 @@ describe("CTD-224 — finishMessage", () => {
     expect(finishMessage(null)).toBeNull();
   });
 
-  test("citadel clean: nothing to confirm, even with citadel-data commits pending", () => {
+  test("nothing to confirm when citadel-data has no uncommitted changes, even with commits not on main", () => {
     expect(
       finishMessage({
-        citadel: { uncommitted: 0, unpushed: 0 },
-        citadelData: { uncommitted: 4, unmerged: 2 },
+        citadelData: { uncommitted: 0, unmerged: 2 },
       })
     ).toBeNull();
   });
 
-  test("names the citadel worktree's uncommitted and unpushed changes Finish discards", () => {
+  test("names the citadel-data worktree's uncommitted changes Finish is about to land", () => {
     const message = finishMessage({
-      citadel: { uncommitted: 2, unpushed: 1 },
-      citadelData: { uncommitted: 0, unmerged: 3 },
+      citadelData: { uncommitted: 2, unmerged: 3 },
     });
-    expect(message).toContain("citadel worktree discards");
-    expect(message).toContain("2 uncommitted, 1 unpushed");
+    expect(message).toContain("citadel-data worktree");
+    expect(message).toContain("2 uncommitted");
   });
 });
