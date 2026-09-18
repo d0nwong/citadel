@@ -14,6 +14,7 @@ import type { TicketState, TicketStates } from "@citadel/tickets";
 import {
   type Ask,
   type Ledger,
+  lastSentRepo,
   onYou,
   readyAsks,
   readyTickets,
@@ -122,6 +123,8 @@ export interface HomeTicket extends Ticket {
   assignee?: "unknown";
   dir: string;
   feature: string;
+  /** the repo this feature's last send went to — what the Send form starts its picker on */
+  repo?: string;
   /** the provider's own url, read alongside its state; unset when that read failed */
   url?: string;
 }
@@ -277,6 +280,9 @@ export async function home(
   const { ledgers } = await listLedgers(roots);
   const ready: HomeTicket[] = [];
   for (const { feature, dir, ledger } of ledgers) {
+    // One read per ledger, not per ticket: every ready ticket on a feature is offered the
+    // same repo, because it is the feature's, not theirs.
+    const repo = lastSentRepo(ledger);
     for (const t of readyTickets(ledger)) {
       const state = states(t.key);
       const verdict = assigneeVerdict(state, liam);
@@ -288,6 +294,7 @@ export async function home(
         dir,
         feature,
         url: stateUrl(state),
+        ...(repo ? { repo } : {}),
         ...(verdict === "unknown" ? { assignee: "unknown" as const } : {}),
       });
     }

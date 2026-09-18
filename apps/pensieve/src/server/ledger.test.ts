@@ -171,6 +171,40 @@ describe("home", () => {
     h = await home(roots, join(root, "state/unplaced.json"));
     expect(h.ready).toEqual([]);
   });
+  test("a ready ticket carries the repo its feature's last send went to", async () => {
+    const l = await fixture();
+    for (const b of l.tickets[0].blockers) {
+      b.cleared = { at: "2026-09-11", evidence: [{ kind: "slack", url: "u" }] };
+    }
+    l.tickets[0].ready = true;
+    l.asks[0].status = "asked";
+    l.asks[0].history = [];
+    // A second ticket on the feature, sent twice: the later send is the one offered.
+    l.tickets.push({
+      asks: [],
+      blockers: [],
+      key: "ALD-99",
+      ready: true,
+      sent: [
+        { at: "2026-09-10T09:00:00Z", job: "j1", repo: "alden-portal-fe" },
+        {
+          at: "2026-09-12T09:00:00Z",
+          job: "j2",
+          repo: "alden-connect-portal-be",
+        },
+      ],
+      title: "[BE] already sent",
+    });
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
+    const h = await home(roots, join(root, "state/unplaced.json"));
+    const ready = h.ready.find((t) => t.key === "ALD-41");
+    expect(ready?.repo).toBe("alden-connect-portal-be");
+    // A feature nobody has sent from leaves the field to be chosen.
+    l.tickets = l.tickets.filter((t) => t.key !== "ALD-99");
+    await put(`${APP}/features/admin/invoicing/ledger.json`, l);
+    const fresh = await home(roots, join(root, "state/unplaced.json"));
+    expect(fresh.ready.find((t) => t.key === "ALD-41")?.repo).toBeUndefined();
+  });
   test("a ticket with no asks leaves Ready once reconcile marked it done", async () => {
     const l = await fixture();
     l.tickets = [

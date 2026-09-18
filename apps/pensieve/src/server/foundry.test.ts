@@ -9,7 +9,9 @@ const {
   createJob,
   foundryConfig,
   getJob,
+  listBlueprints,
   listRepos,
+  offeredBlueprints,
   trackedRepos,
   FoundryError,
 } = await import("./foundry");
@@ -251,5 +253,67 @@ describe("LIA-120 — GET /api/repos, the set Send offers", () => {
 
     // And the happy path is the list itself.
     expect(await trackedRepos(fake(200, rows))).toEqual(rows);
+  });
+});
+
+describe("the blueprint a send picks", () => {
+  test("a chosen blueprint travels as `blueprintId`, in the same key order", async () => {
+    const seen: Seen[] = [];
+    await createJob(
+      {
+        blueprintId: "5eeded00-0000-4000-8000-000000000001",
+        idempotencyKey: "send/ctd-250",
+        repo: "citadel",
+        ticketId: "CTD-250",
+      },
+      fake(202, job, seen)
+    );
+    expect(String(seen[0].init.body)).toBe(
+      '{"blueprintId":"5eeded00-0000-4000-8000-000000000001","repo":"citadel","ticketId":"CTD-250"}'
+    );
+  });
+
+  test("no blueprint chosen is still `none` on the wire, never an omitted key", async () => {
+    const seen: Seen[] = [];
+    await createJob(
+      { idempotencyKey: "send/ctd-250", repo: "citadel", ticketId: "CTD-250" },
+      fake(202, job, seen)
+    );
+    expect(JSON.parse(String(seen[0].init.body)).blueprintId).toBe("none");
+  });
+
+  test("the list is asked for at /api/blueprints, and a row missing an id is dropped", async () => {
+    const seen: Seen[] = [];
+    const rows = await listBlueprints(
+      fake(
+        200,
+        [
+          {
+            description: "the default",
+            id: "5eeded00-0000-4000-8000-000000000001",
+            name: "Plan → Execute",
+            summary: "plan · fable → execute · sonnet",
+            version: 3,
+          },
+          { name: "no id here" },
+        ],
+        seen
+      )
+    );
+    expect(seen[0].url).toBe("http://foundry.test/api/blueprints");
+    expect(rows).toEqual([
+      {
+        description: "the default",
+        id: "5eeded00-0000-4000-8000-000000000001",
+        name: "Plan → Execute",
+        summary: "plan · fable → execute · sonnet",
+        version: 3,
+      },
+    ]);
+  });
+
+  test("a Foundry too old to know the route leaves the page with no list, not an error", async () => {
+    expect(await offeredBlueprints(fake(404, { error: "nope" }))).toEqual([]);
+    expect(await offeredBlueprints(fake(200, { not: "a list" }))).toEqual([]);
   });
 });
