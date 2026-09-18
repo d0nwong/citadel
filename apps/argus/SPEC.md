@@ -314,7 +314,7 @@ apps/argus/                            in citadel; the data lives in the argus d
     feature-docs/SKILL.md              arch tier only, ≤100 lines; DOC-PROTOCOL.md cut to the arch half
     ask/SKILL.md                       answers over the ledger, proposes through the verbs, ≤100 lines
     linear-ticket/                     FORMAT.md kept; SKILL.md ≤100 lines, files from a proposal
-    api-lookup/  prototyping/  office-hours/   unchanged
+    api-lookup/                          unchanged
   alden/alden-portal/
     .doc-workspace/feature-manifest.json
     features/<feature>/ledger.json     the record
@@ -329,6 +329,9 @@ Retired, deleted in the last phase, not before:
   marauder/  queue/  decisions/  reports/  digests/  arcs/  improvements/  canvas/
   features/*/journal/  features/*/work.json  features/*/board.md  features/*/docs/product.md
   skills/log-change/  skills/sweep/scripts/  skills/sweep/ticket-pass.md  .claude/skills/ (synced copy)
+
+Moved, not deleted: skills/prototyping/  skills/office-hours/   →  citadel's root skills/ —
+not record work, so not argus's (CTD-252)
 ```
 
 Pensieve after the rebuild:
