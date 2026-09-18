@@ -39,8 +39,8 @@ const HELP = `accio — summon the API surface
   accio audit
   accio stale [--json] [--all]          which features' docs drifted (tiers / fe-core / be-handlers / journal)
 
-accio is the API surface and the docs. Where the work stands is \`marauder\`:
-\`marauder board\`, \`marauder show <slug>\`, \`marauder changelog [day]\`.
+accio is the API surface and the docs. Where the work stands is a feature's record:
+\`argus show <feature>\`, or Pensieve's feature page.
 
 Examples
   accio "status select"                 → PUT /api/v1/tasks/{taskId}/status/{status}
@@ -60,14 +60,15 @@ if (!first || first === "help" || first === "--help" || first === "-h") {
 }
 
 /**
- * The four verbs `marauder` took over (CTD-161). A pointer, not a search result: someone
- * typing `accio arc` wants where the work stands, and the answer is one command away.
+ * Four verbs accio no longer answers. A pointer, not a search result: someone typing
+ * `accio arc` wants where the work stands, and the answer is one command away. They went
+ * to `marauder` in CTD-161 and came back to the ledger when marauder was retired (79e3e79).
  */
 const MOVED: Record<string, [command: string, why: string]> = {
-  journal: ["marauder changelog [YYYY-MM-DD]", "what changed that day"],
-  point: ["marauder board", "what needs you, and what everything else is doing"],
-  ticket: ["marauder show <feature>", "a ticket is on the record of the feature it is about now"],
-  arc: ["marauder show <feature>", "an arc is a feature's record now"],
+  journal: ["argus show <feature>", "what changed is on the record of the feature it changed"],
+  point: ["argus tracker list --mine", "what needs you; Pensieve shows the rest"],
+  ticket: ["argus show <feature>", "a ticket is on the record of the feature it is about now"],
+  arc: ["argus show <feature>", "an arc is a feature's record now"],
 };
 if (first in MOVED) {
   const [command, why] = MOVED[first]!;

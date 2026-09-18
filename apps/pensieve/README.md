@@ -1,34 +1,29 @@
 # pensieve
 
 The reading room for [argus](https://github.com/d0nwong/citadel-data) — a UI over the
-blackboard the sweep maintains, where the feature is the unit: the **board** (what needs
-you, then each feature with something going on this week), a page per **feature** beside
-its docs, the **Unsorted** queue behind them, the per-landing **change journal**, the
-dual-tier **feature docs**, and the **archive** of what the loop wrote before 2026-09-09.
+ledgers the sweep maintains, where the feature is the unit: the **home** page (what is on
+you, what is ready to work on, what nothing could place), a page per **feature** over its
+`ledger.json`, the dual-tier **feature docs**, the **sweep** log, and **Ask**.
 
-The front page is `marauder/board.md` as argus rendered it, with each feature's name linked
-to `/features/<dir>` and every path in it pointed at the page that serves it. A feature's
-page is `<app>/features/<dir>/board.md`, rendered beside the feature's `docs/` from the
-`work.json` in the same directory, with the record's milestone, open questions, tickets
-and PRs in the rail beside it.
+The front page is three lists over every feature's `ledger.json` — the asks aimed at you
+that are not done, the tickets of yours with nothing left to wait for, and the messages the
+last runs could not place on a feature — and one line per feature under them. A feature's
+page is that feature's `ledger.json` read out in the order a founder asks: the story, the
+asks with what happened to each, the tickets with their blockers, the proposals, the
+requirements with who confirmed them, the landings.
 
-Pensieve is read-only by design, with one exception. The sweep in argus owns every file it
-shows; this app only parses and renders them, so there is never a second writer to the
-workflow state. The exception is `decisions/`, which it writes in two shapes. **Unsorted**
-lists what argus took in and could not attach to a feature, and lets you *attach* one to a
-feature or *dismiss* it with a reason. A **feature page** lets you *verify* what an event
-asked you to confirm, or *send* one of its tickets to
-[Foundry](https://github.com/d0nwong/foundry). Either way it is one JSON file under
-`decisions/` that argus reads back — and the click then runs argus's `marauder apply` on
-it, so the record and the pages have changed before the page re-reads them; when that
-run could not happen, the next `marauder ingest` applies the file. Nothing else is written
-into the blackboard from here — not `work.json`, `queue/`, `marauder/`, the journal,
-docs or tickets; those still go through argus, Linear or Slack.
+Pensieve does not edit a ledger itself. Every write runs one argus verb: `src/server/argus.ts`
+spawns `bun scripts/argus.ts <verb> … --json` from `ARGUS_DIR` with `ARGUS_ROOT` pointed at
+`WORKSPACE_DIR`, and reads the JSON the verb prints. A click therefore goes through the same
+validator and the same correction functions the command line goes through, and a refusal
+comes back as data (`ok: false` with its problems), never as a crash. Two writes leave the
+app instead of landing in the workspace: a ticket, on Linear for a Citadel draft and on the
+Alden Trello board for an alden-portal one (`@citadel/tickets`' `createTicket`), and a job
+handed to [Foundry](https://github.com/d0nwong/foundry).
 
-**Ask** runs Claude Code over the checkout with a read-only tool set and keeps each
-conversation as one file under `PENSIEVE_HOME` (default `~/.pensieve`) — outside the
-blackboard, so the rule above holds. It can propose a correction, a send or a new ticket;
-a click on the card is what writes.
+**Ask** runs Claude Code over the argus checkout and keeps each conversation as one file
+under `PENSIEVE_HOME` (default `~/.pensieve`). It can propose a correction or a new ticket;
+a click on the card is what writes, through the same server function the pages call.
 
 ## Stack
 
@@ -48,11 +43,12 @@ prompted, and a step already done is a no-op. It installs bun and the `claude` C
 (`tailscale` optional), writes the one `.env` every app shares, creates
 `~/.pensieve/conversations/`, installs the workspace's dependencies, and reports the rest:
 argus's data directory, the product checkouts, and whether Claude trusts `apps/argus` — which
-Ask needs before its Slack and Linear tools work on a host.
+Ask needs before its Slack tools work on a host.
 
-Pensieve reads two secrets from that `.env`: `FOUNDRY_API_TOKEN`, which bootstrap mints and
-`just auth foundry-api --rotate` replaces, and `LINEAR_API_KEY`, which you paste in with
-`just auth linear`. Neither is ever echoed, and the file stays mode 600.
+Pensieve reads its secrets from that `.env`: `FOUNDRY_API_TOKEN`, which bootstrap mints and
+`just auth foundry-api --rotate` replaces, `LINEAR_API_KEY`, which you paste in with
+`just auth linear`, and `TRELLO_API_KEY` / `TRELLO_TOKEN` for the Alden board. None is ever
+echoed, and the file stays mode 600.
 
 ```sh
 git clone https://github.com/d0nwong/citadel ~/git/citadel && cd ~/git/citadel
@@ -66,27 +62,28 @@ After the Setup above (or `bun install` and `cp .env.example .env` by hand):
 
 ```sh
 bun run dev                  # http://localhost:3778
-bun test                     # the decisions writer, the Foundry client, Ask's store and run
+bun test                     # the argus runner, the ledger reader, the Foundry and Linear clients, the ticket checks, the worktrees, Ask's store and run
 bun run check                # lint + format check (Ultracite / Biome); `bun run fix` applies
 ASK_LIVE=1 bun test src/server/ask.test.ts   # + two real claude turns over the checkout
 ```
 
 Ask needs a credential: this machine's `claude login` (the default), or `ANTHROPIC_API_KEY`
 in the environment, which wins when set. With neither, Ask reports itself off with the
-reason. `PENSIEVE_HOME` is where its conversations go; nothing about Ask touches the
-checkout — `git status` there is the same before and after a run.
+reason. `PENSIEVE_HOME` is where its conversations and its local-mode worktrees go.
 
 Sending a ticket needs Foundry's trigger-API token: `foundry auth --api` in the Foundry repo
 prints one, and `FOUNDRY_API_TOKEN` in citadel's one `.env` is where Pensieve reads it from —
 the environment and nowhere else, fresh on every request. `FOUNDRY_URL` defaults to
-`http://localhost:3777`. With no token, Unsorted and Verify still work — Send is shown off, with the reason.
+`http://localhost:3777`. With no token every other click still works — Send is shown off, with the reason.
 
-Filing a ticket from a proposal card needs `LINEAR_API_KEY` in the environment. Its home is
+Filing a ticket needs a credential for the provider its team routes to: `LINEAR_API_KEY` for
+a Citadel draft, `TRELLO_API_KEY` and `TRELLO_TOKEN` for an alden-portal one. Their home is
 citadel's one `.env`, which also feeds the MCP gateway: `bun run dev` and `bun run start` go
 through `scripts/root-env.sh`, which copies in only the keys Pensieve reads — never the Slack
-or gateway token, which an Ask run would otherwise inherit. It is a personal
-API key from linear.app (Settings → Security & access), which files into Linear as the key's owner. Without it a proposal is still checked against the last project list
-Pensieve cached, and File is shown off with the reason.
+or gateway token, which an Ask run would otherwise inherit. `LINEAR_API_KEY` is a personal
+API key from linear.app (Settings → Security & access), which files into Linear as the key's
+owner. Without it a proposal is still checked against the last project list Pensieve cached,
+and File is shown off with the reason.
 
 Production, without a container:
 
@@ -96,7 +93,7 @@ bun run start                # bun server.ts — serves dist/client, hands the r
 ```
 
 On the tailnet — HTTPS at this machine's MagicDNS name, no port-forwarding, tailnet-only
-(never Funnel; the blackboard is private):
+(never Funnel; the record is private):
 
 ```sh
 bun run serve                # build if needed, bun server.ts, `tailscale serve` → https://<host>.ts.net:3778/
@@ -116,33 +113,35 @@ In the stack — argus's data is mounted, never copied in, because it changes ev
 just up pensieve             # http://localhost:3778 (PENSIEVE_PORT moves it)
 ```
 
-The data directory (`ARGUS_DATA_DIR`, `~/git/citadel-data` by default) is mounted at `/argus-data`,
-and the container runs argus's verbs against it from `/app/apps/argus` (`ARGUS_DIR`). The
-product checkouts are mounted read-only, for Ask's history reads. The container gets only the
-keys Pensieve reads; the gateway token arrives as a secret file, because Claude Code runs a
-headersHelper without secret-looking variables. Ask's conversations live on a volume, with
-Claude's own transcripts beside them, so a resumed conversation survives a restart.
+The data directory (`ARGUS_DATA_DIR`, `~/git/citadel-data` by default) is mounted read-write at
+`/argus-data`, and the container runs argus's verbs against it from `/app/apps/argus`
+(`ARGUS_DIR`). The product checkouts are mounted read-only, for Ask's history reads. The
+container gets only the keys Pensieve reads; the gateway token arrives as a secret file,
+because Claude Code runs a headersHelper without secret-looking variables. Ask's
+conversations live on a volume, with Claude's own transcripts beside them, so a resumed
+conversation survives a restart.
 
-The blackboard is mounted read-only and `decisions/` is mounted writable over it, so the
-container can write exactly the one directory it owns. Foundry runs on the host, so
-`FOUNDRY_URL` defaults to `http://host.docker.internal:3777` there, and the container has
-only its environment — pass `FOUNDRY_API_TOKEN` and `LINEAR_API_KEY` through it. Ask's
-state is `/data` on the named volume `pensieve-home`, so conversations survive
-`docker compose down && up`; there is no `claude login` inside the container, so pass
-`ANTHROPIC_API_KEY`. The image carries `node`, `git` and the `claude` CLI for it.
+Foundry runs on the host, so `FOUNDRY_URL` defaults to `http://host.docker.internal:3777`
+there, and the container has only its environment — pass `FOUNDRY_API_TOKEN`,
+`LINEAR_API_KEY` and the Trello pair through it. Ask's state is `/data` on the named volume
+`pensieve-home`, so conversations survive `docker compose down && up`; there is no
+`claude login` inside the container, so pass `ANTHROPIC_API_KEY`. The image carries `node`,
+`git` and the `claude` CLI for it, and sets `PENSIEVE_RUNNER=container`.
 
 ## What it reads
 
 | Route | Source in argus |
 |---|---|
-| `/` Board | `marauder/board.md` as the sweep rendered it: the milestone, **Needs you**, one section per feature with an event this week (its name linking to `/features/<dir>`), then **Waiting on others** by owner; the header carries the Unsorted count |
-| `/features` | every `<app>/features/**/work.json` — each feature with something going on, by its manifest name, and when it last moved |
-| `/features/<dir>` | one feature: `<app>/features/<dir>/board.md` as rendered beside its docs, the `work.json` beside it in the rail (milestone, open questions, tickets, PRs), the asks with **Verify** and the tickets with **Send** above, and Ask opening with `?feature=` |
-| `/unsorted` | `queue/_unsorted.json` with `decisions/marauder/` laid over it — every entry newest first with its words, its source and the features it could have been, the select already on argus's suggestion; a decided row wears its verdict until argus applies it |
-| `/journal` | every `<app>/features/**/journal/**/*.md` — frontmatter only, filterable by app / day / feature / status / text |
-| `/journal/:feature/:slug` | one entry, frontmatter as marginalia |
-| `/docs`, `/docs/:feature?tier=` | `<app>/features/**/docs/{product,arch}.md`, grouped by app, with `last_verified` ages |
-| `/archive` (`/reports`, `/digests`, `/arcs`) | what the loop wrote before 2026-09-09 — a sweep report and a Slack digest per day, readable as history and written by nothing; `/arcs/` redirects too, so the arcs are files only |
+| `/` Home | every `<app>/features/**/ledger.json` and `state/unplaced.json`, as three lists — **On you** (the open asks aimed at you, with Done, Ignore, Move and Ticket), **Ready to work on** (the tickets with no blocker left, with Send, fetched after the shell has painted because it needs live Linear and Trello state), **Unplaced** (with Place and Nothing) — and one line per feature under them |
+| `/features` | the same ledgers, one line each: the open count, how many are on you, how many are ready, and the feature's health |
+| `/features/<app>/<dir>` | one feature's `ledger.json`: the story, the asks with their history, the tickets with their blockers, the proposals with File, the requirements with Confirm and Contradict, the landings; plus links to its arch doc and to Ask opened on it |
+| `/docs` | every `<app>/features/**/docs/{product,arch}.md`, grouped by app, filterable by app, with the `last_verified` ages for each repo |
+| `/docs/<app>/<dir>?tier=` | one doc, product or arch, with the frontmatter in the rail and an outline |
+| `/ask` | every conversation under `PENSIEVE_HOME/conversations/`, newest first, titled by its first question |
+| `/ask/<id>` | one conversation, hydrated from its file; `?feature=<dir>` opens it on a feature and `?q=` sends a question straight away |
+| `/sweep` | `.git/sweep-status.json` and the tail of `.git/sweep.log` in the data repo — the running (or last) tick's stream-json, read back as the model's text, its tool calls, a tool's failure and the closing result; polled while the tick runs |
+
+The sidebar carries the unplaced count on Home, and the top bar carries the sweep's status.
 
 `<app>` is discovered, not configured: any directory one or two levels under
 `WORKSPACE_DIR` holding a `features/` tree is an app — `foundry` and `pensieve` are one
@@ -150,97 +149,105 @@ deep, `alden/alden-portal` two. A feature is addressed as `<app>/<dir>`, and a b
 `<dir>` still resolves while it is unique across apps, so links written when the
 workspace held one app keep working.
 
-Two things the renderer does beyond CommonMark: `[[slug]]` wikilinks resolve to sibling
-journal entries (`[[YYYY-MM-DD]]` to a day view), and HTML comments — the
-`<!-- accio:begin … -->` fences in docs — are stripped.
+Two things the renderer does beyond CommonMark: HTML comments — the
+`<!-- accio:begin … -->` fences in docs — are stripped, and a `[[slug]]` wikilink renders as
+its own text, since the journal it used to point at is gone.
 
 ## What it writes
 
-Into the blackboard, only `decisions/`, in two groups, one file per click — from
-Unsorted, from a feature page, or from the card an Ask proposes (below):
+Every change to the record is one argus verb, run through `src/server/argus.ts` with a 30 s
+timeout, and every page on screen re-reads its loaders when it lands.
 
-```json
-{ "id": "1788949866.296519", "action": "attach", "feature": "admin/usage",
-  "reason": "Sam's subtask rows are the usage history", "at": "2026-09-10T10:12:00.000Z", "by": "liam" }
-```
+| Click | Verb |
+|---|---|
+| Done, on an ask | `argus close <dir> <A-n> --reason` |
+| Ignore, on an ask | `argus drop <dir> <A-n> --reason` |
+| Move, on an ask | `argus move <dir> <A-n> <to>` |
+| Confirm / Contradict, on a requirement | `argus confirm <dir> <R-n> --reason [--contradict]` |
+| Confirm all | `argus confirm <dir> --all --reason` |
+| Place, on an unplaced message | `argus place <id> <dir>` |
+| Nothing, on an unplaced message | `argus dismiss <id>` |
+| Ticket, on an ask or a proposal | `argus file <dir> <id>` for the draft, then `argus ticket <dir> <id> <key>` once the provider has made it |
+| Send, on a ready ticket | `argus sent <dir> <ticket> --repo <repo> --job <id>` once Foundry has taken it |
 
-`decisions/marauder/<id>.json` is a verdict on what the loop could not settle: `attach`
-(with the `feature`, a directory under an app's `features/`), `dismiss` (with a
-`reason`), or `verified` — the odd one, whose `id` names an *event* rather than a queue
-entry: the user's go-ahead for the one edit a `directed-at-person` event asked about.
-`id` is the entry's or the event's own name, folded into a file name since a Slack `ts`
-is not a path segment; the id inside the file is the one that counts.
-`decisions/send/<ticket>.json`, `{ ticket, action: "sent", job, at, by }`, is a ticket
-handed to Foundry; nothing applies it, and the sweep's ticket pass reads it to keep off a
-ticket Foundry is running.
+A reason is required where the table names one, and refused before argus is even spawned.
+Argus's own refusal — its validator's problems, a verb that will not start, a run that times
+out — is shown as the sentence it gave, and nothing changes.
 
-Every file is written to a temp name in the same directory and renamed into place, so the
-sweep never reads half of one, and it is never edited afterwards by either side. The pages
-lay these files over what they read, so a row decided a minute ago wears its verdict
-before argus has applied it.
-
-The click applies it (CTD-169): once the file is renamed into place, `decideUnsorted` and
-`verifyEvent` run `bun run marauder apply` in `WORKSPACE_DIR` (`src/server/marauder.ts`
-`applyDecisions`, a `Bun.spawn` with a 30 s timeout and stderr captured) — argus's own
-verb (CTD-168), which applies the decision files through the same correction functions
-the command line goes through and renders the pages, under the lock every writing verb of
-the sweep holds — and answer `{ ok, applied, note? }`. An applied Unsorted row is gone on
-the re-read, and a verified event reads as confirmed. When the lock is busy, the run fails
-or times out, or `bun` is not on the server's PATH, nothing throws: the file is still
-written, the row wears its verdict with the note saying why, and the next `marauder
-ingest` applies it and commits it untouched as the history of who decided what. This app
-still writes only the decision file; the record changes through argus's code. Send is
-unchanged, and Ask stays read-only.
-
-*Verify* answers what a `directed-at-person` event asked — an inference the sweep drew and
-is forbidden from acting on ("report first, edit after the user confirms"): a held edit on
-a ticket Foundry is running, a fact that may have unsaid a Scope bullet. Verifying says the
-reading is right; the next ingest stamps the event `confirmed`, and the ticket pass makes
-exactly the edit the event named, once. The note is optional: the event's own text is the
-instruction, so a confirmation needs no argument the way a dismissal does. Verify never
-touches Foundry, so it works with `FOUNDRY_API_TOKEN` unset, as Dismiss does.
+*Ticket* asks argus for the draft covering the ask or proposal (it refuses when there is
+none), files it through `@citadel/tickets`' `createTicket` — the Alden board's Pipeline list
+with the feature's own label — and then puts the key back on the ledger. A ticket that is
+filed but that the ledger refuses says so rather than pretending either half did not happen.
 
 *Send* is one `POST /api/jobs` to Foundry with `{ ticketId, repo }` — no instructions;
-Foundry composes the brief from the ticket and claims it in Linear — and an
-`Idempotency-Key` equal to the ticket key, so a double click or a retry after a timeout
-answers the job the first call made and writes the file once. A Foundry error (`400`,
-`401`, `409`, `503`, or unreachable) is shown with its message and writes nothing; a `409`
-names the job already holding the ticket. Send is offered on a feature page beside a ticket nobody has started — Linear's Backlog
-or Todo — with no `decisions/send/<ticket>.json` yet; filing one is the sweep's job, or
-Ask's proposal card. After a send the page polls
-`GET /api/jobs/:id` every few seconds while the job is queued or running, then shows its
-final status and PR.
+Foundry composes the brief from the ticket and claims it — and an `Idempotency-Key` equal to
+the ticket key, so a double click or a retry after a timeout answers the job the first call
+made. A Trello card is refused when its list is neither Pipeline nor High Priority Pipeline,
+the board's own answer for "nobody has started it"; a board that cannot answer lets the send
+through. A Foundry error (`400`, `401`, `409`, `503`, or unreachable) is shown with its
+message and records nothing; a `409` names the job already holding the ticket. After a send
+the row polls `GET /api/jobs/:id` every few seconds while the job is queued or running, then
+shows its final status and PR. A ticket on no ledger still sends — the row says the send was
+not recorded, rather than calling `argus sent` with an empty feature.
 
 The repo is picked, not typed. The loader reads `GET /api/repos` server-side — the token
-never leaves the server, so the list travels with the page — and the form is a select
-over what Foundry answered for that page load, opened on the repo the page suggests for that
-ticket when that names one of them (by name or by path) and on nothing when it does not, since a repo
-Foundry does not track is a `400` waiting to happen. Nothing re-validates the choice: it
-came from Foundry, and `POST /api/jobs` stays the authority. A Foundry that cannot answer
-with a list at all — unreachable, or old enough to have no such route — costs the page
-nothing but the picker: the field is the free-text box it was before, and a repo typed into
-it sends exactly as it always did.
+never leaves the server, so the list travels with the page — and the form is a select over
+what Foundry answered for that page load, since a repo Foundry does not track is a `400`
+waiting to happen. Nothing re-validates the choice: it came from Foundry, and
+`POST /api/jobs` stays the authority. A Foundry that cannot answer with a list at all —
+unreachable, or old enough to have no such route — costs the page nothing but the picker.
 
 ## Ask
 
-`askChat` runs one turn of Claude Code (`@tanstack/ai-claude-code`, the `sonnet` alias)
-with the checkout as its working directory, under `permissionMode: 'default'` with a
-read-only allowlist (`src/lib/ask-tools.ts`): `Read`, `Grep`, `Glob`, `Skill`, `git log` /
-`git show` (bare, and `git -C <checkout> …` for the FE and BE checkouts — `FE_REPO` /
-`BE_REPO`, both as `~/…` and as the absolute path, since a `Bash(...)` rule is a literal
-command prefix), `bun run accio …` (its `sync` and `map` verbs denied), and the hosted
-Linear server's read tools (`mcp__linear__get_issue`, `list_issues`, `list_comments`, …);
-every Linear write tool is denied by name. Two tools are bridged into the run from Pensieve itself, `propose_decision` and
-`propose_ticket`, allowed as `mcp__tanstack__…` (below). It sees
-argus's skills (`ask`, `sweep`, `linear-ticket`, …) because argus links them into its own `.claude/skills`, and its
-`.mcp.json` because `settingSources` is `['project']`. A system prompt is appended to
-Claude Code's own (`ASK_SYSTEM_PROMPT`): the session is told it is a web panel with no
-terminal and no permission dialog, to load the `ask` skill and retrieve with `marauder show <feature>` /
-`marauder board` / `marauder changelog`, to cite every path, and that it cannot write, edit a
-ticket or run the sweep — so a denied tool is reported in one sentence, never relayed as a
-request for approval — and that a correction, a send or a ticket is proposed, never performed. The
-answer streams back as SSE over a Start server function, so
-`useChat({ fetcher })` reads it directly.
+`askChat` runs one turn of Claude Code (`@tanstack/ai-claude-code`, the `opus` alias) with
+argus's code as its working directory and the data (`WORKSPACE_DIR`) as an extra directory,
+which the `argus` and `accio` verbs find through `ARGUS_ROOT`.
+
+`PENSIEVE_RUNNER` picks the mode per request. **Container** mode — the image's own — runs
+under `permissionMode: 'default'` with a read-only allowlist (`src/lib/ask-tools.ts`):
+`Read`, `Grep`, `Glob`, `Skill`, `WebFetch`, `WebSearch`, `git log` / `git show` (bare, and
+`git -C <path> …` for the FE and BE checkouts and the workspace — `FE_REPO` / `BE_REPO`, both
+as `~/…` and as the absolute path, since a `Bash(...)` rule is a literal command prefix),
+`accio` (its `sync` and `map` verbs denied), `argus show` and `argus validate`,
+`argus tracker show` and `argus tracker list` — the read verbs named one at a time, because a
+bare `argus` rule would carry the write verbs with it — and the hosted Slack server's read
+tools. Every Slack and Linear write tool is denied by name, as are the harness's own write
+tools and `argus tracker create` / `edit`. **Local** mode — the host's default — runs as the
+operator's own Claude Code with `bypassPermissions`, their `~/.claude` and their MCP servers,
+but never against the live checkouts: a conversation's first question cuts `citadel` and
+`citadel-data` worktrees on branch `ask/<id>` under `PENSIEVE_HOME/worktrees/<id>/`
+(`src/server/worktrees.ts`), and every run in that conversation works there. Each later
+question rebases the citadel-data branch onto main, so a ledger the sweep committed since is
+what the run reads; a conflict is left in the worktree for the run itself to resolve. A
+local conversation gets a **Commit to main** button, which commits the worktree, rebases,
+fast-forwards the live checkout's main and removes both worktrees and both branches.
+
+Two tools are bridged into the run from Pensieve itself, `propose_decision` and
+`propose_ticket`, allowed as `mcp__tanstack__…` (below). The session sees argus's skills
+(`ask`, `sweep`, `linear-ticket`, `scope`, …) because argus links them into its own
+`.claude/skills`, and its `.mcp.json` because `settingSources` includes `'project'`. A
+conversation whose first turn starts `/scope` runs on a wider config: Ask's reads plus
+`Edit` and `Write` under the data's `revisions/`, the `argus revision` verbs and
+`argus tracker create` / `edit`, with the skill's own "wait for the user's yes" as the gate.
+
+A system prompt is appended to Claude Code's own (`ASK_SYSTEM_PROMPT` in `src/server/ask.ts`;
+`LOCAL_ASK_SYSTEM_PROMPT` for local mode). It names the working directory and the data
+directory, says to load the `ask` skill and follow it, and gives the retrieval recipes: a
+feature's record is `argus show <feature>`, what nobody could place is
+`<workspace>/state/unplaced.json`, the record's history is `git -C <workspace> log`, where a
+screen or field lives in the code is `accio find "<words>"`, a ticket is
+`argus tracker show <KEY>`, a Slack permalink is `mcp__slack__slack_read_thread`, and code
+from a product checkout is `git -C <repo> show origin/<branch>:<path>` at the sha the ledger
+names — never `git fetch`, `pull`, `checkout` or `stash`. It then says to cite every path and
+command, that "the files don't say" beats a guess, and that a change to the record goes
+through `propose_decision` and a new ticket through `propose_ticket`, each confirmed by the
+user on a card, so the session never says a thing is done. The container prompt adds that
+this is not a terminal — there is no permission dialog and no one to answer one, so a denied
+tool is an answer and never a request for approval; the local prompt drops that and adds
+that a commit, a push or a PR happens only on the user's word. The answer streams back as
+SSE over a Start server function, so `useChat({ fetcher })` reads it directly, with a
+`: ping` comment every 15 s (`src/server/keepalive.ts`) so a proxy with an idle limit does
+not cut a quiet stretch.
 
 Every run persists through `withPersistence` from `@tanstack/ai-persistence`, over a store
 that keeps one conversation per file:
@@ -260,8 +267,9 @@ continue the stored one as it stands; a delta would replace the stored thread. T
 on one thread are serialised on the server as well as in the client.
 
 `listConversations` (newest first, titled by the first user turn), `getConversation`,
-`deleteConversation` (removes that one file) and `askStatus` (is a credential available?)
-are the other server functions.
+`deleteConversation` (removes that one file), `getConversationDiscard` (what a delete or a
+Finish would throw away in the worktrees), `finishConversation` and `askStatus` (is a
+credential available?) are the other server functions.
 
 How a run ended is on disk too. A run that ends in error writes `metadata.lastError`
 (message, code, time) — cleared when the next run starts — and a run that stopped at the
@@ -285,9 +293,7 @@ path or pattern, and a second question sent while the first is answered waits in
 Stop — and a reload mid-answer, which drops the request the same way — ends the run and
 keeps the partial answer; the next question resumes the same Claude session. With no
 credential the composer is disabled and says what to do. Delete asks once and removes the
-file. Every feature page has an Ask action that opens a conversation on that feature, with a
-breadcrumb back to it. Nothing seeds a question: the system prompt tells the session to
-load argus's `ask` skill and to start from `marauder show <feature>`.
+file. Every feature page has an Ask action that opens a conversation on that feature.
 
 A conversation opened from a feature carries it in the URL (`?feature=<dir>`), and the
 page shows the feature as a line above the transcript, linking back to its page. The server
@@ -297,40 +303,50 @@ and add a second system prompt naming it, so "it" means that feature — but the
 keys and not `feature`, so today the feature never reaches the run and the line lasts
 only while the parameter is in the URL. A conversation with no feature shows nothing there.
 
-The model can propose a verdict too. `propose_decision` (`src/server/ask-tools.server.ts`)
-is a TanStack bridged tool, and a bridged tool always executes when the model calls it —
-the harness has no approval gate — so it only checks and never writes: an attach names a
-feature-shaped directory (the shape, not its existence) and an entry still in the queue, a dismiss carries a reason, a send
-names a ticket and a configured Foundry (the same checks and the same error strings
-`decideUnsorted` and `sendTicket` run before they write). It answers a proposal or
-`{ ok: false, error }`. The chat renders the proposal as a card (`decision-card.tsx`): the
-verdict, the feature, the reason as an editable field, the repo for a send — the same
-picker over Foundry's tracked repos — and Confirm, which calls `decideUnsorted` /
-`sendTicket`, so the file is what the page would have written for the same input.
-`propose_ticket` is the same shape for a drafted Linear issue: the card shows the draft
-and File creates it (`fileTicket`, once per proposal). The model is told to say a verdict
-is proposed and never that it is done; once a decision file exists the card shows the
-decided line and offers no second Confirm, on reload as well.
-Every other page refreshes when dragged down from
-the top (touch or mouse): the route loaders re-run, nothing else moves.
+The model can propose a change to the record. `propose_decision`
+(`src/server/ask-tools.server.ts`) is a TanStack bridged tool, and a bridged tool always
+executes when the model calls it — the harness has no approval gate — so it only checks and
+never writes: one of the four verbs a person actually does (`close` and `confirm` /
+`contradict` on a feature's own ids, `place` on an entry still in `state/unplaced.json`),
+each naming a feature-shaped directory, all but `place` carrying a reason under 280
+characters. It answers a proposal or `{ ok: false, error }`. The chat renders the proposal as
+a card (`decision-card.tsx`): the verdict, the feature, the reason as an editable field, and
+Confirm — which calls `closeAsk` / `confirmRequirement` / `placeUnplaced`, the very server
+functions the pages call, so the verb argus runs is the same either way. `propose_ticket` is
+the same shape for a drafted ticket: the card shows the draft, its team and project, an
+assignee picker for an Alden board draft, and File creates it (`fileTicket`, once per
+proposal — the record under the thread's `ticket:<toolCallId>` key is what a reload reads,
+never the replayed tool part). The model is told to say a draft is ready and never that it is
+filed. Every page refreshes when dragged down from the top (touch or mouse): the route
+loaders re-run, nothing else moves.
 
 ## Layout
 
 ```
-src/server/workspace.ts   the reader — every blackboard file, as typed shapes (and finds the apps)
-src/server/decisions.ts   the one writer — atomic decision files under decisions/, nowhere else
-src/server/foundry.ts     the Foundry client — POST /api/jobs, GET /api/jobs/:id, GET /api/repos, the token
-src/server/ask.ts         Ask — the Claude Code adapter config, the per-file conversation store, the run
-src/test/                 bun test preload: vitest shim for the persistence conformance suite
-src/lib/api.ts            server functions — the client/server bridge
-src/lib/ask-tools.ts      Ask's tool names — the allow / deny lists and what the page renders as a Tool block
-src/server/marauder.ts    the board, the features' work.json, the queue and the milestones, with links pointed at routes
-src/features/work/        a feature page's actions — Send and Verify — and the controls the proposal card reuses
-src/features/unsorted/    the Unsorted queue — attach and dismiss, one click each
-src/features/ask/         Ask's chat as a feature slice — model/ (state, the bound createChatHook), components/ (widgets), lib/ (helpers); routes import its index only
-src/routes/               file routes (routeTree.gen.ts is generated by `tsr`)
-src/components/           shell, markdown renderer, small shared bits
-server.ts                 production entry (Bun.serve → dist)
-scripts/root-env.sh       runs a command with only the keys Pensieve reads, from citadel's .env
-scripts/serve.sh          build + run + `tailscale serve`, torn down together
+src/server/workspace.ts       the reader — the apps, the arch docs, the markdown, as typed shapes
+src/server/ledger.ts          every feature's ledger.json and state/unplaced.json, and the home lists
+src/server/argus.ts           the one writer — `bun scripts/argus.ts <verb> … --json`, its JSON read back
+src/server/ticket.ts          the team table (Alden → Trello, Citadel → Linear) and a draft's checks
+src/server/linear.ts          Linear's reads — the team's projects, cached under PENSIEVE_HOME
+src/server/foundry.ts         the Foundry client — POST /api/jobs, GET /api/jobs/:id, GET /api/repos, the token
+src/server/ask.ts             Ask — the adapter config, the per-file conversation store, the run
+src/server/ask-tools.server.ts  the bridged tools — propose_decision and propose_ticket, read-only
+src/server/worktrees.ts       local mode's git — the per-conversation worktrees, the rebase, Finish
+src/server/sweep.ts           the sweep loop's status file and tick log, from the data repo's .git
+src/server/sections.ts        slicing a parsed document by its headings — the title drop and the outline
+src/server/keepalive.ts       a `: ping` every 15 s so a proxy does not cut a quiet stream
+src/lib/api.ts                server functions — the client/server bridge
+src/lib/ledger.ts             the ledger's shapes on both sides of the wire, and the derived lists
+src/lib/ask-tools.ts          Ask's tool names — the allow / deny lists and what the page renders as a Tool block
+src/lib/send.ts               what both sides need to know about handing a ticket to Foundry
+src/lib/sweep-log.ts          a tick's stream-json as text, tool calls, failures and the closing result
+src/features/ledger/          the home page's lists and a feature page's sections, with their clicks
+src/features/work/            the bits both share — the repo field, the one commit, the refusal, the job line
+src/features/ask/             Ask's chat as a feature slice — model/ (state, the bound createChatHook), components/ (widgets), lib/ (helpers); routes import its index only
+src/routes/                   file routes (routeTree.gen.ts is generated by `tsr`)
+src/components/               shell, markdown renderer, small shared bits
+src/test/                     bun test preload: vitest shim for the persistence conformance suite
+server.ts                     production entry (Bun.serve → dist)
+scripts/root-env.sh           runs a command with only the keys Pensieve reads, from citadel's .env
+scripts/serve.sh              build + run + `tailscale serve`, torn down together
 ```

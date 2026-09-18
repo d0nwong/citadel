@@ -1,8 +1,8 @@
 # style — how the loop writes for a reader
 
-The voice for every page a person reads: `marauder/board.md`, each `marauder/changelog/<day>.md`,
-what `marauder show <feature>` prints, and anything else the loop renders for a human. Stated
-once, here. The renderer enforces the three mechanical rules at the bottom and refuses to
+The voice for every page a person reads: a feature's story and asks on its ledger, what
+`argus show <feature>` prints, the arch docs, and anything else the loop renders for a human.
+Stated once, here. The renderer enforces the three mechanical rules at the bottom and refuses to
 write a page that breaks one.
 
 The pages are read rendered, in Pensieve, not in a terminal. Headings, bullets, tables,
