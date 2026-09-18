@@ -104,7 +104,7 @@ bun run argus <verb>          # and `bun run accio <verb>`; `just link` puts the
 ```
 
 Both product checkouts must exist (`~/git/alden-portal-fe`, `~/git/alden-connect-portal-be`,
-or `FE_REPO` / `BE_REPO`); the run reads them at `origin/*` and never switches a branch. The
+or `ALDEN_FE_REPO` / `ALDEN_BE_REPO`); the run reads them at `origin/*` and never switches a branch. The
 sweep container clones its own copies instead.
 The deploy check reads the credentials `bb` keeps in `~/.bitbucket-rest-cli-config.json`
 (`BITBUCKET_CONFIG` to point elsewhere); the ticket-state check reads `LINEAR_API_KEY` and

@@ -17,6 +17,7 @@ import { Empty, Tag, TicketLink } from "#/components/bits";
 import { Button } from "#/components/ui/button";
 import { Skeleton } from "#/components/ui/skeleton";
 import {
+  BlueprintField,
   CommitError,
   Confirm,
   FIELD_CLASS,
@@ -40,7 +41,8 @@ import {
   sendReady,
 } from "#/lib/api";
 import type { Unplaced } from "#/lib/ledger";
-import type { FoundryRepo } from "#/server/foundry";
+import { NO_BLUEPRINT, pickRepo } from "#/lib/send";
+import type { FoundryBlueprint, FoundryRepo } from "#/server/foundry";
 import type { HomeAsk, HomeFiledTicket, HomeTicket } from "#/server/ledger";
 import { FeatureName, Status } from "./bits";
 import { MoveForm } from "./feature";
@@ -309,6 +311,7 @@ function ReadyRowSkeleton() {
 }
 
 export interface SendOptions {
+  blueprints: FoundryBlueprint[];
   configured: boolean;
   reason?: string;
   repos: FoundryRepo[];
@@ -316,7 +319,11 @@ export interface SendOptions {
 
 function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
   const [open, setOpen] = useState(false);
-  const [repo, setRepo] = useState("");
+  // The feature's own last send, as its ledger recorded it — validated against what Foundry
+  // tracks now, so a repo it has since dropped opens the field empty rather than preloaded
+  // with a send it would refuse.
+  const [repo, setRepo] = useState(() => pickRepo(send.repos, row.repo));
+  const [blueprintId, setBlueprintId] = useState(NO_BLUEPRINT);
   const { busy, commit, error } = useCommit<SendReadyResult>();
   const [job, setJob] = useState<{ id: string; url: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -365,7 +372,9 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
             e.preventDefault();
             commit(
               () =>
-                sendReady({ data: { dir: row.dir, repo, ticket: row.key } }),
+                sendReady({
+                  data: { blueprintId, dir: row.dir, repo, ticket: row.key },
+                }),
               (v) => {
                 setJob(v.job);
                 setNote(v.note ?? null);
@@ -379,6 +388,12 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
             onChange={setRepo}
             repos={send.repos}
             value={repo}
+          />
+          <BlueprintField
+            blueprints={send.blueprints}
+            id={`send-blueprint-${row.feature}-${row.key}`}
+            onChange={setBlueprintId}
+            value={blueprintId}
           />
           <p className="text-muted-foreground text-xs">
             Foundry composes the brief from {row.key} and claims it in Linear.

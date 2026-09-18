@@ -136,12 +136,12 @@ export const MODEL = "opus";
 
 /**
  * The product checkouts the `ask` skill reads at their landed refs (`git -C <repo> show
- * origin/<branch>:<path>`). Same defaults as argus's `scripts/lib/manifest.ts`; `FE_REPO` /
- * `BE_REPO` override them where the paths differ (the container).
+ * origin/<branch>:<path>`). Same defaults as argus's `scripts/lib/manifest.ts`; `ALDEN_FE_REPO` /
+ * `ALDEN_BE_REPO` override them where the paths differ (the container).
  */
 export const CHECKOUTS = [
-  process.env.FE_REPO?.trim() || "~/git/alden-portal-fe",
-  process.env.BE_REPO?.trim() || "~/git/alden-connect-portal-be",
+  process.env.ALDEN_FE_REPO?.trim() || "~/git/alden-portal-fe",
+  process.env.ALDEN_BE_REPO?.trim() || "~/git/alden-connect-portal-be",
 ];
 
 const expandHome = (p: string) =>

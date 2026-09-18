@@ -14,7 +14,7 @@ import { flatten, indexOps } from "./spec.ts";
 import { analyzeRepo, type Analysis } from "./analyze.ts";
 import {
   loadManifest, saveManifest, merge, humanize, expand,
-  MANIFEST_PATH, STATE, DEFAULT_FE_REPO, DEFAULT_BE_REPO, type Manifest, type Feature,
+  MANIFEST_PATH, STATE, DEFAULT_ALDEN_FE_REPO, DEFAULT_ALDEN_BE_REPO, type Manifest, type Feature,
 } from "./manifest.ts";
 import { join, relative } from "node:path";
 
@@ -118,13 +118,13 @@ export async function deriveManifest(a: Analysis, feRepo: string): Promise<Manif
 
 if (import.meta.main) {
   const existing = await loadManifest();
-  const feRepo = existing?.fe_repo ?? DEFAULT_FE_REPO;
+  const feRepo = existing?.fe_repo ?? DEFAULT_ALDEN_FE_REPO;
   const doc = await Bun.file(join(STATE, "openapi.json")).json()
     .catch(() => { console.error("error: no cached spec — run `accio sync` once first"); process.exit(1); });
   const idx = indexOps(doc, flatten(doc));
   const a = await analyzeRepo(expand(feRepo), idx);
   const derived = await deriveManifest(a, feRepo);
-  derived.be_repo = existing?.be_repo ?? DEFAULT_BE_REPO;
+  derived.be_repo = existing?.be_repo ?? DEFAULT_ALDEN_BE_REPO;
   const merged = merge(existing, derived);
 
   const oldIds = new Set(existing?.features.map(f => f.id) ?? []);

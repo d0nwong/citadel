@@ -206,7 +206,7 @@ which the `argus` and `accio` verbs find through `ARGUS_ROOT`.
 `PENSIEVE_RUNNER` picks the mode per request. **Container** mode — the image's own — runs
 under `permissionMode: 'default'` with a read-only allowlist (`src/lib/ask-tools.ts`):
 `Read`, `Grep`, `Glob`, `Skill`, `WebFetch`, `WebSearch`, `git log` / `git show` (bare, and
-`git -C <path> …` for the FE and BE checkouts and the workspace — `FE_REPO` / `BE_REPO`, both
+`git -C <path> …` for the FE and BE checkouts and the workspace — `ALDEN_FE_REPO` / `ALDEN_BE_REPO`, both
 as `~/…` and as the absolute path, since a `Bash(...)` rule is a literal command prefix),
 `accio` (its `sync` and `map` verbs denied), `argus show` and `argus validate`,
 `argus tracker show` and `argus tracker list` — the read verbs named one at a time, because a

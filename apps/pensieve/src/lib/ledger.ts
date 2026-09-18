@@ -197,6 +197,27 @@ export const readyTickets = (l: Ledger): Ticket[] =>
     (t) => t.ready && !t.sent?.length && !ticketDone(l, t) && !ticketDropped(t)
   );
 
+/**
+ * The repo this feature's work lands in, as its own ledger recorded it: the repo of the
+ * most recent `sent` record on any of its tickets. Nothing else knows — a ticket carries no
+ * repo, and a feature is not a checkout — but every send writes one down, so the second
+ * ticket on a feature can be offered the repo the first one went to.
+ *
+ * Undefined until a feature has been sent once, and only ever a default: the field stays
+ * editable, and `pickRepo` drops a repo Foundry no longer tracks before it is shown.
+ */
+export const lastSentRepo = (l: Ledger): string | undefined => {
+  let latest: { at: string; repo: string } | undefined;
+  for (const t of l.tickets) {
+    for (const s of t.sent ?? []) {
+      if (s.repo && (!latest || s.at > latest.at)) {
+        latest = s;
+      }
+    }
+  }
+  return latest?.repo;
+};
+
 /** `admin/invoicing` → `/features/alden/alden-portal/admin/invoicing` when the app is known */
 export const featureRoute = (app: string, dir: string) =>
   `/features/${app}/${dir}`;

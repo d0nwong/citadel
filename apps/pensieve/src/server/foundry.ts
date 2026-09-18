@@ -5,6 +5,7 @@
  *   POST /api/jobs        { ticketId, repo }, `Idempotency-Key: <point id>` → 202 Job (created) | 200 Job (replay)
  *   GET  /api/jobs/:id    → Job, polled while status is queued | running
  *   GET  /api/repos       → [{ name, path }], the set `repo` is resolved against (LIA-119)
+ *   GET  /api/blueprints  → [{ id, name, version, summary }], the set `blueprintId` is chosen from
  *
  * Sending a point never carries `instructions`: Foundry composes the brief from the ticket
  * (LIA-92). The idempotency key is the point id (LIA-91), so a double click or a retry
@@ -16,6 +17,8 @@
  * prints the token; putting it in `.env` is yours to do. Read per call rather than at module
  * load so a value set after this module was pulled in still counts.
  */
+
+import { NO_BLUEPRINT } from "#/lib/send";
 
 export const FOUNDRY_URL = (
   process.env.FOUNDRY_URL || "http://localhost:3777"
@@ -153,7 +156,12 @@ function asJob(body: unknown): FoundryJob {
  * already had a job — so the caller knows nothing new was queued.
  */
 export async function createJob(
-  input: { ticketId: string; repo: string; idempotencyKey: string },
+  input: {
+    ticketId: string;
+    repo: string;
+    idempotencyKey: string;
+    blueprintId?: string;
+  },
   fetchImpl: Fetch = fetch
 ): Promise<{ job: FoundryJob; replay: boolean }> {
   const token = apiToken();
@@ -166,13 +174,14 @@ export async function createJob(
   // Key order and spacing are fixed here on purpose: Foundry fingerprints the raw bytes,
   // so the same point must always serialise to the same body for a replay to match.
   //
-  // `blueprintId: "none"` runs the ticket as a plain job — one agent step on the forge's
-  // default model — rather than Foundry's default blueprint. A ticket filed from here
-  // already carries its plan in its Technical Notes, so a planning step re-derives what the
-  // body states. The literal string is the contract: Foundry reads `"none"` as "no
-  // blueprint", while omitting the key resolves DEFAULT_BLUEPRINT_ID instead.
+  // `blueprintId` is always sent, never omitted: Foundry reads `"none"` as "no blueprint"
+  // — a plain job, one agent step on the forge's default model — while omitting the key
+  // resolves DEFAULT_BLUEPRINT_ID instead. `"none"` is the default the form offers, since a
+  // ticket filed from here already carries its plan in its Technical Notes and a planning
+  // step re-derives what the body states; anything else is a blueprint the sender picked
+  // from `GET /api/blueprints`.
   const body = JSON.stringify({
-    blueprintId: "none",
+    blueprintId: input.blueprintId || NO_BLUEPRINT,
     repo: input.repo,
     ticketId: input.ticketId,
   });
@@ -201,6 +210,78 @@ export async function createJob(
         : undefined,
   });
 }
+
+/** A blueprint Foundry offers, as `GET /api/blueprints` rows it. `id` travels as `blueprintId`. */
+export interface FoundryBlueprint {
+  description?: string;
+  id: string;
+  name: string;
+  /** The step list in one line — `plan · fable → execute · sonnet`. */
+  summary: string;
+  version: number;
+}
+
+/**
+ * `GET /api/blueprints` — what a job may run, so Send can offer the same picker the ignite
+ * dialog does. Ordered by name already.
+ *
+ * Throws like `listRepos`, and for the same reason: a Foundry from before this route
+ * answers with an HTML page rather than an error, so the status decides, never the absence
+ * of a throw.
+ */
+export async function listBlueprints(
+  fetchImpl: Fetch = fetch
+): Promise<FoundryBlueprint[]> {
+  const token = apiToken();
+  if (!token) {
+    throw new FoundryError(
+      503,
+      foundryConfig().reason ?? "FOUNDRY_API_TOKEN is not set"
+    );
+  }
+  const { status, body } = await call(
+    fetchImpl,
+    "/api/blueprints",
+    { method: "GET" },
+    token
+  );
+  if (status !== 200) {
+    throw new FoundryError(status, errorOf(body, status));
+  }
+  if (!Array.isArray(body)) {
+    throw new FoundryError(
+      status,
+      `Foundry at ${FOUNDRY_URL} answered /api/blueprints without a list`
+    );
+  }
+  return body.flatMap((row) => {
+    const b = (row ?? {}) as Record<string, unknown>;
+    if (typeof b.id !== "string" || typeof b.name !== "string") {
+      return [];
+    }
+    return [
+      {
+        description:
+          typeof b.description === "string" ? b.description : undefined,
+        id: b.id,
+        name: b.name,
+        summary: typeof b.summary === "string" ? b.summary : "",
+        version: typeof b.version === "number" ? b.version : 1,
+      },
+    ];
+  });
+}
+
+/**
+ * The blueprints as a page wants them: what Foundry answered, or nothing at all. Every
+ * reason there is no list — no token, an unreachable host, a `404` from a Foundry older
+ * than this route — is the same empty answer, and an empty list is a form that sends a
+ * plain job, which is what Send did before there was a picker.
+ */
+export const offeredBlueprints = (
+  fetchImpl: Fetch = fetch
+): Promise<FoundryBlueprint[]> =>
+  apiToken() ? listBlueprints(fetchImpl).catch(() => []) : Promise.resolve([]);
 
 /** A repo Foundry tracks, as `GET /api/repos` rows it. `name` is accepted verbatim as `repo`. */
 export interface FoundryRepo {

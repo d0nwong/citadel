@@ -10,14 +10,18 @@
 import type { UIMessage } from "@tanstack/ai";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { isSendable, REPO_REQUIRED } from "#/lib/send";
+import { isSendable, NO_BLUEPRINT, REPO_REQUIRED } from "#/lib/send";
 import type {
   AskStatus,
   Conversation,
   ConversationSummary,
   FiledTicket,
 } from "#/server/ask";
-import type { FoundryJob, FoundryRepo } from "#/server/foundry";
+import type {
+  FoundryBlueprint,
+  FoundryJob,
+  FoundryRepo,
+} from "#/server/foundry";
 import type { Home, HomeShell, LedgerRef, PipelineCard } from "#/server/ledger";
 import type { SweepStatus } from "#/server/sweep";
 import type { Json } from "#/server/workspace";
@@ -779,11 +783,21 @@ export type SendReadyResult =
  * Agent is not used, so a sent ticket just stays in Pipeline until `claim` moves it.
  */
 export const sendReady = createServerFn({ method: "POST" })
-  .validator((input: { dir: string; ticket: string; repo: string }) => ({
-    dir: trimmed(input.dir),
-    repo: trimmed(input.repo),
-    ticket: trimmed(input.ticket),
-  }))
+  .validator(
+    (input: {
+      dir: string;
+      ticket: string;
+      repo: string;
+      blueprintId?: string;
+    }) => ({
+      // Unset is `"none"`, not an omitted key: `createJob` always sends one, and a caller
+      // that predates the picker means what Send has always done — a plain job.
+      blueprintId: trimmed(input.blueprintId ?? "") || NO_BLUEPRINT,
+      dir: trimmed(input.dir),
+      repo: trimmed(input.repo),
+      ticket: trimmed(input.ticket),
+    })
+  )
   .handler(async ({ data }): Promise<SendReadyResult> => {
     if (!data.repo) {
       return { error: REPO_REQUIRED, ok: false };
@@ -811,6 +825,7 @@ export const sendReady = createServerFn({ method: "POST" })
     let replay: boolean;
     try {
       ({ job, replay } = await fd.createJob({
+        blueprintId: data.blueprintId,
         idempotencyKey: data.ticket,
         repo: data.repo,
         ticketId: data.ticket,
@@ -853,19 +868,28 @@ export const sendReady = createServerFn({ method: "POST" })
     };
   });
 
-/** What Send needs on the home page: whether Foundry is reachable and the repos it tracks. */
+/**
+ * What Send needs on the home page: whether Foundry is reachable, the repos it tracks and
+ * the blueprints it offers. Both lists are asked for together, and either coming back empty
+ * is a field that falls back rather than a page that fails.
+ */
 export const getSendOptions = createServerFn({ method: "GET" }).handler(
   async (): Promise<{
+    blueprints: FoundryBlueprint[];
     configured: boolean;
     reason?: string;
     repos: FoundryRepo[];
   }> => {
     const fd = await import("#/server/foundry");
     const c = fd.foundryConfig();
+    const [repos, blueprints] = c.configured
+      ? await Promise.all([fd.trackedRepos(), fd.offeredBlueprints()])
+      : [[], []];
     return {
+      blueprints,
       configured: c.configured,
       reason: c.reason,
-      repos: c.configured ? await fd.trackedRepos() : [],
+      repos,
     };
   }
 );

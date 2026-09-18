@@ -17,7 +17,7 @@
 
 import { join } from "node:path";
 import {
-  loadManifest, expand, featureDir, allCoreFiles, FEATURES_DIR, DEFAULT_BE_REPO, type Manifest,
+  loadManifest, expand, featureDir, allCoreFiles, FEATURES_DIR, DEFAULT_ALDEN_BE_REPO, type Manifest,
 } from "./manifest.ts";
 import { readStamp, gitDiffNames } from "./stamps.ts";
 
@@ -29,7 +29,7 @@ export async function computeStale(m: Manifest, opts: {
 } = {}): Promise<StaleReport[]> {
   const dir = opts.featuresDir ?? FEATURES_DIR;
   const feRepo = expand(m.fe_repo);
-  const beRepo = expand(m.be_repo ?? DEFAULT_BE_REPO);
+  const beRepo = expand(m.be_repo ?? DEFAULT_ALDEN_BE_REPO);
   const feRef = opts.feRef ?? "origin/staging";
   const beRef = opts.beRef ?? "origin/dev";
   const out: StaleReport[] = [];

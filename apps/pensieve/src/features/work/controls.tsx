@@ -18,9 +18,9 @@ import type { Tone } from "#/components/bits";
 import { Tag } from "#/components/bits";
 import { Button } from "#/components/ui/button";
 import { jobStatus } from "#/lib/api";
-import { repoOptions } from "#/lib/send";
+import { NO_BLUEPRINT, repoOptions } from "#/lib/send";
 import { cn } from "#/lib/utils";
-import type { FoundryRepo } from "#/server/foundry";
+import type { FoundryBlueprint, FoundryRepo } from "#/server/foundry";
 
 export const shortId = (id: string) => id.slice(0, 8);
 
@@ -121,6 +121,68 @@ export function RepoField({
           value={value}
         />
       )}
+    </>
+  );
+}
+
+/**
+ * Which blueprint the job runs, as the Send form asks it: a select over what
+ * `GET /api/blueprints` answered, on top of "none", which is not a blueprint but the
+ * absence of one — one bare step on the forge's default model.
+ *
+ * "none" is where it starts, and it is what Send has always done (a ticket filed from here
+ * carries its plan in its Technical Notes, so a planning step re-derives what the body
+ * states). A Foundry that could not answer with a list leaves the field out altogether
+ * rather than offering a choice of one: the send still goes, as a plain job.
+ */
+export function BlueprintField({
+  blueprints,
+  id,
+  onChange,
+  value,
+}: {
+  blueprints: FoundryBlueprint[];
+  id: string;
+  onChange: (blueprintId: string) => void;
+  value: string;
+}) {
+  if (blueprints.length === 0) {
+    return null;
+  }
+  const picked = blueprints.find((b) => b.id === value);
+  return (
+    <>
+      <label className="kicker" htmlFor={id}>
+        How Foundry runs it
+      </label>
+      <div className="relative">
+        <select
+          className={cn(
+            FIELD_CLASS,
+            "mono",
+            "cursor-pointer appearance-none pr-9"
+          )}
+          id={id}
+          onChange={(e) => onChange(e.target.value)}
+          value={value}
+        >
+          <option value={NO_BLUEPRINT}>
+            none — one step, the forge's default model
+          </option>
+          {blueprints.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name} v{b.version}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-subtle"
+          strokeWidth={1.75}
+        />
+      </div>
+      {/* The steps, so which models run — and how many — is visible before pressing Send. */}
+      {picked && <p className="mono text-subtle">{picked.summary}</p>}
     </>
   );
 }

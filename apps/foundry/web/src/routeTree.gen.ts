@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as BlueprintsRouteImport } from './routes/blueprints'
 import { Route as ForgesRouteImport } from './routes/forges'
 import { Route as ReposRouteImport } from './routes/repos'
+import { Route as ApiBlueprintsRouteImport } from './routes/api/blueprints'
 import { Route as ApiJobsRouteImport } from './routes/api/jobs'
 import { Route as ApiOpenapiDotjsonRouteImport } from './routes/api/openapi[.]json'
 import { Route as ApiReferenceRouteImport } from './routes/api/reference'
@@ -38,6 +39,11 @@ const ForgesRoute = ForgesRouteImport.update({
 const ReposRoute = ReposRouteImport.update({
   id: '/repos',
   path: '/repos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBlueprintsRoute = ApiBlueprintsRouteImport.update({
+  id: '/api/blueprints',
+  path: '/api/blueprints',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiJobsRoute = ApiJobsRouteImport.update({
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/blueprints': typeof BlueprintsRoute
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
+  '/api/blueprints': typeof ApiBlueprintsRoute
   '/api/jobs': typeof ApiJobsRouteWithChildren
   '/api/openapi.json': typeof ApiOpenapiDotjsonRoute
   '/api/reference': typeof ApiReferenceRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/blueprints': typeof BlueprintsRoute
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
+  '/api/blueprints': typeof ApiBlueprintsRoute
   '/api/jobs': typeof ApiJobsRouteWithChildren
   '/api/openapi.json': typeof ApiOpenapiDotjsonRoute
   '/api/reference': typeof ApiReferenceRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/blueprints': typeof BlueprintsRoute
   '/forges': typeof ForgesRoute
   '/repos': typeof ReposRoute
+  '/api/blueprints': typeof ApiBlueprintsRoute
   '/api/jobs': typeof ApiJobsRouteWithChildren
   '/api/openapi.json': typeof ApiOpenapiDotjsonRoute
   '/api/reference': typeof ApiReferenceRoute
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/blueprints'
     | '/forges'
     | '/repos'
+    | '/api/blueprints'
     | '/api/jobs'
     | '/api/openapi.json'
     | '/api/reference'
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/blueprints'
     | '/forges'
     | '/repos'
+    | '/api/blueprints'
     | '/api/jobs'
     | '/api/openapi.json'
     | '/api/reference'
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/blueprints'
     | '/forges'
     | '/repos'
+    | '/api/blueprints'
     | '/api/jobs'
     | '/api/openapi.json'
     | '/api/reference'
@@ -152,6 +164,7 @@ export interface RootRouteChildren {
   BlueprintsRoute: typeof BlueprintsRoute
   ForgesRoute: typeof ForgesRoute
   ReposRoute: typeof ReposRoute
+  ApiBlueprintsRoute: typeof ApiBlueprintsRoute
   ApiJobsRoute: typeof ApiJobsRouteWithChildren
   ApiOpenapiDotjsonRoute: typeof ApiOpenapiDotjsonRoute
   ApiReferenceRoute: typeof ApiReferenceRoute
@@ -186,6 +199,13 @@ declare module '@tanstack/react-router' {
       path: '/repos'
       fullPath: '/repos'
       preLoaderRoute: typeof ReposRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/blueprints': {
+      id: '/api/blueprints'
+      path: '/api/blueprints'
+      fullPath: '/api/blueprints'
+      preLoaderRoute: typeof ApiBlueprintsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/jobs': {
@@ -261,6 +281,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlueprintsRoute: BlueprintsRoute,
   ForgesRoute: ForgesRoute,
   ReposRoute: ReposRoute,
+  ApiBlueprintsRoute: ApiBlueprintsRoute,
   ApiJobsRoute: ApiJobsRouteWithChildren,
   ApiOpenapiDotjsonRoute: ApiOpenapiDotjsonRoute,
   ApiReferenceRoute: ApiReferenceRoute,

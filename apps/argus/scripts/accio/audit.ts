@@ -12,7 +12,7 @@
 
 import { join, relative } from "node:path";
 import { normPath } from "./spec.ts";
-import { FEATURES_DIR, STATE, ROOT, DEFAULT_FE_REPO, DEFAULT_BE_REPO, expand } from "./manifest.ts";
+import { FEATURES_DIR, STATE, ROOT, DEFAULT_ALDEN_FE_REPO, DEFAULT_ALDEN_BE_REPO, expand } from "./manifest.ts";
 import { ATTR_DEPTH, type AccioIndex } from "./index-store.ts";
 import { readStamp, gitIsAncestor } from "./stamps.ts";
 

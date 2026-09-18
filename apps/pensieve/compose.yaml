@@ -28,16 +28,16 @@ services:
       # token arrives as a file (secrets, below): Claude Code runs the headersHelper without
       # any variable that looks like a secret.
       MCP_GATEWAY_URL: http://mcp:9090
-      FE_REPO: /repos/fe
-      BE_REPO: /repos/be
+      ALDEN_FE_REPO: /repos/fe
+      ALDEN_BE_REPO: /repos/be
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       # argus's data, read and written through argus's verbs (a click writes one ledger).
       # Until cutover it is the host checkout; after it, the volume the sweep shares.
       - ${ARGUS_DATA_DIR:-~/git/citadel-data}:/argus-data
-      - ${FE_REPO_HOST:-~/git/alden-portal-fe}:/repos/fe:ro
-      - ${BE_REPO_HOST:-~/git/alden-connect-portal-be}:/repos/be:ro
+      - ${ALDEN_FE_REPO_HOST:-~/git/alden-portal-fe}:/repos/fe:ro
+      - ${ALDEN_BE_REPO_HOST:-~/git/alden-connect-portal-be}:/repos/be:ro
       - pensieve-home:/data
       - pensieve-claude:/root/.claude
     secrets:

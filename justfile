@@ -148,10 +148,10 @@ foundry-bg:
       >.foundry-dev.log 2>&1 &
     echo "foundry web starting on :3777 (log: .foundry-dev.log)"
 
-# Local Pensieve with bun in the background, logging to .pensieve.log; this is what
-# `just start` runs. Skips when something is already listening on the Pensieve port
-# (bun's own command line is too common to pgrep for, unlike foundry's vite one above).
-# Builds only when there is no build yet; `just rebuild pensieve` rebuilds it.
+# Local Pensieve in the background on its vite dev server, logging to .pensieve.log; this
+# is what `just start` runs. Hot-reloads like `just foundry-bg`, so an edit is live without
+# a build or a restart — `just rebuild pensieve` is only for the image and the tailnet.
+# Skips when something is already listening on the Pensieve port.
 pensieve-bg:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -160,13 +160,8 @@ pensieve-bg:
       echo "pensieve is already on :$port"
       exit 0
     fi
-    root="$(pwd)"
-    cd apps/pensieve
-    if [[ ! -f dist/server/server.js ]]; then
-      bun run build
-    fi
-    PORT="$port" nohup scripts/root-env.sh bun server.ts \
-      >"$root/.pensieve.log" 2>&1 &
+    PORT="$port" nohup bun run --filter pensieve dev \
+      >.pensieve.log 2>&1 &
     echo "pensieve starting on :$port (log: .pensieve.log)"
 
 # One sweep tick in the stack, the way the loop runs it; --dry-run only pulls and changes nothing.

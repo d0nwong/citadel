@@ -42,6 +42,30 @@ export const CITADEL_DIR = resolve(
   process.env.CITADEL_DIR || join(process.cwd(), "..", "..")
 );
 
+/**
+ * The product checkouts, resolved — what a `[FE]` / `[BE]` ticket on an alden feature is
+ * offered as its repo before that feature has ever been sent. Same two variables Ask reads
+ * for `CHECKOUTS` (server/ask.ts), which keeps them in their `~/git/…` spelling because its
+ * allowlist rules are literal command prefixes; here they are resolved, because what they
+ * are matched against is the absolute path Foundry lists a tracked repo by.
+ *
+ * Only alden's, hence the name: these are the two product repos, not every repo Foundry
+ * tracks, and a `[BE]` ticket on citadel's own features belongs to none of them.
+ */
+export const ALDEN_CHECKOUTS = {
+  BE: resolve(
+    (
+      process.env.ALDEN_BE_REPO?.trim() || "~/git/alden-connect-portal-be"
+    ).replace(/^~\//, `${homedir()}/`)
+  ),
+  FE: resolve(
+    (process.env.ALDEN_FE_REPO?.trim() || "~/git/alden-portal-fe").replace(
+      /^~\//,
+      `${homedir()}/`
+    )
+  ),
+};
+
 /** Workspace directories that are never an app, so the scan does not descend into them. */
 const NOT_APPS = new Set([
   "reports",

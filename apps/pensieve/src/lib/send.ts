@@ -52,6 +52,17 @@ export const isSendable = (stateType?: string): boolean =>
   (SENDABLE_STATES as readonly string[]).includes(stateType ?? "");
 
 /**
+ * What `blueprintId` says when a job is to run as one bare step rather than through a
+ * blueprint. Foundry's own literal — it is the absence of a blueprint, so it is never a row
+ * in `GET /api/blueprints`, and the picker offers it as its own option, where it is also
+ * the default: the choice every send from here has made since it started sending one.
+ *
+ * Here rather than in `server/foundry.ts` for the reason the ids are: the picker needs it,
+ * and nothing node-only is imported in this file.
+ */
+export const NO_BLUEPRINT = "none";
+
+/**
  * Why a Send cannot go — the repo is missing. The form refuses with it before asking, and
  * `server/send.ts` refuses with it when something reaches the writer without one, so the
  * sentence is the same wherever it is read (LIA-120). It names a choice rather than a path:
@@ -59,6 +70,16 @@ export const isSendable = (stateType?: string): boolean =>
  * only when Foundry could not answer with a list at all.
  */
 export const REPO_REQUIRED = "a repo is required — choose one Foundry tracks";
+
+/**
+ * Which side of the product a ticket is for, from the tag the house format puts in every
+ * title (`[FE] Due header follows the payment term`). Undefined when it carries neither —
+ * the tag is a convention, not a guarantee, and nothing here guesses from the words.
+ */
+export const repoTag = (title: string): "FE" | "BE" | undefined => {
+  const hit = /^\s*\[(FE|BE)\]/i.exec(title);
+  return hit ? (hit[1].toUpperCase() as "FE" | "BE") : undefined;
+};
 
 /** One row of the repo picker: what is shown, and what `POST /api/jobs` is sent. */
 export interface RepoOption {

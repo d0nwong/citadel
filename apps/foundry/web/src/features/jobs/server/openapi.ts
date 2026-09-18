@@ -12,6 +12,7 @@
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import {
+  ApiBlueprintSchema,
   ConflictSchema,
   ErrorSchema,
   IDEMPOTENCY_HEADER,
@@ -96,6 +97,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
         'Anything that can make an HTTP request — CI, a Slack bot, another agent, a shell script — can queue a job here with the instructions in the body.',
         'Everything after the insert is the same pipeline the ignite dialog uses: blueprints, repo notes, branch naming, push and PR.',
         '`GET /api/repos` lists what a job may target — every `name` it returns is accepted verbatim as `repo`.',
+        '`GET /api/blueprints` lists what it may run — every `id` it returns is accepted as `blueprintId`.',
         '',
         '**Auth.** One install-wide bearer token, `FOUNDRY_API_TOKEN` in the repo root `.env`, minted by `foundry auth --api` (`--rotate` replaces it).',
         'With none configured the API answers `503` rather than opening up: the dev server listens on the LAN, and a job runs Claude against your repos and pushes with your credentials.',
@@ -107,6 +109,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
     tags: [
       { name: 'jobs', description: 'Trigger and follow jobs.' },
       { name: 'repos', description: 'What a job may target — the curated set the Repos page maintains.' },
+      { name: 'blueprints', description: 'What a job may run — the step sequences the Blueprints page maintains.' },
       {
         name: 'internal',
         description: 'Served on the same origin, but for the forge container only: the per-job token is minted by the runner and never leaves the job.',
@@ -281,6 +284,28 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
           },
         },
       },
+      '/api/blueprints': {
+        get: {
+          operationId: 'listBlueprints',
+          tags: ['blueprints'],
+          summary: 'List the blueprints',
+          description: [
+            'The blueprints a job may run, ordered by `name` — every `id` here is accepted as `blueprintId` by `POST /api/jobs`, so a caller can offer the picker the ignite dialog offers instead of hard-coding a uuid.',
+            '`summary` is the step list in one line; the prompts themselves are not published.',
+            '`"none"` — one bare step on the forge\'s default model — is not a row here, being the absence of a blueprint rather than one of them.',
+            'Read-only — blueprints are written and versioned on the Blueprints page.',
+          ].join(' '),
+          security: [{ installToken: [] }],
+          responses: {
+            '200': {
+              description: 'The blueprints, ordered by `name`. `[]` when none are defined.',
+              content: { 'application/json': { schema: { type: 'array', items: ref('Blueprint') } } },
+            },
+            '401': errorResponses.unauthorized,
+            '503': errorResponses.notConfigured,
+          },
+        },
+      },
       '/api/jobs/{id}/events': {
         post: {
           operationId: 'reportJobEvent',
@@ -321,6 +346,7 @@ export async function openapiDocument(): Promise<Record<string, unknown>> {
         Error: component(ErrorSchema, 'output'),
         Conflict: component(ConflictSchema, 'output'),
         TrackedRepo: component(TrackedRepoSchema, 'output'),
+        Blueprint: component(ApiBlueprintSchema, 'output'),
         SettledEvent: component(SettledEventSchema, 'output'),
         PrClosedEvent: component(PrClosedEventSchema, 'output'),
         EventPayload: component(EventPayloadSchema, 'input'),

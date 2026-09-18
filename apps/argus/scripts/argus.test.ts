@@ -235,7 +235,7 @@ describe("patch and prompt", () => {
 describe("deployed", () => {
   const run = (...args: string[]) => {
     const p = Bun.spawn(["bun", join(ROOT, "scripts/argus.ts"), "deployed", ...args], {
-      env: { ...process.env, ARGUS_ROOT: ws, BITBUCKET_CONFIG: join(ws, "no-bb.json"), BE_REPO: ws },
+      env: { ...process.env, ARGUS_ROOT: ws, BITBUCKET_CONFIG: join(ws, "no-bb.json"), ALDEN_BE_REPO: ws },
       stdout: "pipe",
       stderr: "pipe",
     });
