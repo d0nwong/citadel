@@ -167,30 +167,24 @@ async function countCommits(cwd: string, range: string): Promise<number> {
 }
 
 export interface WorktreeDiscardCounts {
-  /** The citadel worktree — commits and a push are what Finish/PR would have kept (S-43, S-44). */
-  citadel: { uncommitted: number; unpushed: number };
-  /** The citadel-data worktree — landed on main only by Finish, not yet built (S-44). */
+  /** The citadel-data worktree — landed on main only by Finish, not yet built (S-43, S-44). */
   citadelData: { uncommitted: number; unmerged: number };
 }
 
 /**
- * What Delete (and, later, Finish) discards in a conversation's worktrees (S-43, S-44):
- * `unpushed` counts commits ahead of `origin/main` rather than `@{u}`, so it does not depend
- * on `branch.autoSetupMerge`; `unmerged` counts citadel-data's branch ahead of its own local
- * `main`, which the sweep commits to and the worktree's branch never pushes.
+ * What Finish and Delete discard in a conversation's citadel-data worktree (S-43, S-44) — the
+ * citadel worktree is read-only (S-52) and the session never commits there, so its own counts
+ * are always zero and are not tracked. `unmerged` counts citadel-data's branch ahead of its own
+ * local `main`, which the sweep commits to and the worktree's branch never pushes.
  */
 export async function discardCounts(
   paths: WorktreePaths
 ): Promise<WorktreeDiscardCounts> {
-  const [citadelUncommitted, citadelUnpushed, dataUncommitted, dataUnmerged] =
-    await Promise.all([
-      countLines(paths.citadel, ["status", "--porcelain"]),
-      countCommits(paths.citadel, "origin/main..HEAD"),
-      countLines(paths.citadelData, ["status", "--porcelain"]),
-      countCommits(paths.citadelData, "main..HEAD"),
-    ]);
+  const [dataUncommitted, dataUnmerged] = await Promise.all([
+    countLines(paths.citadelData, ["status", "--porcelain"]),
+    countCommits(paths.citadelData, "main..HEAD"),
+  ]);
   return {
-    citadel: { uncommitted: citadelUncommitted, unpushed: citadelUnpushed },
     citadelData: { uncommitted: dataUncommitted, unmerged: dataUnmerged },
   };
 }

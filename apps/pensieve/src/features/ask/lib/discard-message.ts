@@ -6,8 +6,7 @@ const BASE =
 /**
  * Delete's confirm (CTD-223, S-44): unchanged when the thread has no worktrees to discard
  * (container mode, or before its first question); otherwise names what going with the file —
- * the citadel worktree's uncommitted and unpushed changes, the citadel-data worktree's
- * uncommitted files and commits not on main.
+ * the citadel-data worktree's uncommitted files and commits not on main.
  */
 export const discardMessage = (
   counts: WorktreeDiscardCounts | null
@@ -15,6 +14,6 @@ export const discardMessage = (
   if (!counts) {
     return BASE;
   }
-  const { citadel, citadelData } = counts;
-  return `${BASE} Its worktrees go too — citadel: ${citadel.uncommitted} uncommitted, ${citadel.unpushed} unpushed; citadel-data: ${citadelData.uncommitted} uncommitted, ${citadelData.unmerged} not on main.`;
+  const { citadelData } = counts;
+  return `${BASE} Its worktrees go too — citadel-data: ${citadelData.uncommitted} uncommitted, ${citadelData.unmerged} not on main.`;
 };
