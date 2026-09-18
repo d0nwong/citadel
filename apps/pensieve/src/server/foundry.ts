@@ -165,7 +165,17 @@ export async function createJob(
   }
   // Key order and spacing are fixed here on purpose: Foundry fingerprints the raw bytes,
   // so the same point must always serialise to the same body for a replay to match.
-  const body = JSON.stringify({ repo: input.repo, ticketId: input.ticketId });
+  //
+  // `blueprintId: "none"` runs the ticket as a plain job — one agent step on the forge's
+  // default model — rather than Foundry's default blueprint. A ticket filed from here
+  // already carries its plan in its Technical Notes, so a planning step re-derives what the
+  // body states. The literal string is the contract: Foundry reads `"none"` as "no
+  // blueprint", while omitting the key resolves DEFAULT_BLUEPRINT_ID instead.
+  const body = JSON.stringify({
+    blueprintId: "none",
+    repo: input.repo,
+    ticketId: input.ticketId,
+  });
   const { status, body: res } = await call(
     fetchImpl,
     "/api/jobs",
