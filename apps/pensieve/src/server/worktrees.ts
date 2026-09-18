@@ -15,24 +15,21 @@
  * when it raced ahead, S-49), and `removeWorktrees` (both worktrees and both local branches
  * once the data has landed, S-48).
  *
- * CTD-226: the first question also writes `apps/argus/.claude/settings.local.json` into the
- * fresh citadel worktree, disabling the gateway MCP servers `apps/argus/.claude/settings.json`
- * (`enabledMcpjsonServers`) approves project-wide — `LOCAL_ADAPTER_CONFIG`'s `settingSources`
- * (`ask.ts`) loads it as the `'local'` source, which wins, so a local run gets the operator's
- * own MCP servers and not argus's gateway ones (S-50). The file sits only in this worktree,
- * never in the live checkout.
+ * CTD-248: `LOCAL_ADAPTER_CONFIG`'s `settingSources` (`ask.ts`) is project settings only, in
+ * both modes, so this module writes nothing into the citadel worktree to steer it — a fresh
+ * one is exactly the checkout at `origin/main`, `git status` included.
  *
  * CTD-247 (S-52): `createWorktrees` ends the citadel half by `chmod -R a-w`ing the whole tree,
- * once everything Pensieve itself writes into it is down — so from before the session ever
- * runs, an edit, a redirect or a `git commit` into the citadel worktree fails on disk, not on
- * a sentence in the prompt. Removing that worktree needs write permission back, since `git
- * worktree remove` deletes files through the directory and a read-only directory refuses it;
+ * once the `worktree add` that creates it is down — so from before the session ever runs, an
+ * edit, a redirect or a `git commit` into the citadel worktree fails on disk, not on a sentence
+ * in the prompt. Removing that worktree needs write permission back, since `git worktree
+ * remove` deletes files through the directory and a read-only directory refuses it;
  * `removeWorktrees` restores it with `chmod -R u+w` immediately before that call. citadel-data
  * is never touched — it stays writable by design.
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -100,23 +97,6 @@ export const branchOf = (threadId: string) => `ask/${threadId}`;
 export const hasWorktrees = (paths: WorktreePaths): Promise<boolean> =>
   exists(paths.citadel);
 
-/** Written by `writeLocalArgusSettings`, relative to the citadel worktree — ours, not the run's work. */
-const LOCAL_ARGUS_SETTINGS = "apps/argus/.claude/settings.local.json";
-
-/**
- * Disables argus's gateway MCP servers for this worktree (S-50): `apps/argus/.claude/settings.json`
- * carries `enabledMcpjsonServers`, which this beats as the `'local'` setting source.
- */
-async function writeLocalArgusSettings(citadelWorktree: string): Promise<void> {
-  const file = join(citadelWorktree, LOCAL_ARGUS_SETTINGS);
-  await mkdir(join(file, ".."), { recursive: true });
-  await writeFile(
-    file,
-    `${JSON.stringify({ disabledMcpjsonServers: ["linear", "slack"] }, null, 2)}\n`,
-    "utf8"
-  );
-}
-
 async function createWorktrees(
   paths: WorktreePaths,
   opts: { citadelDataDir: string; citadelDir: string; threadId: string }
@@ -131,7 +111,6 @@ async function createWorktrees(
     paths.citadel,
     "origin/main",
   ]);
-  await writeLocalArgusSettings(paths.citadel);
   // Last step for the citadel tree (S-52): everything above writes into it, nothing below does.
   await chmodTree("a-w", paths.citadel);
   await git(opts.citadelDataDir, [
@@ -198,22 +177,14 @@ export interface WorktreeDiscardCounts {
  * What Delete (and, later, Finish) discards in a conversation's worktrees (S-43, S-44):
  * `unpushed` counts commits ahead of `origin/main` rather than `@{u}`, so it does not depend
  * on `branch.autoSetupMerge`; `unmerged` counts citadel-data's branch ahead of its own local
- * `main`, which the sweep commits to and the worktree's branch never pushes. The settings file
- * `writeLocalArgusSettings` put there is not counted — nothing the run did is lost with it.
+ * `main`, which the sweep commits to and the worktree's branch never pushes.
  */
 export async function discardCounts(
   paths: WorktreePaths
 ): Promise<WorktreeDiscardCounts> {
   const [citadelUncommitted, citadelUnpushed, dataUncommitted, dataUnmerged] =
     await Promise.all([
-      countLines(paths.citadel, [
-        "status",
-        "--porcelain",
-        "--untracked-files=all",
-        "--",
-        ".",
-        `:!${LOCAL_ARGUS_SETTINGS}`,
-      ]),
+      countLines(paths.citadel, ["status", "--porcelain"]),
       countCommits(paths.citadel, "origin/main..HEAD"),
       countLines(paths.citadelData, ["status", "--porcelain"]),
       countCommits(paths.citadelData, "main..HEAD"),

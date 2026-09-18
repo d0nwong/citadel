@@ -1178,13 +1178,9 @@ describe("CTD-219 — the run mode: container keeps the sandbox, local runs free
     expect(runMode({})).toBe("local");
   });
 
-  test("the local adapter config drops the allowlist and denials, and runs bypassPermissions with the operator's settings", () => {
+  test("the local adapter config drops the allowlist and denials, and runs bypassPermissions", () => {
     expect(LOCAL_ADAPTER_CONFIG.permissionMode).toBe("bypassPermissions");
-    expect(LOCAL_ADAPTER_CONFIG.settingSources).toEqual([
-      "user",
-      "project",
-      "local",
-    ]);
+    expect(LOCAL_ADAPTER_CONFIG.settingSources).toEqual(["project"]);
     expect(LOCAL_ADAPTER_CONFIG.allowedTools).toBeUndefined();
     expect(LOCAL_ADAPTER_CONFIG.disallowedTools).toBeUndefined();
     // Everything else — the checkouts' data dir, the working directory — is unchanged from
@@ -1202,11 +1198,7 @@ describe("CTD-219 — the run mode: container keeps the sandbox, local runs free
   test("a local /scope run keeps the local config, with no turn cap either (CTD-226)", () => {
     expect(LOCAL_SCOPE_ADAPTER_CONFIG.maxTurns).toBeUndefined();
     expect(LOCAL_SCOPE_ADAPTER_CONFIG.permissionMode).toBe("bypassPermissions");
-    expect(LOCAL_SCOPE_ADAPTER_CONFIG.settingSources).toEqual([
-      "user",
-      "project",
-      "local",
-    ]);
+    expect(LOCAL_SCOPE_ADAPTER_CONFIG.settingSources).toEqual(["project"]);
     expect(LOCAL_SCOPE_ADAPTER_CONFIG.allowedTools).toBeUndefined();
     expect(LOCAL_SCOPE_ADAPTER_CONFIG.disallowedTools).toBeUndefined();
     // Container /scope keeps its own allowlist, denials and 80-turn cap, unaffected (AC8).
@@ -1283,6 +1275,19 @@ describe("CTD-219 — the run mode: container keeps the sandbox, local runs free
       )
     );
     expect(stillContainer.calls[0].systemPrompts).toEqual([ASK_SYSTEM_PROMPT]);
+  });
+});
+
+describe("CTD-248 — a run loads project settings only, in either mode (S-3, S-56)", () => {
+  test("neither 'user' nor 'local' appears in settingSources anywhere", () => {
+    for (const config of [
+      ADAPTER_CONFIG,
+      LOCAL_ADAPTER_CONFIG,
+      SCOPE_ADAPTER_CONFIG,
+      LOCAL_SCOPE_ADAPTER_CONFIG,
+    ]) {
+      expect(config.settingSources).toEqual(["project"]);
+    }
   });
 });
 
