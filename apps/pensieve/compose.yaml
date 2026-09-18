@@ -6,6 +6,9 @@ services:
     build:
       context: ../..
       dockerfile: apps/pensieve/Dockerfile
+      args:
+        # Build time, not runtime: the bundle carries it. Changing it needs `just rebuild`.
+        VITE_LINEAR_WORKSPACE: ${LINEAR_WORKSPACE:-liamai}
     image: citadel/pensieve:local
     ports:
       - "${PENSIEVE_PORT:-3778}:3778"
