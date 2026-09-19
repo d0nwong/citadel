@@ -13,6 +13,7 @@
 import { mkdir, readdir, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import { splitKey } from "@citadel/tickets";
+import { noteWritten } from "./commit.ts";
 import { archivedRevisionDir, archiveDir, revisionDir, revisionsDir, specDocPath, splitFeatureKey } from "./paths.ts";
 import { type Evidence, parseEvidence, SchemaError } from "./schema.ts";
 import { type Problem, REVISION_STATUSES, type RevisionRecord, validateRevisionRecord, validateSpec, ValidationError } from "./validate.ts";
@@ -109,6 +110,7 @@ async function writeRecord(dir: string, rev: Revision, dryRun: boolean): Promise
   if (!dryRun) {
     await mkdir(dir, { recursive: true });
     await Bun.write(path, serializeRevision(rev));
+    noteWritten(path);
   }
   return path;
 }
@@ -159,7 +161,12 @@ export async function fileRevision(slug: string, key: string, tickets: string[],
     evidence: [...found.rev.evidence, { kind: "ticket", key, ...(o.url ? { url: o.url } : {}) }],
   };
   await writeRecord(found.dir, revision, dryRun);
-  if (!dryRun && target !== found.dir) await rename(found.dir, target);
+  if (!dryRun && target !== found.dir) {
+    await rename(found.dir, target);
+    // a rename is staged as a deletion plus an addition: report both ends so every file it carries, not just revision.json, lands in the commit
+    noteWritten(found.dir);
+    noteWritten(target);
+  }
   return { wrote: !dryRun, path: join(target, REVISION_FILE), revision, diff: [`${slug} draft → filed as ${key} (${list.length} ticket${list.length === 1 ? "" : "s"})`] };
 }
 
@@ -175,6 +182,8 @@ export async function archiveRevision(dir: string, rev: Revision, dryRun = false
   if (!dryRun) {
     await mkdir(archiveDir(), { recursive: true });
     await rename(dir, target);
+    noteWritten(dir);
+    noteWritten(target);
   }
   return join(target, REVISION_FILE);
 }
@@ -243,9 +252,13 @@ export async function foldRevision(found: Found, o: RevisionOptions & { url?: st
     if (!dryRun) {
       await mkdir(dirname(w.path), { recursive: true });
       await Bun.write(w.path, w.text);
+      noteWritten(w.path);
     }
     if (await exists(w.product)) {
-      if (!dryRun) await unlink(w.product);
+      if (!dryRun) {
+        await unlink(w.product);
+        noteWritten(w.product);
+      }
       retired.push(w.product);
     }
   }

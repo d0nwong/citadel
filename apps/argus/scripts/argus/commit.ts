@@ -3,19 +3,36 @@
  * state files (threads, unplaced, deploys) and the arch docs, and commits when anything
  * is staged. Never pushes.
  *
- * `commitPaths` is the stage-and-commit primitive both `commitRun` and `saveRun` (`argus
- * save`) sit on: it commits only the paths it is given (`git commit --only`), never
- * whatever else happens to be staged, and retries past a lock another git process is
- * briefly holding. `commitRun` never promotes the Slack cursor itself — only the `commit`
- * verb does, through `promoteCursor`, and only once its own commit has succeeded (or found
- * nothing to commit), so a shared helper future write verbs call mid-tick can never advance
- * it early.
+ * `commitPaths` is the stage-and-commit primitive `commitRun`, `saveRun` (`argus save`) and
+ * `commitWrites` (the post-verb commit, `argus/ledger` S-17) sit on: it commits only the
+ * paths it is given (`git commit --only`), never whatever else happens to be staged, and
+ * retries past a lock another git process is briefly holding. `commitRun` never promotes
+ * the Slack cursor itself — only the `commit` verb does, through `promoteCursor`, and only
+ * once its own commit has succeeded (or found nothing to commit), so a shared helper future
+ * write verbs call mid-tick can never advance it early.
+ *
+ * `noteWritten` is how a write verb reports a path it wrote, never `git status`: `write.ts`,
+ * `state.ts`, `deploy.ts` and `revision.ts` call it beside their own `Bun.write`/`rename`, and
+ * `main()` resets the list before a verb runs and reads `writtenPaths()` back after, to build
+ * that verb's own commit.
  */
 
 import { rename, stat } from "node:fs/promises";
+import { relative } from "node:path";
 import { cursorNextPath, cursorPath, root } from "./paths.ts";
 
 const exists = (p: string) => stat(p).then(() => true, () => false);
+
+/** the paths a write verb has reported writing this process, root-relative; `main()` reads and resets it per verb */
+let written = new Set<string>();
+export const resetWritten = (): void => {
+  written = new Set();
+};
+/** a write verb's report that it wrote (or renamed to/from) `path` — never inferred from `git status` */
+export const noteWritten = (path: string): void => {
+  written.add(relative(root(), path));
+};
+export const writtenPaths = (): string[] => [...written];
 
 async function git(args: string[], cwd = root(), env?: Record<string, string>): Promise<{ code: number; out: string; err: string }> {
   const p = Bun.spawn(["git", ...args], { cwd, env: { ...process.env, ...env }, stdout: "pipe", stderr: "pipe" });
@@ -33,9 +50,14 @@ export const RETIRED = /(^|\/)features\/.*\/docs\/product\.md$/;
 /** a path this run may commit, given git's status code for it ("" when it has none) */
 const onList = (path: string, code: string) => COMMITTABLE.test(path) || (code.includes("D") && RETIRED.test(path));
 
-/** changed paths (modified, added, deleted) the run may commit, from git's own view */
-async function changed(cwd: string): Promise<string[]> {
-  const st = await git(["status", "--porcelain", "--untracked-files=all"], cwd);
+/**
+ * Changed paths (modified, added, deleted) the run may commit, from git's own view — of the
+ * whole tree by default (the sweep's `commitRun`), or, given `scope`, only beneath those
+ * paths: a write verb's own reported roots, a file or a directory a revision verb renamed,
+ * whose tracked contents move with it and are discovered here rather than named one by one.
+ */
+async function changed(cwd: string, scope?: string[]): Promise<string[]> {
+  const st = await git(["status", "--porcelain", "--untracked-files=all", ...(scope?.length ? ["--", ...scope] : [])], cwd);
   return st.out
     .split("\n")
     .filter(Boolean)
@@ -133,4 +155,27 @@ export async function saveRun(paths: string[], message: string, opts: { dryRun?:
   if (inContainer() || opts.dryRun) return { committed: false, files: changedPaths.length };
   const { sha } = await commitPaths(changedPaths, message, { cwd });
   return { committed: true, sha, files: changedPaths.length };
+}
+
+/** where a write came from, when a Pensieve conversation sets it (a later ticket sets `ask/<id>`); unset outside one */
+export const origin = (): string | null => process.env.ARGUS_ORIGIN?.trim() || null;
+
+/**
+ * The post-verb commit (`argus/ledger` S-17, `argus/revisions` S-20): a write verb run on
+ * the host outside a sweep tick — by hand, by a skill, or by a click in a host-run Pensieve
+ * — commits the files it reported through `noteWritten`, as the person running it, before it
+ * exits. `roots` may be a file (a ledger, a state file) or a directory a revision verb
+ * renamed; git's own status, scoped to exactly those roots and nowhere else in the tree,
+ * says which tracked files actually moved or changed, so a directory rename's other files —
+ * a spec, an intent — travel with it into the same commit without being named one by one.
+ * Commits nothing inside Pensieve's container (S-19), on a dry run, or with nothing changed.
+ */
+export async function commitWrites(roots: string[], message: string, opts: { dryRun?: boolean; cwd?: string } = {}): Promise<CommitResult> {
+  if (!roots.length) return { committed: false, files: 0 };
+  const cwd = opts.cwd ?? root();
+  const files = await changed(cwd, roots);
+  if (!files.length) return { committed: false, files: 0 };
+  if (inContainer() || opts.dryRun) return { committed: false, files: files.length };
+  const { sha } = await commitPaths(files, message, { cwd });
+  return { committed: true, sha, files: files.length };
 }

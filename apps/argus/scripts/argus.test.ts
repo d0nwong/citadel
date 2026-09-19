@@ -4,7 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "./argus.ts";
@@ -313,5 +313,130 @@ describe("commit verb", () => {
     expect(r.code).toBe(0);
     expect(r.out).toContain("cursor promoted");
     expect(await Bun.file(join(ws, "state/cursor.json")).exists()).toBe(true);
+  });
+});
+
+describe("the post-verb commit (CTD-257)", () => {
+  // the sandbox itself exports GIT_AUTHOR_*, which would mask author assertions below
+  const sh = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: ws, stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
+  const run = (extraEnv: Record<string, string>, ...args: string[]) => {
+    const { GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, ...rest } = process.env;
+    const env = { ...rest, ARGUS_ROOT: ws, ARGUS_SWEEP_TICK: "", ARGUS_ORIGIN: "", PENSIEVE_RUNNER: "", ...extraEnv };
+    const p = Bun.spawn(["bun", join(ROOT, "scripts/argus.ts"), ...args], { env, stdout: "pipe", stderr: "pipe" });
+    return Promise.all([p.exited, new Response(p.stdout).text(), new Response(p.stderr).text()]).then(([code, out, err]) => ({ code, out, err }));
+  };
+  beforeEach(() => {
+    Bun.spawnSync(["git", "init", "-q"], { cwd: ws });
+    Bun.spawnSync(["git", "add", "-A"], { cwd: ws });
+    Bun.spawnSync(["git", "-c", "user.email=t@t", "-c", "user.name=The Person", "commit", "-q", "-m", "seed"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "The Person"], { cwd: ws });
+  });
+
+  test("a click verb commits what it wrote before it exits, as the person, first line the verb and its first argument", async () => {
+    const r = await run({}, "close", "admin/invoicing", "A-2", "--reason", "done in standup");
+    expect(r.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("argus close admin/invoicing:");
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("The Person <t@t>");
+    expect(sh(["git", "show", "--stat", "--format=", "HEAD"])).toContain("admin/invoicing/ledger.json");
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toBe("");
+  });
+
+  test("a verb that touches a ledger and state together commits both in the one commit", async () => {
+    mkdirSync(join(ws, "state"), { recursive: true });
+    writeFileSync(join(ws, "state/unplaced.json"), JSON.stringify([{ id: "123", kind: "message", by: "sam", at: "2026-09-11T00:00:00Z", text: "hi", url: "u", candidates: [], batch: "b1" }]));
+    const r = await run({}, "place", "123", "admin/invoicing");
+    expect(r.code).toBe(0);
+    const stat = sh(["git", "show", "--stat", "--format=", "HEAD"]);
+    expect(stat).toContain("state/unplaced.json");
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toBe("");
+  });
+
+  test("inside a sweep tick, the verb commits nothing itself, leaving its write for the tick's own commit", async () => {
+    const before = sh(["git", "log", "-1", "--format=%H"]);
+    const r = await run({ ARGUS_SWEEP_TICK: "1" }, "close", "admin/invoicing", "A-2", "--reason", "done in standup");
+    expect(r.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%H"])).toBe(before);
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toContain("admin/invoicing/ledger.json");
+  });
+
+  test("inside Pensieve's container, the verb commits nothing and the write stays uncommitted on disk", async () => {
+    const before = sh(["git", "log", "-1", "--format=%H"]);
+    const r = await run({ PENSIEVE_RUNNER: "container" }, "close", "admin/invoicing", "A-2", "--reason", "done in standup");
+    expect(r.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%H"])).toBe(before);
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toContain("admin/invoicing/ledger.json");
+  });
+
+  test("ARGUS_ORIGIN, when set, is the whole first line in place of the verb", async () => {
+    const r = await run({ ARGUS_ORIGIN: "ask/de9c8a51" }, "close", "admin/invoicing", "A-2", "--reason", "done in standup");
+    expect(r.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("ask/de9c8a51:");
+  });
+
+  test("a read-only verb, and a refusal that writes nothing, commit nothing", async () => {
+    const before = sh(["git", "log", "-1", "--format=%H"]);
+    expect((await run({}, "show", "admin/invoicing")).code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%H"])).toBe(before);
+    const refused = await run({}, "confirm", "admin/invoicing", "R-999", "--reason", "nope");
+    expect(refused.code).toBe(1);
+    expect(sh(["git", "log", "-1", "--format=%H"])).toBe(before);
+  });
+});
+
+describe("revision verbs commit their own change (CTD-257, AC2)", () => {
+  const sh = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: ws, stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
+  const run = (...args: string[]) => {
+    const { GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, ...rest } = process.env;
+    const env = { ...rest, ARGUS_ROOT: ws, ARGUS_SWEEP_TICK: "", ARGUS_ORIGIN: "" };
+    const p = Bun.spawn(["bun", join(ROOT, "scripts/argus.ts"), ...args], { env, stdout: "pipe", stderr: "pipe" });
+    return Promise.all([p.exited, new Response(p.stdout).text(), new Response(p.stderr).text()]).then(([code, out, err]) => ({ code, out, err }));
+  };
+  beforeEach(() => {
+    Bun.spawnSync(["git", "init", "-q"], { cwd: ws });
+    Bun.spawnSync(["git", "add", "-A"], { cwd: ws });
+    Bun.spawnSync(["git", "-c", "user.email=t@t", "-c", "user.name=The Person", "commit", "-q", "-m", "seed"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "The Person"], { cwd: ws });
+  });
+
+  test("new, file and drop each commit before they exit, authored by the person; file's commit carries the directory's rename", async () => {
+    const n = await run("revision", "new", "reignite", "--title", "Re-ignite", "--feature", "alden/alden-portal/tasks");
+    expect(n.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("argus revision new:");
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("The Person <t@t>");
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toBe("");
+    expect(existsSync(join(ws, "revisions/reignite/revision.json"))).toBe(true);
+
+    const f = await run("revision", "file", "reignite", "CTD-901", "--tickets", "CTD-901");
+    expect(f.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("argus revision file:");
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("The Person <t@t>");
+    expect(existsSync(join(ws, "revisions/reignite"))).toBe(false);
+    expect(existsSync(join(ws, "revisions/CTD-901/revision.json"))).toBe(true);
+    const stat = sh(["git", "show", "--stat", "--format=", "HEAD"]);
+    expect(stat).toContain("revision.json");
+    expect(stat).toMatch(/reignite|CTD-901/);
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toBe("");
+
+    const d = await run("revision", "drop", "CTD-901", "--reason", "not needed after all");
+    expect(d.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("argus revision drop:");
+    expect(existsSync(join(ws, "revisions/CTD-901"))).toBe(false);
+    expect(existsSync(join(ws, "revisions/archive/CTD-901/revision.json"))).toBe(true);
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toBe("");
+  });
+
+  test("inside a sweep tick, the revision verbs commit nothing themselves", async () => {
+    const before = sh(["git", "log", "-1", "--format=%H"]);
+    const { GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, ...rest } = process.env;
+    const p = Bun.spawn(["bun", join(ROOT, "scripts/argus.ts"), "revision", "new", "reignite", "--title", "Re-ignite", "--feature", "alden/alden-portal/tasks"], {
+      env: { ...rest, ARGUS_ROOT: ws, ARGUS_SWEEP_TICK: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(await p.exited).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%H"])).toBe(before);
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toContain("revisions/reignite/revision.json");
   });
 });

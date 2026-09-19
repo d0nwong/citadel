@@ -7,6 +7,7 @@
 
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { noteWritten } from "./commit.ts";
 import { threadsPath, unplacedPath } from "./paths.ts";
 
 /** thread root ts → feature, with who placed it and when; `null` is the user's verdict that the thread is nobody's */
@@ -37,6 +38,7 @@ async function readJson<T>(path: string, empty: T): Promise<T> {
 async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await Bun.write(path, JSON.stringify(value, null, 2) + "\n");
+  noteWritten(path);
 }
 
 export const readThreads = () => readJson<ThreadMap>(threadsPath(), {});

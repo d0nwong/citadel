@@ -7,6 +7,7 @@
 
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { noteWritten } from "./commit.ts";
 import { ledgerPath } from "./paths.ts";
 import { type Ask, type IdCounters, type Ledger, parseLedger, type Proposal, type Requirement, serializeLedger } from "./schema.ts";
 import { assertLedger, deriveReady } from "./validate.ts";
@@ -106,6 +107,7 @@ export async function writeLedger(feature: string, input: unknown, opts: WriteOp
   if (!dryRun) {
     await mkdir(dirname(path), { recursive: true });
     await Bun.write(path, serializeLedger(ledger));
+    noteWritten(path);
   }
   return { wrote: !dryRun, ledger, diff, path };
 }
