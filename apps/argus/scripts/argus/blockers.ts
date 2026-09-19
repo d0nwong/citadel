@@ -27,8 +27,8 @@
 import { providerLabel, ticketStates, type TicketStates } from "@citadel/tickets";
 import type { Deploy } from "./deploy.ts";
 import { deployedAt } from "./deploy.ts";
-import { listFeatures } from "./paths.ts";
 import { ticketKeysIn } from "./pr-facts.ts";
+import { recordFeatures } from "./projects.ts";
 import type { Blocker, Evidence, Landing, Ledger, Ticket } from "./schema.ts";
 import { cancelRevision, foldRevision, listRevisions, type Settled } from "./revision.ts";
 import { readLedger, writeLedger, type WriteResult } from "./write.ts";
@@ -190,22 +190,25 @@ export function needsReconcile(l: Ledger): boolean {
 /** every ledger, blockers cleared and tickets settled where the facts allow, written when something changed */
 export async function reconcileAll(opts: ReconcileOptions = {}): Promise<ReconcileResult[]> {
   const deployed = opts.deployed ?? ((repo, sha) => deployedAt(repo, sha));
-  const ledgers: [string, Ledger][] = [];
-  for (const feature of opts.features ?? (await listFeatures())) {
-    const l = await readLedger(feature);
-    if (l && needsReconcile(l)) ledgers.push([feature, l]);
+  // named features are the caller's own (DEFAULT_APP, as `argus reconcile <feature>...` takes them); with none
+  // named, every project with the record job, each on its own area (ledger S-27)
+  const targets = opts.features ? opts.features.map((feature) => ({ app: undefined, feature })) : await recordFeatures();
+  const ledgers: [string, string | undefined, Ledger][] = [];
+  for (const { app, feature } of targets) {
+    const l = await readLedger(feature, app);
+    if (l && needsReconcile(l)) ledgers.push([feature, app, l]);
   }
   // the filed revisions, whose parents settle them — only on a whole run, never one scoped to named features
   const filed = opts.features ? [] : (await listRevisions()).filter((r) => !r.archived && r.rev.status === "filed" && r.rev.key);
   const openKeys = [
-    ...new Set([...ledgers.flatMap(([, l]) => l.tickets.filter((t) => !t.settled).map((t) => t.key)), ...filed.map((r) => r.rev.key!)]),
+    ...new Set([...ledgers.flatMap(([, , l]) => l.tickets.filter((t) => !t.settled).map((t) => t.key)), ...filed.map((r) => r.rev.key!)]),
   ];
   const states = await (opts.states ?? ((keys) => ticketStates(keys, { now: opts.now })))(openKeys);
   const out: ReconcileResult[] = [];
-  for (const [feature, l] of ledgers) {
+  for (const [feature, app, l] of ledgers) {
     const r = await reconcileLedger(l, deployed, opts.now, states);
     if (!r.cleared.length) continue;
-    const write = await writeLedger(feature, r.ledger, { actor: "model", now: opts.now, dryRun: opts.dryRun });
+    const write = await writeLedger(feature, r.ledger, { actor: "model", now: opts.now, dryRun: opts.dryRun, app });
     out.push({ feature, cleared: r.cleared, write });
   }
   // a revision follows its parent: Done folds its specs into the features and archives it; Canceled archives it

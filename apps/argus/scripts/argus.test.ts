@@ -270,6 +270,43 @@ describe("patch and prompt", () => {
     const r = await argus("prompt", "attribute");
     expect(r.out.trim()).toBe("nothing unplaced");
   });
+  test("prompt attribute lists a second record project's features alongside alden-portal's own (CTD-271, ledger S-27, AC1)", async () => {
+    writeFileSync(join(ws, "projects.json"), JSON.stringify({
+      projects: [
+        {
+          id: "alden-portal",
+          repos: [
+            { id: "fe", cloneUrl: "https://example.com/fe.git", path: "", baseBranch: "staging", host: "bitbucket", deploy: { kind: "live" } },
+            { id: "be", cloneUrl: "https://example.com/be.git", path: "", baseBranch: "dev", host: "bitbucket", deploy: { kind: "pipeline" } },
+          ],
+          trackers: [{ provider: "linear", key: "ALD", prefixes: ["ALD"] }],
+          jobs: ["docs", "record"],
+          areas: [{ id: "alden-portal", repo: "fe", dir: "alden/alden-portal" }],
+        },
+        {
+          id: "widget",
+          repos: [{ id: "app", cloneUrl: "https://example.com/app.git", path: "", baseBranch: "main", host: "github", deploy: { kind: "live" } }],
+          trackers: [],
+          jobs: ["record"],
+          areas: [{ id: "widget", repo: "app", dir: "widget" }],
+        },
+      ],
+      channels: [],
+    }));
+    mkdirSync(join(ws, "widget/features/core/docs"), { recursive: true });
+    mkdirSync(join(ws, "widget/.doc-workspace"), { recursive: true });
+    writeFileSync(join(ws, "widget/.doc-workspace/feature-manifest.json"), JSON.stringify({ app: "widget", fe_repo: "app", features: [{ id: "core", name: "Core", type: "feature", entry_routes: [], core_files: [], aliases: [] }] }));
+    const valid = JSON.parse(await Bun.file(join(FIX, "valid.json")).text());
+    const ledger = { ...valid, feature: "core", summary: "the widget's own core feature", landings: [], tickets: [] };
+    writeFileSync(join(ws, "widget/features/core/ledger.json"), JSON.stringify(ledger));
+    mkdirSync(join(ws, "state"), { recursive: true });
+    writeFileSync(join(ws, "state/unplaced.json"), JSON.stringify([{ id: "1", kind: "message", by: "x", at: "2026-09-11", text: "hello", url: "u", candidates: [], batch: "b" }]));
+
+    const r = await argus("prompt", "attribute");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("- admin/invoicing");
+    expect(r.out).toContain("- core - Core\n    the widget's own core feature");
+  });
 });
 
 describe("deployed", () => {

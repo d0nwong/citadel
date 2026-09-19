@@ -12,10 +12,11 @@
 
 import { mkdir } from "node:fs/promises";
 import { type Batch, batchId, batchPath } from "./batch.ts";
-import { batchesDir, cursorNextPath, listFeatures } from "./paths.ts";
+import { batchesDir, cursorNextPath } from "./paths.ts";
 import { fetchOrigin, type Landing, landingsSince, type RepoKind as Repo, repoOf } from "./pr-facts.ts";
 import { awaitsDeploy } from "./blockers.ts";
 import { type Deploy, deployedAt } from "./deploy.ts";
+import { recordFeatures } from "./projects.ts";
 import type { Landing as RecordedLanding } from "./schema.ts";
 import { flatten, type Pull, pullSlack } from "./slack-pull.ts";
 import { readLedger } from "./write.ts";
@@ -50,8 +51,8 @@ async function known(): Promise<{ newest: Record<Repo, string | null>; shas: Set
   const shas = new Set<string>();
   let untold = false;
   const waiting: RecordedLanding[] = [];
-  for (const f of await listFeatures()) {
-    const l = await readLedger(f);
+  for (const { app, feature } of await recordFeatures()) {
+    const l = await readLedger(feature, app);
     for (const ld of l?.landings ?? []) {
       shas.add(ld.sha);
       if (ld.deployed && !ld.deployed.told) untold = true;

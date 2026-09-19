@@ -21,7 +21,7 @@ import { providerNameFor } from "@citadel/tickets";
 import { DEFAULT_APP, listFeatures, ledgerPath, projectsPath, root } from "./argus/paths.ts";
 import { validateDoc, validateLedger, validateSpec, ValidationError } from "./argus/validate.ts";
 import { archDocPath, isFeature, listApps, specDocPath } from "./argus/paths.ts";
-import { allAreas, loadProjects, repoIdsForDir, unheldFeatures, validateProjectsConfig } from "./argus/projects.ts";
+import { allAreas, loadProjects, recordFeatures, repoIdsForDir, unheldFeatures, validateProjectsConfig } from "./argus/projects.ts";
 import { dropRevision, fileRevision, listRevisions, newRevision, readRevision, validateRevisionDir } from "./argus/revision.ts";
 import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
@@ -290,7 +290,7 @@ const verbs: Record<string, Verb> = {
       const batch = a ? await readBatch(a) : null;
       const unplaced = await readUnplaced();
       if (!unplaced.length) { console.log("nothing unplaced"); return 0; }
-      console.log(await attributePrompt(unplaced, await listFeatures(), batch));
+      console.log(await attributePrompt(unplaced, await recordFeatures(), batch));
       return 0;
     }
     if (what === "reader" && a && b) {

@@ -258,6 +258,49 @@ describe("reconcileAll", () => {
     expect(validateLedger(after)).toEqual([]);
     expect(await reconcileAll({ deployed: async () => live })).toEqual([]);
   });
+  test("a second record project's ledger is walked and cleared alongside alden-portal's own (CTD-271, ledger S-27, AC1)", async () => {
+    writeFileSync(join(ws, "projects.json"), JSON.stringify({
+      projects: [
+        {
+          id: "alden-portal",
+          repos: [
+            { id: "fe", cloneUrl: "https://example.com/fe.git", path: "", baseBranch: "staging", host: "bitbucket", deploy: { kind: "live" } },
+            { id: "be", cloneUrl: "https://example.com/be.git", path: "", baseBranch: "dev", host: "bitbucket", deploy: { kind: "pipeline" } },
+          ],
+          trackers: [{ provider: "linear", key: "ALD", prefixes: ["ALD"] }],
+          jobs: ["docs", "record"],
+          areas: [{ id: "alden-portal", repo: "fe", dir: "alden/alden-portal" }],
+        },
+        {
+          id: "widget",
+          repos: [{ id: "app", cloneUrl: "https://example.com/app.git", path: "", baseBranch: "main", host: "github", deploy: { kind: "live" } }],
+          trackers: [],
+          jobs: ["record"],
+          areas: [{ id: "widget", repo: "app", dir: "widget" }],
+        },
+      ],
+      channels: [],
+    }));
+    const before = (await readLedger("admin/invoicing"))!;
+    before.asks[1]!.blockers = [{ kind: "landing", repo: "be", ref: "be#771", branch: "origin/dev", deployed: false, cleared: null }];
+    await Bun.write(join(ws, "alden/alden-portal/features/admin/invoicing/ledger.json"), JSON.stringify(before));
+
+    mkdirSync(join(ws, "widget/features/core/docs"), { recursive: true });
+    const widget = await valid();
+    widget.feature = "core";
+    widget.landings = [{ ...widget.landings[0]!, repo: "app", ref: "app#1" }];
+    widget.tickets = [];
+    widget.asks[0]!.ticket = null;
+    widget.asks[1]!.blockers = [{ kind: "landing", repo: "app", ref: "app#1", branch: "main", deployed: false, cleared: null }];
+    await Bun.write(join(ws, "widget/features/core/ledger.json"), JSON.stringify(widget));
+
+    const r = await reconcileAll({ deployed: async () => live, now: new Date("2026-09-11T10:00:00Z") });
+    expect(r.map((x) => x.feature).sort()).toEqual(["admin/invoicing", "core"]);
+    expect((await readLedger("admin/invoicing"))!.asks[1]!.ready).toBe(true);
+    expect((await readLedger("core", "widget"))!.asks[1]!.ready).toBe(true);
+    // a second run clears nothing further on either project's ledger
+    expect(await reconcileAll({ deployed: async () => live })).toEqual([]);
+  });
   test("an AP ticket, with no Trello credential set, is left exactly as it was (CTD-199 AC2)", async () => {
     delete process.env.TRELLO_API_KEY;
     delete process.env.TRELLO_TOKEN;

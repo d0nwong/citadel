@@ -3,11 +3,15 @@
  * say whether to wait, and an earlier landing whose pipeline finished since the last read.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Slice } from "./batch.ts";
 import type { Check } from "./deploy.ts";
+import { manifestPath } from "./paths.ts";
 import type { Landing } from "./pr-facts.ts";
-import { deploysFor, renderSlice } from "./reader.ts";
+import { deploysFor, featureSummaries, renderSlice } from "./reader.ts";
 
 const landing = (n: number, sha: string): Landing => ({
   repo: "be", ref: `be#${n}`, number: n, sha, short: sha.slice(0, 9), at: "2026-09-16T07:26:57Z", date: "2026-09-16",
@@ -31,6 +35,58 @@ describe("deploysFor", () => {
       "be#4": "no, the pipeline failed",
       "be#5": "unknown (no Bitbucket credentials)",
     });
+  });
+});
+
+describe("featureSummaries (CTD-271, ledger S-27)", () => {
+  let ws: string;
+  const emptyLedger = (feature: string, summary: string) => ({
+    feature,
+    as_of: "2026-09-11T10:00:00Z",
+    summary,
+    story: {
+      health: { text: "ok", evidence: [] },
+      gaps: { text: "ok", evidence: [] },
+      requirements: { text: "ok", evidence: [] },
+      architecture: { text: "ok", evidence: [] },
+    },
+    requirements: [],
+    asks: [],
+    tickets: [],
+    landings: [],
+    proposals: [],
+  });
+
+  beforeEach(() => {
+    ws = mkdtempSync(join(tmpdir(), "argus-reader-"));
+    process.env.ARGUS_ROOT = ws;
+  });
+  afterEach(() => {
+    delete process.env.ARGUS_ROOT;
+    rmSync(ws, { recursive: true, force: true });
+  });
+
+  test("draws each feature's name and summary from its own project's manifest and ledger", async () => {
+    mkdirSync(join(ws, "alden/alden-portal/.doc-workspace"), { recursive: true });
+    writeFileSync(manifestPath(), JSON.stringify({ app: "alden-portal", fe_repo: "~/x", features: [{ id: "tasks", name: "Tasks", type: "feature", entry_routes: ["/tasks"], core_files: [], aliases: [] }] }));
+    mkdirSync(join(ws, "alden/alden-portal/features/tasks"), { recursive: true });
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), JSON.stringify(emptyLedger("tasks", "alden's own summary")));
+
+    mkdirSync(join(ws, "argus/.doc-workspace"), { recursive: true });
+    writeFileSync(manifestPath("argus"), JSON.stringify({ app: "citadel", fe_repo: "~/citadel", features: [{ id: "sweep", name: "Sweep", type: "feature", entry_routes: [], core_files: [], aliases: [] }] }));
+    mkdirSync(join(ws, "argus/features/sweep"), { recursive: true });
+    writeFileSync(join(ws, "argus/features/sweep/ledger.json"), JSON.stringify(emptyLedger("sweep", "citadel's own summary")));
+
+    const out = await featureSummaries([{ app: "alden/alden-portal", feature: "tasks" }, { app: "argus", feature: "sweep" }]);
+    expect(out).toContain("- tasks - Tasks; routes /tasks\n    alden's own summary");
+    expect(out).toContain("- sweep - Sweep\n    citadel's own summary");
+  });
+
+  test("a feature whose app has no manifest still shows its ledger summary, bare", async () => {
+    mkdirSync(join(ws, "argus/features/sweep"), { recursive: true });
+    writeFileSync(join(ws, "argus/features/sweep/ledger.json"), JSON.stringify(emptyLedger("sweep", "no manifest here")));
+    const out = await featureSummaries([{ app: "argus", feature: "sweep" }]);
+    expect(out).toBe("- sweep\n    no manifest here");
   });
 });
 
