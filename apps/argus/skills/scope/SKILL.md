@@ -18,7 +18,7 @@ The human's effort goes where one bad line costs the most: the spec, not the PR.
 
 ## Handoff
 
-Reads citadel-data through `argus` and `accio`, the arch docs and specs as files, and tickets through `argus tracker`. Writes only under `revisions/<slug>/`: `revision.json` through `argus revision`, the markdown itself. Writes a tracker only in step 5. Never runs `reconcile` or `commit`; the sweep commits on its next tick.
+Reads citadel-data through `argus` and `accio`, the arch docs and specs as files, and tickets through `argus tracker`. Writes only under `revisions/<slug>/`: `revision.json` through `argus revision new`/`file`, each committing itself; the markdown a step writes, that step commits itself, after the user's yes and before the next step begins, with `argus save <files> -m "scope <slug|KEY>: <step>"` — `intent`, `specs`, `plan` or `filed`, the filing step's commit carrying its rewrite of the key too (in a Pensieve conversation, as `pensieve/ask` S-59 says). Writes a tracker only in step 5. Never runs `argus reconcile` or `argus commit`; those are the sweep's.
 
 A terminal does not set the data root, so every `argus` and `accio` call carries it; `$D` below is that directory:
 
@@ -96,3 +96,4 @@ The parent's key and URL, each sub-issue's key and title in order with what bloc
 - [ ] Every new criterion took an id from `next_id`; every removed one sits under `## Retired`
 - [ ] Each sub-issue's body is its plan section verbatim, and its blockers match the list
 - [ ] `argus revision show <KEY>` lists the tickets in plan order
+- [ ] Each step's write is committed through `argus save`, first line `scope <slug|KEY>: <step>`, before the next step begins
