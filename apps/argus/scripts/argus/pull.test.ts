@@ -6,19 +6,20 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cursorNextPath, cursorPath } from "./paths.ts";
+import { cursorNextPath, cursorPath, tickUnreachablePath } from "./paths.ts";
 import type { Landing } from "./pr-facts.ts";
 import { pullBatch, type PullSources } from "./pull.ts";
+import { defaultProjectsConfig, projectsPath, type ProjectsConfig } from "./projects.ts";
 import type { Pull } from "./slack-pull.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
 const NOW = new Date("2026-09-11T10:00:00Z");
 let ws: string;
 
-const landing = (kind: "fe" | "be", n: number, at: string, features: string[] = ["tasks"]): Landing => ({
+const landing = (kind: string, n: number, at: string, features: string[] = ["tasks"]): Landing => ({
   repo: kind, ref: `${kind}#${n}`, number: n, sha: `${kind}${n}`.padEnd(40, "0"), short: `${kind}${n}`.padEnd(9, "0"), at, date: at.slice(0, 10),
   by: "Sam O", url: `https://bitbucket.org/x/pull-requests/${n}`, branch: null, title: `pr ${n}`, ticketKeys: [], files: ["src/a.ts"], features, routes: [],
 });
@@ -110,5 +111,57 @@ describe("pullBatch", () => {
     expect(r.batch?.slack).toBeNull();
     expect(r.batch?.landings).toHaveLength(1);
     expect(existsSync(r.path!)).toBe(false);
+  });
+});
+
+describe("pullBatch across every configured record repo (CTD-272)", () => {
+  const withSecondProject = () => {
+    const config: ProjectsConfig = {
+      ...defaultProjectsConfig(),
+      projects: [
+        ...defaultProjectsConfig().projects,
+        {
+          id: "citadel",
+          repos: [{ id: "citadel-repo", cloneUrl: "https://github.com/d0nwong/citadel.git", path: "", baseBranch: "main", host: "github", deploy: { kind: "live" } }],
+          trackers: [{ provider: "linear", key: "CTD", prefixes: ["CTD"] }],
+          jobs: ["record"],
+          areas: [{ id: "citadel", repo: "citadel-repo", dir: "citadel" }],
+        },
+      ],
+    };
+    writeFileSync(projectsPath(), JSON.stringify(config));
+  };
+
+  test("a second record project's repo is pulled by its own id, since ledgers hold nothing for it yet", async () => {
+    withSecondProject();
+    const asked: string[] = [];
+    const sources: PullSources = {
+      slack: async (since) => emptyPull(since ?? "1789000000.000000"),
+      deployed: async () => null,
+      landings: async (id, since) => {
+        asked.push(`${id}:${since}`);
+        return id === "citadel-repo" ? [landing("citadel-repo", 1, "2026-09-11T08:00:00Z")] : [];
+      },
+    };
+    const r = await pullBatch({ now: NOW, sources });
+    expect(asked).toContain("citadel-repo:2026-09-04");
+    expect(r.batch?.landings.map((l) => l.ref)).toEqual(["citadel-repo#1"]);
+    expect(r.batch?.since["citadel-repo"]).toBe("2026-09-04");
+  });
+
+  test("a repo that cannot be fetched is logged and skipped, marked unreachable, while every other repo and Slack still pull (sweep S-14)", async () => {
+    withSecondProject();
+    const sources: PullSources = {
+      slack: async (since) => onePull(since ?? "1789000000.000000"),
+      deployed: async () => null,
+      landings: async (id) => {
+        if (id === "citadel-repo") throw new Error("fetch failed (exit 1)");
+        return id === "fe" ? [landing("fe", 500, "2026-09-11T08:00:00Z")] : [];
+      },
+    };
+    const r = await pullBatch({ now: NOW, sources });
+    expect(r.batch?.landings.map((l) => l.ref)).toEqual(["fe#500"]);
+    expect(r.batch?.slack?.newTopLevel).toHaveLength(1);
+    expect(JSON.parse(await Bun.file(tickUnreachablePath()).text())).toEqual(["citadel-repo"]);
   });
 });

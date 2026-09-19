@@ -318,6 +318,11 @@ export function recordAreas(config: ProjectsConfig): (DocArea & { project: strin
   return allAreas(config).filter((a) => recordProjects.has(a.project));
 }
 
+/** every repo of every project with the record job, each still carrying its own project's id (CTD-272, ledger S-27) */
+export function recordRepos(config: ProjectsConfig): (ProjectRepo & { project: string })[] {
+  return config.projects.filter((p) => p.jobs.includes("record")).flatMap((p) => p.repos.map((r) => ({ ...r, project: p.id })));
+}
+
 /**
  * Every feature of every project with the record job, area-qualified as `{ app, feature }` —
  * an area's own `dir` is the `app` that `listFeatures`, `readLedger` and `writeLedger`

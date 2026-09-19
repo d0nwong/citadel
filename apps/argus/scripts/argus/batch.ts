@@ -14,7 +14,8 @@ import type { Msg, Pull } from "./slack-pull.ts";
 export type Batch = {
   id: string;
   pulled_at: string;
-  since: { slack: string | null; fe: string | null; be: string | null };
+  /** the Slack cursor, and the landing window per repo id actually pulled this run (CTD-272) */
+  since: { slack: string | null } & Record<string, string | null>;
   slack: Pull | null;
   landings: Landing[];
 };
