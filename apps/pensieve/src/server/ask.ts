@@ -29,8 +29,9 @@
  * (the container); otherwise `'host'` — the machine's `claude login`. With neither,
  * `askStatus()` says so and `askStream()` answers a RUN_ERROR chunk instead of spawning.
  *
- * `finishConversation` (CTD-222) is local mode's other way of ending a turn at the data: it
- * commits everything in the conversation's citadel-data worktree, rebases it onto main —
+ * `finishConversation` (CTD-222, CTD-258) is local mode's other way of ending a turn at the
+ * data: it `argus save`s the conversation's citadel-data worktree, so only the record's files
+ * land (`argus/ledger` S-12) and a stray one is left behind, rebases the worktree onto main —
  * resolving a conflict with one more Claude turn, reusing `askStream` — fast-forwards the live
  * checkout's main onto it, and then removes both worktrees and both local branches. The citadel
  * worktree is read-only (CTD-247), so there is no code change to land or a branch to push;
@@ -110,12 +111,14 @@ import type {
   WorktreePaths,
 } from "./worktrees";
 import {
+  branchFiles,
   branchOf,
   commitAll,
   discardCounts,
   ensureWorktrees,
   fastForwardMain,
   hasWorktrees,
+  offListFiles,
   rebaseOntoMain,
   removeWorktrees,
   worktreePaths,
@@ -279,7 +282,7 @@ Cite every path and command you used. "The files don't say" beats a guess. Keep 
 
 To change the record — close an ask, confirm or contradict a requirement, place an unplaced message — call \`propose_decision\` once as the ask skill's Correcting section says; the user confirms it on the card, so never say it is done. To open a ticket, draft it per the linear-ticket skill, confirm its feature with the user (none for Citadel apps), then call \`propose_ticket\` once with it; say the draft is ready, never that it is filed.
 
-Your working directory is read-only: you cannot change product code, and this conversation leaves no commit on its branch and nothing pushed, whatever the user asks for. Asked to change product code, say you cannot and offer to draft a ticket for it instead. Changing the record is unaffected — write it in the data as always. Never run \`argus commit\` or \`argus reconcile\`: those commit the data's main on the sweep's own tick, not this conversation's.`;
+Your working directory is read-only: you cannot change product code, and this conversation leaves no commit on its branch and nothing pushed, whatever the user asks for. Asked to change product code, say you cannot and offer to draft a ticket for it instead. Changing the record is unaffected — write it in the data as always. Never run \`argus commit\` or \`argus reconcile\`: those are the sweep's, and Finish lands this conversation's data.`;
 
 /**
  * A conversation whose first turn starts `/scope` runs the scope skill (CTD-192's Ask
@@ -332,7 +335,7 @@ This is a \`/scope\` conversation: load the \`scope\` skill (skills/scope/SKILL.
 
 ARGUS_ROOT is already ${WORKSPACE_DIR}: run \`argus\` and \`accio\` exactly as the skill shows, pipes, redirects and \`&&\` included.
 
-Your working directory is read-only: you cannot change product code, and this conversation leaves no commit on its branch and nothing pushed, whatever the user asks for. Asked to change product code, say you cannot and offer to draft a ticket for it instead. Never run the sweep, \`argus commit\` or \`argus reconcile\`: those are the sweep's, on its own tick, not this conversation's.`;
+Your working directory is read-only: you cannot change product code, and this conversation leaves no commit on its branch and nothing pushed, whatever the user asks for. Asked to change product code, say you cannot and offer to draft a ticket for it instead. Never run the sweep, \`argus commit\` or \`argus reconcile\`: those are the sweep's, and Finish lands this conversation's data.`;
 
 /**
  * The extra system prompt a conversation opened from a feature page carries (LIA-162 AC4,
@@ -394,14 +397,22 @@ export function worktreeSandboxMiddleware(
 /**
  * Local mode's data override, once a run has its worktrees (S-33, S-47): the citadel-data
  * worktree instead of the live checkout `ADAPTER_CONFIG.addDirs` / `.env.ARGUS_ROOT` name.
+ * `ARGUS_ORIGIN` is the conversation's own branch name, `ask/<id>`: every argus verb and
+ * `/scope` step the run makes commits its own write under that origin (`argus/ledger` S-16,
+ * S-17), so it lands as `ask/<id>: ` authored by the operator (S-59), not `argus sweep` or a
+ * bare verb name.
  */
 export const worktreeAdapterOverrides = (
-  worktrees: WorktreePaths | undefined
+  worktrees: WorktreePaths | undefined,
+  threadId: string
 ): Partial<ClaudeCodeTextConfig> =>
   worktrees
     ? {
         addDirs: [worktrees.citadelData],
-        env: { ARGUS_ROOT: worktrees.citadelData },
+        env: {
+          ARGUS_ORIGIN: branchOf(threadId),
+          ARGUS_ROOT: worktrees.citadelData,
+        },
       }
     : {};
 
@@ -963,10 +974,14 @@ const runSetup = (
   scope: boolean,
   feature: string | undefined,
   mode: RunMode,
+  threadId: string,
   worktrees?: EnsureWorktreesResult
 ) => {
   const local = mode === "local";
-  const overrides = worktreeAdapterOverrides(local ? worktrees : undefined);
+  const overrides = worktreeAdapterOverrides(
+    local ? worktrees : undefined,
+    threadId
+  );
   const conflictPrompts =
     local && worktrees?.conflict.length
       ? [conflictPrompt(worktrees.citadelData, worktrees.conflict)]
@@ -1339,7 +1354,13 @@ export async function* askStream(
       firstTurn,
       latestTurn
     );
-    const setup = runSetup(scope.on, feature, runner, worktrees);
+    const setup = runSetup(
+      scope.on,
+      feature,
+      runner,
+      input.threadId,
+      worktrees
+    );
     const harness = harnessLog();
     let lastError: LastError | undefined;
     const recordError = async (message: string, code: string | undefined) => {
@@ -1656,12 +1677,19 @@ async function resolveConflictTurn(
 }
 
 /**
- * Land a local-mode conversation's citadel-data worktree on main (S-41): commit everything in
- * it, committed or not, rebase onto main — resolving a conflict with one Claude turn (S-42) —
- * then fast-forward the live checkout's main onto the branch, rebasing again rather than
- * merging when live main raced ahead in between (S-49). Once it lands, remove both worktrees
- * and both local branches (S-48); the citadel worktree was read-only and never carried a
- * commit of its own to lose.
+ * Land a local-mode conversation's citadel-data worktree on main (S-58): `argus save` the
+ * worktree's changed files, committed or not, so only the record's files land (`argus/ledger`
+ * S-12) and a stray file stays uncommitted on disk for `removeWorktrees` to discard; rebase
+ * onto main — resolving a conflict with one Claude turn (S-42) — then fast-forward the live
+ * checkout's main onto the branch, rebasing again rather than merging when live main raced
+ * ahead in between (S-49). Once it lands, remove both worktrees and both local branches (S-48);
+ * the citadel worktree was read-only and never carried a commit of its own to lose.
+ *
+ * Before touching anything, refuses — naming the files, landing nothing — when the branch's
+ * own commits (not the worktree's uncommitted changes, which `argus save` already drops)
+ * already carry a file outside the record: fast-forwarding the branch would carry it onto main
+ * regardless of what this call commits (S-58).
+ *
  * Idempotent: a conversation with no worktrees — never started locally, or already finished —
  * is a no-op, the same shape as `deleteConversation` removing a file that is not there.
  *
@@ -1683,8 +1711,19 @@ export async function finishConversation(
     if (!(await hasWorktrees(paths))) {
       return;
     }
-    await commitAll(paths.citadelData, `ask/${threadId}: finish`);
-    const branch = branchOf(threadId);
+    const origin = branchOf(threadId);
+    const recordCommit = { argusDir: ARGUS_DIR, origin };
+    const committedOffList = await offListFiles(
+      paths.citadelData,
+      await branchFiles(paths.citadelData),
+      recordCommit
+    );
+    if (committedOffList.length > 0) {
+      throw new Error(
+        `Finish lands nothing: this conversation's branch already committed, outside the record: ${committedOffList.join(", ")}`
+      );
+    }
+    await commitAll(paths.citadelData, `ask/${threadId}: finish`, recordCommit);
     for (;;) {
       const { conflict } = await rebaseOntoMain(paths.citadelData);
       if (conflict.length > 0) {
@@ -1701,7 +1740,7 @@ export async function finishConversation(
         }
         continue;
       }
-      if (await fastForwardMain(citadelDataDir, branch)) {
+      if (await fastForwardMain(citadelDataDir, origin)) {
         break;
       }
       // Live main moved between the rebase and the fast-forward (S-49) — rebase again.

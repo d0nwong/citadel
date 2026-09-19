@@ -10,10 +10,14 @@
  * lives here.
  *
  * Finish (`ask.ts`'s `finishConversation`) reuses `rebaseOntoMain` and adds the rest of its own
- * git steps: `commitAll` (everything in the citadel-data worktree, committed or not, S-41),
- * `fastForwardMain` (the live checkout's main onto the branch, refusing rather than merging
- * when it raced ahead, S-49), and `removeWorktrees` (both worktrees and both local branches
- * once the data has landed, S-48).
+ * git steps: `commitAll` (the worktree's changed files, committed or not, landed through
+ * `argus save` so only the record's files land, S-58; a path `save` refuses is dropped and
+ * left uncommitted, for `removeWorktrees` to discard), `fastForwardMain` (the live checkout's
+ * main onto the branch, refusing rather than merging when it raced ahead, S-49), and
+ * `removeWorktrees` (both worktrees and both local branches once the data has landed, S-48).
+ * `branchFiles` and `offListFiles` are `finishConversation`'s guard: a file the branch's own
+ * commits already carry, outside the record, would ride along on the fast-forward, so Finish
+ * checks for one and refuses before touching anything (S-58).
  *
  * CTD-248: `LOCAL_ADAPTER_CONFIG`'s `settingSources` (`ask.ts`) is project settings only, in
  * both modes, so this module writes nothing into the citadel worktree to steer it — a fresh
@@ -32,6 +36,7 @@ import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { argus } from "./argus";
 
 const exec = promisify(execFile);
 
@@ -211,21 +216,113 @@ export async function ensureWorktrees(opts: {
   return { ...paths, conflict: [] };
 }
 
+/** Every path git sees as changed in the worktree — tracked or not, staged or not. */
+async function statusPaths(worktree: string): Promise<string[]> {
+  const out = await git(worktree, [
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+  ]);
+  return out
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => l.slice(3).replace(/^"|"$/g, ""));
+}
+
+const REFUSED_RE = /^not part of the record, refused: (.+)$/;
+
+/** The paths named in `argus save`'s refusal, or `[]` for any other error. */
+function refusedPaths(error: string | undefined): string[] {
+  const m = error?.match(REFUSED_RE);
+  return m?.[1] ? m[1].split(", ") : [];
+}
+
+export interface RecordCommitOptions {
+  /** argus's code, where `scripts/argus.ts` is (`ARGUS_DIR` in Pensieve's own process). */
+  argusDir: string;
+  /** the conversation's own origin (`ask/<id>`), passed through as `ARGUS_ORIGIN`. */
+  origin?: string;
+}
+
 /**
- * `git add -A` and commit everything in the worktree — tracked or not, staged or not (S-41).
- * A no-op when there is nothing to commit, so a Finish on a conversation that never wrote
- * anything still goes on to rebase and fast-forward.
+ * Environment for an `argus()` call Finish makes: `ARGUS_ORIGIN` when the caller names one,
+ * and `PENSIEVE_RUNNER` cleared — this call is always local mode's own git plumbing, on the
+ * host, whatever the server process's own `PENSIEVE_RUNNER` happens to be (a container-mode
+ * Pensieve never calls it: S-58 is local mode's Finish), so it must never trip `argus save`'s
+ * own "commits nothing inside Pensieve's container" rule (`argus/ledger` S-19).
+ */
+const recordCommitEnv = (
+  origin: string | undefined
+): Record<string, string> => ({
+  ...(origin ? { ARGUS_ORIGIN: origin } : {}),
+  PENSIEVE_RUNNER: "",
+});
+
+/**
+ * `argus save` over every path the worktree's git status shows changed (`argus/ledger` S-12,
+ * S-20) — the record's files land, committed or not; a path `save` refuses is dropped from the
+ * list and tried again, left uncommitted on disk for `removeWorktrees` to discard (S-48). A
+ * no-op once nothing on the list is left, so a Finish on a conversation that never touched the
+ * record still goes on to rebase and fast-forward.
  */
 export async function commitAll(
   worktree: string,
-  message: string
+  message: string,
+  opts: RecordCommitOptions
 ): Promise<void> {
-  await git(worktree, ["add", "-A"]);
-  const staged = await git(worktree, ["diff", "--cached", "--name-only"]);
-  if (!staged.trim()) {
-    return;
+  let paths = await statusPaths(worktree);
+  for (;;) {
+    if (paths.length === 0) {
+      return;
+    }
+    const r = await argus("save", [...paths, "-m", message], {
+      argusDir: opts.argusDir,
+      cwd: worktree,
+      env: recordCommitEnv(opts.origin),
+    });
+    if (r.ok) {
+      return;
+    }
+    const refused = refusedPaths(r.error);
+    if (refused.length === 0) {
+      throw new Error(r.error ?? "argus save failed");
+    }
+    paths = paths.filter((p) => !refused.includes(p));
   }
-  await git(worktree, ["commit", "--quiet", "-m", message]);
+}
+
+/**
+ * The files the branch's own commits touch that main does not have yet — `git diff --name-only
+ * main...HEAD`, read before this call rebases anything. This is what a fast-forward would carry
+ * onto main untouched by `commitAll`'s own list-checking, so `finishConversation` checks it
+ * separately (S-58).
+ */
+export async function branchFiles(worktree: string): Promise<string[]> {
+  const out = await git(worktree, ["diff", "--name-only", "main...HEAD"]);
+  return out
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Which of `paths` a dry-run `argus save` refuses — never argus's own S-12 list duplicated
+ * here. `[]` when every path is on the record, or there is nothing to check.
+ */
+export async function offListFiles(
+  worktree: string,
+  paths: string[],
+  opts: RecordCommitOptions
+): Promise<string[]> {
+  if (paths.length === 0) {
+    return [];
+  }
+  const r = await argus("save", [...paths, "-m", "check", "--dry-run"], {
+    argusDir: opts.argusDir,
+    cwd: worktree,
+    env: recordCommitEnv(opts.origin),
+  });
+  return r.ok ? [] : refusedPaths(r.error);
 }
 
 const NOT_FAST_FORWARD = /not possible to fast-forward/i;

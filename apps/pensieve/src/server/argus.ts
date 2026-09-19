@@ -26,6 +26,8 @@ export interface ArgusOptions {
   argusDir?: string;
   /** the data the verb reads and writes, passed as ARGUS_ROOT; WORKSPACE_DIR by default */
   cwd?: string;
+  /** extra environment for the run, over `process.env` and `ARGUS_ROOT` — e.g. `ARGUS_ORIGIN` for a conversation's own commits */
+  env?: Record<string, string>;
   timeoutMs?: number;
 }
 
@@ -102,7 +104,7 @@ export async function argus<T = Record<string, unknown>>(
     "bun",
     [join(code, ARGUS_SCRIPT), verb, ...args, "--json"],
     cwd,
-    { ...process.env, ARGUS_ROOT: cwd },
+    { ...process.env, ARGUS_ROOT: cwd, ...opts.env },
     timeout
   );
   if (r.startError) {

@@ -107,6 +107,7 @@ async function commitFile(
   content: string,
   message: string
 ): Promise<void> {
+  await mkdir(join(dir, join(name, "..")), { recursive: true });
   await writeFile(join(dir, name), content);
   execFileSync("git", ["add", name], { cwd: dir });
   execFileSync("git", ["commit", "--quiet", "-m", message], { cwd: dir });
@@ -1353,16 +1354,19 @@ describe("CTD-221 — local Ask conversations run in their own worktrees, rebase
     expect(WORKTREES_DIR).toBe(join(HOME, "worktrees"));
   });
 
-  test("worktreeAdapterOverrides: no worktrees is no override; worktrees point ARGUS_ROOT and addDirs at citadel-data", () => {
-    expect(worktreeAdapterOverrides(undefined)).toEqual({});
+  test("worktreeAdapterOverrides: no worktrees is no override; worktrees point ARGUS_ROOT and addDirs at citadel-data, and ARGUS_ORIGIN at the conversation's own branch", () => {
+    expect(worktreeAdapterOverrides(undefined, "conv-1")).toEqual({});
     expect(
-      worktreeAdapterOverrides({
-        citadel: "/w/t/citadel",
-        citadelData: "/w/t/citadel-data",
-      })
+      worktreeAdapterOverrides(
+        {
+          citadel: "/w/t/citadel",
+          citadelData: "/w/t/citadel-data",
+        },
+        "conv-1"
+      )
     ).toEqual({
       addDirs: ["/w/t/citadel-data"],
-      env: { ARGUS_ROOT: "/w/t/citadel-data" },
+      env: { ARGUS_ORIGIN: "ask/conv-1", ARGUS_ROOT: "/w/t/citadel-data" },
     });
   });
 
@@ -2255,7 +2259,7 @@ describe("CTD-222 — Finish lands a local conversation's data on main and remov
     ).resolves.toBeUndefined();
   });
 
-  test("AC1 (S-41) — every change in the citadel-data worktree, committed or not, lands on main, and main's own commits since the branch was cut are kept", async () => {
+  test("AC1 (S-58) — the record's files land on main, committed or not, and main's own commits since the branch was cut are kept; a stray file does not land", async () => {
     const store = conversationStore(await scratch());
     const worktreesDir = await scratch();
     const { dir: citadelDir } = await makeCitadelRepo();
@@ -2275,8 +2279,14 @@ describe("CTD-222 — Finish lands a local conversation's data on main and remov
     );
     const citadelData = join(worktreesDir, "fin-1", "citadel-data");
 
-    // The session wrote a revision but never committed it.
-    await writeFile(join(citadelData, "revision.json"), '{"scope":"x"}\n');
+    // The session wrote a revision but never committed it — on the record's list (argus/ledger S-12).
+    await mkdir(join(citadelData, "revisions/my-slug"), { recursive: true });
+    await writeFile(
+      join(citadelData, "revisions/my-slug/revision.json"),
+      '{"scope":"x"}\n'
+    );
+    // A stray scratch file — never on the record's list, so it never lands, whatever it holds.
+    await writeFile(join(citadelData, "SCRATCH.md"), "not the record\n");
     // Main moved on its own since the branch was cut — a sweep tick.
     await commitFile(citadelDataDir, "other.json", "{}\n", "sweep tick");
 
@@ -2285,11 +2295,50 @@ describe("CTD-222 — Finish lands a local conversation's data on main and remov
       localOpts({ citadelDataDir, citadelDir, store, worktreesDir })
     );
 
-    expect(gitOut(citadelDataDir, "show", "main:revision.json")).toBe(
-      '{"scope":"x"}'
-    );
+    expect(
+      gitOut(citadelDataDir, "show", "main:revisions/my-slug/revision.json")
+    ).toBe('{"scope":"x"}');
     expect(gitOut(citadelDataDir, "show", "main:other.json")).toBe("{}");
     expect(gitOut(citadelDataDir, "show", "main:ledger.json")).toBe("{}");
+    expect(
+      gitOut(citadelDataDir, "ls-tree", "-r", "--name-only", "main")
+    ).not.toContain("SCRATCH.md");
+  });
+
+  test("a file the branch itself already committed, outside the record, stops Finish and names it; nothing is landed", async () => {
+    const store = conversationStore(await scratch());
+    const worktreesDir = await scratch();
+    const { dir: citadelDir } = await makeCitadelRepo();
+    const citadelDataDir = await makeCitadelDataRepo();
+
+    await collect(
+      askStream(
+        { messages: [user("start")], threadId: "fin-6" },
+        localOpts({
+          adapter: new FakeClaude({ sessionId: "s1" }),
+          citadelDataDir,
+          citadelDir,
+          store,
+          worktreesDir,
+        })
+      )
+    );
+    const citadelData = join(worktreesDir, "fin-6", "citadel-data");
+    // The session (or a stray `git commit`) committed a file itself, outside the record —
+    // fast-forwarding this branch onto main would carry it, so Finish refuses first.
+    await commitFile(citadelData, "SCRATCH.md", "off list\n", "a stray commit");
+    const before = gitOut(citadelDataDir, "rev-parse", "main");
+
+    await expect(
+      finishConversation(
+        "fin-6",
+        localOpts({ citadelDataDir, citadelDir, store, worktreesDir })
+      )
+    ).rejects.toThrow(/SCRATCH\.md/);
+
+    // Nothing landed, and the worktrees are still there for the operator to sort out.
+    expect(gitOut(citadelDataDir, "rev-parse", "main")).toBe(before);
+    expect(await pathExists(citadelData)).toBe(true);
   });
 
   test("AC4 (S-48) — both worktrees and both local branches are gone", async () => {
@@ -2343,16 +2392,16 @@ describe("CTD-222 — Finish lands a local conversation's data on main and remov
       )
     );
     const citadelData = join(worktreesDir, "fin-2", "citadel-data");
-    // The worktree's own branch and live main both edit ledger.json — a rebase collision.
+    // The worktree's own branch and live main both edit a record file — a rebase collision.
     await commitFile(
       citadelData,
-      "ledger.json",
+      "features/test/ledger.json",
       '{"from":"worktree"}\n',
       "worktree edit"
     );
     await commitFile(
       citadelDataDir,
-      "ledger.json",
+      "features/test/ledger.json",
       '{"from":"main"}\n',
       "main edit"
     );
@@ -2361,11 +2410,17 @@ describe("CTD-222 — Finish lands a local conversation's data on main and remov
       onCall: async () => {
         // What the session does to resolve: write the merge, stage it, continue the rebase —
         // and, to prove AC3 too, main moves again while it works (a sweep tick mid-Finish).
+        await mkdir(join(citadelData, "features/test"), { recursive: true });
         await writeFile(
-          join(citadelData, "ledger.json"),
+          join(citadelData, "features/test/ledger.json"),
           '{"from":"resolved"}\n'
         );
-        execFileSync("git", ["-C", citadelData, "add", "ledger.json"]);
+        execFileSync("git", [
+          "-C",
+          citadelData,
+          "add",
+          "features/test/ledger.json",
+        ]);
         execFileSync("git", ["-C", citadelData, "rebase", "--continue"], {
           env: { ...process.env, EDITOR: "true", GIT_EDITOR: "true" },
         });
@@ -2394,9 +2449,9 @@ describe("CTD-222 — Finish lands a local conversation's data on main and remov
     expect(resolver.calls).toHaveLength(1);
     // The conflict resolution landed, and the commit the sweep made mid-Finish is kept too —
     // the retried rebase (S-49) picked it up rather than the fast-forward failing or merging.
-    expect(gitOut(citadelDataDir, "show", "main:ledger.json")).toBe(
-      '{"from":"resolved"}'
-    );
+    expect(
+      gitOut(citadelDataDir, "show", "main:features/test/ledger.json")
+    ).toBe('{"from":"resolved"}');
     expect(gitOut(citadelDataDir, "show", "main:during-fix.json")).toBe("{}");
 
     const conv = await getConversation("fin-2", store);
@@ -2424,13 +2479,13 @@ describe("CTD-222 — Finish lands a local conversation's data on main and remov
     const citadelData = join(worktreesDir, "fin-5", "citadel-data");
     await commitFile(
       citadelData,
-      "ledger.json",
+      "features/test/ledger.json",
       '{"from":"worktree"}\n',
       "worktree edit"
     );
     await commitFile(
       citadelDataDir,
-      "ledger.json",
+      "features/test/ledger.json",
       '{"from":"main"}\n',
       "main edit"
     );
