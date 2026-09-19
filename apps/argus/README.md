@@ -67,9 +67,10 @@ can be named by a revision as `<app>/<dir>`.
    (`skills/sweep/reader.md`, `shapes.md`); code applies and validates the whole. Then one
    subagent per proposal whose Technical Notes name no file reads the code and writes
    them (`skills/sweep/ground.md`, `argus prompt ground`).
-5. `argus reconcile` — a landing blocker clears when Bitbucket says the merge deployed. An
-   open ticket settles when its provider says Done (its asks close) or Canceled (they drop),
-   or, with no asks, once the landing carrying its key is live — Linear for `CTD` and `ALD`,
+5. `argus reconcile` — a landing blocker clears once its landing is live: merged, on the
+   frontend; deployed, per Bitbucket, on the backend. An open ticket settles when its
+   provider says Done (its asks close) or Canceled (they drop), or, with no asks, once the
+   landing carrying its key is live — Linear for `CTD` and `ALD`,
    the Alden Trello board for `AP`. A filed revision whose parent is Done folds into its
    features' `docs/spec.md` (retiring a `product.md`) and moves to `revisions/archive/`;
    Canceled archives it untouched. Both providers are read, never written.

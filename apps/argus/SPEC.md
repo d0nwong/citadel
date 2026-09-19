@@ -503,5 +503,6 @@ Phases 1 and 2 can run in parallel. 5 can start once 1 is done, on fixtures.
   completed SUCCESSFUL (every merge to `dev` deploys to App Engine). Credentials are the
   ones `bb` keeps in `~/.bitbucket-rest-cli-config.json`, read by `scripts/argus/deploy.ts`
   and nowhere else. Since 2026-09-17 (CTD-237), a backend landing keeps the finished
-  pipeline as `deployed`. Until it has one, every run asks again. The frontend's equivalent is decided when a frontend blocker is first
-  needed.
+  pipeline as `deployed`. Until it has one, every run asks again. Since 2026-09-19
+  (CTD-240), a frontend landing is live on the merge: staging is its deploy, and a
+  `landing` blocker on one clears then, with no deploy read.
