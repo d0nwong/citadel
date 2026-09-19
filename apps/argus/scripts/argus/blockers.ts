@@ -3,10 +3,11 @@
  * its finished `dev` pipeline once Bitbucket has one (`recordDeploys`); until then every
  * run asks again, so a merge read while its pipeline ran is not "not deployed" for good.
  *
- * A `landing` blocker clears when the landing it names is on
- * the ledger and its deploy succeeded; a `ticket` blocker clears when every ask the named
- * ticket serves is closed. An `answer` blocker is a person's to clear, through the reader
- * or a click. `argus reconcile` runs this over every ledger after a batch is placed.
+ * A `landing` blocker clears when the landing it names is on the ledger and live — merged
+ * on the frontend, deployed on the backend, the same rule ticket settling uses below; a
+ * `ticket` blocker clears when every ask the named ticket serves is closed. An `answer`
+ * blocker is a person's to clear, through the reader or a click. `argus reconcile` runs
+ * this over every ledger after a batch is placed.
  *
  * It also finishes what a ticket opened, from two facts:
  *
@@ -125,11 +126,11 @@ export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new
     if (b.kind === "landing") {
       const ld = next.landings.find((x) => x.ref === b.ref);
       if (!ld) return;
-      const d = await deployOf(ld);
-      if (!d || d.result !== "SUCCESSFUL") return;
-      b.deployed = true;
-      b.cleared = { at: day(d.at), evidence: evidenceOf(ld) };
-      cleared.push(`${owner}: ${b.ref} is on ${b.branch} and deployed (${day(d.at)})`);
+      const at = await liveAt(ld);
+      if (!at) return;
+      if (ld.repo === "be") b.deployed = true;
+      b.cleared = { at: day(at), evidence: evidenceOf(ld) };
+      cleared.push(`${owner}: ${b.ref} is on ${b.branch} and ${ld.repo === "be" ? "deployed" : "merged"} (${day(at)})`);
       return;
     }
     if (b.kind === "ticket" && ticketDone(b.key)) {

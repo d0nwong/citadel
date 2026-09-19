@@ -46,6 +46,39 @@ describe("reconcileLedger", () => {
   });
 });
 
+describe("a landing blocker on the frontend (CTD-240)", () => {
+  // AC3 (a backend landing blocker stays open until deployed) is already covered above,
+  // by the fixture's be#771 cases — this only adds the frontend half.
+  const fe = (ref: string, number: number, at: string): Ledger["landings"][number] => ({
+    at, repo: "fe", ref, number, sha: "f".repeat(40), title: "billing fields for Sam", by: "you",
+    url: `https://bitbucket.org/x/pull-requests/${number}`, asks: [], files: [],
+  });
+
+  test("clears on the merge day with the PR as evidence, no deploy read; a second run changes nothing (AC1, AC4, AC5)", async () => {
+    const l = await valid();
+    l.landings = [fe("fe#440", 440, "2026-09-12T09:00:00Z")];
+    l.asks[1]!.blockers = [{ kind: "landing", repo: "fe", ref: "fe#440", branch: "origin/staging", deployed: false, cleared: null }];
+    const asked: string[] = [];
+    const deployed = async (repo: "fe" | "be", sha: string) => (asked.push(`${repo}@${sha}`), null);
+    const r = await reconcileLedger(l, deployed);
+    expect(r.cleared).toEqual(["A-2: fe#440 is on origin/staging and merged (2026-09-12)"]);
+    const b = r.ledger.asks[1]!.blockers![0]!;
+    expect(b.cleared).toEqual({ at: "2026-09-12", evidence: [{ kind: "pr", repo: "fe", number: 440, url: expect.stringContaining("440") }] });
+    expect(b.kind === "landing" && b.deployed).toBe(false);
+    expect(asked).toEqual([]);
+    expect((await reconcileLedger(r.ledger, deployed)).cleared).toEqual([]);
+  });
+
+  test("without fe#N on the ledger's landings the blocker stays open (AC2)", async () => {
+    const l = await valid();
+    l.landings = [];
+    l.asks[1]!.blockers = [{ kind: "landing", repo: "fe", ref: "fe#440", branch: "origin/staging", deployed: false, cleared: null }];
+    const r = await reconcileLedger(l, async () => live);
+    expect(r.cleared).toEqual([]);
+    expect(r.ledger.asks[1]!.blockers![0]!.cleared).toBeNull();
+  });
+});
+
 describe("recordDeploys", () => {
   const NOW = new Date("2026-09-17T12:00:00Z");
   const be = (ref: string, at: string, sha: string): Ledger["landings"][number] => ({ at, repo: "be", ref, number: Number(ref.slice(3)), sha, title: ref, by: "Sam O", url: "u", asks: [], files: [] });

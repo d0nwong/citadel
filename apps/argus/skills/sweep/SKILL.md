@@ -44,7 +44,8 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
    returns the body. Save the reply and `argus patch` it. A refusal is handed back once,
    then the proposal stays ungrounded for the next run.
 6. **Reconcile.** `argus reconcile`. Backend landings still waiting are checked again.
-   Landing blockers clear when Bitbucket says the merge deployed; ticket blockers when their asks closed. An open ticket settles when
+   Landing blockers clear once their landing is live — merged on the frontend, deployed
+   per Bitbucket on the backend; ticket blockers when their asks closed. An open ticket settles when
    Linear says Done (closes its asks) or Canceled (drops them), or, with no asks, when a
    landing carrying its key is live. A filed revision whose parent is Done folds into its
    features' `docs/spec.md`; Canceled archives it.

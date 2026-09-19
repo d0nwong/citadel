@@ -52,8 +52,10 @@ Foong decides product rules. A developer's message about how the code behaves co
 nothing; it is evidence of a gap between rule and code.
 
 ### A blocker clears on the branch and the deploy
-A `landing` blocker clears when the PR is on the branch it names and `deployed` is true.
-Merged is not deployed. A landing's `deployed:` line is Bitbucket's answer now; "not yet"
+A `landing` blocker clears once the PR is on the branch it names and that landing is live.
+On the frontend that is the merge itself — staging is its deploy, so no `deployed:` line
+is ever read for one. On the backend it still needs `deployed` true: merged is not
+deployed. A landing's `deployed:` line is Bitbucket's answer now; "not yet"
 is not final, and argus tells you when it changes. Under "Earlier landings whose deploy
 finished", rewrite every sentence that still calls that change undeployed.
 
