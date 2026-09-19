@@ -104,7 +104,10 @@ if (import.meta.main) {
     reports.push(...await computeStale(m, {
       area: area.id,
       featuresDir: featuresDirFor(area.dir),
-      fe: { path: expand(feRepo.path), ref: opt("--fe-ref") ?? `origin/${feRepo.baseBranch}`, baseBranch: feRepo.baseBranch },
+      // a single-repo manifest's core files are relative to its own hand-curated `repo`
+      // (e.g. `~/git/citadel/apps/pensieve`), not the project repo's checkout root — that's
+      // what lets a manifest-relative path like `../../justfile` resolve at all (CTD-276)
+      fe: { path: expand(m.repo ?? feRepo.path), ref: opt("--fe-ref") ?? `origin/${feRepo.baseBranch}`, baseBranch: feRepo.baseBranch },
       be: be ? { path: expand(be.path), ref: opt("--be-ref") ?? `origin/${be.baseBranch}`, baseBranch: be.baseBranch } : undefined,
     }));
   }
