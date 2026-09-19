@@ -3,13 +3,16 @@ import { execFileSync } from "node:child_process";
 import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ARGUS_DIR } from "./workspace";
 import {
+  branchFiles,
   branchOf,
   commitAll,
   discardCounts,
   ensureWorktrees,
   fastForwardMain,
   hasWorktrees,
+  offListFiles,
   removeWorktrees,
   worktreePaths,
 } from "./worktrees";
@@ -323,18 +326,57 @@ describe("CTD-223 — discardCounts and removeWorktrees", () => {
   });
 });
 
-describe("CTD-222 — the git steps behind Finish", () => {
-  test("commitAll stages and commits everything, tracked or not; a no-op once there is nothing left", async () => {
+describe("CTD-222 / CTD-258 — the git steps behind Finish", () => {
+  test("commitAll lands the record's files, tracked or not, through argus save; a stray file is dropped, left uncommitted; a no-op once nothing is left to land", async () => {
     const dir = await makeCitadelDataRepo();
-    await mkdir(join(dir, "nested"), { recursive: true });
-    await writeFile(join(dir, "nested/new.json"), "{}\n");
-    await commitAll(dir, "ask finish");
-    expect(git(dir, "log", "-1", "--format=%s")).toBe("ask finish");
-    expect(git(dir, "status", "--porcelain")).toBe("");
+    await mkdir(join(dir, "features/test"), { recursive: true });
+    await writeFile(join(dir, "features/test/ledger.json"), "{}\n");
+    await writeFile(join(dir, "SCRATCH.md"), "not the record\n");
+
+    await commitAll(dir, "ask/t: finish", { argusDir: ARGUS_DIR });
+
+    expect(git(dir, "log", "-1", "--format=%s")).toBe("ask/t: finish");
+    expect(git(dir, "show", "HEAD:features/test/ledger.json")).toBe("{}");
+    expect(git(dir, "status", "--porcelain")).toContain("SCRATCH.md");
 
     const sha = git(dir, "rev-parse", "HEAD");
-    await commitAll(dir, "nothing to commit here");
+    await commitAll(dir, "nothing to commit here", { argusDir: ARGUS_DIR });
     expect(git(dir, "rev-parse", "HEAD")).toBe(sha);
+    // The stray file is still there, still uncommitted — commitAll only ever drops it from
+    // its own list, never the disk (S-48 is what finally discards it).
+    expect(git(dir, "status", "--porcelain")).toContain("SCRATCH.md");
+  });
+
+  test("branchFiles lists what a branch's own commits touch that main does not have yet", async () => {
+    const live = await makeCitadelDataRepo();
+    const worktreesDir = await scratch("worktrees-root-");
+    const { citadelData } = worktreePaths(worktreesDir, "bf-1");
+    execFileSync(
+      "git",
+      ["worktree", "add", "-b", "ask/bf-1", citadelData, "main"],
+      { cwd: live }
+    );
+    expect(await branchFiles(citadelData)).toEqual([]);
+
+    await commitFile(citadelData, "SCRATCH.md", "off list\n", "a stray commit");
+
+    expect(await branchFiles(citadelData)).toEqual(["SCRATCH.md"]);
+  });
+
+  test("offListFiles names which of the given paths argus save refuses; [] when they are all on the record, or there are none to check", async () => {
+    const dir = await makeCitadelDataRepo();
+    await commitFile(dir, "features/test/ledger.json", "{}\n", "record change");
+    await commitFile(dir, "SCRATCH.md", "off list\n", "stray change");
+
+    expect(
+      await offListFiles(dir, ["features/test/ledger.json"], {
+        argusDir: ARGUS_DIR,
+      })
+    ).toEqual([]);
+    expect(
+      await offListFiles(dir, ["SCRATCH.md"], { argusDir: ARGUS_DIR })
+    ).toEqual(["SCRATCH.md"]);
+    expect(await offListFiles(dir, [], { argusDir: ARGUS_DIR })).toEqual([]);
   });
 
   test("fastForwardMain lands the branch on live main when it is a fast-forward", async () => {
