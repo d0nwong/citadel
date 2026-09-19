@@ -194,6 +194,42 @@ export const isLive = (l: Ledger, now: Date): boolean =>
     return age < LIVE_LANDING_MS && servedBy(l, landing);
   });
 
+export interface AskThread {
+  /** the open asks this conversation raised, in ledger order */
+  asks: string[];
+  kind: "slack" | "huddle";
+  /** the permalink of the earliest of them */
+  url: string;
+}
+
+/**
+ * The Slack or huddle conversations behind the feature's open asks, one per thread root,
+ * oldest first. An ask raised from a ticket has no thread and adds none. `at` is often a
+ * bare date, so ledger order breaks a tie (the sort is stable).
+ */
+export const openAskThreads = (l: Ledger): AskThread[] => {
+  const byThread = new Map<string, AskThread>();
+  const open = l.asks
+    .filter(isOpen)
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  for (const a of open) {
+    if (a.origin.kind === "ticket") {
+      continue;
+    }
+    const seen = byThread.get(a.origin.thread);
+    if (seen) {
+      seen.asks.push(a.id);
+    } else {
+      byThread.set(a.origin.thread, {
+        asks: [a.id],
+        kind: a.origin.kind,
+        url: a.origin.url,
+      });
+    }
+  }
+  return [...byThread.values()];
+};
+
 /** the asks aimed at the reader and not yet done, oldest first */
 export const onYou = (l: Ledger): Ask[] =>
   l.asks
