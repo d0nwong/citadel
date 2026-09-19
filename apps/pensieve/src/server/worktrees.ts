@@ -161,11 +161,6 @@ export interface EnsureWorktreesResult extends WorktreePaths {
   conflict: string[];
 }
 
-async function countLines(cwd: string, args: string[]): Promise<number> {
-  const out = await git(cwd, args);
-  return out.split("\n").filter((l) => l.trim()).length;
-}
-
 async function countCommits(cwd: string, range: string): Promise<number> {
   const out = await git(cwd, ["rev-list", "--count", range]);
   return Number.parseInt(out.trim(), 10);
@@ -173,24 +168,44 @@ async function countCommits(cwd: string, range: string): Promise<number> {
 
 export interface WorktreeDiscardCounts {
   /** The citadel-data worktree — landed on main only by Finish, not yet built (S-43, S-44). */
-  citadelData: { uncommitted: number; unmerged: number };
+  citadelData: {
+    uncommitted: number;
+    unmerged: number;
+    /** Uncommitted files outside the record (`argus save --dry-run`) — Finish drops these rather than landing them (S-61). */
+    offListUncommitted: string[];
+    /** Files the branch's own commits already carry outside the record — these stop Finish rather than fast-forwarding (S-58, S-61). */
+    offListCommitted: string[];
+  };
 }
 
 /**
- * What Finish and Delete discard in a conversation's citadel-data worktree (S-43, S-44) — the
+ * What Finish and Delete discard in a conversation's citadel-data worktree (S-44, S-61) — the
  * citadel worktree is read-only (S-52) and the session never commits there, so its own counts
  * are always zero and are not tracked. `unmerged` counts citadel-data's branch ahead of its own
- * local `main`, which the sweep commits to and the worktree's branch never pushes.
+ * local `main`, which the sweep commits to and the worktree's branch never pushes. The off-list
+ * paths are classified by the same `argus save --dry-run` Finish itself runs (`commitAll`,
+ * `finishConversation`'s own `branchFiles`/`offListFiles` check), not a second regex.
  */
 export async function discardCounts(
-  paths: WorktreePaths
+  paths: WorktreePaths,
+  opts: RecordCommitOptions
 ): Promise<WorktreeDiscardCounts> {
-  const [dataUncommitted, dataUnmerged] = await Promise.all([
-    countLines(paths.citadelData, ["status", "--porcelain"]),
+  const [uncommittedPaths, dataUnmerged, branchPaths] = await Promise.all([
+    statusPaths(paths.citadelData),
     countCommits(paths.citadelData, "main..HEAD"),
+    branchFiles(paths.citadelData),
+  ]);
+  const [offListUncommitted, offListCommitted] = await Promise.all([
+    offListFiles(paths.citadelData, uncommittedPaths, opts),
+    offListFiles(paths.citadelData, branchPaths, opts),
   ]);
   return {
-    citadelData: { uncommitted: dataUncommitted, unmerged: dataUnmerged },
+    citadelData: {
+      offListCommitted,
+      offListUncommitted,
+      uncommitted: uncommittedPaths.length,
+      unmerged: dataUnmerged,
+    },
   };
 }
 

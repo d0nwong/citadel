@@ -10,7 +10,12 @@ describe("CTD-223 — discardMessage", () => {
 
   test("names the citadel-data worktree's uncommitted files and commits not on main", () => {
     const message = discardMessage({
-      citadelData: { uncommitted: 0, unmerged: 3 },
+      citadelData: {
+        offListCommitted: [],
+        offListUncommitted: [],
+        uncommitted: 0,
+        unmerged: 3,
+      },
     });
     expect(message).toContain(
       "Delete this conversation? Its file under PENSIEVE_HOME is removed."

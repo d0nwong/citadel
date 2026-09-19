@@ -245,8 +245,8 @@ describe("CTD-221 AC3 / AC4 — a later question rebases citadel-data onto main;
   });
 });
 
-describe("CTD-223 — discardCounts and removeWorktrees", () => {
-  test("discardCounts counts only citadel-data's uncommitted files and commits not on main", async () => {
+describe("CTD-223 / CTD-259 — discardCounts and removeWorktrees", () => {
+  test("discardCounts counts citadel-data's uncommitted files and commits not on main, and names the ones off the record", async () => {
     const { dir: citadelDir } = await makeCitadelRepo();
     const citadelDataDir = await makeCitadelDataRepo();
     const worktreesDir = await scratch("worktrees-root-");
@@ -257,15 +257,34 @@ describe("CTD-223 — discardCounts and removeWorktrees", () => {
       worktreesDir,
     });
 
-    expect(await discardCounts({ citadel, citadelData })).toEqual({
-      citadelData: { uncommitted: 0, unmerged: 0 },
+    expect(
+      await discardCounts({ citadel, citadelData }, { argusDir: ARGUS_DIR })
+    ).toEqual({
+      citadelData: {
+        offListCommitted: [],
+        offListUncommitted: [],
+        uncommitted: 0,
+        unmerged: 0,
+      },
     });
 
+    // draft.json lands as a commit on the branch, outside the record — it stops Finish.
     await commitFile(citadelData, "draft.json", "{}\n", "draft");
+    // scratch.json stays uncommitted, outside the record — Finish would drop it.
     await writeFile(join(citadelData, "scratch.json"), "{}\n");
+    // A ledger under features/ stays uncommitted too, but it is on the record.
+    await mkdir(join(citadelData, "features/test"), { recursive: true });
+    await writeFile(join(citadelData, "features/test/ledger.json"), "{}\n");
 
-    expect(await discardCounts({ citadel, citadelData })).toEqual({
-      citadelData: { uncommitted: 1, unmerged: 1 },
+    expect(
+      await discardCounts({ citadel, citadelData }, { argusDir: ARGUS_DIR })
+    ).toEqual({
+      citadelData: {
+        offListCommitted: ["draft.json"],
+        offListUncommitted: ["scratch.json"],
+        uncommitted: 2,
+        unmerged: 1,
+      },
     });
   });
 
