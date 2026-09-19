@@ -12,67 +12,98 @@
  *
  * Read-only. Exit 0 always — this is a report, `accio audit` is the gate.
  *
- *   accio stale [--json] [--all] [--fe-ref origin/staging] [--be-ref origin/dev]
+ * Runs over every doc area `projects.json` lists (CTD-266), each against its own
+ * configured repo(s) and base branch; `--area <id>` limits the run to one. A single-repo
+ * area (one repo, no second to diff `be_files` against) only ever reports `fe-core`.
+ *
+ *   accio stale [--json] [--all] [--area <id>] [--fe-ref origin/staging] [--be-ref origin/dev]
  */
 
 import { join } from "node:path";
 import {
-  loadManifest, expand, featureDir, allCoreFiles, FEATURES_DIR, DEFAULT_ALDEN_BE_REPO, type Manifest,
+  loadManifest, expand, featureDir, allCoreFiles, manifestPathFor, featuresDirFor, type Manifest,
 } from "./manifest.ts";
 import { readStamp, gitDiffNames } from "./stamps.ts";
+import { loadProjects, allAreas, type DocArea, type Project } from "../argus/projects.ts";
 
 export type StaleReason = { kind: "fe-core" | "be-handlers"; detail: string };
-export type StaleReport = { id: string; dir: string; reasons: StaleReason[] };
+export type StaleReport = { area: string; id: string; dir: string; reasons: StaleReason[] };
+export type RepoRef = { path: string; ref: string };
 
 export async function computeStale(m: Manifest, opts: {
-  featuresDir?: string; feRef?: string; beRef?: string;
-} = {}): Promise<StaleReport[]> {
-  const dir = opts.featuresDir ?? FEATURES_DIR;
-  const feRepo = expand(m.fe_repo);
-  const beRepo = expand(m.be_repo ?? DEFAULT_ALDEN_BE_REPO);
-  const feRef = opts.feRef ?? "origin/staging";
-  const beRef = opts.beRef ?? "origin/dev";
+  area: string; featuresDir: string; fe: RepoRef; be?: RepoRef;
+}): Promise<StaleReport[]> {
   const out: StaleReport[] = [];
 
   for (const f of m.features) {
     const fdir = featureDir(f);
-    const arch = await Bun.file(join(dir, fdir, "docs/arch.md")).text().catch(() => null);
+    const arch = await Bun.file(join(opts.featuresDir, fdir, "docs/arch.md")).text().catch(() => null);
     const ps = readStamp(arch);
     if (!arch || !ps) continue;                          // nothing verified yet — not stale, undocumented
     const reasons: StaleReason[] = [];
 
-    const fe = await gitDiffNames(feRepo, ps.sha, feRef, allCoreFiles(f));
-    if (fe === null) reasons.push({ kind: "fe-core", detail: `could not diff ${ps.sha}..${feRef} (unknown sha?)` });
-    else if (fe.length) reasons.push({ kind: "fe-core", detail: `${fe.length} core file${fe.length === 1 ? "" : "s"} changed ${ps.sha}..${feRef}` });
+    const fe = await gitDiffNames(opts.fe.path, ps.sha, opts.fe.ref, allCoreFiles(f));
+    if (fe === null) reasons.push({ kind: "fe-core", detail: `could not diff ${ps.sha}..${opts.fe.ref} (unknown sha?)` });
+    else if (fe.length) reasons.push({ kind: "fe-core", detail: `${fe.length} core file${fe.length === 1 ? "" : "s"} changed ${ps.sha}..${opts.fe.ref}` });
 
-    const bs = readStamp(arch, "last_verified_be");
-    if (bs && f.be_files?.length) {
-      const be = await gitDiffNames(beRepo, bs.sha, beRef, f.be_files);
-      if (be === null) reasons.push({ kind: "be-handlers", detail: `could not diff ${bs.sha}..${beRef} (unknown sha? fetch first)` });
-      else if (be.length) reasons.push({ kind: "be-handlers", detail: `${be.length} handler file${be.length === 1 ? "" : "s"} changed ${bs.sha}..${beRef}` });
+    if (opts.be) {
+      const bs = readStamp(arch, "last_verified_be");
+      if (bs && f.be_files?.length) {
+        const be = await gitDiffNames(opts.be.path, bs.sha, opts.be.ref, f.be_files);
+        if (be === null) reasons.push({ kind: "be-handlers", detail: `could not diff ${bs.sha}..${opts.be.ref} (unknown sha? fetch first)` });
+        else if (be.length) reasons.push({ kind: "be-handlers", detail: `${be.length} handler file${be.length === 1 ? "" : "s"} changed ${bs.sha}..${opts.be.ref}` });
+      }
     }
 
-
-    out.push({ id: f.id, dir: fdir, reasons });
+    out.push({ area: opts.area, id: f.id, dir: fdir, reasons });
   }
   return out;
+}
+
+/** the project's other repo, when it has exactly one besides the area's own — alden-portal's `be` today */
+function otherRepo(project: Project, area: DocArea) {
+  const rest = project.repos.filter(r => r.id !== area.repo);
+  return rest.length === 1 ? rest[0] : undefined;
 }
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const opt = (k: string) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
-  const m = await loadManifest();
-  if (!m) { console.error("error: no manifest — run `accio map` first"); process.exit(1); }
-  const reports = await computeStale(m, { feRef: opt("--fe-ref"), beRef: opt("--be-ref") });
+  const areaId = opt("--area");
+
+  const config = await loadProjects();
+  let areas = allAreas(config);
+  if (areaId) {
+    areas = areas.filter(a => a.id === areaId);
+    if (!areas.length) { console.error(`error: no area "${areaId}" in projects.json`); process.exit(1); }
+  }
+
+  const reports: StaleReport[] = [];
+  for (const area of areas) {
+    const project = config.projects.find(p => p.id === area.project)!;
+    const m = await loadManifest(manifestPathFor(area.dir));
+    if (!m) { console.error(`error: no manifest for area "${area.id}" — run \`accio map\` first`); process.exit(1); }
+
+    const feRepo = project.repos.find(r => r.id === area.repo)!;
+    const be = otherRepo(project, area);
+
+    reports.push(...await computeStale(m, {
+      area: area.id,
+      featuresDir: featuresDirFor(area.dir),
+      fe: { path: expand(feRepo.path), ref: opt("--fe-ref") ?? `origin/${feRepo.baseBranch}` },
+      be: be ? { path: expand(be.path), ref: opt("--be-ref") ?? `origin/${be.baseBranch}` } : undefined,
+    }));
+  }
+
   const stale = reports.filter(r => r.reasons.length);
   if (args.includes("--json")) { console.log(JSON.stringify(args.includes("--all") ? reports : stale, null, 2)); process.exit(0); }
   if (!stale.length) { console.log(`stale: none (${reports.length} features with an arch doc)`); process.exit(0); }
   console.log(`stale: ${stale.length} of ${reports.length} features\n`);
   for (const r of stale) {
-    console.log(`  ${r.id}`);
+    console.log(`  ${r.area}/${r.id}`);
     for (const x of r.reasons) console.log(`      ${x.kind.padEnd(12)} ${x.detail}`);
   }
   if (args.includes("--all"))
-    for (const r of reports.filter(r => !r.reasons.length)) console.log(`  ${r.id}  fresh`);
+    for (const r of reports.filter(r => !r.reasons.length)) console.log(`  ${r.area}/${r.id}  fresh`);
   process.exit(0);
 }

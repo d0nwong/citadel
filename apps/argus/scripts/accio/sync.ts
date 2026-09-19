@@ -20,7 +20,7 @@ import {
 import { analyzeRepo } from "./analyze.ts";
 import { buildIndex, ATTR_DEPTH, type AccioIndex } from "./index-store.ts";
 import { renderArchDoc, readAliases, type DocMeta } from "./docs.ts";
-import { loadManifest, saveManifest, expand, archDocPath, STATE, FEATURES_DIR, MANIFEST_PATH, DATA_ROOT } from "./manifest.ts";
+import { loadManifest, saveManifest, expand, archDocPath, STATE, FEATURES_DIR, MANIFEST_PATH, DATA_ROOT, DEFAULT_ALDEN_FE_REPO } from "./manifest.ts";
 import { readStamp, restamp, decideArchStamp, gitDiffNames, gitIsAncestor, gitShortSha, type StampReason } from "./stamps.ts";
 import { auditDocs } from "./audit.ts";
 
@@ -113,7 +113,7 @@ if (import.meta.main) {
 
   if (CHECK) { console.log("\n--check: nothing written"); process.exit(drifted ? 1 : 0); }
 
-  const feRoot = expand(m.fe_repo);
+  const feRoot = expand(m.fe_repo ?? DEFAULT_ALDEN_FE_REPO);
   if (!(await Bun.file(join(feRoot, "package.json")).exists())) fail(`frontend repo not found at ${feRoot}`);
   const idx = indexOps(doc, ops);
   // The FE repo is a SHARED working tree — other sessions switch its branch. An analysis
