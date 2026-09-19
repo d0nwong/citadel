@@ -4,8 +4,11 @@
  * message, and `flatten`.
  */
 
-import { describe, expect, test } from "bun:test";
-import { assemble, canvasToText, type Cursor, flatten, normaliseText, parseSince, permalink, type SlackMessage, toMsg } from "./slack-pull.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { assemble, canvasToText, type Cursor, flatten, LEGACY_CHANNEL, normaliseText, parseSince, permalink, pullChannels, pullSlack, readCursors, type SlackApi, type SlackMessage, toMsg } from "./slack-pull.ts";
 
 const users = { U1: "Sam O", U2: "Foong Leung", U09R2MYP6A0: "Liam Leung" };
 const NOW = 1_789_100_000;
@@ -89,5 +92,71 @@ describe("parseSince", () => {
     expect(parseSince("1789000000")).toBe("1789000000.000000");
     expect(parseSince("1789000000.123456")).toBe("1789000000.123456");
     expect(parseSince("2026-09-01")).toMatch(/^\d{10}\.000000$/);
+  });
+});
+
+describe("channels (CTD-274)", () => {
+  let ws: string;
+  beforeEach(() => {
+    ws = mkdtempSync(join(tmpdir(), "argus-slack-"));
+    mkdirSync(join(ws, "state"), { recursive: true });
+    process.env.ARGUS_ROOT = ws;
+  });
+  afterEach(() => {
+    delete process.env.ARGUS_ROOT;
+    rmSync(ws, { recursive: true, force: true });
+  });
+  const writeCursor = (v: unknown) => writeFileSync(join(ws, "state", "cursor.json"), JSON.stringify(v));
+
+  /** a Slack that answers history per channel, and throws for the channels in `broken` */
+  const fakeApi = (history: Record<string, SlackMessage[]>, broken: string[] = []): SlackApi => ({
+    async call<T>(method: string, params: Record<string, string | number | undefined>): Promise<T> {
+      if (method === "users.list") return { members: [] } as T;
+      const ch = String(params.channel);
+      if (broken.includes(ch)) throw new Error(`${method}: channel_not_found`);
+      if (method === "conversations.history") return { messages: history[ch] ?? [] } as T;
+      return { messages: [] } as T;
+    },
+    async download() {
+      return "";
+    },
+  });
+
+  test("S-8: a channel that fails keeps its cursor; the other's messages come through and its cursor advances", async () => {
+    writeCursor({ channels: { CA: cursor, CB: cursor } });
+    const api = fakeApi({ CA: [{ ts: "1789000005.000000", user: "U1", text: "from A" }] }, ["CB"]);
+    const p = await pullChannels(["CA", "CB"], { api, now: NOW });
+    expect(flatten(p).map((m) => [m.channel, m.text])).toEqual([["CA", "from A"]]);
+    expect(p.cursors!.CA!.last_ts).toBe("1789000005.000000");
+    expect(p.cursors!.CB).toEqual(cursor);
+  });
+
+  test("S-8: when every channel fails, the pull fails, as the one channel's did", async () => {
+    writeCursor({ channels: { CA: cursor } });
+    await expect(pullChannels(["CA"], { api: fakeApi({}, ["CA"]), now: NOW })).rejects.toThrow("channel_not_found");
+  });
+
+  test("S-13: a channel with no cursor yet is read from seven days back", async () => {
+    writeCursor({ channels: { [LEGACY_CHANNEL]: cursor } });
+    const now = NOW * 1000;
+    const c = await readCursors([LEGACY_CHANNEL, "CNEW"], now);
+    expect(c[LEGACY_CHANNEL]).toEqual(cursor);
+    expect(c.CNEW).toEqual({ last_ts: String(NOW - 7 * 86400), watched_threads: {} });
+  });
+
+  test("S-14: a cursor file from before channels becomes the legacy channel's, watched threads intact", async () => {
+    const legacy: Cursor = { last_ts: "1789000000.000000", watched_threads: { "1788999000.000000": "1788999500.000000" } };
+    writeCursor(legacy);
+    expect((await readCursors([LEGACY_CHANNEL]))[LEGACY_CHANNEL]).toEqual(legacy);
+  });
+
+  test("S-15: one channel's pull is that channel's pull, each message naming its channel", async () => {
+    writeCursor({ channels: { [LEGACY_CHANNEL]: cursor } });
+    const history = { [LEGACY_CHANNEL]: [{ ts: "1789000005.000000", user: "U1", text: "hi" }] };
+    const one = await pullSlack({ api: fakeApi(history), now: NOW, cursor, channel: LEGACY_CHANNEL });
+    const { cursors, ...merged } = await pullChannels([LEGACY_CHANNEL], { api: fakeApi(history), now: NOW });
+    expect(merged).toEqual(one);
+    expect(cursors).toEqual({ [LEGACY_CHANNEL]: one.next });
+    expect(flatten(one)[0]!.channel).toBe(LEGACY_CHANNEL);
   });
 });

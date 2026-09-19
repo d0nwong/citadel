@@ -10,7 +10,8 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Batch } from "./batch.ts";
-import { place, placeBatch } from "./place.ts";
+import { featureByKey, keysOf, place, placeBatch, placeContext } from "./place.ts";
+import { defaultProjectsConfig, type ProjectsConfig } from "./projects.ts";
 import type { Landing } from "./pr-facts.ts";
 import { emptyLedger, type Ledger, parseLedger } from "./schema.ts";
 import type { Msg } from "./slack-pull.ts";
@@ -21,7 +22,7 @@ const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
 const NOW = new Date("2026-09-11T10:00:00Z");
 
 const msg = (ts: string, text: string, thread = ts, author = "Sam O"): Msg => ({
-  ts, thread, date: "2026-09-11", time: "10:00", author, isMe: false, mentionsMe: false, bot: false, text, reactions: "", files: [], canvas: null, permalink: `https://slack/p${ts}`,
+  ts, channel: "C07KG06L601", thread, date: "2026-09-11", time: "10:00", author, isMe: false, mentionsMe: false, bot: false, text, reactions: "", files: [], canvas: null, permalink: `https://slack/p${ts}`,
 });
 const landing = (kind: "fe" | "be", n: number, features: string[], ticketKeys: string[] = []): Landing => ({
   repo: kind, ref: `${kind}#${n}`, number: n, sha: `${n}`.padEnd(40, "a"), short: `${n}`.padEnd(9, "a"), at: "2026-09-11T09:00:00Z", date: "2026-09-11",
@@ -83,7 +84,7 @@ describe("placeBatch", () => {
   });
 
   test("a ticket key names a feature through a landing in the same batch, and a reply pulls an unplaced root along", () => {
-    const b = flat([msg("1", "root says nothing", "1"), msg("2", "LIA-9 landed", "1")], [landing("fe", 500, ["admin/usage"], ["LIA-9"])]);
+    const b = flat([msg("1", "root says nothing", "1"), msg("2", "AP-9 landed", "1")], [landing("fe", 500, ["admin/usage"], ["AP-9"])]);
     const p = placeBatch(b, ledgers, {}, features, NOW);
     expect(p.slices.get("admin/usage")?.messages.map((m) => m.ts).sort()).toEqual(["1", "2"]);
     expect(p.unplaced).toEqual([]);
@@ -226,5 +227,76 @@ describe("place (on disk)", () => {
 
     await place(b.id, { now: NOW, deployed: waiting });
     expect((await readLedger("core", "widget"))!.landings).toHaveLength(1);
+  });
+});
+
+describe("channels bound placement (CTD-275)", () => {
+  const alden = defaultProjectsConfig().projects[0]!;
+  const config: ProjectsConfig = {
+    projects: [
+      alden,
+      {
+        id: "acme",
+        repos: [{ id: "app", cloneUrl: "https://github.com/acme/app.git", path: "", baseBranch: "main", host: "github", deploy: { kind: "live" } }],
+        trackers: [{ provider: "linear", key: "CTD", prefixes: ["CTD"] }],
+        jobs: ["docs", "record"],
+        areas: [{ id: "acme", repo: "app", dir: "acme/app" }],
+      },
+    ],
+    channels: [
+      { id: "C_ALDEN", projects: ["alden-portal"] },
+      { id: "C_ACME", projects: ["acme"] },
+      { id: "C_SHARED", projects: ["alden-portal", "acme"] },
+    ],
+  };
+  const recorded = [
+    { app: "alden/alden-portal", feature: "tasks" },
+    { app: "alden/alden-portal", feature: "admin/usage" },
+    { app: "acme/app", feature: "home" },
+  ];
+  const features = recorded.map((r) => r.feature);
+  const ctx = placeContext(config, recorded);
+  const inChannel = (ts: string, text: string, channel: string): Msg => ({ ...msg(ts, text), channel });
+  const acmeLedger = (): Ledger => {
+    const l = emptyLedger("home", "", NOW.toISOString());
+    l.landings.push({ at: NOW.toISOString(), repo: "app", ref: "app#12", number: 12, sha: "c".repeat(40), title: "pr 12", by: "Sam O", url: "https://github.com/acme/app/pull/12", asks: [], files: [], tickets: [] });
+    return l;
+  };
+
+  test("S-9: a message no join places, in a one-project channel, has only that project's features as candidates", () => {
+    const p = placeBatch(flat([inChannel("1", "nothing to join on", "C_ACME")]), new Map(), {}, features, NOW, ctx);
+    expect(p.unplaced.map((u) => [u.id, u.channel, u.candidates])).toEqual([["1", "C_ACME", ["home"]]]);
+  });
+
+  test("S-10: in a channel carrying two projects, an unplaced message's candidates come from both", () => {
+    const p = placeBatch(flat([inChannel("1", "nothing to join on", "C_SHARED")]), new Map(), {}, features, NOW, ctx);
+    expect(p.unplaced[0]?.candidates).toEqual(["tasks", "admin/usage", "home"]);
+  });
+
+  test("S-11: an AP key on an alden-portal ledger places the message by key", () => {
+    const l = emptyLedger("tasks", "", NOW.toISOString());
+    l.tickets.push({ key: "AP-12", blockers: [] } as unknown as Ledger["tickets"][number]);
+    expect(featureByKey("see AP-12", keysOf(new Map([["tasks", l]])), new Map(), ctx, "C_ALDEN")).toBe("tasks");
+  });
+
+  test("S-12: app#12 goes to the project that declares repo app, even from another project's channel", () => {
+    const p = placeBatch(flat([inChannel("1", "app#12 is the fix", "C_ALDEN")]), new Map([["home", acmeLedger()]]), {}, features, NOW, ctx);
+    expect(p.slices.get("home")?.messages.map((m) => m.ts)).toEqual(["1"]);
+    expect(p.unplaced).toEqual([]);
+  });
+
+  test("S-12: a PR URL on repo app goes only to the project that declares app", () => {
+    const keys = keysOf(new Map([["home", acmeLedger()], ["tasks", emptyLedger("tasks", "", NOW.toISOString())]]));
+    expect(featureByKey("https://github.com/acme/app/pull/12", keys, new Map(), ctx, "C_ALDEN")).toBe("home");
+    // the same number on alden-portal's own repos does not answer for a URL that names app
+    keys.prs.set("fe#12", "tasks");
+    expect(featureByKey("https://github.com/acme/app/pull/12", keys, new Map(), ctx, "C_ALDEN")).toBe("home");
+  });
+
+  test("a bare PR #N tries only the repos of the channel's projects", () => {
+    const keys = keysOf(new Map([["home", acmeLedger()]]));
+    keys.prs.set("fe#12", "tasks");
+    expect(featureByKey("PR #12 merged", keys, new Map(), ctx, "C_ALDEN")).toBe("tasks");
+    expect(featureByKey("PR #12 merged", keys, new Map(), ctx, "C_ACME")).toBe("home");
   });
 });

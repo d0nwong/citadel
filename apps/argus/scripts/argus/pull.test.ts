@@ -26,7 +26,7 @@ const landing = (kind: string, n: number, at: string, features: string[] = ["tas
 const emptyPull = (since: string): Pull => ({ since, now: NOW.toISOString(), newTopLevel: [], threads: [], noiseDropped: 0, expiredThreads: [], next: { last_ts: since, watched_threads: {} } });
 const onePull = (since: string): Pull => ({
   ...emptyPull(since),
-  newTopLevel: [{ ts: "1789100000.000001", thread: "1789100000.000001", date: "2026-09-11", time: "10:00", author: "Sam O", isMe: false, mentionsMe: false, bot: false, text: "hello", reactions: "", files: [], canvas: null, permalink: "u" }],
+  newTopLevel: [{ ts: "1789100000.000001", channel: "C07KG06L601", thread: "1789100000.000001", date: "2026-09-11", time: "10:00", author: "Sam O", isMe: false, mentionsMe: false, bot: false, text: "hello", reactions: "", files: [], canvas: null, permalink: "u" }],
   next: { last_ts: "1789100000.000001", watched_threads: { "1789100000.000001": "1789100000.000001" } },
 });
 
@@ -163,5 +163,13 @@ describe("pullBatch across every configured record repo (CTD-272)", () => {
     expect(r.batch?.landings.map((l) => l.ref)).toEqual(["fe#500"]);
     expect(r.batch?.slack?.newTopLevel).toHaveLength(1);
     expect(JSON.parse(await Bun.file(tickUnreachablePath()).text())).toEqual(["citadel-repo"]);
+  });
+
+  test("each channel's next cursor goes to cursor.next.json, and never into the batch (CTD-274)", async () => {
+    const cursors = { C07KG06L601: { last_ts: "1789100000.000001", watched_threads: {} }, CB: { last_ts: "1789000000.000000", watched_threads: {} } };
+    const r = await pullBatch({ now: NOW, noLandings: true, sources: { slack: async (since) => ({ ...onePull(since ?? "1789000000.000000"), cursors }), deployed: async () => null } });
+    expect(r.batch?.slack).not.toHaveProperty("cursors");
+    expect(JSON.parse(await Bun.file(cursorNextPath()).text())).toEqual({ channels: cursors });
+    expect(existsSync(cursorPath())).toBe(false);
   });
 });

@@ -4,9 +4,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { defaultProjectsConfig, projectsPath, type ProjectsConfig } from "./projects.ts";
 import { readThreads, readUnplaced, writeUnplaced, type Unplaced } from "./state.ts";
 import { closeAsk, confirmRequirement, dismissMessage, dropAsk, moveAsk, placeMessage, recordSent, recordTicket, recordTicketBare, recordTicketForAsk } from "./verbs.ts";
 import { readLedger } from "./write.ts";
@@ -125,6 +126,49 @@ describe("place", () => {
     const r = await placeMessage("1789000000.000001", "tasks", { dryRun: true });
     expect(r.placed).toBe(false);
     expect(await readUnplaced()).toHaveLength(4);
+  });
+});
+
+describe("place, bounded by the message's channel (CTD-275, ingest S-9)", () => {
+  const entry: Unplaced = { id: "1789000000.000009", kind: "message", channel: "C_ACME", by: "Sam O", at: "2026-09-11", text: "about acme", url: "u9", candidates: ["home"], batch: "b" };
+  beforeEach(async () => {
+    mkdirSync(join(ws, "acme/app/features/home/docs"), { recursive: true });
+    const alden = defaultProjectsConfig().projects[0]!;
+    const config: ProjectsConfig = {
+      projects: [
+        alden,
+        {
+          id: "acme",
+          repos: [{ id: "app", cloneUrl: "https://github.com/acme/app.git", path: "", baseBranch: "main", host: "github", deploy: { kind: "live" } }],
+          trackers: [],
+          jobs: ["docs", "record"],
+          areas: [{ id: "acme", repo: "app", dir: "acme/app" }],
+        },
+      ],
+      channels: [{ id: "C_ACME", projects: ["acme"] }],
+    };
+    writeFileSync(projectsPath(), JSON.stringify(config));
+    await writeUnplaced([entry]);
+  });
+  afterEach(() => {
+    delete process.env.ARGUS_SWEEP_TICK;
+  });
+
+  test("inside a tick, the model's placement on another project's feature is refused and the message stays unplaced", async () => {
+    process.env.ARGUS_SWEEP_TICK = "1";
+    await expect(placeMessage(entry.id, "tasks", { now: T0 })).rejects.toThrow("not a feature of a project channel C_ACME carries");
+    expect((await readUnplaced()).map((u) => u.id)).toEqual([entry.id]);
+  });
+
+  test("inside a tick, a feature of the channel's project is placed", async () => {
+    process.env.ARGUS_SWEEP_TICK = "1";
+    const r = await placeMessage(entry.id, "home", { now: T0, app: "acme/app", dryRun: true });
+    expect(r.feature).toBe("home");
+  });
+
+  test("a person outside a tick may place it anywhere", async () => {
+    const r = await placeMessage(entry.id, "tasks", { now: T0, dryRun: true });
+    expect(r.feature).toBe("tasks");
   });
 });
 

@@ -13,7 +13,10 @@
  *   sent     a ticket went to Foundry; the job is recorded on it
  */
 
+import { inTick } from "./commit.ts";
 import { isFeature } from "./paths.ts";
+import { featuresOfChannel, placeContext } from "./place.ts";
+import { loadProjects, recordFeatures } from "./projects.ts";
 import { emptyLedger as blankLedger } from "./schema.ts";
 import { type Ask, type Evidence, type Ledger, type Requirement, type RequirementStatus, emptyLedger } from "./schema.ts";
 import { readThreads, readUnplaced, writeThreads, writeUnplaced } from "./state.ts";
@@ -85,6 +88,13 @@ export async function placeMessage(id: string, feature: string, o: VerbOptions =
   const entry = unplaced.find((u) => u.id === id);
   if (!entry) throw new Error(`${id}: not in the unplaced list`);
   const thread = entry.thread ?? entry.id;
+  // the model places a message only on a feature of a project its channel carries (ingest S-9)
+  if (entry.channel && (await inTick())) {
+    const config = await loadProjects();
+    const recorded = await recordFeatures(config);
+    const allowed = featuresOfChannel(placeContext(config, recorded), entry.channel, recorded.map((r) => r.feature));
+    if (allowed && !allowed.includes(feature)) throw new Error(`${feature}: not a feature of a project channel ${entry.channel} carries`);
+  }
   if (o.dryRun) return { placed: false, feature, thread, ledger: null };
 
   if (thread) {

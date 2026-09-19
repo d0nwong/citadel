@@ -292,7 +292,13 @@ const verbs: Record<string, Verb> = {
       const batch = a ? await readBatch(a) : null;
       const unplaced = await readUnplaced();
       if (!unplaced.length) { console.log("nothing unplaced"); return 0; }
-      console.log(await attributePrompt(unplaced, await recordFeatures(), batch));
+      // with one record project every thread is its; with several, each names its channel's (ingest S-9)
+      const config = await loadProjects();
+      const recorded = await recordFeatures(config);
+      const byProject = config.projects.filter((p) => p.jobs.includes("record")).length > 1;
+      const carried = new Map(config.channels.map((c) => [c.id, c.projects]));
+      const projectsOf = byProject ? (u: { channel?: string }) => (u.channel ? carried.get(u.channel) : undefined) : undefined;
+      console.log(await attributePrompt(unplaced, recorded, batch, projectsOf));
       return 0;
     }
     if (what === "reader" && a && b) {

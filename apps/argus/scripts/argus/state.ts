@@ -21,6 +21,8 @@ export type Unplaced = {
   kind: UnplacedKind;
   /** the thread root, when the message is a reply */
   thread?: string;
+  /** the Slack channel a message was posted in; its projects bound where the model may place it (ingest S-9) */
+  channel?: string;
   by: string;
   at: string;
   text: string;

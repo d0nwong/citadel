@@ -11,7 +11,8 @@ import type { Slice } from "./batch.ts";
 import type { Check } from "./deploy.ts";
 import { manifestPath } from "./paths.ts";
 import type { Landing } from "./pr-facts.ts";
-import { deploysFor, featureSummaries, renderSlice } from "./reader.ts";
+import { attributePrompt, deploysFor, featureSummaries, renderSlice } from "./reader.ts";
+import type { Unplaced } from "./state.ts";
 
 const landing = (n: number, sha: string): Landing => ({
   repo: "be", ref: `be#${n}`, number: n, sha, short: sha.slice(0, 9), at: "2026-09-16T07:26:57Z", date: "2026-09-16",
@@ -102,5 +103,19 @@ describe("renderSlice", () => {
       "## Earlier landings whose deploy finished (1)\n\n[be#797] landed 2026-09-16: changing dev routes to test\ndeployed to dev 2026-09-16, build 2142 u",
     );
     expect(renderSlice({ ...slice, deploys: undefined })).not.toContain("Earlier landings");
+  });
+});
+
+describe("attributePrompt, bounded by channel (CTD-275, ingest S-9)", () => {
+  const u: Unplaced = { id: "1789000000.000001", kind: "message", channel: "C_ACME", by: "Sam O", at: "2026-09-11", text: "about acme", url: "u", candidates: ["home"], batch: "b" };
+
+  test("with several record projects, each thread names the projects its channel carries", async () => {
+    const prompt = await attributePrompt([u], [], null, () => ["acme"]);
+    expect(prompt).toContain("### thread 1789000000.000001 (only features of acme)");
+  });
+
+  test("with one record project, the thread header reads as before", async () => {
+    const prompt = await attributePrompt([u], [], null);
+    expect(prompt).toContain("### thread 1789000000.000001\n");
   });
 });

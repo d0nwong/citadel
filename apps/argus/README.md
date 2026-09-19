@@ -1,7 +1,7 @@
 # argus
 
-The record behind **alden-portal**, and the loop that keeps it current. It watches
-#dev-team Slack and the two repos' base branches, and keeps one `ledger.json` per feature:
+The record behind **alden-portal**, and the loop that keeps it current. It watches the
+Slack channels and repos `projects.json` names, and keeps one `ledger.json` per feature:
 the requirements the business asked for and whether anyone confirmed them, the asks and
 what happened to each, the user's tickets with what they wait on, the landings, and the
 tickets waiting to be filed. Built for one tech lead on a part-time schedule: every run is
@@ -56,7 +56,7 @@ can be named by a revision as `<app>/<dir>`.
 
 `/sweep` (`skills/sweep/SKILL.md`), on a loop or on demand:
 
-1. `argus pull` — Slack since the cursor, landings on `origin/staging` and `origin/dev`.
+1. `argus pull` — each Slack channel since its own cursor, landings on each record repo's base branch.
 2. `argus place <batch>` — the deterministic joins: files to features, replies to threads,
    ticket keys and PRs to the ledger that lists them. The rest is unplaced. Each backend
    landing gets its finished `dev` pipeline, checked again every run until it has one. A
@@ -75,7 +75,7 @@ can be named by a revision as `<app>/<dir>`.
    features' `docs/spec.md` (retiring a `product.md`) and moves to `revisions/archive/`;
    Canceled archives it untouched. Both providers are read, never written.
 6. `accio stale` and the `feature-docs` skill for arch docs that drifted.
-7. `argus validate`, commit, promote the cursor.
+7. `argus validate`, commit, promote the cursors.
 
 What the run cannot place waits in `state/unplaced.json` for a click in Pensieve. What
 it proposes waits under the feature's proposals for File. It never writes Linear or Slack.

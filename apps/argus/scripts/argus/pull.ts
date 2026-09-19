@@ -6,8 +6,9 @@
  * for this run — its window stays put, so the next run tries it again, and every other repo
  * and Slack still get pulled (CTD-272, sweep S-14). Nothing new means no batch file, unless a
  * backend landing's pipeline finished since the last run: that is news for its feature's
- * reader, and `place` carries it. The advanced cursor
- * goes to `cursor.next.json`; `argus commit` promotes it, so a crashed run replays.
+ * reader, and `place` carries it. Slack is every configured channel, each from its own
+ * cursor (CTD-274); the advanced cursors go to `cursor.next.json`, and `argus commit`
+ * promotes them, so a crashed run replays every channel (ledger S-14).
  *
  * The fetchers are injected so a test can run this against fixtures and no network.
  */
@@ -20,7 +21,7 @@ import { awaitsDeploy, type RepoConfig } from "./blockers.ts";
 import { type Deploy, deployedAt, pipelineRepo } from "./deploy.ts";
 import { loadProjects, type ProjectRepo, recordFeatures, recordRepos } from "./projects.ts";
 import type { Landing as RecordedLanding } from "./schema.ts";
-import { flatten, type Pull, pullSlack } from "./slack-pull.ts";
+import { flatten, type Pull, pullChannels } from "./slack-pull.ts";
 import { readLedger } from "./write.ts";
 
 export type PullSources = {
@@ -73,10 +74,10 @@ async function known(repos: RepoConfig): Promise<{ newest: Record<string, string
   return { newest, shas, untold, waiting };
 }
 
-export const defaultSources = (repos: ProjectRepo[], fetch = true): PullSources => {
+export const defaultSources = (repos: ProjectRepo[], fetch = true, channels: string[] = []): PullSources => {
   const byId = new Map(repos.map((r) => [r.id, r]));
   return {
-    slack: (since) => pullSlack({ since }),
+    slack: (since) => pullChannels(channels, { since }),
     landings: async (id, since) => {
       const pr = byId.get(id);
       if (!pr) return [];
@@ -106,12 +107,17 @@ async function deployNews(k: { untold: boolean; waiting: RecordedLanding[] }, de
 
 export async function pullBatch(opts: PullOptions = {}): Promise<PullResult> {
   const now = opts.now ?? new Date();
-  const repos = recordRepos(await loadProjects());
-  const sources = { ...defaultSources(repos, opts.fetch ?? true), ...opts.sources };
+  const config = await loadProjects();
+  const repos = recordRepos(config);
+  const channels = config.channels.map((c) => c.id);
+  const sources = { ...defaultSources(repos, opts.fetch ?? true, channels), ...opts.sources };
   const k = await known(Object.fromEntries(repos.map((r) => [r.id, r])));
   const { newest, shas } = k;
 
-  const slack = opts.noSlack ? null : await sources.slack(opts.since);
+  const pulled = opts.noSlack ? null : await sources.slack(opts.since);
+  // each channel's next cursor travels beside the pull, never inside the batch
+  const { cursors, ...rest } = pulled ?? {};
+  const slack = pulled ? (rest as Pull) : null;
   const landings: Landing[] = [];
   const since: Batch["since"] = { slack: slack?.since ?? null };
   if (!opts.noLandings)
@@ -139,7 +145,7 @@ export async function pullBatch(opts: PullOptions = {}): Promise<PullResult> {
     await Bun.write(path, JSON.stringify(batch, null, 2) + "\n");
     if (slack && !opts.since && !opts.outDir) {
       await mkdir(batchesDir(), { recursive: true });
-      await Bun.write(cursorNextPath(), JSON.stringify(slack.next, null, 2) + "\n");
+      await Bun.write(cursorNextPath(), JSON.stringify(cursors ? { channels: cursors } : slack.next, null, 2) + "\n");
     }
   }
   return { batch, path };
