@@ -18,9 +18,10 @@
  */
 
 import { providerNameFor } from "@citadel/tickets";
-import { listFeatures, ledgerPath, root } from "./argus/paths.ts";
+import { DEFAULT_APP, listFeatures, ledgerPath, projectsPath, root } from "./argus/paths.ts";
 import { validateDoc, validateLedger, validateSpec, ValidationError } from "./argus/validate.ts";
 import { archDocPath, isFeature, listApps, specDocPath } from "./argus/paths.ts";
+import { allAreas, loadProjects, unheldFeatures, validateProjectsConfig } from "./argus/projects.ts";
 import { dropRevision, fileRevision, listRevisions, newRevision, readRevision, validateRevisionDir } from "./argus/revision.ts";
 import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
@@ -103,31 +104,51 @@ type Verb = (f: Flags) => Promise<number>;
 
 const verbs: Record<string, Verb> = {
   async validate(f) {
-    const features = f.rest.length ? f.rest : await listFeatures();
     const problems: { feature: string; path: string; rule: string }[] = [];
-    for (const feature of features) {
-      if (!(await isFeature(feature))) {
-        problems.push({ feature, path: feature, rule: "not a feature directory" });
-        continue;
+    const checkFeature = async (feature: string, app: string) => {
+      const label = app === DEFAULT_APP ? feature : `${app}/${feature}`;
+      if (!(await isFeature(feature, app))) {
+        problems.push({ feature: label, path: label, rule: "not a feature directory" });
+        return;
       }
-      const file = Bun.file(ledgerPath(feature));
+      const file = Bun.file(ledgerPath(feature, app));
       if (await file.exists()) {
         let raw: unknown;
         try {
           raw = await file.json();
         } catch (e) {
-          problems.push({ feature, path: ledgerPath(feature), rule: `not JSON: ${(e as Error).message}` });
-          continue;
+          problems.push({ feature: label, path: ledgerPath(feature, app), rule: `not JSON: ${(e as Error).message}` });
+          return;
         }
         // a standalone check reads the file as it is: user evidence on disk was a click, not a model write
-        for (const p of validateLedger(raw, { actor: "user" })) problems.push({ feature, ...p });
+        for (const p of validateLedger(raw, { actor: "user" })) problems.push({ feature: label, ...p });
       }
-      const arch = archDocPath(feature);
-      if (await Bun.file(arch).exists()) for (const p of await validateDoc(arch)) problems.push({ feature, ...p });
-    }
-    // the whole checkout: every feature's spec under every app, and every revision with its specs (CTD-192)
-    let checked = features.length;
-    if (!f.rest.length) {
+      const arch = archDocPath(feature, app);
+      if (await Bun.file(arch).exists()) for (const p of await validateDoc(arch)) problems.push({ feature: label, ...p });
+    };
+
+    let checked: number;
+    if (f.rest.length) {
+      for (const feature of f.rest) await checkFeature(feature, DEFAULT_APP);
+      checked = f.rest.length;
+    } else {
+      // the config itself (ledger S-21, S-25), then every configured doc area's features, not only alden-portal's (S-24)
+      const config = await loadProjects();
+      for (const p of await validateProjectsConfig(config)) problems.push({ feature: "projects.json", ...p });
+      if (await Bun.file(projectsPath()).exists())
+        for (const u of await unheldFeatures(config)) {
+          const label = `${u.app}/${u.feature}`;
+          problems.push({ feature: label, path: label, rule: "not held by any doc area" });
+        }
+
+      checked = 0;
+      for (const area of allAreas(config)) {
+        const feats = await listFeatures(area.dir);
+        checked += feats.length;
+        for (const feature of feats) await checkFeature(feature, area.dir);
+      }
+
+      // the whole checkout: every feature's spec under every app, and every revision with its specs (CTD-192)
       for (const app of await listApps())
         for (const feature of await listFeatures(app)) {
           const spec = specDocPath(feature, app);

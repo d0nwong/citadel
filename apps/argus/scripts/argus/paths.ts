@@ -22,6 +22,9 @@ export const manifestPath = (app = DEFAULT_APP) => join(root(), app, ".doc-works
 
 export const specDocPath = (feature: string, app = DEFAULT_APP) => join(featureDir(feature, app), "docs/spec.md");
 
+/** the hand-written config at the checkout root (CTD-265); `argus/projects.ts` loads and validates it */
+export const projectsPath = () => join(root(), "projects.json");
+
 /** the revisions (CTD-192): one directory per revision, by slug while a draft and by its parent's key once filed */
 export const revisionsDir = () => join(root(), "revisions");
 export const revisionDir = (slugOrKey: string) => join(revisionsDir(), slugOrKey);

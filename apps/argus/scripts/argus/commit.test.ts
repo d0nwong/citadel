@@ -114,6 +114,11 @@ describe("COMMITTABLE", () => {
     for (const p of ["foundry/features/jobs/docs/product.md", "state/batches/x.json", "state/cursor.json", "docs/revisions/CTD-192/plan.md", "README.md"])
       expect(COMMITTABLE.test(p)).toBe(false);
   });
+
+  // projects.json (CTD-265) is hand-written; a person commits it with git, never argus, the sweep or Pensieve (ledger S-26)
+  test("projects.json is never committable", () => {
+    expect(COMMITTABLE.test("projects.json")).toBe(false);
+  });
 });
 
 describe("a fold's product.md", () => {
