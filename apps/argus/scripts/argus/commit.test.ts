@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { COMMITTABLE, commitRun } from "./commit.ts";
+import { COMMITTABLE, commitRun, saveRun } from "./commit.ts";
 
 let ws: string;
 const sh = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: ws, stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
@@ -90,5 +90,85 @@ describe("a fold's product.md", () => {
     expect(r).toMatchObject({ committed: true, files: 1 });
     expect(sh(["git", "show", "--stat", "--format=", "HEAD"])).toContain("jobs/docs/product.md");
     expect(sh(["git", "status", "--porcelain"])).toContain("blueprints/docs/product.md");
+  });
+});
+
+describe("saveRun", () => {
+  // the sandbox itself exports GIT_AUTHOR_* to give every commit a consistent identity;
+  // that would mask the very thing under test, so it is cleared for this block only.
+  let savedAuthorName: string | undefined;
+  let savedAuthorEmail: string | undefined;
+  beforeEach(() => {
+    savedAuthorName = process.env.GIT_AUTHOR_NAME;
+    savedAuthorEmail = process.env.GIT_AUTHOR_EMAIL;
+    delete process.env.GIT_AUTHOR_NAME;
+    delete process.env.GIT_AUTHOR_EMAIL;
+    Bun.spawnSync(["git", "config", "user.email", "person@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "The Person"], { cwd: ws });
+  });
+  afterEach(() => {
+    if (savedAuthorName !== undefined) process.env.GIT_AUTHOR_NAME = savedAuthorName;
+    if (savedAuthorEmail !== undefined) process.env.GIT_AUTHOR_EMAIL = savedAuthorEmail;
+  });
+
+  test("commits exactly the named files, as the person running it, leaving an unnamed on-list file uncommitted", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    writeFileSync(join(ws, "state/threads.json"), "{}\n");
+    const r = await saveRun(["alden/alden-portal/features/tasks/ledger.json"], "save: tasks", { cwd: ws });
+    expect(r).toMatchObject({ committed: true, files: 1 });
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("save: tasks");
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("The Person <person@t>");
+    const stat = sh(["git", "show", "--stat", "--format=", "HEAD"]);
+    expect(stat).toContain("tasks/ledger.json");
+    expect(stat).not.toContain("threads.json");
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toContain("state/threads.json");
+  });
+
+  test("refuses, naming it, a path off S-12's list, and commits nothing", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    writeFileSync(join(ws, "README.md"), "hi\n");
+    const before = sh(["git", "log", "-1", "--format=%H"]);
+    await expect(saveRun(["alden/alden-portal/features/tasks/ledger.json", "README.md"], "save: bad", { cwd: ws })).rejects.toThrow(/README\.md/);
+    expect(sh(["git", "log", "-1", "--format=%H"])).toBe(before);
+    const status = sh(["git", "status", "--porcelain", "--untracked-files=all"]);
+    expect(status).toContain("README.md");
+    expect(status).toContain("tasks/ledger.json");
+  });
+
+  test("a --dry-run refusal names the same off-list path without committing", async () => {
+    writeFileSync(join(ws, "README.md"), "hi\n");
+    await expect(saveRun(["README.md"], "save: bad", { cwd: ws, dryRun: true })).rejects.toThrow(/README\.md/);
+  });
+
+  test("nothing on the list changed means no commit", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    Bun.spawnSync(["git", "add", "-A"], { cwd: ws });
+    Bun.spawnSync(["git", "commit", "-q", "-m", "seed"], { cwd: ws });
+    const before = sh(["git", "log", "-1", "--format=%H"]);
+    const r = await saveRun(["alden/alden-portal/features/tasks/ledger.json"], "save: nothing", { cwd: ws });
+    expect(r).toMatchObject({ committed: false, files: 0 });
+    expect(sh(["git", "log", "-1", "--format=%H"])).toBe(before);
+  });
+
+  test("run inside Pensieve's container commits nothing, and the write stays uncommitted on disk", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    process.env.PENSIEVE_RUNNER = "container";
+    try {
+      const r = await saveRun(["alden/alden-portal/features/tasks/ledger.json"], "save: container", { cwd: ws });
+      expect(r).toMatchObject({ committed: false });
+    } finally {
+      delete process.env.PENSIEVE_RUNNER;
+    }
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toContain("tasks/ledger.json");
+  });
+
+  test("a held index.lock is retried until it clears", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    writeFileSync(join(ws, ".git/index.lock"), "");
+    const p = saveRun(["alden/alden-portal/features/tasks/ledger.json"], "save: locked", { cwd: ws });
+    await new Promise((r) => setTimeout(r, 250));
+    rmSync(join(ws, ".git/index.lock"));
+    const r = await p;
+    expect(r).toMatchObject({ committed: true, files: 1 });
   });
 });

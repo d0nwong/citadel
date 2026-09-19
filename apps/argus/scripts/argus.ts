@@ -22,7 +22,7 @@ import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
 import { type Check, deployCheck } from "./argus/deploy.ts";
 import { repoPath } from "./argus/pr-facts.ts";
-import { commitRun } from "./argus/commit.ts";
+import { commitRun, saveRun } from "./argus/commit.ts";
 import { draftFor, draftForAsk } from "./argus/file.ts";
 import { applyPatch, parsePatch } from "./argus/patch.ts";
 import { attributePrompt, groundPrompt, readerPrompt, sliceOf, ungroundedProposals } from "./argus/reader.ts";
@@ -68,6 +68,7 @@ const USAGE = `argus — the ledger CLI
   argus prompt ground [<feature> <P-n>]   the proposals whose Technical Notes name no file, or the grounding prompt for one
   argus patch <feature> <file>|-     apply a reader's patch to the ledger (validated whole)
   argus commit [-m "<message>"]      stage ledgers, state and docs, commit, promote the cursor
+  argus save <path>... -m "<first line>"   commit exactly the named files, as the person running it (--dry-run to preview)
 
   argus close <feature> <A-n> --reason "<why>"
   argus drop <feature> <A-n> --reason "<why>"       the ask was never one, or is not wanted
@@ -305,6 +306,16 @@ const verbs: Record<string, Verb> = {
     const r = await commitRun(f.opts.m ?? f.opts.message ?? "sweep", { dryRun: f.dryRun });
     if (f.json) console.log(JSON.stringify({ ok: true, ...r }));
     else console.log(r.committed ? `committed ${r.sha} (${r.files} files); cursor ${r.cursor}` : `nothing to commit (${r.files} staged); cursor ${r.cursor}`);
+    return 0;
+  },
+
+  async save(f) {
+    const paths = f.rest;
+    const message = f.opts.m ?? f.opts.message;
+    if (!paths.length || !message) throw new Usage('save <path>... -m "<first line>"');
+    const r = await saveRun(paths, message, { dryRun: f.dryRun });
+    if (f.json) console.log(JSON.stringify({ ok: true, ...r }));
+    else console.log(r.committed ? `committed ${r.sha} (${r.files} file${r.files === 1 ? "" : "s"})` : `nothing to commit (${r.files} changed)${f.dryRun ? " (dry run)" : ""}`);
     return 0;
   },
 
