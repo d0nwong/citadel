@@ -6,6 +6,12 @@
  * ticket key or PR it names, else to the feature a landing in this batch with the same
  * ticket key went. A reply follows its root within the batch. Everything else goes to
  * `state/unplaced.json` with the features that were active in the batch as candidates.
+ *
+ * Which keys and PRs join comes from `projects.json` (CTD-275): a ticket key matches any
+ * prefix a record project's tracker owns (ingest S-11), and a PR reference names the one
+ * project that declares its repo, by `<repo id>#N` or by the PR's URL (S-12) — a join wins
+ * wherever the message was posted. What no join places is bounded by its channel: its
+ * candidates are the features of the projects that channel carries (S-9, S-10).
  * The same batch placed twice gives the same placed file, byte for byte.
  *
  * Every placing also records the backend deploys that finished since the last run
@@ -16,7 +22,7 @@
 import { type Batch, type Placed, placedPath, readBatch, type Slice, type SliceDeploy } from "./batch.ts";
 import { defaultDeployedOf, type DeployedOf, loadRepoConfig, recordDeploys, type RepoConfig } from "./blockers.ts";
 import type { Landing } from "./pr-facts.ts";
-import { recordFeatures } from "./projects.ts";
+import { defaultProjectsConfig, loadProjects, type ProjectsConfig, recordAreas, recordFeatures, recordRepos } from "./projects.ts";
 import type { Ledger } from "./schema.ts";
 import { flatten, type Msg } from "./slack-pull.ts";
 import { readThreads, readUnplaced, type ThreadMap, type Unplaced, writeThreads, writeUnplaced } from "./state.ts";
@@ -33,10 +39,46 @@ export type PlaceOptions = {
   threads?: ThreadMap;
   deployed?: DeployedOf;
   repos?: RepoConfig;
+  config?: ProjectsConfig;
 };
 
-const PR_RE = /\b(fe|be)#(\d+)\b|pull-requests\/(\d+)\b|\bPR\s*#?(\d+)\b/gi;
-const TICKET_RE = /\b(ALD|ARG|LIA)-\d+\b/g;
+/** what the joins and the candidates read from `projects.json` */
+export type PlaceContext = {
+  /** every ticket key prefix a record project's tracker owns */
+  prefixes: string[];
+  /** every record repo: its id, its project, and the `<owner>/<repo>` its clone URL names */
+  repos: { id: string; project: string; slug: string | null }[];
+  /** the projects each configured channel carries */
+  channels: Record<string, string[]>;
+  /** each record feature's project */
+  projectOf: Map<string, string>;
+};
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const slugOf = (url: string) => url.match(/(?:bitbucket\.org|github\.com)[/:]([^/\s]+\/[^/\s.]+)/i)?.[1]?.toLowerCase() ?? null;
+
+export function placeContext(config: ProjectsConfig, features: { app: string; feature: string }[]): PlaceContext {
+  const projectOfApp = new Map(recordAreas(config).map((a) => [a.dir, a.project]));
+  return {
+    prefixes: [...new Set(config.projects.filter((p) => p.jobs.includes("record")).flatMap((p) => p.trackers.flatMap((t) => t.prefixes)))],
+    repos: recordRepos(config).map((r) => ({ id: r.id, project: r.project, slug: slugOf(r.cloneUrl) })),
+    channels: Object.fromEntries(config.channels.map((c) => [c.id, c.projects])),
+    projectOf: new Map(features.map((f) => [f.feature, projectOfApp.get(f.app) ?? ""])),
+  };
+}
+
+/** alden-portal's own context, for a caller that names no config: every feature is its */
+const defaultContext = (features: string[]): PlaceContext => ({
+  ...placeContext(defaultProjectsConfig(), []),
+  projectOf: new Map(features.map((f) => [f, "alden-portal"])),
+});
+
+/** the features a message from `channel` may be placed on by the model; null when its channel names no projects */
+export function featuresOfChannel(ctx: PlaceContext, channel: string | undefined, features: string[]): string[] | null {
+  const projects = channel ? ctx.channels[channel] : undefined;
+  if (!projects) return null;
+  return features.filter((f) => projects.includes(ctx.projectOf.get(f) ?? ""));
+}
 
 export type Keys = { tickets: Map<string, string>; prs: Map<string, string> };
 
@@ -56,17 +98,42 @@ export function keysOf(ledgers: Map<string, Ledger>): Keys {
   return { tickets, prs };
 }
 
-/** the feature a message's own words point at through a key, or null */
-export function featureByKey(text: string, keys: Keys, landingsByKey: Map<string, string[]>): string | null {
-  for (const m of text.toUpperCase().matchAll(TICKET_RE)) {
-    const hit = keys.tickets.get(m[0]) ?? landingsByKey.get(m[0])?.[0];
-    if (hit) return hit;
+/**
+ * The feature a message's own words point at through a key, or null. A ticket key is any
+ * configured prefix (ingest S-11). A PR is `<repo id>#N`, a PR URL whose repo a project
+ * declares, or a bare `PR #N` / unknown URL tried against the repos of the projects the
+ * message's channel carries, else every record repo (S-12).
+ */
+export function featureByKey(text: string, keys: Keys, landingsByKey: Map<string, string[]>, ctx: PlaceContext = defaultContext([]), channel?: string): string | null {
+  const lookup = (k: string) => keys.prs.get(k) ?? landingsByKey.get(k)?.[0] ?? null;
+  if (ctx.prefixes.length) {
+    const ticketRe = new RegExp(`\\b(${ctx.prefixes.map(escapeRe).join("|")})-\\d+\\b`, "g");
+    for (const m of text.toUpperCase().matchAll(ticketRe)) {
+      const hit = keys.tickets.get(m[0]) ?? landingsByKey.get(m[0])?.[0];
+      if (hit) return hit;
+    }
   }
-  for (const m of text.matchAll(PR_RE)) {
-    const n = m[2] ?? m[3] ?? m[4];
-    const kind = m[1]?.toLowerCase();
-    for (const k of kind ? [`${kind}#${n}`] : [`fe#${n}`, `be#${n}`]) {
-      const hit = keys.prs.get(k) ?? landingsByKey.get(k)?.[0];
+  const carried = channel ? ctx.channels[channel] : undefined;
+  const fallback = ctx.repos.filter((r) => !carried || carried.includes(r.project)).map((r) => r.id);
+  // with no repos the id group matches nothing, so the groups below keep their numbers
+  const ids = ctx.repos.map((r) => escapeRe(r.id)).join("|") || "(?!)";
+  const prRe = new RegExp(`\\b(${ids})#(\\d+)\\b|https?:\\/\\/(?:www\\.)?(?:bitbucket\\.org|github\\.com)\\/([^/\\s]+\\/[^/\\s]+)\\/(?:pull-requests|pull)\\/(\\d+)|pull-requests\\/(\\d+)\\b|\\bPR\\s*#?(\\d+)\\b`, "gi");
+  for (const m of text.matchAll(prRe)) {
+    let candidates: string[];
+    let n: string;
+    if (m[1]) {
+      candidates = [ctx.repos.find((r) => r.id.toLowerCase() === m[1]!.toLowerCase())!.id];
+      n = m[2]!;
+    } else if (m[3]) {
+      const repo = ctx.repos.find((r) => r.slug === m[3]!.toLowerCase());
+      candidates = repo ? [repo.id] : fallback;
+      n = m[4]!;
+    } else {
+      candidates = fallback;
+      n = (m[5] ?? m[6])!;
+    }
+    for (const id of candidates) {
+      const hit = lookup(`${id}#${n}`);
       if (hit) return hit;
     }
   }
@@ -76,7 +143,7 @@ export function featureByKey(text: string, keys: Keys, landingsByKey: Map<string
 export type Placement = { slices: Map<string, Slice>; unplaced: Unplaced[]; threads: ThreadMap };
 
 /** pure: a batch, the ledgers and the thread map → slices, unplaced entries and new thread learnings */
-export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: ThreadMap, features: string[], now: Date): Placement {
+export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: ThreadMap, features: string[], now: Date, ctx: PlaceContext = defaultContext(features)): Placement {
   const slices = new Map<string, Slice>();
   const slice = (f: string) => {
     if (!slices.has(f)) slices.set(f, { feature: f, messages: [], landings: [] });
@@ -112,7 +179,7 @@ export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: 
   for (const m of messages) {
     if (nobodys(m)) continue;
     const byThread = resolveThread(m);
-    const feature = byThread ?? featureByKey(m.text, keys, landingsByKey);
+    const feature = byThread ?? featureByKey(m.text, keys, landingsByKey, ctx, m.channel);
     if (feature) {
       slice(feature).messages.push(m);
       if (!byThread) {
@@ -124,6 +191,7 @@ export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: 
         id: m.ts,
         kind: "message",
         ...(threadOf(m) !== m.ts ? { thread: threadOf(m) } : {}),
+        ...(m.channel ? { channel: m.channel } : {}),
         by: m.author,
         at: m.date,
         text: m.canvas ? `${m.text}\n\n${m.canvas}` : m.text,
@@ -153,7 +221,12 @@ export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: 
   }
 
   const active = [...slices.keys()].sort();
-  for (const u of unplaced) u.candidates = active.length ? active : features;
+  for (const u of unplaced) {
+    // a message is bounded by its channel's projects; a landing, or a channel naming none, by every feature
+    const allowed = featuresOfChannel(ctx, u.channel, features) ?? features;
+    const live = active.filter((f) => allowed.includes(f));
+    u.candidates = live.length ? live : allowed;
+  }
   for (const s of slices.values()) {
     s.messages.sort((a, b) => Number(a.ts) - Number(b.ts));
     s.landings.sort((a, b) => a.at.localeCompare(b.at));
@@ -180,8 +253,10 @@ export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<
   const loaded = opts.ledgers ? { ledgers: opts.ledgers, appOf: opts.appOf ?? new Map<string, string>() } : await loadLedgers();
   const { ledgers, appOf } = loaded;
   const threads = opts.threads ?? (await readThreads());
-  const features = (await recordFeatures()).map((x) => x.feature);
-  const p = placeBatch(batch, ledgers, threads, features, now);
+  const config = opts.config ?? (await loadProjects());
+  const recorded = await recordFeatures(config);
+  const features = recorded.map((x) => x.feature);
+  const p = placeBatch(batch, ledgers, threads, features, now, placeContext(config, recorded));
   const repos = opts.repos ?? (await loadRepoConfig());
   const deployed = opts.deployed ?? defaultDeployedOf(repos);
   const current = new Map(ledgers);

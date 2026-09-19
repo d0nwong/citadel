@@ -101,18 +101,33 @@ export async function featureSummaries(features: { app: string; feature: string 
   return out.join("\n");
 }
 
-/** the attribution step's prompt: the skill, the features (every project with the record job, ledger S-27), the unplaced messages grouped by thread */
-export async function attributePrompt(unplaced: Unplaced[], features: { app: string; feature: string }[], batch: Batch | null): Promise<string> {
+/**
+ * The attribution step's prompt: the skill, the features (every project with the record
+ * job, ledger S-27), the unplaced messages grouped by thread. With `projectsOf`, each
+ * thread names the projects its channel carries, the only ones it may go to (ingest S-9).
+ */
+export async function attributePrompt(
+  unplaced: Unplaced[],
+  features: { app: string; feature: string }[],
+  batch: Batch | null,
+  projectsOf?: (u: Unplaced) => string[] | undefined,
+): Promise<string> {
   const all = batch?.slack ? flatten(batch.slack) : [];
   const byId = new Map(all.map((m) => [m.ts, m]));
   const groups = new Map<string, string[]>();
+  const bound = new Map<string, string[]>();
   for (const u of unplaced) {
     const m = byId.get(u.id);
     const key = m ? m.thread : (u.thread ?? u.id);
+    const projects = projectsOf?.(u);
+    if (projects) bound.set(key, projects);
     const text = m ? renderMessages([m]) : `[${u.id}] ${u.at} ${u.by} (${u.kind})\n${u.text}\n${u.url}`;
     groups.set(key, [...(groups.get(key) ?? []), text]);
   }
-  const items = [...groups.entries()].map(([root, texts]) => `### thread ${root}\n\n${texts.join("\n\n")}`);
+  const items = [...groups.entries()].map(([root, texts]) => {
+    const projects = bound.get(root);
+    return `### thread ${root}${projects ? ` (only features of ${projects.join(", ")})` : ""}\n\n${texts.join("\n\n")}`;
+  });
   return `${await skill("attribute.md")}\n\n# Features\n\n${await featureSummaries(features)}\n\n# Unplaced (${unplaced.length} messages in ${groups.size} threads)\n\n${items.join("\n\n")}\n\nAnswer with the JSON object only, one entry per message id.`;
 }
 
