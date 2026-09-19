@@ -16,9 +16,9 @@ named below.
 2. Read them at the pins: `git -C <repo> show <ref>:<path>`. Never a local branch, never
    a checkout or a switch.
 3. For every backend change the ticket needs, `argus deployed <be#N>`. If it prints
-   deployed, the first Scope bullet is the regen against `dev@<sha>` (FORMAT.md, "Backend
-   contract changes"), and the Pending bullet for it goes. If it does not, the Pending
-   bullet stays and says what the pipeline said.
+   deployed, the first Scope bullet is the regen against `<repo>@<sha>` (FORMAT.md,
+   "Backend contract changes"), and the Pending bullet for it goes. If it does not, the
+   Pending bullet stays and says what the pipeline said.
 4. Write `## Technical Notes` after Pending, or after Acceptance Criteria when there is
    none, per FORMAT.md. Replace any section already there, keeping each fact it states
    (under its file, or moved to Background). End with the `Verified at` line naming both

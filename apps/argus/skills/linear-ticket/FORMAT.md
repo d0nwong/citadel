@@ -60,7 +60,7 @@ ticket needs, newest understanding first:>
 - <Current type → needed type, and the schema/validation that moves with it.>
 - <Open question stated as one: "confirm with backend whether X covers this or a new Y is needed".>
 
-Verified at FE <branch>@<sha>, BE dev@<sha>.
+Verified at <repo>@<sha>, <repo>@<sha> — one segment per repo the project declares.
 ```
 
 ## Acceptance Criteria
@@ -103,7 +103,7 @@ Verified at FE <branch>@<sha>, BE dev@<sha>.
   version lives; the ticket carries the pointer and the AC it matters to.
 - **Recurring mechanics live here, once.** The regen steps in the section below are the
   copy; a Technical Note on `src/http/generated/` says "regen per `FORMAT.md` against
-  `dev@<sha>`" and names the hook.
+  `<repo>@<sha>`" and names the hook.
 - **Target under 800 words** for the whole body. The worked example below is about
   910 including its sub-issue position line and twelve ACs; most tickets land lower.
 
@@ -144,23 +144,22 @@ reads as sequential and stalls work that could have started.
 A ticket whose FE work depends on a backend contract change has two phases, and the same
 fact lives in a different section in each:
 
-- **BE not yet on `origin/dev`** → a `Pending` bullet, as above:
+- **BE not yet merged to its base branch** → a `Pending` bullet, as above:
   `**BE — <route/schema change>** (<owner>) — <which ACs it stops, what can proceed>`.
-- **BE on `origin/dev` and deployed to `dev-alden-portal`** (the server `orval.config.ts`
-  exports the swagger from) → the regen is the **first Scope bullet**, not a Pending one:
+- **BE merged to its base branch and deployed** (the server the published API spec is
+  exported from) → the regen is the **first Scope bullet**, not a Pending one:
 
   ```markdown
-  - Generated client — regenerate against `dev@<sha>`
+  - Generated client — regenerate against `<repo>@<sha>`
   - <the FE surface or file the ticket changes, written against the regenerated types>
   ```
 
   Nobody else owns the regen, so it is not "waiting" — it is step one of the ticket. The
-  mechanics live here and nowhere else: confirm the change is live on
-  `https://dev-alden-portal.uc.r.appspot.com/api-docs/swagger-ui-init.js`, export the
-  `swaggerDoc` object to `./openapi.json`, run Orval, commit `src/http/generated/`. A
-  Technical Note on `src/http/generated/` says "regen per `FORMAT.md` against
-  `dev@<sha>`" and names the generated hook or type the FE consumes beside the AC it
-  serves.
+  mechanics live here and nowhere else: confirm the change is live on the project's
+  published API spec, export the `swaggerDoc` object to `./openapi.json`, run Orval,
+  commit `src/http/generated/`. A Technical Note on `src/http/generated/` says "regen per
+  `FORMAT.md` against `<repo>@<sha>`" and names the generated hook or type the FE
+  consumes beside the AC it serves.
   Landed-but-not-deployed stays Pending: an export from a stale server looks done and
   isn't. Before you write a backend Pending bullet, run `argus deployed <be#N>` (or the
   merge sha). If it prints "deployed", the regen is the first Scope bullet. If it prints
@@ -197,7 +196,7 @@ allowances, modelling hours and `Σ quantity × multiplier` fallback go.
 
 In scope:
 
-- Generated client — regenerate against `dev@5ca2ed71`
+- Generated client — regenerate against `be@5ca2ed71`
 - `src/http/usage/` — `getUsage` and `getUsageClients` transports, `types.ts` DTOs; delete
   `src/http/mocks/get-usage-mock.ts` and its test
 - `src/hooks/usage/map-usage-response.ts` — credit maths for tasks, segments, donut,
@@ -253,7 +252,7 @@ Out of scope:
 
 ## Technical Notes
 
-- `src/http/generated/` — regen per `FORMAT.md` against `dev@5ca2ed71`; the roster hook
+- `src/http/generated/` — regen per `FORMAT.md` against `be@5ca2ed71`; the roster hook
   in `src/hooks/entity/use-get-entities.ts` already exists, the current-cycle hook is
   new — AC1, AC3.
 - `src/features/usage/hooks/use-usage-entities.ts` — Orval hook payloads arrive
@@ -278,7 +277,7 @@ Out of scope:
 - Open question: `contactName` has no counterpart on the wire and nothing renders it; it
   stays null.
 
-Verified at FE `staging@3c520fc4c`, BE `dev@5ca2ed71`.
+Verified at `fe@3c520fc4c`, `be@5ca2ed71`.
 ```
 
 ## What the example is doing (copy these moves)

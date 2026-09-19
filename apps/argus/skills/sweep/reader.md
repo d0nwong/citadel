@@ -44,8 +44,9 @@ file and line, or says "assumption". A claim you cannot point at does not go in.
 ### Closure is a person saying so
 An ask closes when the asker or the team acknowledges the result, in words or with a
 reaction on the reply that reported it, or when whoever built it says in the thread that
-it is on staging. A landing alone moves it to `built`, not `closed`; the one exception is
-code's: an ask with a ticket closes by itself once a landing carrying that key is live.
+it is live by its repo's deploy source. A landing alone moves it to `built`, not
+`closed`; the one exception is code's: an ask with a ticket closes by itself once a
+landing carrying that key is live.
 
 ### Only a decider flips a rule
 Foong decides product rules. A developer's message about how the code behaves confirms
@@ -53,10 +54,10 @@ nothing; it is evidence of a gap between rule and code.
 
 ### A blocker clears on the branch and the deploy
 A `landing` blocker clears once the PR is on the branch it names and that landing is live.
-On the frontend that is the merge itself — staging is its deploy, so no `deployed:` line
-is ever read for one. On the backend it still needs `deployed` true: merged is not
-deployed. A landing's `deployed:` line is Bitbucket's answer now; "not yet"
-is not final, and argus tells you when it changes. Under "Earlier landings whose deploy
+On a repo live when merged, that merge is the deploy, so no `deployed:` line is ever
+read for one. On a repo read by pipeline it still needs `deployed` true: merged is not
+deployed. A landing's `deployed:` line is the pipeline's answer now; "not yet" is not
+final, and argus tells you when it changes. Under "Earlier landings whose deploy
 finished", rewrite every sentence that still calls that change undeployed.
 
 ### Tickets are proposed
