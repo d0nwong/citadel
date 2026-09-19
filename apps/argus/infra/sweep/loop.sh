@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The sweep, in the stack: clone the data repo and the product checkouts when they are missing,
-# then run argus's /sweep every SWEEP_INTERVAL seconds, never two at once, and push the data repo
+# The sweep, in the stack: clone the data repo, then (every tick) every repo projects.json
+# names — cloning one that's missing, fetching the ones argus pull doesn't fetch itself — then
+# run argus's /sweep every SWEEP_INTERVAL seconds, never two at once, and push the data repo
 # after each tick (`argus commit` never pushes).
 #
 #   loop.sh loop              the service: forever
@@ -55,16 +56,40 @@ clone() { # url dir
   git clone --quiet --filter=blob:none "$1" "$2"
 }
 
+# The data repo alone: projects.json (CTD-265) lives at its root, so it has to exist before
+# anything else can be discovered, let alone cloned or fetched.
 setup() {
   clone "${ARGUS_DATA_REPO:-https://github.com/d0nwong/citadel-data.git}" "$DATA"
-  clone "${ALDEN_FE_REPO_URL:-https://bitbucket.org/aldenstudios/alden-portal-fe.git}" "${ALDEN_FE_REPO:-$HOME/git/alden-portal-fe}"
-  clone "${ALDEN_BE_REPO_URL:-https://bitbucket.org/aldenstudios/alden-connect-portal-be.git}" "${ALDEN_BE_REPO:-$HOME/git/alden-connect-portal-be}"
+}
+
+# Every repo projects.json names (CTD-269): clone one that's missing, and fetch every one a
+# record-job project's own `argus pull` doesn't already fetch itself (pull.ts's
+# defaultSources, via pr-facts.ts's ALDEN_FE_REPO/ALDEN_BE_REPO). Read straight from the
+# loader argus/projects.ts already exports, the way status() above already shells out to bun
+# for JSON work, rather than a script of its own. Runs at the start of every tick, so a repo
+# or project added to projects.json is picked up by the next one, with no code, image or
+# compose change.
+sync_repos() {
+  while IFS=$'\t' read -r url path pulled; do
+    [ -z "$url" ] && continue
+    if [ -z "$path" ]; then say "no local path configured for $url; skipping"; continue; fi
+    path="${path/#\~/$HOME}"
+    clone "$url" "$path" || continue
+    [ "$pulled" = "1" ] && continue
+    git -C "$path" fetch --quiet origin || say "fetch failed for $path; the next tick retries"
+  done < <(bun -e '
+    const { loadProjects } = await import("./scripts/argus/projects.ts");
+    const config = await loadProjects();
+    for (const p of config.projects) for (const r of p.repos)
+      console.log([r.cloneUrl, r.path, p.jobs.includes("record") ? "1" : "0"].join("\t"));
+  ' || true)
 }
 
 tick() {
   # Marks this run as a tick: `claude`'s own shell calls inherit it, so `argus commit` run from
   # inside the /sweep skill authors its commit "argus sweep" and advances the Slack cursor.
   export ARGUS_SWEEP_TICK=1
+  sync_repos
   if [ "${1:-}" = "--dry-run" ]; then
     bun scripts/argus.ts pull --dry-run
     return

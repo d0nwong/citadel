@@ -49,7 +49,9 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
    Linear says Done (closes its asks) or Canceled (drops them), or, with no asks, when a
    landing carrying its key is live. A filed revision whose parent is Done folds into its
    features' `docs/spec.md`; Canceled archives it.
-7. **Docs.** `accio stale`; for each listed feature, the `feature-docs` skill.
+7. **Docs.** `accio stale`, across every project with the `docs` job — every configured doc
+   area, citadel's included, not only alden-portal's; for each feature it lists, the
+   `feature-docs` skill.
 8. **Validate and commit.** `argus validate`, then `argus commit -m "<the first On-you
    line, else the first revision reconcile moved, else: quiet run>"`. A failing feature is printed and left alone; the rest commits.
    In a tick, `argus commit` prefixes that message `sweep: ` and authors it "argus sweep" itself;
