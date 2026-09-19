@@ -7,8 +7,8 @@
  * (evidence on every claim, ids never reused, the style ceiling) are `validate.ts`'s.
  */
 
-export const REPOS = ["fe", "be"] as const;
-export type Repo = (typeof REPOS)[number];
+/** any repo id the feature's project declares (validate.ts checks it against the project; alden-portal's are "fe" and "be") */
+export type Repo = string;
 
 export const REQUIREMENT_STATUSES = ["assumed", "confirmed", "contradicted", "retired"] as const;
 export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
@@ -227,7 +227,9 @@ function oneOf<T extends string>(o: Obj, key: string, allowed: readonly T[], pat
   return v as T;
 }
 function repo(o: Obj, path: string): Repo {
-  return oneOf(o, "repo", REPOS, path);
+  const v = str(o, "repo", path);
+  if (!v) throw new SchemaError(`${path}.repo`, "expected a non-empty string");
+  return v;
 }
 
 export function parseEvidence(v: unknown, path: string): Evidence {

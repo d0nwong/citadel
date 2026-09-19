@@ -16,8 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { noteWritten } from "./commit.ts";
 import { stateDir } from "./paths.ts";
-import { REPOS } from "./pr-facts.ts";
-import type { Repo } from "./schema.ts";
+import { REPOS, type RepoKind as Repo } from "./pr-facts.ts";
 
 export type Deploy = { result: "SUCCESSFUL" | "FAILED" | "STOPPED" | "ERROR"; at: string; build: number; url: string };
 

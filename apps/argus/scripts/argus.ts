@@ -21,7 +21,7 @@ import { providerNameFor } from "@citadel/tickets";
 import { DEFAULT_APP, listFeatures, ledgerPath, projectsPath, root } from "./argus/paths.ts";
 import { validateDoc, validateLedger, validateSpec, ValidationError } from "./argus/validate.ts";
 import { archDocPath, isFeature, listApps, specDocPath } from "./argus/paths.ts";
-import { allAreas, loadProjects, unheldFeatures, validateProjectsConfig } from "./argus/projects.ts";
+import { allAreas, loadProjects, repoIdsForDir, unheldFeatures, validateProjectsConfig } from "./argus/projects.ts";
 import { dropRevision, fileRevision, listRevisions, newRevision, readRevision, validateRevisionDir } from "./argus/revision.ts";
 import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
@@ -105,7 +105,7 @@ type Verb = (f: Flags) => Promise<number>;
 const verbs: Record<string, Verb> = {
   async validate(f) {
     const problems: { feature: string; path: string; rule: string }[] = [];
-    const checkFeature = async (feature: string, app: string) => {
+    const checkFeature = async (feature: string, app: string, repos: string[] | undefined) => {
       const label = app === DEFAULT_APP ? feature : `${app}/${feature}`;
       if (!(await isFeature(feature, app))) {
         problems.push({ feature: label, path: label, rule: "not a feature directory" });
@@ -121,19 +121,20 @@ const verbs: Record<string, Verb> = {
           return;
         }
         // a standalone check reads the file as it is: user evidence on disk was a click, not a model write
-        for (const p of validateLedger(raw, { actor: "user" })) problems.push({ feature: label, ...p });
+        for (const p of validateLedger(raw, { actor: "user", repos })) problems.push({ feature: label, ...p });
       }
       const arch = archDocPath(feature, app);
       if (await Bun.file(arch).exists()) for (const p of await validateDoc(arch)) problems.push({ feature: label, ...p });
     };
 
+    const config = await loadProjects();
     let checked: number;
     if (f.rest.length) {
-      for (const feature of f.rest) await checkFeature(feature, DEFAULT_APP);
+      const repos = repoIdsForDir(config, DEFAULT_APP);
+      for (const feature of f.rest) await checkFeature(feature, DEFAULT_APP, repos);
       checked = f.rest.length;
     } else {
       // the config itself (ledger S-21, S-25), then every configured doc area's features, not only alden-portal's (S-24)
-      const config = await loadProjects();
       for (const p of await validateProjectsConfig(config)) problems.push({ feature: "projects.json", ...p });
       if (await Bun.file(projectsPath()).exists())
         for (const u of await unheldFeatures(config)) {
@@ -145,7 +146,8 @@ const verbs: Record<string, Verb> = {
       for (const area of allAreas(config)) {
         const feats = await listFeatures(area.dir);
         checked += feats.length;
-        for (const feature of feats) await checkFeature(feature, area.dir);
+        const repos = repoIdsForDir(config, area.dir);
+        for (const feature of feats) await checkFeature(feature, area.dir, repos);
       }
 
       // the whole checkout: every feature's spec under every app, and every revision with its specs (CTD-192)

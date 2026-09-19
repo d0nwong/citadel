@@ -44,7 +44,7 @@ export type Reconciled = { ledger: Ledger; cleared: string[] };
 const NEWS_DAYS = 7;
 
 /** true for a backend landing whose pipeline has not been seen to finish */
-export const awaitsDeploy = (ld: Landing) => ld.repo === "be" && !ld.deployed;
+export const awaitsDeploy = (ld: Landing): ld is Landing & { repo: "be" } => ld.repo === "be" && !ld.deployed;
 
 /**
  * Mutates `l`: every backend landing still waiting gets its finished pipeline, if there is
@@ -68,8 +68,8 @@ export async function recordDeploys(l: Ledger, deployed: DeployedOf, now = new D
 export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new Date(), states: TicketStates = unknown): Promise<Reconciled> {
   const next: Ledger = structuredClone(l);
   const cleared: string[] = await recordDeploys(next, deployed, now);
-  /** the ledger's fact first; Bitbucket only for a landing still waiting */
-  const deployOf = async (ld: Landing): Promise<Deploy | null> => ld.deployed ?? (ld.repo === "be" ? null : deployed(ld.repo, ld.sha));
+  /** the ledger's fact first; Bitbucket only for a landing still waiting. Reconciling a project's own repo ids is out of scope until tickets 8 and 9 generalize this; anything but "be" reads as the frontend, as it always has. */
+  const deployOf = async (ld: Landing): Promise<Deploy | null> => ld.deployed ?? (ld.repo === "be" ? null : deployed(ld.repo as "fe", ld.sha));
   const settledAsk = (id: string) => {
     const a = next.asks.find((x) => x.id === id);
     return !!a && (a.status === "closed" || a.status === "dropped");

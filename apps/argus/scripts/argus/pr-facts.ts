@@ -20,7 +20,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { featureFiles, featuresForFiles, loadManifest } from "./manifest.ts";
 import { root } from "./paths.ts";
-import type { Repo as RepoKind } from "./schema.ts";
+
+/** alden-portal's own two repos; pulling and reconciling a third project's repos is out of scope until tickets 8 and 9 generalize this */
+export type RepoKind = "fe" | "be";
 
 const expand = (p: string) => p.replace(/^~/, homedir());
 export const repoPath = (kind: RepoKind) =>

@@ -13,10 +13,10 @@
 import { mkdir } from "node:fs/promises";
 import { type Batch, batchId, batchPath } from "./batch.ts";
 import { batchesDir, cursorNextPath, listFeatures } from "./paths.ts";
-import { fetchOrigin, type Landing, landingsSince, repoOf } from "./pr-facts.ts";
+import { fetchOrigin, type Landing, landingsSince, type RepoKind as Repo, repoOf } from "./pr-facts.ts";
 import { awaitsDeploy } from "./blockers.ts";
 import { type Deploy, deployedAt } from "./deploy.ts";
-import type { Landing as RecordedLanding, Repo } from "./schema.ts";
+import type { Landing as RecordedLanding } from "./schema.ts";
 import { flatten, type Pull, pullSlack } from "./slack-pull.ts";
 import { readLedger } from "./write.ts";
 
@@ -56,7 +56,8 @@ async function known(): Promise<{ newest: Record<Repo, string | null>; shas: Set
       shas.add(ld.sha);
       if (ld.deployed && !ld.deployed.told) untold = true;
       if (awaitsDeploy(ld)) waiting.push(ld);
-      if (!newest[ld.repo] || ld.at > newest[ld.repo]!) newest[ld.repo] = ld.at;
+      // pulling a project's own repo ids is out of scope until tickets 8 and 9 generalize this; alden-portal's are fe/be
+      if (ld.repo === "fe" || ld.repo === "be") if (!newest[ld.repo] || ld.at > newest[ld.repo]!) newest[ld.repo] = ld.at;
     }
   }
   return { newest, shas, untold, waiting };

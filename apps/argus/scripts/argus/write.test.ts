@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ledgerPath } from "./paths.ts";
@@ -111,5 +111,38 @@ describe("writeLedger", () => {
 
   test("the feature in the file must match the feature written", async () => {
     await expect(writeLedger("tasks", await valid())).rejects.toThrow('says feature "admin/invoicing"');
+  });
+});
+
+describe("writeLedger against a project's declared repo ids (ledger S-22, AC2)", () => {
+  const projectsConfig = {
+    projects: [
+      {
+        id: "widget",
+        repos: [{ id: "app", cloneUrl: "https://example.com/app.git", path: "", baseBranch: "main", host: "github", deploy: { kind: "live" } }],
+        trackers: [],
+        jobs: ["record"],
+        areas: [{ id: "widget", repo: "app", dir: "widget" }],
+      },
+    ],
+    channels: [],
+  };
+
+  const widgetLedger = (repo: string): Ledger => ({
+    ...emptyLedger("core", "A widget feature."),
+    landings: [{ at: "2026-09-11", repo, ref: `${repo}#12`, number: 12, sha: "abc1234", title: "x", by: "Sam", url: null, asks: [], files: [] }],
+  });
+
+  test("a landing with the project's own repo id is accepted", async () => {
+    writeFileSync(join(dir, "projects.json"), JSON.stringify(projectsConfig));
+    const r = await writeLedger("core", widgetLedger("app"), { now: T0, app: "widget" });
+    expect(r.wrote).toBe(true);
+    expect(r.ledger.landings[0]?.repo).toBe("app");
+  });
+
+  test("a landing with an undeclared repo id is refused, and the ledger on disk is unchanged", async () => {
+    writeFileSync(join(dir, "projects.json"), JSON.stringify(projectsConfig));
+    await expect(writeLedger("core", widgetLedger("fe"), { now: T0, app: "widget" })).rejects.toBeInstanceOf(ValidationError);
+    expect(await readLedger("core", "widget")).toBeNull();
   });
 });

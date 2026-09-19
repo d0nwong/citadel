@@ -85,6 +85,46 @@ describe("argus", () => {
     expect((await argus("validate", "nope")).err).toContain("not a feature directory");
   });
 
+  test("a feature's project's own repo id is accepted and another project's is refused (ledger S-22, CTD-270)", async () => {
+    writeFileSync(join(ws, "projects.json"), JSON.stringify({
+      projects: [
+        {
+          id: "alden-portal",
+          repos: [
+            { id: "fe", cloneUrl: "https://example.com/fe.git", path: "", baseBranch: "staging", host: "bitbucket", deploy: { kind: "live" } },
+            { id: "be", cloneUrl: "https://example.com/be.git", path: "", baseBranch: "dev", host: "bitbucket", deploy: { kind: "pipeline" } },
+          ],
+          trackers: [{ provider: "linear", key: "ALD", prefixes: ["ALD"] }],
+          jobs: ["docs", "record"],
+          areas: [{ id: "alden-portal", repo: "fe", dir: "alden/alden-portal" }],
+        },
+        {
+          id: "widget",
+          repos: [{ id: "app", cloneUrl: "https://example.com/app.git", path: "", baseBranch: "main", host: "github", deploy: { kind: "live" } }],
+          trackers: [],
+          jobs: ["record"],
+          areas: [{ id: "widget", repo: "app", dir: "widget" }],
+        },
+      ],
+      channels: [],
+    }));
+    mkdirSync(join(ws, "widget/features/core/docs"), { recursive: true });
+    const valid = JSON.parse(await Bun.file(join(FIX, "valid.json")).text());
+    const ledger = { ...valid, feature: "core", landings: [{ ...valid.landings[0], repo: "app", ref: "app#771" }], tickets: [{ ...valid.tickets[0], blockers: valid.tickets[0].blockers.filter((b: { kind: string }) => b.kind !== "landing") }] };
+    writeFileSync(join(ws, "widget/features/core/ledger.json"), JSON.stringify(ledger));
+
+    // the alden-portal ledgers still validate unchanged (AC1); the widget feature's own "app" repo is fine too
+    const ok = await argus("validate");
+    expect(ok.code).toBe(0);
+
+    // an alden-portal repo id on the widget feature's landing is refused
+    writeFileSync(join(ws, "widget/features/core/ledger.json"), JSON.stringify({ ...ledger, landings: [{ ...ledger.landings[0], repo: "fe" }] }));
+    const bad = await argus("validate", "--json");
+    expect(bad.code).toBe(1);
+    const j = JSON.parse(bad.out);
+    expect(j.problems).toContainEqual({ feature: "widget/core", path: "ledger.landings[0].repo", rule: "fe is not a repo id this feature's project declares" });
+  });
+
   test("write from a file, dry-run first, then for real, then unchanged", async () => {
     const dry = await argus("write", "tasks", join(FIX, "valid.json"), "--dry-run");
     expect(dry.code).toBe(1);

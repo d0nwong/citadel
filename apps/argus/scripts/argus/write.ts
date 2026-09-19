@@ -8,7 +8,8 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { noteWritten } from "./commit.ts";
-import { ledgerPath } from "./paths.ts";
+import { DEFAULT_APP, ledgerPath } from "./paths.ts";
+import { loadProjects, repoIdsForDir } from "./projects.ts";
 import { type Ask, type IdCounters, type Ledger, parseLedger, type Proposal, type Requirement, serializeLedger } from "./schema.ts";
 import { assertLedger, deriveReady } from "./validate.ts";
 
@@ -102,7 +103,8 @@ export async function writeLedger(feature: string, input: unknown, opts: WriteOp
   if (prev && strip(prev) === strip(next)) return { wrote: false, ledger: prev, diff: [], path };
 
   next = { ...next, as_of: now.toISOString() };
-  const ledger = assertLedger(next, { prev, actor });
+  const repos = repoIdsForDir(await loadProjects(), app ?? DEFAULT_APP);
+  const ledger = assertLedger(next, { prev, actor, repos });
   const diff = describeDiff(prev, ledger);
   if (!dryRun) {
     await mkdir(dirname(path), { recursive: true });
