@@ -939,9 +939,11 @@ function localWorktrees(
 }
 
 /**
- * What Delete discards beyond the conversation file (CTD-223, S-44): local mode only, and
- * only once the conversation has worktrees — `null` in container mode, or before its first
- * question has cut them, since there is nothing there to discard.
+ * What Delete and Finish discard beyond the conversation file (CTD-223, S-44, S-61): local mode
+ * only, and only once the conversation has worktrees — `null` in container mode, or before its
+ * first question has cut them, since there is nothing there to discard. The off-list paths are
+ * classified against the same record `finishConversation` commits to (`ARGUS_DIR`, `ask/<id>`
+ * as `ARGUS_ORIGIN`), so a file Finish would drop or refuse is named the same way here.
  */
 export async function conversationDiscardCounts(
   threadId: string,
@@ -951,7 +953,9 @@ export async function conversationDiscardCounts(
     return null;
   }
   const paths = worktreePaths(opts.worktreesDir ?? WORKTREES_DIR, threadId);
-  return (await hasWorktrees(paths)) ? discardCounts(paths) : null;
+  return (await hasWorktrees(paths))
+    ? discardCounts(paths, { argusDir: ARGUS_DIR, origin: branchOf(threadId) })
+    : null;
 }
 
 /** The run's sandbox: the conversation's citadel worktree once it has one, the live checkout otherwise. */

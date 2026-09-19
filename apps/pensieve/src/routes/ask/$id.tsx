@@ -123,10 +123,10 @@ const firstQuestion = (messages: UIMessage[]): string =>
     .trim();
 
 /**
- * Finish (CTD-224): local mode's way of landing this conversation's citadel-data changes on
- * main. The confirm names the citadel-data worktree's uncommitted changes Finish is about to
- * land (S-43); with none it asks nothing extra and runs straight through —
- * `finishConversation` is a no-op besides.
+ * Finish (CTD-224, CTD-259): local mode's way of landing this conversation's citadel-data
+ * changes on main. The confirm names the citadel-data worktree's off-list files (S-61) — an
+ * uncommitted one Finish is about to drop, a committed one that will stop Finish outright
+ * (S-58) — each with its count; with neither it asks nothing extra and runs straight through.
  */
 function FinishButton({
   onFinished,

@@ -1528,7 +1528,7 @@ describe("CTD-223 — Delete removes a local conversation's worktrees and says w
     ).toBeNull();
   });
 
-  test("counts the citadel-data worktree's uncommitted files and commits not on main", async () => {
+  test("counts the citadel-data worktree's uncommitted files and commits not on main, naming the ones off the record", async () => {
     const store = conversationStore(await scratch());
     const worktreesDir = await scratch();
     const { dir: citadelDir } = await makeCitadelRepo();
@@ -1562,7 +1562,12 @@ describe("CTD-223 — Delete removes a local conversation's worktrees and says w
       worktreesDir,
     });
     expect(counts).toEqual({
-      citadelData: { uncommitted: 1, unmerged: 1 },
+      citadelData: {
+        offListCommitted: ["draft.json"],
+        offListUncommitted: ["scratch.json"],
+        uncommitted: 1,
+        unmerged: 1,
+      },
     });
   });
 
