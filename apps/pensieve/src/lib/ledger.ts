@@ -162,6 +162,38 @@ export interface Unplaced {
 export const isOpen = (a: Ask): boolean =>
   a.status !== "closed" && a.status !== "dropped";
 
+/** how long a landing that served the feature keeps it on Home (board S-20) */
+export const LIVE_LANDING_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The landing delivered this feature's own work: it names one of the feature's asks, or a
+ * ticket key the feature holds. A landing a feature got only because a PR touched its
+ * files serves nothing here.
+ */
+const servedBy = (l: Ledger, landing: Landing): boolean => {
+  const asks = new Set(l.asks.map((a) => a.id));
+  const keys = new Set([
+    ...l.tickets.map((t) => t.key),
+    ...l.asks.flatMap((a) => (a.ticket ? [a.ticket] : [])),
+  ]);
+  return (
+    landing.asks.some((id) => asks.has(id)) ||
+    (landing.tickets ?? []).some((k) => keys.has(k))
+  );
+};
+
+/**
+ * Work is live on the feature: an ask is still open, or a landing that served it arrived
+ * within the last seven days. Times are compared as instants — ledgers mix offsets and
+ * date-only values, and a date-only one reads as UTC midnight.
+ */
+export const isLive = (l: Ledger, now: Date): boolean =>
+  l.asks.some(isOpen) ||
+  l.landings.some((landing) => {
+    const age = now.getTime() - Date.parse(landing.at);
+    return age < LIVE_LANDING_MS && servedBy(l, landing);
+  });
+
 /** the asks aimed at the reader and not yet done, oldest first */
 export const onYou = (l: Ledger): Ask[] =>
   l.asks

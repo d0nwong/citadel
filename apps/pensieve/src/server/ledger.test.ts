@@ -12,7 +12,13 @@ import { dirname, join } from "node:path";
 import type { TicketStates } from "@citadel/tickets";
 import type { Ledger } from "#/lib/ledger";
 import type { PipelineCard } from "./ledger";
-import { home, listLedgers, readLedger, readUnplaced } from "./ledger";
+import {
+  home,
+  homeShell,
+  listLedgers,
+  readLedger,
+  readUnplaced,
+} from "./ledger";
 import { ALDEN_CHECKOUTS, type AppRoot } from "./workspace";
 
 const FIXTURE = new URL("../test/fixtures/ledger.json", import.meta.url)
@@ -83,6 +89,51 @@ describe("home", () => {
       ["admin/invoicing", 1, 1, 1],
       ["tasks", 0, 0, 0],
     ]);
+    expect(h.problems).toHaveLength(1);
+  });
+  test("a feature is live while an ask is open, or for 168 hours after a landing that served it", async () => {
+    const base = await fixture();
+    const [landing] = base.landings;
+    // no open ask: only a landing can make these live
+    const quiet = (landings: Ledger["landings"]) =>
+      fixture({
+        asks: base.asks.filter((a) => a.id === "A-1"),
+        landings,
+        proposals: [],
+      });
+    // now is 2026-09-19T12:00Z; 167 h back is 2026-09-12T13:00Z, written in -03:00
+    const now = new Date("2026-09-19T12:00:00Z");
+    await put(
+      `${APP}/features/fresh/ledger.json`,
+      await quiet([{ ...landing, at: "2026-09-12T10:00:00-03:00" }])
+    );
+    await put(
+      `${APP}/features/stale/ledger.json`,
+      await quiet([{ ...landing, at: "2026-09-12T11:00:00Z" }])
+    );
+    await put(
+      `${APP}/features/by-key/ledger.json`,
+      await quiet([
+        { ...landing, asks: [], at: "2026-09-18", tickets: ["ALD-41"] },
+      ])
+    );
+    await put(
+      `${APP}/features/touched/ledger.json`,
+      await quiet([
+        { ...landing, asks: ["A-9"], at: "2026-09-18", tickets: ["ALD-99"] },
+      ])
+    );
+    const h = await homeShell(roots, join(root, "state/unplaced.json"), now);
+    expect(Object.fromEntries(h.features.map((f) => [f.dir, f.live]))).toEqual({
+      "admin/invoicing": true,
+      "by-key": true,
+      fresh: true,
+      stale: false,
+      tasks: false,
+      touched: false,
+    });
+    // /features and the move pickers still get every feature, quiet ones included
+    expect(h.features).toHaveLength(6);
     expect(h.problems).toHaveLength(1);
   });
   test("a ticket with every blocker cleared is ready; unplaced comes from argus's file", async () => {
