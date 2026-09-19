@@ -11,7 +11,7 @@
  */
 
 import { ungroundedNotes } from "./grounding.ts";
-import { ASK_DONE, type Ask, type Evidence, type Ledger, parseLedger, SchemaError } from "./schema.ts";
+import { ASK_DONE, type Ask, type Blocker, type Evidence, type Ledger, parseLedger, SchemaError } from "./schema.ts";
 
 export type Problem = { path: string; rule: string };
 
@@ -27,6 +27,8 @@ export type ValidateOptions = {
   prev?: Ledger | null;
   /** who produced `next`; the model may not write `user` evidence */
   actor?: "model" | "user";
+  /** the repo ids the feature's project declares; enables the landing/blocker repo-id rule (ledger S-22, S-23) */
+  repos?: string[];
 };
 
 // ---------------------------------------------------------------- style (skills/sweep/style.md, the three mechanical rules)
@@ -79,6 +81,22 @@ function noAssumption(ev: Evidence[], path: string, out: Problem[]) {
   });
 }
 
+/** a landing's or a landing blocker's `repo` must be a repo id the feature's project declares (ledger S-22, S-23) */
+function checkRepoIds(l: Ledger, repos: string[] | undefined, out: Problem[]) {
+  if (!repos) return;
+  const allowed = new Set(repos);
+  const badRepo = (r: string) => `${r} is not a repo id this feature's project declares`;
+  l.landings.forEach((ld, i) => {
+    if (!allowed.has(ld.repo)) out.push({ path: `ledger.landings[${i}].repo`, rule: badRepo(ld.repo) });
+  });
+  const checkBlockers = (blockers: Blocker[] | undefined, path: string) =>
+    (blockers ?? []).forEach((b, j) => {
+      if (b.kind === "landing" && !allowed.has(b.repo)) out.push({ path: `${path}[${j}].repo`, rule: badRepo(b.repo) });
+    });
+  l.asks.forEach((a, i) => checkBlockers(a.blockers, `ledger.asks[${i}].blockers`));
+  l.tickets.forEach((t, i) => checkBlockers(t.blockers, `ledger.tickets[${i}].blockers`));
+}
+
 /** the `user` evidence items in a ledger, keyed by where they sit */
 function userEvidence(l: Ledger): Map<string, Evidence> {
   const m = new Map<string, Evidence>();
@@ -108,7 +126,9 @@ export function validateLedger(input: unknown, opts: ValidateOptions = {}): Prob
     throw e;
   }
   const out: Problem[] = [];
-  const { prev = null, actor = "model" } = opts;
+  const { prev = null, actor = "model", repos } = opts;
+
+  checkRepoIds(l, repos, out);
 
   // story: text needs evidence; assumption allowed; style
   for (const k of Object.keys(l.story) as (keyof Ledger["story"])[]) {

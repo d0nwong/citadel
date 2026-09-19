@@ -71,4 +71,12 @@ describe("parseLedger", () => {
     raw.asks[0].history[0].evidence[0].kind = "hearsay";
     expect(() => parseLedger(raw)).toThrow("ledger.asks[0].history[0].evidence[0].kind");
   });
+
+  test("a landing's repo is any non-empty string; validate.ts checks it against the project (CTD-270)", async () => {
+    const raw = await load("valid.json");
+    raw.landings[0].repo = "app";
+    expect(parseLedger(raw).landings[0]?.repo).toBe("app");
+    raw.landings[0].repo = "";
+    expect(() => parseLedger(raw)).toThrow("ledger.landings[0].repo");
+  });
 });

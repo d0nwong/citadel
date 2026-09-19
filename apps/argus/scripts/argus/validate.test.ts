@@ -108,6 +108,35 @@ describe("validateLedger", () => {
     const l = parseLedger(await load("ready-with-blocker.json"));
     expect(validateLedger(deriveReady(l))).toEqual([]);
   });
+
+  describe("repo ids (ledger S-22, S-23)", () => {
+    test("with no repos option, any repo id is fine — every alden-portal ledger validates unchanged", async () => {
+      const v = await load("valid.json");
+      expect(validateLedger(v)).toEqual([]);
+    });
+
+    test("a landing's repo must be one the feature's project declares (S-22)", async () => {
+      const v = await load("valid.json");
+      // strip the ticket's own landing blocker so only the landing itself is under test
+      v.tickets[0].blockers = v.tickets[0].blockers.filter((b: { kind: string }) => b.kind !== "landing");
+      expect(validateLedger(v, { repos: ["fe", "be"] })).toEqual([]);
+      const app = { ...v, landings: [{ ...v.landings[0], repo: "app" }] };
+      expect(validateLedger(app, { repos: ["fe", "be"] })).toEqual([{ path: "ledger.landings[0].repo", rule: "app is not a repo id this feature's project declares" }]);
+      expect(validateLedger(app, { repos: ["app"] })).toEqual([]);
+    });
+
+    test("a landing blocker's repo must be one the feature's project declares, on an ask or a ticket (S-23)", async () => {
+      const v = await load("valid.json");
+      // the fixture's ticket already carries a "be" landing blocker; leave the landing itself out of it
+      const noLanding = { ...v, landings: [] };
+      expect(validateLedger(noLanding, { repos: ["app"] })).toEqual([{ path: "ledger.tickets[0].blockers[0].repo", rule: "be is not a repo id this feature's project declares" }]);
+      expect(validateLedger(noLanding, { repos: ["fe", "be"] })).toEqual([]);
+
+      const withAskBlocker = { ...noLanding, tickets: [{ ...v.tickets[0], blockers: v.tickets[0].blockers.filter((b: { kind: string }) => b.kind !== "landing") }], asks: [{ ...v.asks[0], ready: false, blockers: [{ kind: "landing", repo: "app", ref: "app#12", branch: "origin/main", deployed: false, cleared: null }] }, v.asks[1]] };
+      expect(validateLedger(withAskBlocker, { repos: ["app"] })).toEqual([]);
+      expect(validateLedger(withAskBlocker, { repos: ["fe", "be"] })).toEqual([{ path: "ledger.asks[0].blockers[0].repo", rule: "app is not a repo id this feature's project declares" }]);
+    });
+  });
 });
 
 describe("checkStyle", () => {

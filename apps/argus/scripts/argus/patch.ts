@@ -169,7 +169,7 @@ function parseBlocker(v: unknown, path: string): Blocker {
   if (!isObj(v) || typeof v.kind !== "string" || !(BLOCKER_KINDS as readonly string[]).includes(v.kind)) throw err(path, `expected { kind: ${BLOCKER_KINDS.join(" | ")}, … }`);
   switch (v.kind) {
     case "landing":
-      if (v.repo !== "fe" && v.repo !== "be") throw err(`${path}.repo`, "expected fe or be");
+      if (typeof v.repo !== "string" || !v.repo) throw err(`${path}.repo`, "expected a non-empty string");
       return { kind: "landing", repo: v.repo, ref: typeof v.ref === "string" ? v.ref : "", branch: typeof v.branch === "string" ? v.branch : v.repo === "be" ? "origin/dev" : "origin/staging", deployed: false, cleared: null };
     case "answer":
       if (typeof v.from !== "string" || typeof v.question !== "string") throw err(path, "expected { kind: answer, from, question }");

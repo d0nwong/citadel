@@ -32,6 +32,12 @@ describe("patch", () => {
     expect(p.notes).toEqual(["could not tell who owns the CSV export"]);
   });
 
+  test("a landing blocker's repo can be any non-empty string; the project's own repo ids are the validator's to check (CTD-270)", () => {
+    const p = parsePatch({ asks: { block: [{ id: "A-2", blocker: { kind: "landing", repo: "app", ref: "app#12", branch: "main" } }] } });
+    expect(p.asks?.block?.[0]?.blocker).toMatchObject({ kind: "landing", repo: "app", ref: "app#12" });
+    expect(() => parsePatch({ asks: { block: [{ id: "A-2", blocker: { kind: "landing", repo: "", ref: "x" } }] } })).toThrow("patch.asks.block[0].blocker.repo");
+  });
+
   test("refuses fields outside the shape and unknown ids, by path", async () => {
     expect(() => parsePatch({ delete: ["A-1"] })).toThrow(SchemaError);
     expect(() => parsePatch({ asks: { remove: [] } })).toThrow("patch.asks.remove");

@@ -235,6 +235,13 @@ export function allAreas(config: ProjectsConfig): (DocArea & { project: string }
   return config.projects.flatMap((p) => p.areas.map((a) => ({ ...a, project: p.id })));
 }
 
+/** the repo ids the project whose doc area sits at `dir` declares, or undefined when no area holds that directory */
+export function repoIdsForDir(config: ProjectsConfig, dir: string): string[] | undefined {
+  const area = allAreas(config).find((a) => a.dir === dir);
+  const project = area && config.projects.find((p) => p.id === area.project);
+  return project?.repos.map((r) => r.id);
+}
+
 /**
  * What an area needs before `accio map`/`accio sync` can generate anything for it
  * (CTD-267, spec S-10): a route tree to derive a manifest from, and an API spec to join
