@@ -22,6 +22,15 @@ export const DEFAULT_ALDEN_FE_REPO = "~/git/alden-portal-fe";
 export const DEFAULT_ALDEN_BE_REPO = "~/git/alden-connect-portal-be";
 export const expand = (p: string) => p.replace(/^~/, process.env.HOME ?? "~");
 
+/**
+ * Per-area paths (CTD-266): where a doc area's manifest and features live under
+ * `DATA_ROOT`, for an area whose `dir` (`projects.json`, checkout-root-relative) is not
+ * `alden/alden-portal`. `APP_DIR`/`MANIFEST_PATH`/`FEATURES_DIR` above stay the alden-portal
+ * defaults `accio map`/`sync` (out of scope here) still read unconditionally.
+ */
+export const manifestPathFor = (dir: string) => join(DATA_ROOT, dir, ".doc-workspace/feature-manifest.json");
+export const featuresDirFor = (dir: string) => join(DATA_ROOT, dir, "features");
+
 export type Component = { slug: string; does?: string; files?: string[]; aliases?: string[] };
 export type Feature = {
   id: string;
@@ -53,16 +62,20 @@ export type Feature = {
   orphaned?: boolean;
   docs_sha?: string;
 };
-export type Manifest = { app: string; fe_repo: string; be_repo?: string; features: Feature[] };
+/**
+ * `fe_repo`/`be_repo`: alden-portal's two-repo shape, written by `accio map`. `repo`: a
+ * single-repo area's own manifest (CTD-266) — hand-curated, `accio map` never writes one.
+ */
+export type Manifest = { app: string; fe_repo?: string; be_repo?: string; repo?: string; features: Feature[] };
 
-export async function loadManifest(): Promise<Manifest | null> {
-  const f = Bun.file(MANIFEST_PATH);
+export async function loadManifest(path = MANIFEST_PATH): Promise<Manifest | null> {
+  const f = Bun.file(path);
   return (await f.exists()) ? await f.json() : null;
 }
 
-export async function saveManifest(m: Manifest): Promise<void> {
+export async function saveManifest(m: Manifest, path = MANIFEST_PATH): Promise<void> {
   m.features.sort((a, b) => a.type.localeCompare(b.type) || a.id.localeCompare(b.id));
-  await Bun.write(MANIFEST_PATH, JSON.stringify(m, null, 2) + "\n");
+  await Bun.write(path, JSON.stringify(m, null, 2) + "\n");
 }
 
 /** Machine fields refresh; curated fields survive. New features append; gone ones flag. */

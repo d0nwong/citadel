@@ -36,8 +36,8 @@ const HELP = `accio — summon the API surface
   accio list [--in <feature>]           mapped features / one feature's components
   accio map [--dry]                     derive/refresh the feature manifest
   accio sync [--offline|--check|--feature <id>]
-  accio audit
-  accio stale [--json] [--all]          which features' docs drifted (tiers / fe-core / be-handlers / journal)
+  accio audit [--area <id>]
+  accio stale [--json] [--all] [--area <id>]   which features' docs drifted (tiers / fe-core / be-handlers / journal)
 
 accio is the API surface and the docs. Where the work stands is a feature's record:
 \`argus show <feature>\`, or Pensieve's feature page.

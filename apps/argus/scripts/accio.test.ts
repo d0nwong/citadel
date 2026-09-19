@@ -12,10 +12,11 @@
 
 import { test, expect, describe } from "bun:test";
 import { $ } from "bun";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { orvalName, extractSwaggerDoc, flatten, indexOps, fingerprintOf, diffSpec, normPath } from "./accio/spec.ts";
+import type { Manifest } from "./accio/manifest.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 /** argus's data (OpenAPI cache, accio index, arch docs) lives where ARGUS_ROOT points */
@@ -214,5 +215,109 @@ describe("data root", () => {
     expect(root).toBe(ROOT);
     expect(data).toBe("/tmp/argus-data");
     expect([app, state, features]).toEqual(["/tmp/argus-data/alden/alden-portal", "/tmp/argus-data/.state", "/tmp/argus-data/alden/alden-portal/features"]);
+  });
+});
+
+// ---------------------------------------------------------------- CTD-266: every doc area
+
+describe("computeStale (CTD-266: reads the area's own repo, tags reports with its area)", () => {
+  const gitRepo = async () => {
+    const repo = mkdtempSync(join(tmpdir(), "accio-stale-repo-"));
+    await $`git init -q -b main ${repo}`.quiet();
+    await $`git -C ${repo} config user.email a@b.c`.quiet();
+    await $`git -C ${repo} config user.name test`.quiet();
+    return repo;
+  };
+  const commit = async (repo: string, file: string, contents: string) => {
+    await Bun.write(join(repo, file), contents);
+    await $`git -C ${repo} add -A`.quiet();
+    await $`git -C ${repo} commit -q -m change`.quiet();
+    return (await $`git -C ${repo} rev-parse --short HEAD`.text()).trim();
+  };
+
+  test("names a stale feature with its area, from a diff against the area's own repo", async () => {
+    const repo = await gitRepo();
+    const sha1 = await commit(repo, "src/pages/tasks/index.tsx", "1");
+    await commit(repo, "src/pages/tasks/index.tsx", "2");
+
+    const work = mkdtempSync(join(tmpdir(), "accio-stale-work-"));
+    const featuresDir = join(work, "features");
+    await Bun.write(join(featuresDir, "tasks/docs/arch.md"), `---\nid: tasks\nlast_verified: main@${sha1}\n---\n# Tasks\n`);
+
+    const manifest: Manifest = {
+      app: "citadel",
+      features: [{ id: "tasks", name: "Tasks", type: "feature", status: "done", entry_routes: [], core_files: ["src/pages/tasks"], aliases: [] }],
+    };
+    const { computeStale } = await import("./accio/stale.ts");
+    const reports = await computeStale(manifest, { area: "citadel-argus", featuresDir, fe: { path: repo, ref: "HEAD" } });
+
+    expect(reports).toHaveLength(1);
+    expect(reports[0]!.area).toBe("citadel-argus");
+    expect(reports[0]!.reasons).toEqual([{ kind: "fe-core", detail: expect.stringContaining("1 core file") }]);
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
+  });
+
+  test("a single-repo area never reports be-handlers, even when the doc carries a BE stamp and be_files", async () => {
+    const repo = await gitRepo();
+    const sha1 = await commit(repo, "src/pages/tasks/index.tsx", "1");
+
+    const work = mkdtempSync(join(tmpdir(), "accio-stale-work-"));
+    const featuresDir = join(work, "features");
+    await Bun.write(join(featuresDir, "tasks/docs/arch.md"),
+      `---\nid: tasks\nlast_verified: main@${sha1}\nlast_verified_be: main@${sha1}\n---\n# Tasks\n`);
+
+    const manifest: Manifest = {
+      app: "citadel",
+      features: [{ id: "tasks", name: "Tasks", type: "feature", status: "done", entry_routes: [], core_files: ["src/pages/tasks"], be_files: ["handler.ts"], aliases: [] }],
+    };
+    const { computeStale } = await import("./accio/stale.ts");
+    const reports = await computeStale(manifest, { area: "citadel-argus", featuresDir, fe: { path: repo, ref: "HEAD" } });
+
+    expect(reports[0]!.reasons.every(r => r.kind !== "be-handlers")).toBe(true);
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
+  });
+});
+
+describe("auditManifestDocs (CTD-266: the single-repo shape)", () => {
+  test("a doc with one stamp, core files relative to the area's repo, and an unchecked endpoint in prose passes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "accio-audit-manifest-"));
+    const repo = join(dir, "repo");
+    mkdirSync(join(repo, "scripts/accio"), { recursive: true });
+    await Bun.write(join(repo, "scripts/accio/manifest.ts"), "export const x = 1;\n");
+    await Bun.write(join(dir, "features/accio/docs/arch.md"), [
+      "---", "id: accio", "tier: architecture", "aliases: []", "core_files:",
+      "  - scripts/accio/manifest.ts", "last_verified: main@abc1234", "---",
+      "# Accio — Architecture", "## Component Map", "## Interfaces & Contracts",
+      "Prose mentioning `GET /api/v1/never-checked` — no API spec, so never flagged.", "",
+    ].join("\n"));
+
+    const manifest: Manifest = {
+      app: "citadel",
+      features: [{ id: "accio", name: "Accio", type: "feature", status: "done", entry_routes: [], core_files: ["scripts/accio/manifest.ts"], aliases: [] }],
+    };
+    const { auditManifestDocs } = await import("./accio/audit.ts");
+    const problems = await auditManifestDocs(manifest, { dir: join(dir, "features"), repoPath: repo });
+    expect(problems).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("flags a core path that does not exist in the area's own repo", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "accio-audit-manifest-"));
+    const repo = join(dir, "repo");
+    mkdirSync(repo, { recursive: true });
+    await Bun.write(join(dir, "features/x/docs/arch.md"), [
+      "---", "id: x", "core_files:", "  - missing.ts", "last_verified: main@abc1234", "---",
+      "# X", "## Component Map", "## Interfaces & Contracts", "",
+    ].join("\n"));
+    const manifest: Manifest = {
+      app: "citadel",
+      features: [{ id: "x", name: "X", type: "feature", status: "done", entry_routes: [], core_files: ["missing.ts"], aliases: [] }],
+    };
+    const { auditManifestDocs } = await import("./accio/audit.ts");
+    const problems = await auditManifestDocs(manifest, { dir: join(dir, "features"), repoPath: repo });
+    expect(problems.some(p => p.includes("missing.ts") && p.includes("does not exist"))).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
   });
 });
