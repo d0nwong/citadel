@@ -1,45 +1,14 @@
 /**
  * What both sides of the wire need to know about handing a ticket to Foundry (LIA-162).
  *
- * Send used to be keyed on a Needs-you point. Points are gone with the sweep's rewire
- * (LIA-161), and the thing a person actually presses Send beside is a ticket on a
- * workstream page — so the key is the ticket, and the file is
- * `decisions/send/<ticket>.json` `{ ticket, action: "sent", job, at, by }`. Argus reads it
- * by content, not by name (argus's `sent` records scan every group under
- * `decisions/` for a `sent` decision carrying a job), so the ticket travels inside the file
- * and the file name is the id folded the way every other decision file's name is.
- *
- * `server/decisions.ts` builds the path and is node-only; the workstream page needs the
- * same id rule to address a row and the same refusals, so all of it lives here, where
- * nothing node-only is imported (`FoundryRepo` is a type, and erased).
+ * A Send is one ticket on a feature's page: `sendReady` (`lib/api.ts`) posts the job to
+ * Foundry, then records it on the feature's ledger with `argus sent`, so the ticket and the
+ * job travel through argus like every other write. The page needs the same refusals the
+ * server applies — which tickets may be sent, which repo a job may go to — so they live
+ * here, where nothing node-only is imported (`FoundryRepo` is a type, and erased).
  */
 
 import type { FoundryRepo } from "#/server/foundry";
-
-/** The decision group a ticket handed to Foundry lands in. */
-export const SEND_GROUP = "send";
-
-/** A Linear issue key, as the workstreams record them: `LIA-162`, `MM-18`. */
-export const TICKET_RE = /^[A-Z][A-Z0-9]{0,9}-\d{1,6}$/;
-
-export const isTicketKey = (v: unknown): v is string =>
-  typeof v === "string" && TICKET_RE.test(v);
-
-/**
- * `send/lia-162` — the id `decisionPath` maps to `decisions/send/lia-162.json`. The key is
- * lower-cased rather than used verbatim so every decision file's name has the one shape
- * the writer has always given it; the key itself travels inside the file, which is what
- * argus matches on.
- */
-export const sendId = (ticket: string) =>
-  `${SEND_GROUP}/${ticket.toLowerCase()}`;
-
-export const SEND_ID_RE = new RegExp(
-  `^${SEND_GROUP}/[a-z][a-z0-9]{0,9}-\\d{1,6}$`
-);
-
-export const isSendId = (id: unknown): id is string =>
-  typeof id === "string" && SEND_ID_RE.test(id);
 
 /**
  * The Linear states a ticket may be sent from: nothing has started on it. `backlog` and
