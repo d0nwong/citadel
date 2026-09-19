@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { TicketStates } from "@citadel/tickets";
-import type { Ledger } from "#/lib/ledger";
+import type { Ask, Ledger } from "#/lib/ledger";
 import type { PipelineCard } from "./ledger";
 import {
   home,
@@ -135,6 +135,34 @@ describe("home", () => {
     // /features and the move pickers still get every feature, quiet ones included
     expect(h.features).toHaveLength(6);
     expect(h.problems).toHaveLength(1);
+  });
+  test("a feature links each thread behind its open asks once; closed and ticket-raised asks add none", async () => {
+    const base = await fixture();
+    const [closed, open] = base.asks;
+    const origin = open.origin as Extract<Ask["origin"], { kind: "slack" }>;
+    await put(
+      `${APP}/features/admin/invoicing/ledger.json`,
+      await fixture({
+        asks: [
+          closed,
+          { ...open, at: "2026-09-12" },
+          // same thread, same day, a later permalink: joins the first, keeps its url
+          {
+            ...open,
+            at: "2026-09-12",
+            id: "A-3",
+            origin: { ...origin, url: `${origin.url}0` },
+          },
+          { ...open, id: "A-4", origin: { key: "ALD-7", kind: "ticket" } },
+        ],
+      })
+    );
+    const h = await homeShell(roots, join(root, "state/unplaced.json"));
+    const invoicing = h.features.find((f) => f.dir === "admin/invoicing");
+    expect(invoicing?.threads).toEqual([
+      { asks: ["A-2", "A-3"], kind: "slack", url: origin.url },
+    ]);
+    expect(h.features.find((f) => f.dir === "tasks")?.threads).toEqual([]);
   });
   test("a ticket with every blocker cleared is ready; unplaced comes from argus's file", async () => {
     const l = await fixture();

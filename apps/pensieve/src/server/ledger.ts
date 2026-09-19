@@ -13,11 +13,13 @@ import { join } from "node:path";
 import type { TicketState, TicketStates } from "@citadel/tickets";
 import {
   type Ask,
+  type AskThread,
   isLive,
   isOpen,
   type Ledger,
   lastSentRepo,
   onYou,
+  openAskThreads,
   readyAsks,
   readyTickets,
   type Ticket,
@@ -221,6 +223,8 @@ export interface FeatureSummary {
   proposals: number;
   ready: number;
   summary: string;
+  /** the Slack or huddle threads behind its open asks, one per thread */
+  threads: AskThread[];
 }
 
 /** a ticket filed from Ask with no ledger, still open on Linear */
@@ -274,6 +278,7 @@ export async function homeShell(
       proposals: ledger.proposals.length,
       ready: readyTickets(ledger).length,
       summary: ledger.summary,
+      threads: openAskThreads(ledger),
     });
   }
   onYouAll.sort((a, b) => a.at.localeCompare(b.at));

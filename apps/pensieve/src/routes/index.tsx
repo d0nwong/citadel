@@ -97,6 +97,23 @@ function HomePage() {
                     </span>
                   )}
                 </Link>
+                {/* outside the row's Link: an anchor inside it would nest, and its click open the feature */}
+                {f.threads.length > 0 && (
+                  <p className="flex flex-wrap gap-x-3 gap-y-1 px-2 pb-2.5 text-xs">
+                    {f.threads.map((t) => (
+                      <a
+                        className="text-muted-foreground underline decoration-1 underline-offset-2 hover:text-foreground"
+                        href={t.url}
+                        key={t.url}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {t.kind === "huddle" ? "Huddle" : "Slack"} ·{" "}
+                        {t.asks.join(", ")}
+                      </a>
+                    ))}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
