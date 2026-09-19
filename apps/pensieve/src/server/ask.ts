@@ -15,14 +15,14 @@
  * worktree's argus directory as its sandbox, the citadel-data worktree as `ARGUS_ROOT`. Before
  * each later question the citadel-data branch is rebased onto main, so a ledger the sweep
  * committed since the last question is what the run reads; a conflict is left for the run
- * itself to resolve first (`conflictPrompt`). Pensieve's own rule holds in both modes: in the
- * blackboard it writes `decisions/` and nothing else, and Ask writes only under
- * `PENSIEVE_HOME` (default `~/.pensieve`) — a local run's worktrees included.
+ * itself to resolve first (`conflictPrompt`). Pensieve's own rule holds in both modes: it
+ * writes the record only through argus verbs, and Ask writes only under `PENSIEVE_HOME`
+ * (default `~/.pensieve`) — a local run's worktrees included.
  *
  * Two tools are bridged into the run: `propose_decision` (LIA-111, retargeted by LIA-162)
  * and `propose_ticket` (LIA-113). A bridged tool always executes when the model calls it,
  * so each only reads and answers a proposal; the write is the user's click on the card the
- * chat renders from its tool part — `decisions/` for a correction or a send, Linear's
+ * chat renders from its tool part — an argus verb for a correction or a send, Linear's
  * `issueCreate` for a ticket.
  *
  * Auth is decided per request: `ANTHROPIC_API_KEY` in the environment means `'api-key'`

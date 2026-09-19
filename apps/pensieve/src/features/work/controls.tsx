@@ -203,7 +203,7 @@ export type Outcome = { ok: true } | Refused;
 /**
  * The one way a click is committed, wherever it is made: a busy guard so a second click
  * while the first is in flight is the same click, the router invalidated on success so
- * every loader on screen re-reads `decisions/`, and the refusal held for display. Shared by
+ * every loader on screen re-reads the ledgers, and the refusal held for display. Shared by
  * the page's controls and by Ask's proposal card, so the two paths cannot drift.
  */
 export function useCommit<R extends Outcome>() {
