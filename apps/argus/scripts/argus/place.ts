@@ -14,8 +14,7 @@
  */
 
 import { type Batch, type Placed, placedPath, readBatch, type Slice, type SliceDeploy } from "./batch.ts";
-import { type DeployedOf, recordDeploys } from "./blockers.ts";
-import { deployedAt } from "./deploy.ts";
+import { defaultDeployedOf, type DeployedOf, loadRepoConfig, recordDeploys, type RepoConfig } from "./blockers.ts";
 import type { Landing } from "./pr-facts.ts";
 import { recordFeatures } from "./projects.ts";
 import type { Ledger } from "./schema.ts";
@@ -33,6 +32,7 @@ export type PlaceOptions = {
   appOf?: Map<string, string>;
   threads?: ThreadMap;
   deployed?: DeployedOf;
+  repos?: RepoConfig;
 };
 
 const PR_RE = /\b(fe|be)#(\d+)\b|pull-requests\/(\d+)\b|\bPR\s*#?(\d+)\b/gi;
@@ -182,7 +182,8 @@ export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<
   const threads = opts.threads ?? (await readThreads());
   const features = (await recordFeatures()).map((x) => x.feature);
   const p = placeBatch(batch, ledgers, threads, features, now);
-  const deployed = opts.deployed ?? ((repo, sha) => deployedAt(repo, sha));
+  const repos = opts.repos ?? (await loadRepoConfig());
+  const deployed = opts.deployed ?? defaultDeployedOf(repos);
   const current = new Map(ledgers);
   const writes: [string, Ledger][] = [];
   // code owns the landings: every slice's new landings go onto its ledger now, so the
@@ -197,7 +198,7 @@ export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<
   }
   for (const [feature, l] of current) {
     const next = structuredClone(l);
-    await recordDeploys(next, deployed, now);
+    await recordDeploys(next, deployed, repos, now);
     const inSlice = new Set(p.slices.get(feature)?.landings.map((ld) => ld.ref));
     const deploys: SliceDeploy[] = [];
     for (const ld of next.landings) {

@@ -1,22 +1,26 @@
 /**
- * Whether a landing is live. The backend deploys to App Engine from every merge to `dev`
- * through a Bitbucket pipeline, and Bitbucket's pipelines API says for each merge commit
- * whether that pipeline finished, how, and when, or is still running. A finished answer is
- * the `deployed` fact on a backend landing and on a landing blocker; argus asks again every
- * run until there is one. Credentials are the ones `bb` keeps in
- * `~/.bitbucket-rest-cli-config.json` (`BITBUCKET_CONFIG` overrides the path); read here
- * and nowhere else. Finished answers are cached in `state/deploys.json`, so a sha is
- * settled once.
+ * Whether a repo read by pipeline has deployed. A repo whose config names `deploy: { kind:
+ * "pipeline" }` (alden-portal's `be`, on `dev`) deploys through a Bitbucket pipeline on its
+ * own base branch, and Bitbucket's pipelines API says for each merge commit whether that
+ * pipeline finished, how, and when, or is still running. A finished answer is the `deployed`
+ * fact on that landing and on a landing blocker; argus asks again every run until there is
+ * one. `deployCheck` takes its slug and branch from the repo's own `projects.json` entry,
+ * never a hardcoded name — a GitHub pipeline is out of scope until a project needs one.
+ * Credentials are the ones `bb` keeps in `~/.bitbucket-rest-cli-config.json`
+ * (`BITBUCKET_CONFIG` overrides the path); read here and nowhere else. Finished answers are
+ * cached in `state/deploys.json`, so a sha is settled once.
  *
- * The frontend's deploy is not read yet: `deployCheck("fe", ...)` answers unknown, and a
- * frontend landing blocker waits for a person until that is decided.
+ * A repo live when merged (`deploy: { kind: "live" }`, alden-portal's `fe`) makes no
+ * pipeline lookup at all: `blockers.ts` treats its landing as live the moment it is on the
+ * ledger.
  */
 
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { noteWritten } from "./commit.ts";
 import { stateDir } from "./paths.ts";
-import { REPOS, type RepoKind as Repo } from "./pr-facts.ts";
+import { slugFromUrl } from "./pr-facts.ts";
+import type { ProjectRepo } from "./projects.ts";
 
 export type Deploy = { result: "SUCCESSFUL" | "FAILED" | "STOPPED" | "ERROR"; at: string; build: number; url: string };
 
@@ -107,18 +111,20 @@ export async function pipelineFor(
   };
 }
 
-const BRANCH: Record<Repo, string | null> = { be: "dev", fe: null };
+/** the slug and branch a pipeline lookup needs, straight from a repo's own config entry */
+export type PipelineRepo = { id: string; slug: string; branch: string };
+
+/** a repo read by pipeline (`deploy.kind === "pipeline"`), as `deployCheck` needs it */
+export const pipelineRepo = (pr: ProjectRepo): PipelineRepo => ({ id: pr.id, slug: slugFromUrl(pr.cloneUrl), branch: pr.baseBranch });
 
 export type CheckOptions = { fetch?: typeof fetch; auth?: string | null; cache?: DeployCache };
 
 /** what Bitbucket says about a landing's deploy, with the cache in front; only a finished pipeline is cached */
-export async function deployCheck(repo: Repo, sha: string, opts: CheckOptions = {}): Promise<Check> {
-  const branch = BRANCH[repo];
-  if (!branch) return { state: "unknown", why: "the frontend's deploy is not read" };
+export async function deployCheck(repo: PipelineRepo, sha: string, opts: CheckOptions = {}): Promise<Check> {
   const cache = opts.cache ?? (await readDeployCache());
-  const key = `${repo}@${sha}`;
+  const key = `${repo.id}@${sha}`;
   if (cache[key]) return { state: "done", deploy: cache[key] };
-  const c = await pipelineFor(REPOS[repo].slug, branch, sha, opts);
+  const c = await pipelineFor(repo.slug, repo.branch, sha, opts);
   if (!c) return { state: "unknown", why: "no Bitbucket credentials" };
   if (c.state !== "done") return c;
   cache[key] = c.deploy;
@@ -127,7 +133,7 @@ export async function deployCheck(repo: Repo, sha: string, opts: CheckOptions = 
 }
 
 /** the deploy of a landing, null when it has not finished or is unknown */
-export async function deployedAt(repo: Repo, sha: string, opts: CheckOptions = {}): Promise<Deploy | null> {
+export async function deployedAt(repo: PipelineRepo, sha: string, opts: CheckOptions = {}): Promise<Deploy | null> {
   const c = await deployCheck(repo, sha, opts);
   return c.state === "done" ? c.deploy : null;
 }
