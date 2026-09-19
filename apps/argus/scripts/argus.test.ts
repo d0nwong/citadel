@@ -259,3 +259,59 @@ describe("deployed", () => {
     expect((await run()).code).toBe(1);
   });
 });
+
+describe("commit verb", () => {
+  // the sandbox itself exports GIT_AUTHOR_*, which would mask author assertions below
+  const sh = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: ws, stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
+  const run = (extraEnv: Record<string, string>, ...args: string[]) => {
+    const { GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, ...rest } = process.env;
+    const env = { ...rest, ARGUS_ROOT: ws, ARGUS_SWEEP_TICK: "", SWEEP_GIT_NAME: "", SWEEP_GIT_EMAIL: "", ...extraEnv };
+    const p = Bun.spawn(["bun", join(ROOT, "scripts/argus.ts"), "commit", ...args], { env, stdout: "pipe", stderr: "pipe" });
+    return Promise.all([p.exited, new Response(p.stdout).text(), new Response(p.stderr).text()]).then(([code, out, err]) => ({ code, out, err }));
+  };
+  beforeEach(() => {
+    Bun.spawnSync(["git", "init", "-q"], { cwd: ws });
+    Bun.spawnSync(["git", "-c", "user.email=t@t", "-c", "user.name=The Person", "commit", "-q", "--allow-empty", "-m", "root"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "The Person"], { cwd: ws });
+    mkdirSync(join(ws, "state"), { recursive: true });
+  });
+
+  test("outside a tick, is authored by the person running it, with no cursor promotion", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/admin/invoicing/ledger.json"), "{}\n");
+    writeFileSync(join(ws, "state/cursor.next.json"), '{"last_ts":"1"}\n');
+    const r = await run({}, "-m", "hand run");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("cursor none");
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("hand run");
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("The Person <t@t>");
+    expect(await Bun.file(join(ws, "state/cursor.next.json")).exists()).toBe(true);
+  });
+
+  test("in a tick, is authored argus sweep, prefixed sweep:, and only then promotes the cursor", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/admin/invoicing/ledger.json"), "{}\n");
+    writeFileSync(join(ws, "state/cursor.next.json"), '{"last_ts":"1"}\n');
+    const r = await run({ ARGUS_SWEEP_TICK: "1" }, "-m", "the first On-you line");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("cursor promoted");
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("sweep: the first On-you line");
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("argus sweep <sweep@citadel.local>");
+    expect(await Bun.file(join(ws, "state/cursor.json")).exists()).toBe(true);
+  });
+
+  test("a tick honors SWEEP_GIT_NAME/SWEEP_GIT_EMAIL and defaults the message to quiet run", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/admin/invoicing/ledger.json"), "{}\n");
+    const r = await run({ ARGUS_SWEEP_TICK: "1", SWEEP_GIT_NAME: "Custom Sweep", SWEEP_GIT_EMAIL: "custom@sweep.local" });
+    expect(r.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("sweep: quiet run");
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("Custom Sweep <custom@sweep.local>");
+  });
+
+  test("a tick that finds nothing to commit still promotes the cursor", async () => {
+    writeFileSync(join(ws, "state/cursor.next.json"), "{}\n");
+    const r = await run({ ARGUS_SWEEP_TICK: "1" });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("cursor promoted");
+    expect(await Bun.file(join(ws, "state/cursor.json")).exists()).toBe(true);
+  });
+});

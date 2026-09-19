@@ -21,8 +21,8 @@ git config --global credential.https://bitbucket.org.helper \
   '!f() { echo "username=${BITBUCKET_GIT_USERNAME:-x-bitbucket-api-token-auth}"; echo "password=${BITBUCKET_TOKEN:-}"; }; f'
 git config --global credential.https://github.com.helper \
   '!f() { [ -s /run/secrets/gh_token ] || exit 0; echo username=x-access-token; echo "password=$(cat /run/secrets/gh_token)"; }; f'
-git config --global user.name "${SWEEP_GIT_NAME:-argus sweep}"
-git config --global user.email "${SWEEP_GIT_EMAIL:-sweep@citadel.local}"
+# No global git identity: `argus commit` sets it per commit (SWEEP_GIT_NAME/SWEEP_GIT_EMAIL,
+# defaulted in commit.ts), so nothing else in this container commits as the sweep by accident.
 
 # argus's deploy check reads Bitbucket's pipelines with bb's config file; write one from the pair.
 if [ -n "${BITBUCKET_USERNAME:-}" ] && [ -n "${BITBUCKET_TOKEN:-}" ]; then
@@ -62,6 +62,9 @@ setup() {
 }
 
 tick() {
+  # Marks this run as a tick: `claude`'s own shell calls inherit it, so `argus commit` run from
+  # inside the /sweep skill authors its commit "argus sweep" and advances the Slack cursor.
+  export ARGUS_SWEEP_TICK=1
   if [ "${1:-}" = "--dry-run" ]; then
     bun scripts/argus.ts pull --dry-run
     return

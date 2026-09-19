@@ -68,6 +68,9 @@ services:
       ARGUS_DATA_REPO: ${ARGUS_DATA_REPO:-https://github.com/d0nwong/citadel-data.git}
       SWEEP_INTERVAL: ${SWEEP_INTERVAL:-900}
       SWEEP_MODEL: ${SWEEP_MODEL:-claude-sonnet-5}
+      # `argus commit` authors a tick's commit "argus sweep" itself; these only override that.
+      SWEEP_GIT_NAME: ${SWEEP_GIT_NAME:-}
+      SWEEP_GIT_EMAIL: ${SWEEP_GIT_EMAIL:-}
     secrets:
       - mcp_gateway_token
       - gh_token

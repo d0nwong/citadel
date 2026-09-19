@@ -22,7 +22,7 @@ import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
 import { type Check, deployCheck } from "./argus/deploy.ts";
 import { repoPath } from "./argus/pr-facts.ts";
-import { commitRun, saveRun } from "./argus/commit.ts";
+import { commitRun, inTick, promoteCursor, saveRun, sweepAuthor } from "./argus/commit.ts";
 import { draftFor, draftForAsk } from "./argus/file.ts";
 import { applyPatch, parsePatch } from "./argus/patch.ts";
 import { attributePrompt, groundPrompt, readerPrompt, sliceOf, ungroundedProposals } from "./argus/reader.ts";
@@ -67,7 +67,7 @@ const USAGE = `argus — the ledger CLI
   argus prompt reader <feature> <batch>   the reader's prompt for one feature's slice
   argus prompt ground [<feature> <P-n>]   the proposals whose Technical Notes name no file, or the grounding prompt for one
   argus patch <feature> <file>|-     apply a reader's patch to the ledger (validated whole)
-  argus commit [-m "<message>"]      stage ledgers, state and docs, commit, promote the cursor
+  argus commit [-m "<message>"]      stage ledgers, state and docs, commit; in a tick, authored "argus sweep" as "sweep: <message>", and only then promotes the cursor
   argus save <path>... -m "<first line>"   commit exactly the named files, as the person running it (--dry-run to preview)
 
   argus close <feature> <A-n> --reason "<why>"
@@ -303,9 +303,13 @@ const verbs: Record<string, Verb> = {
   },
 
   async commit(f) {
-    const r = await commitRun(f.opts.m ?? f.opts.message ?? "sweep", { dryRun: f.dryRun });
-    if (f.json) console.log(JSON.stringify({ ok: true, ...r }));
-    else console.log(r.committed ? `committed ${r.sha} (${r.files} files); cursor ${r.cursor}` : `nothing to commit (${r.files} staged); cursor ${r.cursor}`);
+    const tick = inTick();
+    const body = f.opts.m ?? f.opts.message ?? (tick ? "quiet run" : "sweep");
+    const message = tick ? `sweep: ${body}` : body;
+    const r = await commitRun(message, { dryRun: f.dryRun, author: tick ? sweepAuthor() : undefined });
+    const cursor = tick ? await promoteCursor({ dryRun: f.dryRun }) : "none";
+    if (f.json) console.log(JSON.stringify({ ok: true, ...r, cursor }));
+    else console.log(r.committed ? `committed ${r.sha} (${r.files} files); cursor ${cursor}` : `nothing to commit (${r.files} staged); cursor ${cursor}`);
     return 0;
   },
 
