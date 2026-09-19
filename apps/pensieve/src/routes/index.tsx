@@ -1,8 +1,9 @@
 /**
  * / — home. Three lists over every feature's ledger: the asks aimed at you that are not
  * done, the tickets of yours with nothing left to wait for, and what the last runs could
- * not place on a feature. Under them, one line per feature. Nothing here is a rendered
- * page; every row is read from `ledger.json` and every click runs one argus verb.
+ * not place on a feature. Under them, one line per feature with work live on it; every
+ * feature is on /features. Nothing here is a rendered page; every row is read from
+ * `ledger.json` and every click runs one argus verb.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -24,6 +25,7 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const h = Route.useLoaderData();
   const features = h.features.map((f) => f.dir);
+  const live = h.features.filter((f) => f.live);
   // Ready to work on needs live Linear/Trello state; fetch it after the shell above has
   // already painted instead of blocking the whole page on it.
   const ready = useQuery({
@@ -73,7 +75,7 @@ function HomePage() {
             Features
           </h2>
           <ul className="divide-y divide-border">
-            {h.features.map((f) => (
+            {live.map((f) => (
               <li key={f.feature}>
                 <Link
                   className="flex flex-col gap-0.5 rounded-md px-2 py-2.5 transition-colors hover:bg-accent"
@@ -95,6 +97,23 @@ function HomePage() {
                     </span>
                   )}
                 </Link>
+                {/* outside the row's Link: an anchor inside it would nest, and its click open the feature */}
+                {f.threads.length > 0 && (
+                  <p className="flex flex-wrap gap-x-3 gap-y-1 px-2 pb-2.5 text-xs">
+                    {f.threads.map((t) => (
+                      <a
+                        className="text-muted-foreground underline decoration-1 underline-offset-2 hover:text-foreground"
+                        href={t.url}
+                        key={t.url}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {t.kind === "huddle" ? "Huddle" : "Slack"} ·{" "}
+                        {t.asks.join(", ")}
+                      </a>
+                    ))}
+                  </p>
+                )}
               </li>
             ))}
           </ul>

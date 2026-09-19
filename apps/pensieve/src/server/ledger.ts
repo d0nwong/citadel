@@ -13,9 +13,13 @@ import { join } from "node:path";
 import type { TicketState, TicketStates } from "@citadel/tickets";
 import {
   type Ask,
+  type AskThread,
+  isLive,
+  isOpen,
   type Ledger,
   lastSentRepo,
   onYou,
+  openAskThreads,
   readyAsks,
   readyTickets,
   type Ticket,
@@ -212,11 +216,15 @@ export interface FeatureSummary {
   dir: string;
   feature: string;
   health: string;
+  /** an open ask, or a landing that served it within seven days: Home lists only these */
+  live: boolean;
   onYou: number;
   open: number;
   proposals: number;
   ready: number;
   summary: string;
+  /** the Slack or huddle threads behind its open asks, one per thread */
+  threads: AskThread[];
 }
 
 /** a ticket filed from Ask with no ledger, still open on Linear */
@@ -244,7 +252,8 @@ export interface Home extends HomeShell {
  */
 export async function homeShell(
   roots?: AppRoot[],
-  unplacedFile?: string
+  unplacedFile?: string,
+  now: Date = new Date()
 ): Promise<HomeShell> {
   const { ledgers, problems } = await listLedgers(roots);
   const onYouAll: HomeAsk[] = [];
@@ -263,13 +272,13 @@ export async function homeShell(
       dir,
       feature,
       health: ledger.story.health.text,
+      live: isLive(ledger, now),
       onYou: mine.length,
-      open: ledger.asks.filter(
-        (a) => a.status !== "closed" && a.status !== "dropped"
-      ).length,
+      open: ledger.asks.filter(isOpen).length,
       proposals: ledger.proposals.length,
       ready: readyTickets(ledger).length,
       summary: ledger.summary,
+      threads: openAskThreads(ledger),
     });
   }
   onYouAll.sort((a, b) => a.at.localeCompare(b.at));

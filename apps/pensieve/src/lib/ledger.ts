@@ -162,6 +162,74 @@ export interface Unplaced {
 export const isOpen = (a: Ask): boolean =>
   a.status !== "closed" && a.status !== "dropped";
 
+/** how long a landing that served the feature keeps it on Home (board S-20) */
+export const LIVE_LANDING_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The landing delivered this feature's own work: it names one of the feature's asks, or a
+ * ticket key the feature holds. A landing a feature got only because a PR touched its
+ * files serves nothing here.
+ */
+const servedBy = (l: Ledger, landing: Landing): boolean => {
+  const asks = new Set(l.asks.map((a) => a.id));
+  const keys = new Set([
+    ...l.tickets.map((t) => t.key),
+    ...l.asks.flatMap((a) => (a.ticket ? [a.ticket] : [])),
+  ]);
+  return (
+    landing.asks.some((id) => asks.has(id)) ||
+    (landing.tickets ?? []).some((k) => keys.has(k))
+  );
+};
+
+/**
+ * Work is live on the feature: an ask is still open, or a landing that served it arrived
+ * within the last seven days. Times are compared as instants — ledgers mix offsets and
+ * date-only values, and a date-only one reads as UTC midnight.
+ */
+export const isLive = (l: Ledger, now: Date): boolean =>
+  l.asks.some(isOpen) ||
+  l.landings.some((landing) => {
+    const age = now.getTime() - Date.parse(landing.at);
+    return age < LIVE_LANDING_MS && servedBy(l, landing);
+  });
+
+export interface AskThread {
+  /** the open asks this conversation raised, in ledger order */
+  asks: string[];
+  kind: "slack" | "huddle";
+  /** the permalink of the earliest of them */
+  url: string;
+}
+
+/**
+ * The Slack or huddle conversations behind the feature's open asks, one per thread root,
+ * oldest first. An ask raised from a ticket has no thread and adds none. `at` is often a
+ * bare date, so ledger order breaks a tie (the sort is stable).
+ */
+export const openAskThreads = (l: Ledger): AskThread[] => {
+  const byThread = new Map<string, AskThread>();
+  const open = l.asks
+    .filter(isOpen)
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  for (const a of open) {
+    if (a.origin.kind === "ticket") {
+      continue;
+    }
+    const seen = byThread.get(a.origin.thread);
+    if (seen) {
+      seen.asks.push(a.id);
+    } else {
+      byThread.set(a.origin.thread, {
+        asks: [a.id],
+        kind: a.origin.kind,
+        url: a.origin.url,
+      });
+    }
+  }
+  return [...byThread.values()];
+};
+
 /** the asks aimed at the reader and not yet done, oldest first */
 export const onYou = (l: Ledger): Ask[] =>
   l.asks
