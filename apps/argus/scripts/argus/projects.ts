@@ -312,6 +312,26 @@ export async function validateProjectsConfig(config: ProjectsConfig): Promise<Pr
   return out;
 }
 
+/** the doc areas of every project with the record job, each still carrying its own project's id (ledger S-27) */
+export function recordAreas(config: ProjectsConfig): (DocArea & { project: string })[] {
+  const recordProjects = new Set(config.projects.filter((p) => p.jobs.includes("record")).map((p) => p.id));
+  return allAreas(config).filter((a) => recordProjects.has(a.project));
+}
+
+/**
+ * Every feature of every project with the record job, area-qualified as `{ app, feature }` —
+ * an area's own `dir` is the `app` that `listFeatures`, `readLedger` and `writeLedger`
+ * already take, so pull, place, reconcile and the attribution step see a second record
+ * project's ledgers alongside alden-portal's own, each on its own area (ledger S-27). With
+ * no `projects.json`, the default config's one area, unchanged.
+ */
+export async function recordFeatures(config?: ProjectsConfig): Promise<{ app: string; feature: string }[]> {
+  const cfg = config ?? (await loadProjects());
+  const out: { app: string; feature: string }[] = [];
+  for (const area of recordAreas(cfg)) for (const feature of await listFeatures(area.dir)) out.push({ app: area.dir, feature });
+  return out;
+}
+
 /**
  * The feature directories no configured doc area holds (ledger S-24): every app `listApps`
  * finds under the checkout root whose path names no area's `dir`, with the features under

@@ -16,15 +16,24 @@
 import { type Batch, type Placed, placedPath, readBatch, type Slice, type SliceDeploy } from "./batch.ts";
 import { type DeployedOf, recordDeploys } from "./blockers.ts";
 import { deployedAt } from "./deploy.ts";
-import { listFeatures } from "./paths.ts";
 import type { Landing } from "./pr-facts.ts";
+import { recordFeatures } from "./projects.ts";
 import type { Ledger } from "./schema.ts";
 import { flatten, type Msg } from "./slack-pull.ts";
 import { readThreads, readUnplaced, type ThreadMap, type Unplaced, writeThreads, writeUnplaced } from "./state.ts";
 import { applyPatch } from "./patch.ts";
 import { readLedger, writeLedger } from "./write.ts";
 
-export type PlaceOptions = { now?: Date; dryRun?: boolean; outDir?: string; ledgers?: Map<string, Ledger>; threads?: ThreadMap; deployed?: DeployedOf };
+export type PlaceOptions = {
+  now?: Date;
+  dryRun?: boolean;
+  outDir?: string;
+  ledgers?: Map<string, Ledger>;
+  /** which app (area) each ledger's feature belongs to; unset defaults every feature to DEFAULT_APP, as before this feature */
+  appOf?: Map<string, string>;
+  threads?: ThreadMap;
+  deployed?: DeployedOf;
+};
 
 const PR_RE = /\b(fe|be)#(\d+)\b|pull-requests\/(\d+)\b|\bPR\s*#?(\d+)\b/gi;
 const TICKET_RE = /\b(ALD|ARG|LIA)-\d+\b/g;
@@ -152,21 +161,26 @@ export function placeBatch(batch: Batch, ledgers: Map<string, Ledger>, threads: 
   return { slices: new Map([...slices].sort(([a], [b]) => a.localeCompare(b))), unplaced, threads: learned };
 }
 
-async function loadLedgers(): Promise<Map<string, Ledger>> {
-  const out = new Map<string, Ledger>();
-  for (const f of await listFeatures()) {
-    const l = await readLedger(f);
-    if (l) out.set(f, l);
+async function loadLedgers(): Promise<{ ledgers: Map<string, Ledger>; appOf: Map<string, string> }> {
+  const ledgers = new Map<string, Ledger>();
+  const appOf = new Map<string, string>();
+  for (const { app, feature } of await recordFeatures()) {
+    const l = await readLedger(feature, app);
+    if (l) {
+      ledgers.set(feature, l);
+      appOf.set(feature, app);
+    }
   }
-  return out;
+  return { ledgers, appOf };
 }
 
 export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<Placed> {
   const now = opts.now ?? new Date();
   const batch = await readBatch(idOrPath);
-  const ledgers = opts.ledgers ?? (await loadLedgers());
+  const loaded = opts.ledgers ? { ledgers: opts.ledgers, appOf: opts.appOf ?? new Map<string, string>() } : await loadLedgers();
+  const { ledgers, appOf } = loaded;
   const threads = opts.threads ?? (await readThreads());
-  const features = await listFeatures();
+  const features = (await recordFeatures()).map((x) => x.feature);
   const p = placeBatch(batch, ledgers, threads, features, now);
   const deployed = opts.deployed ?? ((repo, sha) => deployedAt(repo, sha));
   const current = new Map(ledgers);
@@ -174,7 +188,7 @@ export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<
   // code owns the landings: every slice's new landings go onto its ledger now, so the
   // reader only ever links them to asks; a deploy recorded for one is told by the slice
   for (const s of p.slices.values()) {
-    const l = current.get(s.feature) ?? (await readLedger(s.feature));
+    const l = current.get(s.feature) ?? (await readLedger(s.feature, appOf.get(s.feature)));
     if (!l || !s.landings.length) continue;
     const fresh = s.landings
       .filter((ld) => !l.landings.some((x) => x.ref === ld.ref))
@@ -203,7 +217,7 @@ export async function place(idOrPath: string, opts: PlaceOptions = {}): Promise<
   const slices = [...p.slices.values()].sort((a, b) => a.feature.localeCompare(b.feature));
   const placed: Placed = { batch: batch.id, placed_at: now.toISOString(), slices, unplaced: p.unplaced.map((u) => u.id) };
   if (!opts.dryRun) {
-    for (const [feature, next] of writes) await writeLedger(feature, next, { actor: "model", now });
+    for (const [feature, next] of writes) await writeLedger(feature, next, { actor: "model", now, app: appOf.get(feature) });
     await Bun.write(placedPath(batch.id, opts.outDir ?? (idOrPath.endsWith(".json") ? idOrPath.replace(/[^/]+$/, "").replace(/\/$/, "") : undefined)), JSON.stringify(placed, null, 2) + "\n");
     if (Object.keys(p.threads).length) await writeThreads({ ...threads, ...p.threads });
     const existing = await readUnplaced();

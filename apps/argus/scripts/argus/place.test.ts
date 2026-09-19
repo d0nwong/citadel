@@ -6,16 +6,16 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Batch } from "./batch.ts";
 import { place, placeBatch } from "./place.ts";
 import type { Landing } from "./pr-facts.ts";
-import { type Ledger, parseLedger } from "./schema.ts";
+import { emptyLedger, type Ledger, parseLedger } from "./schema.ts";
 import type { Msg } from "./slack-pull.ts";
 import { readThreads, readUnplaced, writeUnplaced } from "./state.ts";
-import { readLedger } from "./write.ts";
+import { readLedger, writeLedger } from "./write.ts";
 
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
 const NOW = new Date("2026-09-11T10:00:00Z");
@@ -200,5 +200,31 @@ describe("place (on disk)", () => {
     expect(placed.slices[0]!.deploys).toBeUndefined();
     const ld = (await readLedger("admin/invoicing"))!.landings.find((x) => x.ref === "be#801")!;
     expect(ld.deployed).toMatchObject({ build: 2150, told: true });
+  });
+
+  test("a landing on a second record project's repo places it on that project's own feature and ledger; a second place adds nothing (CTD-271, ledger S-27, AC2)", async () => {
+    writeFileSync(join(ws, "projects.json"), JSON.stringify({
+      projects: [
+        { id: "alden-portal", repos: [], trackers: [], jobs: ["docs", "record"], areas: [{ id: "alden-portal", repo: "fe", dir: "alden/alden-portal" }] },
+        { id: "widget", repos: [{ id: "app", cloneUrl: "u", path: "", baseBranch: "main", host: "github", deploy: { kind: "live" } }], trackers: [], jobs: ["record"], areas: [{ id: "widget", repo: "app", dir: "widget" }] },
+      ],
+      channels: [],
+    }));
+    mkdirSync(join(ws, "widget/features/core/docs"), { recursive: true });
+    await writeLedger("core", { ...emptyLedger("core", "the widget's own feature") }, { app: "widget", actor: "user", now: new Date("2026-09-10T00:00:00Z") });
+
+    const widgetLanding = { ...landing("fe", 1, ["core"]), repo: "app", ref: "app#1" } as unknown as Landing;
+    const b: Batch = { ...batchOf([], [widgetLanding]), slack: null };
+    await Bun.write(join(ws, "state/batches", `${b.id}.json`), JSON.stringify(b));
+
+    const placed = await place(b.id, { now: NOW, deployed: waiting });
+    expect(placed.slices).toEqual([{ feature: "core", messages: [], landings: [widgetLanding] }]);
+    const widgetLedger = (await readLedger("core", "widget"))!;
+    expect(widgetLedger.landings.map((x) => x.ref)).toEqual(["app#1"]);
+    // alden-portal's own ledgers are untouched
+    expect(await readLedger("core")).toBeNull();
+
+    await place(b.id, { now: NOW, deployed: waiting });
+    expect((await readLedger("core", "widget"))!.landings).toHaveLength(1);
   });
 });

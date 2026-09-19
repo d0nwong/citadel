@@ -16,7 +16,7 @@ import { featureDirOf, loadManifest } from "../scripts/argus/manifest.ts";
 import { placeBatch } from "../scripts/argus/place.ts";
 import { archExcerpt, attributePrompt, ledgerForReader, readerPrompt, renderMessages, renderSlice } from "../scripts/argus/reader.ts";
 export { archExcerpt, ledgerForReader, renderMessages, renderSlice };
-import { listFeatures, ledgerPath, root } from "../scripts/argus/paths.ts";
+import { DEFAULT_APP, listFeatures, ledgerPath, root } from "../scripts/argus/paths.ts";
 import type { Ledger } from "../scripts/argus/schema.ts";
 import { flatten, type Msg } from "../scripts/argus/slack-pull.ts";
 import type { ThreadMap, Unplaced } from "../scripts/argus/state.ts";
@@ -83,7 +83,7 @@ export function splitByDay(b: Batch): Batch[] {
 export async function attribute(unplaced: Unplaced[], features: string[], day: string, calls: Call[], allMessages: Msg[]): Promise<Record<string, string[]>> {
   if (!unplaced.length) return {};
   const batch: Batch = { id: day, pulled_at: `${day}T00:00:00Z`, since: { slack: null, fe: null, be: null }, slack: { since: "0", now: "", newTopLevel: allMessages, threads: [], noiseDropped: 0, expiredThreads: [], next: { last_ts: "0", watched_threads: {} } }, landings: [] };
-  const prompt = await attributePrompt(unplaced, features, batch);
+  const prompt = await attributePrompt(unplaced, features.map((feature) => ({ app: DEFAULT_APP, feature })), batch);
   try {
     const r = await ask(ATTRIBUTE_MODEL, prompt, { label: `attribute ${day}` });
     const j = extractJson(r.text) as Record<string, { feature: string | string[] | null }>;

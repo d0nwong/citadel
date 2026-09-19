@@ -11,7 +11,7 @@ import { join } from "node:path";
 import type { Batch, Placed, Slice } from "./batch.ts";
 import { type Check, type Deploy, deployCheck } from "./deploy.ts";
 import { isGrounded } from "./grounding.ts";
-import { featureDirOf, loadManifest } from "./manifest.ts";
+import { featureDirOf, loadManifest, type Manifest } from "./manifest.ts";
 import { archDocPath, REPO_ROOT } from "./paths.ts";
 import { fetchOrigin, REPOS, repoOf, repoPath } from "./pr-facts.ts";
 import type { Ledger } from "./schema.ts";
@@ -75,13 +75,18 @@ export function ledgerForReader(l: Ledger): string {
 }
 
 /** one line per feature: name, routes, a few aliases, the ledger's summary and open asks */
-export async function featureSummaries(features: string[]): Promise<string> {
-  const manifest = await loadManifest();
-  const byDir = new Map(manifest.features.map((f) => [featureDirOf(f), f]));
+export async function featureSummaries(features: { app: string; feature: string }[]): Promise<string> {
+  const manifests = new Map<string, Manifest | null>();
+  const manifestFor = async (app: string) => {
+    if (!manifests.has(app)) manifests.set(app, await loadManifest(app).catch(() => null));
+    return manifests.get(app)!;
+  };
   const out: string[] = [];
-  for (const f of features) {
+  for (const { app, feature: f } of features) {
+    const manifest = await manifestFor(app);
+    const byDir = new Map(manifest?.features.map((mf) => [featureDirOf(mf), mf]) ?? []);
     const m = byDir.get(f);
-    const l = await readLedger(f);
+    const l = await readLedger(f, app);
     const head = [
       m?.name,
       m?.entry_routes.length ? `routes ${m.entry_routes.slice(0, 3).join(" ")}` : "",
@@ -95,8 +100,8 @@ export async function featureSummaries(features: string[]): Promise<string> {
   return out.join("\n");
 }
 
-/** the attribution step's prompt: the skill, the features, the unplaced messages grouped by thread */
-export async function attributePrompt(unplaced: Unplaced[], features: string[], batch: Batch | null): Promise<string> {
+/** the attribution step's prompt: the skill, the features (every project with the record job, ledger S-27), the unplaced messages grouped by thread */
+export async function attributePrompt(unplaced: Unplaced[], features: { app: string; feature: string }[], batch: Batch | null): Promise<string> {
   const all = batch?.slack ? flatten(batch.slack) : [];
   const byId = new Map(all.map((m) => [m.ts, m]));
   const groups = new Map<string, string[]>();

@@ -18,8 +18,9 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { featureFiles, featuresForFiles, loadManifest } from "./manifest.ts";
+import { type FeatureFileEntry, featureFiles, featuresForFiles, loadManifest, type Manifest } from "./manifest.ts";
 import { root } from "./paths.ts";
+import { allAreas, loadProjects } from "./projects.ts";
 
 /** alden-portal's own two repos; pulling and reconciling a third project's repos is out of scope until tickets 8 and 9 generalize this */
 export type RepoKind = "fe" | "be";
@@ -152,6 +153,26 @@ export async function changedRoutes(repo: Repo, sha: string, files: string[]): P
   return [...keys].sort();
 }
 
+/**
+ * The project that declares `repoId`, its own manifest, and the file→feature table keyed
+ * by that project's own repo ids — `area.repo` is the "fe" side (the repo its route tree
+ * comes from), the project's other repo is the "be" side. Null when no configured project
+ * declares the repo (CTD-271, ledger S-27): today `repoId` is always alden-portal's "fe" or
+ * "be", so this always resolves, from the default config, to exactly what `loadManifest()`
+ * and `featureFiles(manifest)` gave before this feature. Exported so a test can prove the
+ * resolution for a repo id a second project declares, ahead of a second project's landings
+ * actually being pulled (ticket 8).
+ */
+export async function manifestTableFor(repoId: string): Promise<{ manifest: Manifest; table: FeatureFileEntry[] } | null> {
+  const config = await loadProjects();
+  const project = config.projects.find((p) => p.repos.some((r) => r.id === repoId));
+  const area = project && allAreas(config).find((a) => a.project === project.id);
+  if (!project || !area) return null;
+  const manifest = await loadManifest(area.dir);
+  const be = project.repos.find((r) => r.id !== area.repo)?.id;
+  return { manifest, table: featureFiles(manifest, { fe: area.repo, ...(be ? { be } : {}) }) };
+}
+
 /** the accio index's route → feature-ids map, when the index exists; ids are manifest ids, mapped to dirs by the caller */
 async function routeOwners(): Promise<Map<string, string[]> | null> {
   const idx = await Bun.file(join(root(), ".state/accio-index.json")).json().catch(() => null);
@@ -166,14 +187,13 @@ async function routeOwners(): Promise<Map<string, string[]> | null> {
 export async function landingsSince(repo: Repo, from: string): Promise<Landing[]> {
   const since = /^\d{4}-\d{2}-\d{2}$/.test(from) ? `${from} 00:00` : from;
   const log = await git(repo, "log", "--first-parent", `--since=${since}`, LOG_FORMAT, "--date=short", repo.ref);
-  const manifest = await loadManifest();
-  const table = featureFiles(manifest);
-  const idToDir = new Map(manifest.features.map((f) => [f.id, table.find((t) => t.name === f.name)!.dir]));
+  const owner = await manifestTableFor(repo.kind);
+  const idToDir = new Map((owner?.manifest.features ?? []).map((f) => [f.id, owner!.table.find((t) => t.name === f.name)!.dir]));
   const owners = repo.kind === "be" ? await routeOwners() : null;
   const out: Landing[] = [];
   for (const l of parseLandings(repo.kind, log)) {
     const files = await filesOf(repo, l.sha);
-    const features = featuresForFiles(files, table, repo.kind);
+    const features = owner ? featuresForFiles(files, owner.table, repo.kind) : [];
     const routes = repo.kind === "be" ? await changedRoutes(repo, l.sha, files) : [];
     if (owners) {
       const norm = (u: string) => u.replace(/\{[^}]*\}/g, "{p}").replace(/\/+$/, "");
@@ -193,8 +213,8 @@ export async function landingOfPr(repo: Repo, pr: number): Promise<Landing | nul
   const hit = parseLandings(repo.kind, log).find((l) => l.number === pr);
   if (!hit) return null;
   const files = await filesOf(repo, hit.sha);
-  const table = featureFiles(await loadManifest());
-  return { ...hit, files, features: featuresForFiles(files, table, repo.kind), routes: repo.kind === "be" ? await changedRoutes(repo, hit.sha, files) : [] };
+  const owner = await manifestTableFor(repo.kind);
+  return { ...hit, files, features: owner ? featuresForFiles(files, owner.table, repo.kind) : [], routes: repo.kind === "be" ? await changedRoutes(repo, hit.sha, files) : [] };
 }
 
 if (import.meta.main) {

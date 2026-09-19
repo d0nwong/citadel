@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_APP, projectsPath } from "./paths.ts";
-import { allAreas, defaultProjectsConfig, loadProjects, missingForGenerate, parseProjectsConfig, type ProjectsConfig, unheldFeatures, validateProjectsConfig } from "./projects.ts";
+import { allAreas, defaultProjectsConfig, loadProjects, missingForGenerate, parseProjectsConfig, type ProjectsConfig, recordAreas, recordFeatures, unheldFeatures, validateProjectsConfig } from "./projects.ts";
 
 let ws: string;
 
@@ -203,5 +203,59 @@ describe("unheldFeatures", () => {
     mkFeatureDirs("alden/alden-portal/features/tasks", "foundry/features/jobs");
     const config = defaultProjectsConfig(); // only alden-portal's area; foundry is unheld
     expect(await unheldFeatures(config)).toEqual([{ app: "foundry", feature: "jobs" }]);
+  });
+});
+
+/** `validConfig` with citadel also given the record job and its own repo, tracker and channel (CTD-271) */
+function twoRecordProjectsConfig(): ProjectsConfig {
+  const c = validConfig();
+  const citadel = c.projects[1]!;
+  citadel.jobs = ["docs", "record"];
+  citadel.repos = [{ id: "citadel-repo", cloneUrl: "https://example.com/citadel.git", path: "", baseBranch: "main", host: "github", deploy: { kind: "live" } }];
+  citadel.areas = [{ id: "argus", repo: "citadel-repo", dir: "argus" }];
+  c.channels.push({ id: "C_CITADEL", projects: ["citadel"] });
+  return c;
+}
+
+describe("recordAreas (CTD-271, ledger S-27)", () => {
+  test("only alden-portal's area when the second project has no record job", () => {
+    const areas = recordAreas(validConfig());
+    expect(areas.map((a) => a.id)).toEqual(["alden-portal"]);
+  });
+
+  test("both projects' areas once the second also has the record job", () => {
+    const areas = recordAreas(twoRecordProjectsConfig());
+    expect(areas.map((a) => a.id).sort()).toEqual(["alden-portal", "argus"]);
+  });
+
+  test("the default config's one area, unchanged", () => {
+    expect(recordAreas(defaultProjectsConfig()).map((a) => a.id)).toEqual(["alden-portal"]);
+  });
+});
+
+describe("recordFeatures (CTD-271, ledger S-27)", () => {
+  test("with no config file, alden-portal's own features, as listFeatures(DEFAULT_APP) gives them", async () => {
+    mkFeatureDirs("alden/alden-portal/features/tasks", "alden/alden-portal/features/admin/usage");
+    expect(await recordFeatures()).toEqual([
+      { app: DEFAULT_APP, feature: "admin/usage" },
+      { app: DEFAULT_APP, feature: "tasks" },
+    ]);
+  });
+
+  test("a second record project's features are area-qualified alongside alden-portal's own", async () => {
+    writeFileSync(projectsPath(), JSON.stringify(twoRecordProjectsConfig()));
+    mkFeatureDirs("alden/alden-portal/features/tasks", "argus/features/sweep");
+    const config = await loadProjects();
+    expect(await recordFeatures(config)).toEqual([
+      { app: DEFAULT_APP, feature: "tasks" },
+      { app: "argus", feature: "sweep" },
+    ]);
+  });
+
+  test("a doc-only project (no record job) contributes no features", async () => {
+    writeFileSync(projectsPath(), JSON.stringify(validConfig()));
+    mkFeatureDirs("alden/alden-portal/features/tasks", "argus/features/sweep");
+    const config = await loadProjects();
+    expect(await recordFeatures(config)).toEqual([{ app: DEFAULT_APP, feature: "tasks" }]);
   });
 });
