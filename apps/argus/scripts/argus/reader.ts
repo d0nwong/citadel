@@ -9,7 +9,8 @@
 
 import { join } from "node:path";
 import type { Batch, Placed, Slice } from "./batch.ts";
-import { type Check, type Deploy, deployCheck } from "./deploy.ts";
+import { loadRepoConfig } from "./blockers.ts";
+import { type Check, type Deploy, deployCheck, pipelineRepo, type PipelineRepo } from "./deploy.ts";
 import { isGrounded } from "./grounding.ts";
 import { featureDirOf, loadManifest, type Manifest } from "./manifest.ts";
 import { archDocPath, REPO_ROOT } from "./paths.ts";
@@ -118,16 +119,18 @@ export async function attributePrompt(unplaced: Unplaced[], features: { app: str
 const deployWords = (d: Deploy) => (d.result === "SUCCESSFUL" ? `deployed to dev ${d.at.slice(0, 10)}` : `not deployed: the dev pipeline ${d.result.toLowerCase()}`);
 
 /** each backend landing's deploy, in words the reader can act on; the cache answers first */
-export async function deploysFor(slice: Slice, lookup: (repo: "fe" | "be", sha: string) => Promise<Check> = deployCheck): Promise<Record<string, string>> {
+export async function deploysFor(slice: Slice, lookup: (repo: PipelineRepo, sha: string) => Promise<Check> = deployCheck): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
+  const be = (await loadRepoConfig())["be"];
   for (const l of slice.landings) {
-    if (l.repo !== "be") continue;
+    if (l.repo !== "be" || !be) continue;
+    const repo = pipelineRepo(be);
     try {
-      const c = await lookup(l.repo, l.sha);
+      const c = await lookup(repo, l.sha);
       out[l.ref] =
         c.state === "done"
           ? c.deploy.result === "SUCCESSFUL"
-            ? `yes, ${c.deploy.at.slice(0, 10)} (on dev)`
+            ? `yes, ${c.deploy.at.slice(0, 10)} (on ${be.baseBranch})`
             : `no, the pipeline ${c.deploy.result.toLowerCase()}`
           : c.state === "running"
             ? "not yet, the pipeline is running; argus reports when it finishes"

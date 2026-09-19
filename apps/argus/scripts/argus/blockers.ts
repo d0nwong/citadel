@@ -1,13 +1,15 @@
 /**
- * The blockers code can clear, and the deploys code can record. A backend landing carries
- * its finished `dev` pipeline once Bitbucket has one (`recordDeploys`); until then every
- * run asks again, so a merge read while its pipeline ran is not "not deployed" for good.
+ * The blockers code can clear, and the deploys code can record. A landing on a repo read by
+ * pipeline carries its finished pipeline once Bitbucket has one (`recordDeploys`); until
+ * then every run asks again, so a merge read while its pipeline ran is not "not deployed"
+ * for good.
  *
- * A `landing` blocker clears when the landing it names is on the ledger and live — merged
- * on the frontend, deployed on the backend, the same rule ticket settling uses below; a
- * `ticket` blocker clears when every ask the named ticket serves is closed. An `answer`
- * blocker is a person's to clear, through the reader or a click. `argus reconcile` runs
- * this over every ledger after a batch is placed.
+ * A `landing` blocker clears when the landing it names is on the ledger and live, by its
+ * repo's own deploy source — merged, for a repo live when merged; deployed, for one read by
+ * pipeline — the same rule ticket settling uses below; a `ticket` blocker clears when every
+ * ask the named ticket serves is closed. An `answer` blocker is a person's to clear, through
+ * the reader or a click. `argus reconcile` runs this over every ledger after a batch is
+ * placed.
  *
  * It also finishes what a ticket opened, from two facts:
  *
@@ -19,21 +21,37 @@
  *   writes; each report line names the provider the state came from.
  * - A landing. An open ask whose ticket's key is on a landing (every Foundry branch carries
  *   it) moves to `built` with the PR as evidence, and to `closed` once that landing is live:
- *   on the frontend, the base branch is staging, so a merge is live; on the backend, once
- *   the dev pipeline succeeded. A ticket that serves no ask (filed from a gap, not a
- *   message) has nothing to close, so the same live landing settles the ticket itself.
+ *   on a repo live when merged (alden-portal's `fe`, base branch `staging`), a merge is
+ *   live; on one read by pipeline (alden-portal's `be`, `dev`), once the pipeline succeeded.
+ *   A ticket that serves no ask (filed from a gap, not a message) has nothing to close, so
+ *   the same live landing settles the ticket itself.
  */
 
 import { providerLabel, ticketStates, type TicketStates } from "@citadel/tickets";
 import type { Deploy } from "./deploy.ts";
-import { deployedAt } from "./deploy.ts";
+import { deployedAt, pipelineRepo } from "./deploy.ts";
 import { ticketKeysIn } from "./pr-facts.ts";
-import { recordFeatures } from "./projects.ts";
+import { loadProjects, recordFeatures, recordRepos, type ProjectRepo } from "./projects.ts";
 import type { Blocker, Evidence, Landing, Ledger, Ticket } from "./schema.ts";
 import { cancelRevision, foldRevision, listRevisions, type Settled } from "./revision.ts";
 import { readLedger, writeLedger, type WriteResult } from "./write.ts";
 
-export type DeployedOf = (repo: "fe" | "be", sha: string) => Promise<Deploy | null>;
+export type DeployedOf = (repo: string, sha: string) => Promise<Deploy | null>;
+
+/** every record repo's own config, by id — repo ids are unique across every project (ledger S-21) */
+export type RepoConfig = Record<string, ProjectRepo>;
+
+export async function loadRepoConfig(): Promise<RepoConfig> {
+  return Object.fromEntries(recordRepos(await loadProjects()).map((r) => [r.id, r]));
+}
+
+/** `deployed`, built from each repo's own slug and branch; unknown repos answer null, never asked */
+export const defaultDeployedOf =
+  (repos: RepoConfig): DeployedOf =>
+  (repo, sha) => {
+    const r = repos[repo];
+    return r ? deployedAt(pipelineRepo(r), sha) : Promise.resolve(null);
+  };
 
 const day = (iso: string) => iso.slice(0, 10);
 const unknown: TicketStates = () => ({ state: "unknown" });
@@ -43,33 +61,37 @@ export type Reconciled = { ledger: Ledger; cleared: string[] };
 /** a deploy this old when first recorded is history, not news for the reader */
 const NEWS_DAYS = 7;
 
-/** true for a backend landing whose pipeline has not been seen to finish */
-export const awaitsDeploy = (ld: Landing): ld is Landing & { repo: "be" } => ld.repo === "be" && !ld.deployed;
+/** true when a repo's deploy source is read by pipeline; an unlisted repo reads as live, as it always has */
+const byPipeline = (repos: RepoConfig, repoId: string): boolean => repos[repoId]?.deploy.kind === "pipeline";
+
+/** true for a landing on a repo read by pipeline whose pipeline has not been seen to finish */
+export const awaitsDeploy = (repos: RepoConfig, ld: Landing): boolean => byPipeline(repos, ld.repo) && !ld.deployed;
 
 /**
- * Mutates `l`: every backend landing still waiting gets its finished pipeline, if there is
- * one now, and one line per landing that got one. A recent one is marked untold, so the
- * next reader rewrites whatever the ledger says about it.
+ * Mutates `l`: every landing on a repo read by pipeline still waiting gets its finished
+ * pipeline, if there is one now, and one line per landing that got one. A recent one is
+ * marked untold, so the next reader rewrites whatever the ledger says about it.
  */
-export async function recordDeploys(l: Ledger, deployed: DeployedOf, now = new Date()): Promise<string[]> {
+export async function recordDeploys(l: Ledger, deployed: DeployedOf, repos: RepoConfig, now = new Date()): Promise<string[]> {
   const out: string[] = [];
   const recent = new Date(now.getTime() - NEWS_DAYS * 86_400_000).toISOString();
   for (const ld of l.landings) {
-    if (!awaitsDeploy(ld)) continue;
+    if (!awaitsDeploy(repos, ld)) continue;
     const d = await deployed(ld.repo, ld.sha);
     if (!d) continue;
     ld.deployed = { ...d, told: ld.at < recent };
-    out.push(d.result === "SUCCESSFUL" ? `${ld.ref}: deployed to dev (${day(d.at)}, build ${d.build})` : `${ld.ref}: dev pipeline ${d.result.toLowerCase()} (build ${d.build})`);
+    const branch = repos[ld.repo]?.baseBranch ?? ld.repo;
+    out.push(d.result === "SUCCESSFUL" ? `${ld.ref}: deployed to ${branch} (${day(d.at)}, build ${d.build})` : `${ld.ref}: ${branch} pipeline ${d.result.toLowerCase()} (build ${d.build})`);
   }
   return out;
 }
 
 /** pure: the ledger with every clearable blocker cleared, and one line per clearance */
-export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new Date(), states: TicketStates = unknown): Promise<Reconciled> {
+export async function reconcileLedger(l: Ledger, deployed: DeployedOf, repos: RepoConfig, now = new Date(), states: TicketStates = unknown): Promise<Reconciled> {
   const next: Ledger = structuredClone(l);
-  const cleared: string[] = await recordDeploys(next, deployed, now);
-  /** the ledger's fact first; Bitbucket only for a landing still waiting. Reconciling a project's own repo ids is out of scope until tickets 8 and 9 generalize this; anything but "be" reads as the frontend, as it always has. */
-  const deployOf = async (ld: Landing): Promise<Deploy | null> => ld.deployed ?? (ld.repo === "be" ? null : deployed(ld.repo as "fe", ld.sha));
+  const cleared: string[] = await recordDeploys(next, deployed, repos, now);
+  /** the ledger's fact first; Bitbucket only for a landing still waiting on a repo read by pipeline */
+  const deployOf = async (ld: Landing): Promise<Deploy | null> => ld.deployed ?? (byPipeline(repos, ld.repo) ? deployed(ld.repo, ld.sha) : null);
   const settledAsk = (id: string) => {
     const a = next.asks.find((x) => x.id === id);
     return !!a && (a.status === "closed" || a.status === "dropped");
@@ -84,7 +106,7 @@ export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new
   const evidenceOf = (ld: Landing): Evidence[] =>
     ld.url && ld.number ? [{ kind: "pr", repo: ld.repo, number: ld.number, url: ld.url }] : [{ kind: "commit", repo: ld.repo, sha: ld.sha }];
   const liveAt = async (ld: Landing): Promise<string | null> => {
-    if (ld.repo === "fe") return ld.at;
+    if (!byPipeline(repos, ld.repo)) return ld.at;
     const d = await deployOf(ld);
     return d?.result === "SUCCESSFUL" ? d.at : null;
   };
@@ -128,9 +150,10 @@ export async function reconcileLedger(l: Ledger, deployed: DeployedOf, now = new
       if (!ld) return;
       const at = await liveAt(ld);
       if (!at) return;
-      if (ld.repo === "be") b.deployed = true;
+      const pipeline = byPipeline(repos, ld.repo);
+      if (pipeline) b.deployed = true;
       b.cleared = { at: day(at), evidence: evidenceOf(ld) };
-      cleared.push(`${owner}: ${b.ref} is on ${b.branch} and ${ld.repo === "be" ? "deployed" : "merged"} (${day(at)})`);
+      cleared.push(`${owner}: ${b.ref} is on ${b.branch} and ${pipeline ? "deployed" : "merged"} (${day(at)})`);
       return;
     }
     if (b.kind === "ticket" && ticketDone(b.key)) {
@@ -168,6 +191,8 @@ export type ReconcileResult = { feature: string; cleared: string[]; write: Write
 
 export type ReconcileOptions = {
   deployed?: DeployedOf;
+  /** every record repo's own config, by id; default reads it from `projects.json` */
+  repos?: RepoConfig;
   /** the tickets router; default asks each ticket's provider once for every open ticket across the run */
   states?: (keys: string[]) => Promise<TicketStates>;
   dryRun?: boolean;
@@ -176,10 +201,10 @@ export type ReconcileOptions = {
 };
 
 /** true when the ledger holds anything reconcile could move */
-export function needsReconcile(l: Ledger): boolean {
+export function needsReconcile(l: Ledger, repos: RepoConfig): boolean {
   const open = (bs: Blocker[]) => bs.some((b) => !b.cleared);
   return (
-    l.landings.some(awaitsDeploy) ||
+    l.landings.some((ld) => awaitsDeploy(repos, ld)) ||
     l.tickets.some((t) => !t.settled) ||
     l.asks.some((a) => a.ticket && a.status !== "closed" && a.status !== "dropped") ||
     l.tickets.some((t) => open(t.blockers)) ||
@@ -189,14 +214,16 @@ export function needsReconcile(l: Ledger): boolean {
 
 /** every ledger, blockers cleared and tickets settled where the facts allow, written when something changed */
 export async function reconcileAll(opts: ReconcileOptions = {}): Promise<ReconcileResult[]> {
-  const deployed = opts.deployed ?? ((repo, sha) => deployedAt(repo, sha));
+  const config = await loadProjects();
+  const repos = opts.repos ?? Object.fromEntries(recordRepos(config).map((r) => [r.id, r]));
+  const deployed = opts.deployed ?? defaultDeployedOf(repos);
   // named features are the caller's own (DEFAULT_APP, as `argus reconcile <feature>...` takes them); with none
   // named, every project with the record job, each on its own area (ledger S-27)
-  const targets = opts.features ? opts.features.map((feature) => ({ app: undefined, feature })) : await recordFeatures();
+  const targets = opts.features ? opts.features.map((feature) => ({ app: undefined, feature })) : await recordFeatures(config);
   const ledgers: [string, string | undefined, Ledger][] = [];
   for (const { app, feature } of targets) {
     const l = await readLedger(feature, app);
-    if (l && needsReconcile(l)) ledgers.push([feature, app, l]);
+    if (l && needsReconcile(l, repos)) ledgers.push([feature, app, l]);
   }
   // the filed revisions, whose parents settle them — only on a whole run, never one scoped to named features
   const filed = opts.features ? [] : (await listRevisions()).filter((r) => !r.archived && r.rev.status === "filed" && r.rev.key);
@@ -206,7 +233,7 @@ export async function reconcileAll(opts: ReconcileOptions = {}): Promise<Reconci
   const states = await (opts.states ?? ((keys) => ticketStates(keys, { now: opts.now })))(openKeys);
   const out: ReconcileResult[] = [];
   for (const [feature, app, l] of ledgers) {
-    const r = await reconcileLedger(l, deployed, opts.now, states);
+    const r = await reconcileLedger(l, deployed, repos, opts.now, states);
     if (!r.cleared.length) continue;
     const write = await writeLedger(feature, r.ledger, { actor: "model", now: opts.now, dryRun: opts.dryRun, app });
     out.push({ feature, cleared: r.cleared, write });

@@ -16,8 +16,8 @@ import { mkdir } from "node:fs/promises";
 import { type Batch, batchId, batchPath } from "./batch.ts";
 import { batchesDir, cursorNextPath, tickUnreachablePath } from "./paths.ts";
 import { fetchOrigin, type Landing, landingsSince, repoFor } from "./pr-facts.ts";
-import { awaitsDeploy } from "./blockers.ts";
-import { type Deploy, deployedAt } from "./deploy.ts";
+import { awaitsDeploy, type RepoConfig } from "./blockers.ts";
+import { type Deploy, deployedAt, pipelineRepo } from "./deploy.ts";
 import { loadProjects, type ProjectRepo, recordFeatures, recordRepos } from "./projects.ts";
 import type { Landing as RecordedLanding } from "./schema.ts";
 import { flatten, type Pull, pullSlack } from "./slack-pull.ts";
@@ -56,7 +56,7 @@ export type PullResult = { batch: Batch | null; path: string | null; reason?: st
 const daysAgo = (n: number, now: Date) => new Date(now.getTime() - n * 86400_000).toISOString().slice(0, 10);
 
 /** the newest landing date each ledger holds per repo id, every sha already recorded, and the deploy news pending */
-async function known(): Promise<{ newest: Record<string, string | null>; shas: Set<string>; untold: boolean; waiting: RecordedLanding[] }> {
+async function known(repos: RepoConfig): Promise<{ newest: Record<string, string | null>; shas: Set<string>; untold: boolean; waiting: RecordedLanding[] }> {
   const newest: Record<string, string | null> = {};
   const shas = new Set<string>();
   let untold = false;
@@ -66,7 +66,7 @@ async function known(): Promise<{ newest: Record<string, string | null>; shas: S
     for (const ld of l?.landings ?? []) {
       shas.add(ld.sha);
       if (ld.deployed && !ld.deployed.told) untold = true;
-      if (awaitsDeploy(ld)) waiting.push(ld);
+      if (awaitsDeploy(repos, ld)) waiting.push(ld);
       if (!newest[ld.repo] || ld.at > newest[ld.repo]!) newest[ld.repo] = ld.at;
     }
   }
@@ -87,7 +87,12 @@ export const defaultSources = (repos: ProjectRepo[], fetch = true): PullSources 
       }
       return landingsSince(repo, since);
     },
-    deployed: (sha) => deployedAt("be", sha),
+    // only ever asked about a landing awaitsDeploy already found waiting on a pipeline repo;
+    // alden-portal has one such repo, "be" — a second one would need its own probe here
+    deployed: (sha) => {
+      const be = byId.get("be");
+      return be ? deployedAt(pipelineRepo(be), sha) : Promise.resolve(null);
+    },
   };
 };
 
@@ -103,7 +108,7 @@ export async function pullBatch(opts: PullOptions = {}): Promise<PullResult> {
   const now = opts.now ?? new Date();
   const repos = recordRepos(await loadProjects());
   const sources = { ...defaultSources(repos, opts.fetch ?? true), ...opts.sources };
-  const k = await known();
+  const k = await known(Object.fromEntries(repos.map((r) => [r.id, r])));
   const { newest, shas } = k;
 
   const slack = opts.noSlack ? null : await sources.slack(opts.since);

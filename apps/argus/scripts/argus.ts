@@ -24,8 +24,8 @@ import { archDocPath, isFeature, listApps, specDocPath } from "./argus/paths.ts"
 import { allAreas, loadProjects, recordFeatures, repoIdsForDir, unheldFeatures, validateProjectsConfig } from "./argus/projects.ts";
 import { dropRevision, fileRevision, listRevisions, newRevision, readRevision, validateRevisionDir } from "./argus/revision.ts";
 import { readBatch, placedPath } from "./argus/batch.ts";
-import { reconcileAll } from "./argus/blockers.ts";
-import { type Check, deployCheck } from "./argus/deploy.ts";
+import { loadRepoConfig, reconcileAll } from "./argus/blockers.ts";
+import { type Check, deployCheck, pipelineRepo } from "./argus/deploy.ts";
 import { repoPath } from "./argus/pr-facts.ts";
 import { commitRun, commitWrites, endTick, inTick, origin, promoteCursor, resetWritten, saveRun, startTick, sweepAuthor, writtenPaths } from "./argus/commit.ts";
 import { draftFor, draftForAsk } from "./argus/file.ts";
@@ -278,7 +278,9 @@ const verbs: Record<string, Verb> = {
     if (!what) throw new Usage("deployed <be#N>|<sha>");
     const t = await resolveLanding(what);
     if (!t) throw new Error(`${what}: not a backend landing on any ledger or on origin/dev`);
-    const c = await deployCheck("be", t.sha);
+    const be = (await loadRepoConfig())["be"];
+    if (!be) throw new Error("no 'be' repo in projects.json");
+    const c = await deployCheck(pipelineRepo(be), t.sha);
     if (f.json) console.log(JSON.stringify({ ok: c.state !== "unknown", ref: t.ref, sha: t.sha, ...c }));
     else console.log(`${t.ref ?? t.sha.slice(0, 9)}: ${checkWords(c)}`);
     return c.state === "unknown" ? 1 : 0;

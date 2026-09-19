@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { needsReconcile, reconcileAll, reconcileLedger, recordDeploys } from "./blockers.ts";
-import type { Deploy, DeployCache } from "./deploy.ts";
+import { needsReconcile, reconcileAll, reconcileLedger, recordDeploys, type RepoConfig } from "./blockers.ts";
+import type { Deploy, DeployCache, PipelineRepo } from "./deploy.ts";
 import { deployCheck, pipelineFor } from "./deploy.ts";
 import type { TicketState, TicketStates } from "./linear.ts";
 import { fileRevision, newRevision, readRevision } from "./revision.ts";
@@ -14,6 +14,11 @@ import { readLedger } from "./write.ts";
 const FIX = new URL("../../evals/fixtures/ledger/", import.meta.url).pathname;
 const valid = async (): Promise<Ledger> => parseLedger(await Bun.file(`${FIX}valid.json`).json());
 const live: Deploy = { result: "SUCCESSFUL", at: "2026-09-10T07:34:37Z", build: 2084, url: "u" };
+/** alden-portal's own config: `fe` live when merged on `staging`, `be` read by pipeline on `dev` */
+const ALDEN_REPOS: RepoConfig = {
+  fe: { id: "fe", cloneUrl: "https://bitbucket.org/aldenstudios/alden-portal-fe.git", path: "", baseBranch: "staging", host: "bitbucket", deploy: { kind: "live" } },
+  be: { id: "be", cloneUrl: "https://bitbucket.org/aldenstudios/alden-connect-portal-be.git", path: "", baseBranch: "dev", host: "bitbucket", deploy: { kind: "pipeline" } },
+};
 /** the lines about blockers and tickets, without the deploys recordDeploys reports */
 const settled = (lines: string[]) => lines.filter((x) => !/^be#\d+: (deployed to dev|dev pipeline)/.test(x));
 
@@ -21,7 +26,7 @@ describe("reconcileLedger", () => {
   test("a landing blocker clears when its landing is on the ledger and deployed; ready follows", async () => {
     const l = await valid();
     l.asks[1]!.blockers = [{ kind: "landing", repo: "be", ref: "be#771", branch: "origin/dev", deployed: false, cleared: null }];
-    const r = await reconcileLedger(l, async () => live);
+    const r = await reconcileLedger(l, async () => live, ALDEN_REPOS);
     expect(r.cleared).toEqual(["be#771: deployed to dev (2026-09-10, build 2084)", "A-2: be#771 is on origin/dev and deployed (2026-09-10)"]);
     const b = r.ledger.asks[1]!.blockers![0]!;
     expect(b.cleared).toEqual({ at: "2026-09-10", evidence: [{ kind: "pr", repo: "be", number: 771, url: expect.stringContaining("771") }] });
@@ -34,13 +39,13 @@ describe("reconcileLedger", () => {
       { kind: "landing", repo: "be", ref: "be#999", branch: "origin/dev", deployed: false, cleared: null },
       { kind: "answer", from: "Foong Leung", question: "which fields?", cleared: null },
     ];
-    expect((await reconcileLedger(l, async () => null)).cleared).toEqual([]);
-    expect(settled((await reconcileLedger(l, async () => ({ ...live, result: "FAILED" }))).cleared)).toEqual([]);
+    expect((await reconcileLedger(l, async () => null, ALDEN_REPOS)).cleared).toEqual([]);
+    expect(settled((await reconcileLedger(l, async () => ({ ...live, result: "FAILED" }), ALDEN_REPOS)).cleared)).toEqual([]);
   });
   test("a ticket blocker clears when the ticket's asks are all closed", async () => {
     const l = await valid();
     l.tickets.push({ key: "ALD-40", title: "x", asks: ["A-1"], blockers: [], ready: true });
-    const r = await reconcileLedger(l, async () => null, new Date("2026-09-11T10:00:00Z"));
+    const r = await reconcileLedger(l, async () => null, ALDEN_REPOS, new Date("2026-09-11T10:00:00Z"));
     expect(r.cleared).toEqual(["ALD-41: ALD-40 is done"]);
     expect(r.ledger.tickets[0]!.blockers[2]!.cleared).toEqual({ at: "2026-09-11", evidence: [{ kind: "ticket", key: "ALD-40" }] });
   });
@@ -59,21 +64,21 @@ describe("a landing blocker on the frontend (CTD-240)", () => {
     l.landings = [fe("fe#440", 440, "2026-09-12T09:00:00Z")];
     l.asks[1]!.blockers = [{ kind: "landing", repo: "fe", ref: "fe#440", branch: "origin/staging", deployed: false, cleared: null }];
     const asked: string[] = [];
-    const deployed = async (repo: "fe" | "be", sha: string) => (asked.push(`${repo}@${sha}`), null);
-    const r = await reconcileLedger(l, deployed);
+    const deployed = async (repo: string, sha: string) => (asked.push(`${repo}@${sha}`), null);
+    const r = await reconcileLedger(l, deployed, ALDEN_REPOS);
     expect(r.cleared).toEqual(["A-2: fe#440 is on origin/staging and merged (2026-09-12)"]);
     const b = r.ledger.asks[1]!.blockers![0]!;
     expect(b.cleared).toEqual({ at: "2026-09-12", evidence: [{ kind: "pr", repo: "fe", number: 440, url: expect.stringContaining("440") }] });
     expect(b.kind === "landing" && b.deployed).toBe(false);
     expect(asked).toEqual([]);
-    expect((await reconcileLedger(r.ledger, deployed)).cleared).toEqual([]);
+    expect((await reconcileLedger(r.ledger, deployed, ALDEN_REPOS)).cleared).toEqual([]);
   });
 
   test("without fe#N on the ledger's landings the blocker stays open (AC2)", async () => {
     const l = await valid();
     l.landings = [];
     l.asks[1]!.blockers = [{ kind: "landing", repo: "fe", ref: "fe#440", branch: "origin/staging", deployed: false, cleared: null }];
-    const r = await reconcileLedger(l, async () => live);
+    const r = await reconcileLedger(l, async () => live, ALDEN_REPOS);
     expect(r.cleared).toEqual([]);
     expect(r.ledger.asks[1]!.blockers![0]!.cleared).toBeNull();
   });
@@ -88,32 +93,32 @@ describe("recordDeploys", () => {
     let finished: Deploy | null = null;
     const asked: string[] = [];
     const deployed = async (_r: string, sha: string) => (asked.push(sha), finished);
-    expect(await recordDeploys(l, deployed, NOW)).toEqual([]);
+    expect(await recordDeploys(l, deployed, ALDEN_REPOS, NOW)).toEqual([]);
     expect(l.landings[0]!.deployed).toBeUndefined();
     finished = { result: "SUCCESSFUL", at: "2026-09-16T10:02:11Z", build: 2142, url: "u" };
-    expect(await recordDeploys(l, deployed, NOW)).toEqual(["be#797: deployed to dev (2026-09-16, build 2142)"]);
+    expect(await recordDeploys(l, deployed, ALDEN_REPOS, NOW)).toEqual(["be#797: deployed to dev (2026-09-16, build 2142)"]);
     expect(l.landings[0]!.deployed).toEqual({ ...finished, told: false });
     expect(validateLedger(l, { actor: "model" })).toEqual([]);
     // a recorded deploy is never asked about again, and the frontend never is
-    expect(await recordDeploys(l, deployed, NOW)).toEqual([]);
+    expect(await recordDeploys(l, deployed, ALDEN_REPOS, NOW)).toEqual([]);
     expect(asked).toEqual(["f9c544f", "f9c544f"]);
   });
   test("a failed pipeline is recorded and stays; an old landing's deploy is history, told already", async () => {
     const l = await valid();
     l.landings = [be("be#700", "2026-08-01T00:00:00Z", "b"), be("be#798", "2026-09-17T04:10:44Z", "c")];
-    const r = await recordDeploys(l, async (_r, sha) => ({ ...live, result: sha === "c" ? "FAILED" : "SUCCESSFUL" }), NOW);
+    const r = await recordDeploys(l, async (_r, sha) => ({ ...live, result: sha === "c" ? "FAILED" : "SUCCESSFUL" }), ALDEN_REPOS, NOW);
     expect(r).toEqual(["be#700: deployed to dev (2026-09-10, build 2084)", "be#798: dev pipeline failed (build 2084)"]);
     expect(l.landings.map((x) => [x.deployed?.result, x.deployed?.told])).toEqual([["SUCCESSFUL", true], ["FAILED", false]]);
-    expect(await recordDeploys(l, async () => live, NOW)).toEqual([]);
+    expect(await recordDeploys(l, async () => live, ALDEN_REPOS, NOW)).toEqual([]);
     expect(l.landings[1]!.deployed!.result).toBe("FAILED");
   });
   test("a ledger with a backend landing still waiting needs a reconcile", async () => {
     const l = emptyLedger("x");
-    expect(needsReconcile(l)).toBe(false);
+    expect(needsReconcile(l, ALDEN_REPOS)).toBe(false);
     l.landings.push(be("be#1", "2026-09-16T00:00:00Z", "d"));
-    expect(needsReconcile(l)).toBe(true);
+    expect(needsReconcile(l, ALDEN_REPOS)).toBe(true);
     l.landings[0]!.deployed = { ...live, told: true };
-    expect(needsReconcile(l)).toBe(false);
+    expect(needsReconcile(l, ALDEN_REPOS)).toBe(false);
   });
   test("an old ledger with no deploy on its landings still parses", async () => {
     expect(parseLedger(await Bun.file(`${FIX}valid.json`).json()).landings[0]!.deployed).toBeUndefined();
@@ -126,7 +131,7 @@ describe("a ticket that landed closes its ask", () => {
     l.asks[1]!.ticket = "ALD-52";
     l.tickets.push({ key: "ALD-52", title: "[FE] billing fields", asks: ["A-2"], blockers: [], ready: true });
     l.landings.push({ at: "2026-09-12T09:00:00Z", repo: "fe", ref: "fe#440", number: 440, sha: "f".repeat(40), title: "Foundry/ald-52 billing fields", by: "you", url: "https://bitbucket.org/x/pull-requests/440", asks: [], files: ["src/a.ts"], tickets: ["ALD-52"] });
-    const r = await reconcileLedger(l, async () => null);
+    const r = await reconcileLedger(l, async () => null, ALDEN_REPOS);
     expect(r.cleared).toEqual(["A-2: ALD-52 landed as fe#440", "A-2: ALD-52 is live, closed"]);
     const a = r.ledger.asks[1]!;
     expect(a.status).toBe("closed");
@@ -138,9 +143,9 @@ describe("a ticket that landed closes its ask", () => {
     const b = await valid();
     b.asks[1]!.ticket = "ALD-53";
     b.landings.push({ at: "2026-09-12T09:00:00Z", repo: "be", ref: "be#800", number: 800, sha: "e".repeat(40), title: "ALD-53 endpoint", by: "Sam O", url: "u", asks: [], files: ["src/x.ts"] });
-    const r1 = await reconcileLedger(b, async () => null);
+    const r1 = await reconcileLedger(b, async () => null, ALDEN_REPOS);
     expect(r1.ledger.asks[1]!.status).toBe("built");
-    const r2 = await reconcileLedger(r1.ledger, async () => live);
+    const r2 = await reconcileLedger(r1.ledger, async () => live, ALDEN_REPOS);
     expect(r2.ledger.asks[1]!.status).toBe("closed");
     expect(settled(r2.cleared)).toEqual(["A-2: ALD-53 is live, closed"]);
   });
@@ -155,20 +160,20 @@ describe("a ticket with no asks is done once its landing is live", () => {
     const l = await valid();
     l.tickets.push({ key: "ALD-45", title: "[FE] rollover", asks: [], blockers: [], ready: true });
     l.landings.push(landing("fe", "fe#437", 437, "ALD-45"));
-    const r = await reconcileLedger(l, async () => null);
+    const r = await reconcileLedger(l, async () => null, ALDEN_REPOS);
     expect(r.cleared).toEqual(["ALD-45: landed as fe#437 and is live, done"]);
     expect(r.ledger.tickets[1]!.settled).toEqual({ outcome: "done", at: "2026-09-12", evidence: [{ kind: "pr", repo: "fe", number: 437, url: expect.stringContaining("437") }] });
     expect(validateLedger(r.ledger, { prev: l, actor: "model" })).toEqual([]);
-    expect((await reconcileLedger(r.ledger, async () => null)).cleared).toEqual([]);
+    expect((await reconcileLedger(r.ledger, async () => null, ALDEN_REPOS)).cleared).toEqual([]);
   });
   test("a backend merge waits for the deploy; a ticket with asks or without a landing is left alone", async () => {
     const l = await valid();
     l.tickets.push({ key: "ALD-46", title: "[BE] rollover", asks: [], blockers: [], ready: true });
     l.tickets.push({ key: "ALD-48", title: "[BE] nothing landed", asks: [], blockers: [], ready: true });
     l.landings.push(landing("be", "be#780", 780, "ALD-46"));
-    expect((await reconcileLedger(l, async () => null)).cleared).toEqual([]);
+    expect((await reconcileLedger(l, async () => null, ALDEN_REPOS)).cleared).toEqual([]);
     // the fixture's deploy predates the merge, so the date falls back to today, as it does for an ask
-    const r = await reconcileLedger(l, async () => live, new Date("2026-09-13T10:00:00Z"));
+    const r = await reconcileLedger(l, async () => live, ALDEN_REPOS, new Date("2026-09-13T10:00:00Z"));
     expect(settled(r.cleared)).toEqual(["ALD-46: landed as be#780 and is live, done"]);
     expect(r.ledger.tickets[1]!.settled?.at).toBe("2026-09-13");
     expect(r.ledger.tickets[2]!.settled).toBeUndefined();
@@ -178,7 +183,7 @@ describe("a ticket with no asks is done once its landing is live", () => {
     const l = await valid();
     l.tickets.push({ key: "ALD-40", title: "x", asks: [], blockers: [], ready: true });
     l.landings.push(landing("fe", "fe#437", 437, "ALD-40"));
-    const r = await reconcileLedger(l, async () => null, new Date("2026-09-13T10:00:00Z"));
+    const r = await reconcileLedger(l, async () => null, ALDEN_REPOS, new Date("2026-09-13T10:00:00Z"));
     expect(r.cleared).toEqual(["ALD-40: landed as fe#437 and is live, done", "ALD-41: ALD-40 is done"]);
   });
 });
@@ -195,29 +200,29 @@ describe("Linear settles a ticket and the asks it serves", () => {
   };
   test("Done closes the ticket and its open ask with the ticket as evidence; the result validates and a second run is quiet", async () => {
     const l = await withTicket();
-    const r = await reconcileLedger(l, async () => null, new Date("2026-09-13T10:00:00Z"), linear("done"));
+    const r = await reconcileLedger(l, async () => null, ALDEN_REPOS, new Date("2026-09-13T10:00:00Z"), linear("done"));
     expect(r.cleared).toEqual(["ALD-52: Done in Linear, done", "A-2: ALD-52 is Done, closed"]);
     const evidence: Evidence[] = [{ kind: "ticket", key: "ALD-52", url }];
     expect(r.ledger.tickets[1]!.settled).toEqual({ outcome: "done", at: "2026-09-12", evidence });
     expect(r.ledger.asks[1]!.status).toBe("closed");
     expect(r.ledger.asks[1]!.history.at(-1)).toEqual({ at: "2026-09-12", status: "closed", evidence });
     expect(validateLedger(r.ledger, { prev: l, actor: "model" })).toEqual([]);
-    expect((await reconcileLedger(r.ledger, async () => null, undefined, linear("done"))).cleared).toEqual([]);
+    expect((await reconcileLedger(r.ledger, async () => null, ALDEN_REPOS, undefined, linear("done"))).cleared).toEqual([]);
   });
   test("Canceled drops both; open and unknown move nothing", async () => {
     const l = await withTicket();
-    const r = await reconcileLedger(l, async () => null, undefined, linear("canceled"));
+    const r = await reconcileLedger(l, async () => null, ALDEN_REPOS, undefined, linear("canceled"));
     expect(r.cleared).toEqual(["ALD-52: Canceled in Linear, dropped", "A-2: ALD-52 is Canceled, dropped"]);
     expect(r.ledger.tickets[1]!.settled?.outcome).toBe("dropped");
     expect(r.ledger.asks[1]!.status).toBe("dropped");
     expect(validateLedger(r.ledger, { prev: l, actor: "model" })).toEqual([]);
-    expect((await reconcileLedger(l, async () => null, undefined, linear("open"))).cleared).toEqual([]);
-    expect((await reconcileLedger(l, async () => null)).cleared).toEqual([]);
+    expect((await reconcileLedger(l, async () => null, ALDEN_REPOS, undefined, linear("open"))).cleared).toEqual([]);
+    expect((await reconcileLedger(l, async () => null, ALDEN_REPOS)).cleared).toEqual([]);
   });
   test("a settled date before the ask was made falls back to today", async () => {
     const l = await withTicket();
     l.asks[1]!.at = "2026-09-13T12:00:00Z";
-    const r = await reconcileLedger(l, async () => null, new Date("2026-09-14T10:00:00Z"), linear("done"));
+    const r = await reconcileLedger(l, async () => null, ALDEN_REPOS, new Date("2026-09-14T10:00:00Z"), linear("done"));
     expect(r.ledger.asks[1]!.history.at(-1)!.at).toBe("2026-09-14");
   });
 });
@@ -229,7 +234,7 @@ describe("Trello settles an AP ticket, same as Linear settles a Linear one (CTD-
     const l = await valid();
     l.asks[1]!.ticket = "AP-207";
     l.tickets.push({ key: "AP-207", title: "[FE] tab projects", asks: ["A-2"], blockers: [], ready: true });
-    const r = await reconcileLedger(l, async () => null, new Date("2026-09-13T10:00:00Z"), trello);
+    const r = await reconcileLedger(l, async () => null, ALDEN_REPOS, new Date("2026-09-13T10:00:00Z"), trello);
     expect(r.cleared).toEqual(["AP-207: Deployed in Trello, done", "A-2: AP-207 is Deployed, closed"]);
     expect(validateLedger(r.ledger, { prev: l, actor: "model" })).toEqual([]);
   });
@@ -344,18 +349,18 @@ describe("pipelineFor", () => {
     await pipelineFor("x/y", "dev", "06d27c81", { fetch: spy, auth: "Basic x" });
     expect(urls[0]).toContain("pagelen=100");
   });
-  test("deployCheck caches only a finished pipeline, and never asks about the frontend", async () => {
+  test("deployCheck caches only a finished pipeline, by the repo's own id and sha", async () => {
+    const be: PipelineRepo = { id: "be", slug: "x/y", branch: "dev" };
     const cache: DeployCache = {};
-    expect(await deployCheck("be", "aaaaaaaaa", { fetch: fetchStub, auth: "Basic x", cache })).toEqual({ state: "running" });
+    expect(await deployCheck(be, "aaaaaaaaa", { fetch: fetchStub, auth: "Basic x", cache })).toEqual({ state: "running" });
     expect(cache).toEqual({});
-    await deployCheck("be", "06d27c81", { fetch: fetchStub, auth: "Basic x", cache });
+    await deployCheck(be, "06d27c81", { fetch: fetchStub, auth: "Basic x", cache });
     expect(Object.keys(cache)).toEqual(["be@06d27c81"]);
     const none = (async () => {
       throw new Error("asked");
     }) as unknown as typeof fetch;
-    expect((await deployCheck("be", "06d27c81", { fetch: none, auth: "Basic x", cache })).state).toBe("done");
-    expect(await deployCheck("fe", "06d27c81", { fetch: none, auth: "Basic x", cache })).toEqual({ state: "unknown", why: expect.any(String) });
-    expect(await deployCheck("be", "ffffffff", { fetch: fetchStub, auth: null, cache })).toEqual({ state: "unknown", why: "no Bitbucket credentials" });
+    expect((await deployCheck(be, "06d27c81", { fetch: none, auth: "Basic x", cache })).state).toBe("done");
+    expect(await deployCheck(be, "ffffffff", { fetch: fetchStub, auth: null, cache })).toEqual({ state: "unknown", why: "no Bitbucket credentials" });
   });
 });
 
