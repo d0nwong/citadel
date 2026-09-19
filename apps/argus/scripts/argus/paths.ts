@@ -35,6 +35,19 @@ export const threadsPath = () => join(stateDir(), "threads.json");
 export const unplacedPath = () => join(stateDir(), "unplaced.json");
 export const batchesDir = () => join(stateDir(), "batches");
 
+/**
+ * A tick's own bookkeeping, beside `sweep.lock`, `sweep-status.json` and `sweep.log` in
+ * `.git/` — git never sees any of them. `tickStartPath` is the committable files dirty
+ * when the open tick began; it survives a crashed tick (no `argus commit` to clear it) so
+ * the next tick still treats that work as its own. `tickLeftoverPath` is what the last
+ * tick finished still owing — dirty on its own list, not some other change. `tickMarkerPath`
+ * is what a terminal `/sweep` writes in place of the `ARGUS_SWEEP_TICK` env var `loop.sh`
+ * exports around a service tick, since a terminal session's tool calls are each a fresh shell.
+ */
+export const tickStartPath = (cwd = root()) => join(cwd, ".git", "sweep-tick-start.json");
+export const tickLeftoverPath = (cwd = root()) => join(cwd, ".git", "sweep-tick-leftover.json");
+export const tickMarkerPath = (cwd = root()) => join(cwd, ".git", "sweep-tick-marker");
+
 const exists = (p: string) => stat(p).then(() => true, () => false);
 
 /** a feature is a directory under features/ that holds docs/ or a ledger; nesting is one level */
