@@ -19,17 +19,22 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
 
 ## Process
 
-1. **Pull.** `argus pull`. Nothing new prints "nothing new"; stop there. A backend
-   deploy that finished since the last run counts as new.
-2. **Place.** `argus place <batch>`. Code joins landings by files, replies by thread,
+1. **Start.** `argus tick start`. Records which committable files are already dirty, so
+   the tick's own commit later leaves someone else's uncommitted edit alone. Run by hand
+   in a terminal, with no `loop.sh` around it to export the tick marker, it writes that
+   marker itself — every later step in this run is still a tick.
+2. **Pull.** `argus pull`. Nothing new prints "nothing new"; skip straight to step 7 —
+   the tick still needs `argus commit` to close it out and clear its own records, even
+   with nothing to commit. A backend deploy that finished since the last run counts as new.
+3. **Place.** `argus place <batch>`. Code joins landings by files, replies by thread,
    messages by ticket key or PR. The rest goes to `state/unplaced.json`. Each backend
    landing on a ledger gets its finished `dev` pipeline. A feature whose landing finished
    deploying gets a slice for it, even with nothing else new.
-3. **Attribute.** `argus prompt attribute <batch>` prints the unplaced messages with the
+4. **Attribute.** `argus prompt attribute <batch>` prints the unplaced messages with the
    feature list; answer it yourself, then `argus place <id> <feature>` for each message
    you would bet on. Leave the rest. Then `argus place <batch>` once more, so the slices
    carry what the threads just learned.
-4. **Read.** For each feature with a slice in `<batch>.placed.json`, one general-purpose
+5. **Read.** For each feature with a slice in `<batch>.placed.json`, one general-purpose
    subagent with `model: "opus"` whose whole prompt is `argus prompt reader <feature>
    <batch>`. Save its reply to a file and `argus patch <feature> <file>`. A refusal names
    the path; hand it back to the subagent once with that text, then give up on it.
@@ -38,16 +43,19 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
    `argus prompt ground <feature> <P-n>` as its whole prompt. It reads the code and
    returns the body. Save the reply and `argus patch` it. A refusal is handed back once,
    then the proposal stays ungrounded for the next run.
-5. **Reconcile.** `argus reconcile`. Backend landings still waiting are checked again.
+6. **Reconcile.** `argus reconcile`. Backend landings still waiting are checked again.
    Landing blockers clear when Bitbucket says the merge deployed; ticket blockers when their asks closed. An open ticket settles when
    Linear says Done (closes its asks) or Canceled (drops them), or, with no asks, when a
    landing carrying its key is live. A filed revision whose parent is Done folds into its
    features' `docs/spec.md`; Canceled archives it.
-6. **Docs.** `accio stale`; for each listed feature, the `feature-docs` skill.
-7. **Validate and commit.** `argus validate`, then `argus commit -m "<the first On-you
+7. **Docs.** `accio stale`; for each listed feature, the `feature-docs` skill.
+8. **Validate and commit.** `argus validate`, then `argus commit -m "<the first On-you
    line, else the first revision reconcile moved, else: quiet run>"`. A failing feature is printed and left alone; the rest commits.
    In a tick, `argus commit` prefixes that message `sweep: ` and authors it "argus sweep" itself;
    the cursor is promoted only after that commit, so a crashed run replays rather than skips.
+   This is also what closes the tick: it clears step 1's start record and, when this run
+   wrote it, the terminal marker — so a verb run right after commits as whoever runs it,
+   not as the sweep.
 
 ## Rules
 
@@ -73,7 +81,12 @@ writes nothing there.
 
 ### The commit message is the first Needs-me line
 Or "quiet run" when nothing changed. `argus commit` prefixes it `sweep: ` itself, from the tick
-marker `loop.sh` sets; this skill's `-m` never spells that prefix out.
+marker `loop.sh` sets (or, run by hand in a terminal, the marker step 1 wrote in its place);
+this skill's `-m` never spells that prefix out.
+
+### The sweep leaves someone else's uncommitted file alone
+A file already dirty when step 1 ran is not this tick's to commit, even when a later step
+edits it too. It stays on disk, uncommitted, for whoever left it there.
 
 ## Red Flags
 
@@ -89,3 +102,5 @@ marker `loop.sh` sets; this skill's `-m` never spells that prefix out.
 - [ ] `git log -1` is this run's commit and `state/cursor.json` moved after it
 - [ ] Every reader call was one feature; every placement was a bet, not a tidy-up
 - [ ] `argus prompt ground` lists only proposals whose grounding was refused twice
+- [ ] Step 1 ran before anything else, and step 8 (`argus commit`) ran even when step 2
+      found nothing new

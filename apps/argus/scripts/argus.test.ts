@@ -316,6 +316,52 @@ describe("commit verb", () => {
   });
 });
 
+describe("a terminal tick, marked by the file rather than loop.sh's env var (CTD-261)", () => {
+  const sh = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: ws, stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
+  const run = (extraEnv: Record<string, string>, ...args: string[]) => {
+    const { GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, ...rest } = process.env;
+    const env = { ...rest, ARGUS_ROOT: ws, ARGUS_SWEEP_TICK: "", ARGUS_ORIGIN: "", SWEEP_GIT_NAME: "", SWEEP_GIT_EMAIL: "", ...extraEnv };
+    const p = Bun.spawn(["bun", join(ROOT, "scripts/argus.ts"), ...args], { env, stdout: "pipe", stderr: "pipe" });
+    return Promise.all([p.exited, new Response(p.stdout).text(), new Response(p.stderr).text()]).then(([code, out, err]) => ({ code, out, err }));
+  };
+  beforeEach(() => {
+    Bun.spawnSync(["git", "init", "-q"], { cwd: ws });
+    Bun.spawnSync(["git", "add", "-A"], { cwd: ws });
+    Bun.spawnSync(["git", "-c", "user.email=t@t", "-c", "user.name=The Person", "commit", "-q", "-m", "seed"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "The Person"], { cwd: ws });
+    mkdirSync(join(ws, "state"), { recursive: true });
+  });
+
+  test('"tick start" marks the run, "commit" commits once as argus sweep and clears the marker, so a hand-run verb right after commits as the person (AC3)', async () => {
+    const start = await run({}, "tick", "start");
+    expect(start.code).toBe(0);
+
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    const commit = await run({}, "commit", "-m", "terminal tick");
+    expect(commit.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("sweep: terminal tick");
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("argus sweep <sweep@citadel.local>");
+
+    // the marker is gone once the tick's commit ran: a hand-run verb right after commits as the person
+    const close = await run({}, "close", "admin/invoicing", "A-2", "--reason", "done in standup");
+    expect(close.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("The Person <t@t>");
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("argus close admin/invoicing:");
+  });
+
+  test('"commit" still closes out a quiet terminal tick — nothing to commit, but the marker still clears', async () => {
+    expect((await run({}, "tick", "start")).code).toBe(0);
+    const commit = await run({}, "commit");
+    expect(commit.code).toBe(0);
+    expect(commit.out).toContain("nothing to commit");
+
+    const close = await run({}, "close", "admin/invoicing", "A-2", "--reason", "done in standup");
+    expect(close.code).toBe(0);
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("The Person <t@t>");
+  });
+});
+
 describe("the post-verb commit (CTD-257)", () => {
   // the sandbox itself exports GIT_AUTHOR_*, which would mask author assertions below
   const sh = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: ws, stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();

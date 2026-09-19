@@ -17,11 +17,18 @@
  * that verb's own commit.
  */
 
-import { rename, stat } from "node:fs/promises";
+import { rename, rm, stat } from "node:fs/promises";
 import { relative } from "node:path";
-import { cursorNextPath, cursorPath, root } from "./paths.ts";
+import { cursorNextPath, cursorPath, root, tickLeftoverPath, tickMarkerPath, tickStartPath } from "./paths.ts";
 
 const exists = (p: string) => stat(p).then(() => true, () => false);
+
+/** a JSON array of paths at `path`, or `[]` when it does not exist or does not parse */
+const readPathList = async (path: string): Promise<string[]> => {
+  const file = Bun.file(path);
+  if (!(await file.exists())) return [];
+  return file.json().catch(() => []);
+};
 
 /** the paths a write verb has reported writing this process, root-relative; `main()` reads and resets it per verb */
 let written = new Set<string>();
@@ -55,15 +62,25 @@ const onList = (path: string, code: string) => COMMITTABLE.test(path) || (code.i
  * whole tree by default (the sweep's `commitRun`), or, given `scope`, only beneath those
  * paths: a write verb's own reported roots, a file or a directory a revision verb renamed,
  * whose tracked contents move with it and are discovered here rather than named one by one.
+ *
+ * Inside a tick, a path already dirty when the tick started is someone else's — subtracted,
+ * unless the last tick's own `argus commit` recorded it as what it left owing (`argus/sweep`
+ * S-11, S-12): a feature that failed validate, or work a tick that died left behind.
  */
 async function changed(cwd: string, scope?: string[]): Promise<string[]> {
   const st = await git(["status", "--porcelain", "--untracked-files=all", ...(scope?.length ? ["--", ...scope] : [])], cwd);
-  return st.out
+  const paths = st.out
     .split("\n")
     .filter(Boolean)
     .map((l) => ({ code: l.slice(0, 2), path: l.slice(3).replace(/^"|"$/g, "") }))
     .filter(({ code, path }) => onList(path, code))
     .map(({ path }) => path);
+  if (!(await inTick(cwd))) return paths;
+  const [startDirty, leftover] = await Promise.all([readPathList(tickStartPath(cwd)), readPathList(tickLeftoverPath(cwd))]);
+  if (!startDirty.length) return paths;
+  const leftoverSet = new Set(leftover);
+  const foreign = new Set(startDirty.filter((p) => !leftoverSet.has(p)));
+  return paths.filter((p) => !foreign.has(p));
 }
 
 /** git's status for exactly the named paths, path → its two-letter code */
@@ -78,7 +95,57 @@ async function statusOf(paths: string[], cwd: string): Promise<Map<string, strin
 export const inContainer = () => process.env.PENSIEVE_RUNNER?.trim() === "container";
 
 /** `loop.sh` exports this around the `claude -p "/sweep"` run it marks as a tick; every shell call inside it inherits it */
-export const inTick = () => !!process.env.ARGUS_SWEEP_TICK?.trim();
+const envTick = () => !!process.env.ARGUS_SWEEP_TICK?.trim();
+
+/** `loop.sh`'s default; `SWEEP_INTERVAL` overrides it, the same env var it sleeps on between ticks */
+const SWEEP_INTERVAL_DEFAULT_S = 900;
+const sweepIntervalMs = () => (Number(process.env.SWEEP_INTERVAL) || SWEEP_INTERVAL_DEFAULT_S) * 1000;
+
+/** the terminal tick marker, fresh (written or renewed within two `SWEEP_INTERVAL`s); a killed terminal `/sweep` ages out rather than marking every later verb forever */
+async function markerFresh(cwd: string): Promise<boolean> {
+  const st = await stat(tickMarkerPath(cwd)).catch(() => null);
+  return !!st && Date.now() - st.mtimeMs <= 2 * sweepIntervalMs();
+}
+
+/** whether this run is inside a sweep tick: `loop.sh`'s exported env var around a service tick, or a terminal `/sweep`'s own fresh marker file (`argus/sweep` S-13) */
+export async function inTick(cwd = root()): Promise<boolean> {
+  return envTick() || (await markerFresh(cwd));
+}
+
+export type TickStartResult = { recorded: boolean; carriedOver: boolean; marked: boolean };
+
+/**
+ * The sweep's own first step (`argus tick start`, `skills/sweep/SKILL.md`): records the
+ * committable files already dirty, so `changed()` can tell someone else's uncommitted
+ * work from the tick's own once it runs. Run again while the last tick's record is still
+ * there — it never reached `endTick` — the record is left alone: that tick's own work,
+ * whatever it is by now, keeps counting as the sweep's (`argus/sweep` S-12). With no
+ * `ARGUS_SWEEP_TICK` in the environment (a terminal `/sweep`, not `loop.sh`'s service
+ * loop), it also writes the marker `inTick` reads in place of that env var.
+ */
+export async function startTick(opts: { dryRun?: boolean; cwd?: string } = {}): Promise<TickStartResult> {
+  const cwd = opts.cwd ?? root();
+  const carriedOver = await exists(tickStartPath(cwd));
+  if (!carriedOver && !opts.dryRun) await Bun.write(tickStartPath(cwd), JSON.stringify((await changed(cwd)).sort()) + "\n");
+  const marked = !envTick();
+  if (marked && !opts.dryRun) await Bun.write(tickMarkerPath(cwd), "");
+  return { recorded: !carriedOver, carriedOver, marked };
+}
+
+/**
+ * The sweep's last step, once `commitRun` has run: clears this tick's start record and
+ * marker, so the next tick starts a fresh one and a hand-run verb right after sees no
+ * tick at all. `tickLeftoverPath` is left recording nothing owed — today's `commitRun`
+ * commits its whole candidate set in one commit, so there is never a partial leftover —
+ * ready for a later, finer-grained commit to say otherwise.
+ */
+export async function endTick(opts: { dryRun?: boolean; cwd?: string } = {}): Promise<void> {
+  if (opts.dryRun) return;
+  const cwd = opts.cwd ?? root();
+  await Bun.write(tickLeftoverPath(cwd), "[]\n");
+  await rm(tickStartPath(cwd), { force: true });
+  await rm(tickMarkerPath(cwd), { force: true });
+}
 
 /** the sweep's git identity for a tick's commit; `SWEEP_GIT_NAME`/`SWEEP_GIT_EMAIL` override it (`argus/ledger` S-15) */
 export const sweepAuthor = () => ({

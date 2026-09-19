@@ -26,7 +26,7 @@ import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
 import { type Check, deployCheck } from "./argus/deploy.ts";
 import { repoPath } from "./argus/pr-facts.ts";
-import { commitRun, commitWrites, inTick, origin, promoteCursor, resetWritten, saveRun, sweepAuthor, writtenPaths } from "./argus/commit.ts";
+import { commitRun, commitWrites, endTick, inTick, origin, promoteCursor, resetWritten, saveRun, startTick, sweepAuthor, writtenPaths } from "./argus/commit.ts";
 import { draftFor, draftForAsk } from "./argus/file.ts";
 import { applyPatch, parsePatch } from "./argus/patch.ts";
 import { attributePrompt, groundPrompt, readerPrompt, sliceOf, ungroundedProposals } from "./argus/reader.ts";
@@ -63,6 +63,7 @@ const USAGE = `argus — the ledger CLI
   argus write <feature> <file>|-     validate and write the next ledger (--dry-run to preview)
   argus show <feature>               print the ledger
 
+  argus tick start                   the sweep's own first step: records this tick's start, marks a terminal run as one
   argus pull [--since <date>] [--no-slack] [--no-landings] [--no-fetch] [--out <dir>]
   argus place <batch-id|path>        the deterministic joins → <batch>.placed.json + state/unplaced.json
   argus reconcile [<feature>...]     clear the blockers and settle the tickets the facts allow (records each backend landing's finished dev pipeline, asking again every run until there is one; each ticket's provider — Linear or Trello — whether it is Done or Canceled); a filed revision whose parent is Done folds into its features' specs, Canceled archives it
@@ -306,12 +307,22 @@ const verbs: Record<string, Verb> = {
     return report(f, feature, r);
   },
 
+  async tick(f) {
+    const [sub] = f.rest;
+    if (sub !== "start") throw new Usage("tick start");
+    const r = await startTick({ dryRun: f.dryRun });
+    if (f.json) console.log(JSON.stringify({ ok: true, ...r }));
+    else console.log(r.carriedOver ? "continuing a tick that never reached commit" : `recorded${r.marked ? "; marked as a tick" : ""}`);
+    return 0;
+  },
+
   async commit(f) {
-    const tick = inTick();
+    const tick = await inTick();
     const body = f.opts.m ?? f.opts.message ?? (tick ? "quiet run" : "sweep");
     const message = tick ? `sweep: ${body}` : body;
     const r = await commitRun(message, { dryRun: f.dryRun, author: tick ? sweepAuthor() : undefined });
     const cursor = tick ? await promoteCursor({ dryRun: f.dryRun }) : "none";
+    if (tick) await endTick({ dryRun: f.dryRun });
     if (f.json) console.log(JSON.stringify({ ok: true, ...r, cursor }));
     else console.log(r.committed ? `committed ${r.sha} (${r.files} files); cursor ${cursor}` : `nothing to commit (${r.files} staged); cursor ${cursor}`);
     return 0;
@@ -531,7 +542,7 @@ function firstLine(verb: string, rest: string[]): string {
 
 /** the post-verb commit (`argus/ledger` S-17): whatever the verb reported writing, as the person running it — skipped inside a sweep tick, whose own commit carries it (S-18) */
 async function commitVerb(verb: string, rest: string[], flags: Flags): Promise<void> {
-  if (inTick()) return;
+  if (await inTick()) return;
   await commitWrites(writtenPaths(), firstLine(verb, rest), { dryRun: flags.dryRun });
 }
 

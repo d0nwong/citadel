@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { COMMITTABLE, commitRun, commitWrites, inTick, noteWritten, origin, promoteCursor, resetWritten, saveRun, sweepAuthor, writtenPaths } from "./commit.ts";
+import { COMMITTABLE, commitRun, commitWrites, endTick, inTick, noteWritten, origin, promoteCursor, resetWritten, saveRun, startTick, sweepAuthor, writtenPaths } from "./commit.ts";
 
 let ws: string;
 const sh = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: ws, stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
@@ -84,11 +84,11 @@ describe("inTick and sweepAuthor", () => {
     delete process.env.SWEEP_GIT_NAME;
     delete process.env.SWEEP_GIT_EMAIL;
   });
-  test("inTick reads the marker loop.sh exports around a claude run", () => {
+  test("inTick reads the marker loop.sh exports around a claude run", async () => {
     delete process.env.ARGUS_SWEEP_TICK;
-    expect(inTick()).toBe(false);
+    expect(await inTick(ws)).toBe(false);
     process.env.ARGUS_SWEEP_TICK = "1";
-    expect(inTick()).toBe(true);
+    expect(await inTick(ws)).toBe(true);
   });
   test("sweepAuthor defaults to argus sweep, overridden by SWEEP_GIT_NAME/SWEEP_GIT_EMAIL", () => {
     expect(sweepAuthor()).toEqual({ name: "argus sweep", email: "sweep@citadel.local" });
@@ -307,5 +307,99 @@ describe("commitWrites", () => {
       delete process.env.PENSIEVE_RUNNER;
     }
     expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toContain("tasks/ledger.json");
+  });
+});
+
+describe("startTick and endTick (CTD-261)", () => {
+  afterEach(() => {
+    delete process.env.ARGUS_SWEEP_TICK;
+    delete process.env.SWEEP_INTERVAL;
+  });
+
+  test("a file dirty before the tick starts stays dirty after it, even when the tick writes to it too (AC1, sweep S-11)", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    Bun.spawnSync(["git", "add", "-A"], { cwd: ws });
+    Bun.spawnSync(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "t"], { cwd: ws });
+    // someone else's uncommitted edit, made before the tick starts
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), '{"hand":true}\n');
+
+    process.env.ARGUS_SWEEP_TICK = "1";
+    expect(await startTick({ cwd: ws })).toMatchObject({ recorded: true, carriedOver: false });
+
+    // the tick edits the very same file, and writes one of its own
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), '{"hand":true,"sweep":true}\n');
+    writeFileSync(join(ws, "state/threads.json"), "{}\n");
+
+    const r = await commitRun("sweep: test", { cwd: ws });
+    expect(r).toMatchObject({ committed: true, files: 1 });
+    const stat = sh(["git", "show", "--stat", "--format=", "HEAD"]);
+    expect(stat).toContain("threads.json");
+    expect(stat).not.toContain("tasks/ledger.json");
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toContain("tasks/ledger.json");
+  });
+
+  test("a tick killed before argus commit has its files committed by the next tick (AC2, sweep S-12)", async () => {
+    Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "t"], { cwd: ws });
+    process.env.ARGUS_SWEEP_TICK = "1";
+
+    expect(await startTick({ cwd: ws })).toMatchObject({ recorded: true, carriedOver: false });
+    // the tick's own work, then it dies before ever reaching `argus commit`
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+
+    // the next tick starts: the dead tick's record is still there, so it is left alone
+    expect(await startTick({ cwd: ws })).toMatchObject({ recorded: false, carriedOver: true });
+
+    const r = await commitRun("sweep: recovered", { cwd: ws });
+    expect(r).toMatchObject({ committed: true, files: 1 });
+    expect(sh(["git", "show", "--stat", "--format=", "HEAD"])).toContain("tasks/ledger.json");
+  });
+
+  test('a tick marked by the file, not the env var, commits once as "argus sweep" and clears itself (AC3, sweep S-13)', async () => {
+    Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "t"], { cwd: ws });
+    delete process.env.ARGUS_SWEEP_TICK;
+
+    const start = await startTick({ cwd: ws });
+    expect(start.marked).toBe(true);
+    expect(await inTick(ws)).toBe(true);
+
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    const r = await commitRun("sweep: terminal", { cwd: ws, author: sweepAuthor() });
+    expect(r).toMatchObject({ committed: true, files: 1 });
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("argus sweep <sweep@citadel.local>");
+
+    // nothing left to commit — the tick's one commit already happened
+    expect(await commitRun("sweep: terminal again", { cwd: ws, author: sweepAuthor() })).toMatchObject({ committed: false, files: 0 });
+
+    await endTick({ cwd: ws });
+    expect(await inTick(ws)).toBe(false);
+  });
+
+  test("after a quiet tick ends, the marker is gone: it does not mark a later verb as a tick forever", async () => {
+    delete process.env.ARGUS_SWEEP_TICK;
+    await startTick({ cwd: ws });
+    expect(await inTick(ws)).toBe(true);
+    await endTick({ cwd: ws }); // nothing to commit, but the tick still ends
+    expect(await inTick(ws)).toBe(false);
+  });
+
+  test("a stale marker counts as gone, so a killed terminal /sweep does not silence every later verb", async () => {
+    delete process.env.ARGUS_SWEEP_TICK;
+    process.env.SWEEP_INTERVAL = "1";
+    await startTick({ cwd: ws });
+    expect(await inTick(ws)).toBe(true);
+    await new Promise((r) => setTimeout(r, 2100));
+    expect(await inTick(ws)).toBe(false);
+  });
+
+  test("a dry run records nothing on disk", async () => {
+    delete process.env.ARGUS_SWEEP_TICK;
+    const r = await startTick({ cwd: ws, dryRun: true });
+    expect(r).toMatchObject({ recorded: true, marked: true });
+    expect(await Bun.file(join(ws, ".git/sweep-tick-start.json")).exists()).toBe(false);
+    expect(await Bun.file(join(ws, ".git/sweep-tick-marker")).exists()).toBe(false);
   });
 });
