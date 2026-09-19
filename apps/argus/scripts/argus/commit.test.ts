@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { COMMITTABLE, commitRun, inTick, promoteCursor, saveRun, sweepAuthor } from "./commit.ts";
+import { COMMITTABLE, commitRun, commitWrites, inTick, noteWritten, origin, promoteCursor, resetWritten, saveRun, sweepAuthor, writtenPaths } from "./commit.ts";
 
 let ws: string;
 const sh = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: ws, stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
@@ -212,5 +212,100 @@ describe("saveRun", () => {
     rmSync(join(ws, ".git/index.lock"));
     const r = await p;
     expect(r).toMatchObject({ committed: true, files: 1 });
+  });
+});
+
+describe("noteWritten / writtenPaths / resetWritten", () => {
+  afterEach(() => resetWritten());
+  test("collects root-relative paths, de-duplicated, until reset", () => {
+    resetWritten();
+    expect(writtenPaths()).toEqual([]);
+    noteWritten(join(ws, "alden/alden-portal/features/tasks/ledger.json"));
+    noteWritten(join(ws, "state/threads.json"));
+    noteWritten(join(ws, "alden/alden-portal/features/tasks/ledger.json"));
+    expect(writtenPaths().sort()).toEqual(["alden/alden-portal/features/tasks/ledger.json", "state/threads.json"]);
+    resetWritten();
+    expect(writtenPaths()).toEqual([]);
+  });
+});
+
+describe("origin", () => {
+  const saved = process.env.ARGUS_ORIGIN;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.ARGUS_ORIGIN;
+    else process.env.ARGUS_ORIGIN = saved;
+  });
+  test("null unset or blank, else the trimmed value a Pensieve conversation set", () => {
+    delete process.env.ARGUS_ORIGIN;
+    expect(origin()).toBeNull();
+    process.env.ARGUS_ORIGIN = "  ";
+    expect(origin()).toBeNull();
+    process.env.ARGUS_ORIGIN = " ask/de9c8a51 ";
+    expect(origin()).toBe("ask/de9c8a51");
+  });
+});
+
+describe("commitWrites", () => {
+  // the sandbox itself exports GIT_AUTHOR_*, which would mask author assertions below
+  let savedAuthorName: string | undefined;
+  let savedAuthorEmail: string | undefined;
+  beforeEach(() => {
+    savedAuthorName = process.env.GIT_AUTHOR_NAME;
+    savedAuthorEmail = process.env.GIT_AUTHOR_EMAIL;
+    delete process.env.GIT_AUTHOR_NAME;
+    delete process.env.GIT_AUTHOR_EMAIL;
+    Bun.spawnSync(["git", "config", "user.email", "person@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "The Person"], { cwd: ws });
+  });
+  afterEach(() => {
+    if (savedAuthorName !== undefined) process.env.GIT_AUTHOR_NAME = savedAuthorName;
+    if (savedAuthorEmail !== undefined) process.env.GIT_AUTHOR_EMAIL = savedAuthorEmail;
+  });
+
+  test("commits exactly what git finds changed under the reported roots, as the person running it", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    writeFileSync(join(ws, "README.md"), "unrelated\n");
+    const r = await commitWrites(["alden/alden-portal/features/tasks/ledger.json"], "argus confirm tasks: ", { cwd: ws });
+    expect(r).toMatchObject({ committed: true, files: 1 });
+    // git strips a commit message's trailing whitespace
+    expect(sh(["git", "log", "-1", "--format=%s"])).toBe("argus confirm tasks:");
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("The Person <person@t>");
+    const stat = sh(["git", "show", "--stat", "--format=", "HEAD"]);
+    expect(stat).toContain("tasks/ledger.json");
+    expect(stat).not.toContain("README.md");
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toContain("README.md");
+  });
+
+  test("a directory root discovers every tracked file a rename carried, not just the one named", async () => {
+    mkdirSync(join(ws, "revisions/reignite/specs/foundry"), { recursive: true });
+    writeFileSync(join(ws, "revisions/reignite/revision.json"), '{"status":"draft"}\n');
+    writeFileSync(join(ws, "revisions/reignite/intent.md"), "# intent\n");
+    writeFileSync(join(ws, "revisions/reignite/specs/foundry/jobs.md"), "# spec\n");
+    Bun.spawnSync(["git", "add", "-A"], { cwd: ws });
+    Bun.spawnSync(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed"], { cwd: ws });
+    // a plain filesystem rename, as `node:fs/promises`' `rename()` does in revision.ts — not `git mv`, which would pre-stage it
+    renameSync(join(ws, "revisions/reignite"), join(ws, "revisions/CTD-900"));
+    const r = await commitWrites(["revisions/reignite", "revisions/CTD-900"], "argus revision file: ", { cwd: ws });
+    // git sees an unstaged rename as a deletion at the old path plus an addition at the new one, per file: 3 files, 6 changed paths
+    expect(r).toMatchObject({ committed: true, files: 6 });
+    const stat = sh(["git", "show", "--stat", "--format=", "HEAD"]);
+    expect(stat).toContain("revision.json");
+    expect(stat).toContain("intent.md");
+    expect(stat).toContain("jobs.md");
+    expect(sh(["git", "status", "--porcelain"])).toBe("");
+  });
+
+  test("no roots, nothing changed under them, a dry run, or inside Pensieve's container all commit nothing", async () => {
+    expect(await commitWrites([], "x", { cwd: ws })).toEqual({ committed: false, files: 0 });
+    expect(await commitWrites(["nowhere.json"], "x", { cwd: ws })).toEqual({ committed: false, files: 0 });
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    expect(await commitWrites(["alden/alden-portal/features/tasks/ledger.json"], "x", { cwd: ws, dryRun: true })).toMatchObject({ committed: false, files: 1 });
+    process.env.PENSIEVE_RUNNER = "container";
+    try {
+      expect(await commitWrites(["alden/alden-portal/features/tasks/ledger.json"], "x", { cwd: ws })).toMatchObject({ committed: false, files: 1 });
+    } finally {
+      delete process.env.PENSIEVE_RUNNER;
+    }
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toContain("tasks/ledger.json");
   });
 });

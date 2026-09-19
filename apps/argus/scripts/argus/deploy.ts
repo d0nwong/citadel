@@ -14,6 +14,7 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { noteWritten } from "./commit.ts";
 import { stateDir } from "./paths.ts";
 import { REPOS } from "./pr-facts.ts";
 import type { Repo } from "./schema.ts";
@@ -29,6 +30,7 @@ export async function readDeployCache(): Promise<DeployCache> {
 }
 export async function writeDeployCache(c: DeployCache): Promise<void> {
   await Bun.write(cachePath(), JSON.stringify(c, null, 2) + "\n");
+  noteWritten(cachePath());
 }
 
 export async function bitbucketAuth(path = process.env.BITBUCKET_CONFIG ?? join(homedir(), ".bitbucket-rest-cli-config.json")): Promise<string | null> {

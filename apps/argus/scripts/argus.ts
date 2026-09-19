@@ -11,6 +11,10 @@
  *
  * The run's verbs (pull, place, commit) and the click verbs (close, confirm, place,
  * ticket, file, send) are added by their own files under scripts/argus/.
+ *
+ * `main()` commits whatever a verb reported writing (`argus/commit.ts`'s `noteWritten`)
+ * before it returns, as the person running it — unless the run is inside a sweep tick
+ * (`ARGUS_SWEEP_TICK`), whose own commit carries it instead (`argus/ledger` S-17, S-18).
  */
 
 import { providerNameFor } from "@citadel/tickets";
@@ -22,7 +26,7 @@ import { readBatch, placedPath } from "./argus/batch.ts";
 import { reconcileAll } from "./argus/blockers.ts";
 import { type Check, deployCheck } from "./argus/deploy.ts";
 import { repoPath } from "./argus/pr-facts.ts";
-import { commitRun, inTick, promoteCursor, saveRun, sweepAuthor } from "./argus/commit.ts";
+import { commitRun, commitWrites, inTick, origin, promoteCursor, resetWritten, saveRun, sweepAuthor, writtenPaths } from "./argus/commit.ts";
 import { draftFor, draftForAsk } from "./argus/file.ts";
 import { applyPatch, parsePatch } from "./argus/patch.ts";
 import { attributePrompt, groundPrompt, readerPrompt, sliceOf, ungroundedProposals } from "./argus/reader.ts";
@@ -518,6 +522,19 @@ function report(f: Flags, feature: string, r: { wrote: boolean; path: string; di
   return 0;
 }
 
+/** a commit's first line: the Pensieve conversation it came from when one is set, otherwise the verb and its first argument (`argus/ledger` S-16) */
+function firstLine(verb: string, rest: string[]): string {
+  const o = origin();
+  if (o) return `${o}: `;
+  return `argus ${verb}${rest[0] ? ` ${rest[0]}` : ""}: `;
+}
+
+/** the post-verb commit (`argus/ledger` S-17): whatever the verb reported writing, as the person running it — skipped inside a sweep tick, whose own commit carries it (S-18) */
+async function commitVerb(verb: string, rest: string[], flags: Flags): Promise<void> {
+  if (inTick()) return;
+  await commitWrites(writtenPaths(), firstLine(verb, rest), { dryRun: flags.dryRun });
+}
+
 export async function main(argv: string[]): Promise<number> {
   const [verb, ...rest] = argv;
   if (!verb || verb === "--help" || verb === "-h") {
@@ -530,9 +547,14 @@ export async function main(argv: string[]): Promise<number> {
     return 1;
   }
   const flags = parseArgs(rest);
+  resetWritten();
   try {
-    return await run(flags);
+    const code = await run(flags);
+    await commitVerb(verb, rest, flags);
+    return code;
   } catch (e) {
+    // whatever landed on disk before the throw still gets committed; the throw itself is reported below
+    await commitVerb(verb, rest, flags).catch(() => {});
     if (e instanceof ValidationError) {
       if (flags.json) console.log(JSON.stringify({ ok: false, problems: e.problems }));
       else console.error(`argus ${verb}: refused\n${e.problems.map((p) => `  ${p.path}: ${p.rule}`).join("\n")}`);
