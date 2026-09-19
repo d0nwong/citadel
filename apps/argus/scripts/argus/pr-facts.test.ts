@@ -5,11 +5,11 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { featureFiles, featuresForFiles, type Manifest } from "./manifest.ts";
 import { manifestPath, projectsPath } from "./paths.ts";
-import { manifestTableFor, parseLandings, ticketKeysIn } from "./pr-facts.ts";
+import { manifestTableFor, parseLandings, repoFor, repoOf, ticketKeysIn } from "./pr-facts.ts";
 import { defaultProjectsConfig, type ProjectsConfig } from "./projects.ts";
 
 const RS = "\x1e", US = "\x1f";
@@ -24,14 +24,14 @@ const apLog = [
 
 describe("parseLandings", () => {
   test("a merge carries its PR number, branch, title and ticket; a direct push is its own landing", () => {
-    const [merge, direct] = parseLandings("fe", log);
+    const [merge, direct] = parseLandings(repoOf("fe"), log);
     expect(merge).toMatchObject({ ref: "fe#421", number: 421, branch: "feature/ALD-41-due-header", title: "Due header follows the payment term", by: "Sam O", ticketKeys: ["ALD-41"] });
     expect(merge?.url).toBe("https://bitbucket.org/aldenstudios/alden-portal-fe/pull-requests/421");
     expect(direct).toMatchObject({ ref: `fe@${"b".repeat(9)}`, number: null, url: null, title: "fix BR-7 typo in usage labels", ticketKeys: [] });
   });
-  test("an empty log is no landings", () => expect(parseLandings("be", "")).toEqual([]));
+  test("an empty log is no landings", () => expect(parseLandings(repoOf("be"), "")).toEqual([]));
   test("CTD-199: a Foundry branch or PR title carrying AP-<n> records a landing carrying that key, as ALD-<n> does", () => {
-    const [merge] = parseLandings("fe", apLog);
+    const [merge] = parseLandings(repoOf("fe"), apLog);
     expect(merge).toMatchObject({ branch: "foundry/ap-207-tab-projects-abc12345", ticketKeys: ["AP-207"] });
   });
 });
@@ -83,6 +83,16 @@ describe("featuresForFiles", () => {
   });
 });
 
+describe("repoFor (CTD-272, ingest S-7)", () => {
+  test("builds id, path, slug and ref straight from a project's own repo entry", () => {
+    const repo = repoFor({ id: "citadel-repo", cloneUrl: "https://github.com/d0nwong/citadel.git", path: "~/git/citadel", baseBranch: "main", host: "github", deploy: { kind: "live" } });
+    expect(repo).toEqual({ id: "citadel-repo", path: `${homedir()}/git/citadel`, slug: "d0nwong/citadel", ref: "origin/main" });
+  });
+  test("reads a slug from an ssh clone URL too", () => {
+    expect(repoFor({ id: "x", cloneUrl: "git@bitbucket.org:aldenstudios/alden-portal-fe.git", path: "", baseBranch: "staging", host: "bitbucket", deploy: { kind: "live" } }).slug).toBe("aldenstudios/alden-portal-fe");
+  });
+});
+
 describe("manifestTableFor (CTD-271, ledger S-27)", () => {
   let ws: string;
   beforeEach(() => {
@@ -100,8 +110,10 @@ describe("manifestTableFor (CTD-271, ledger S-27)", () => {
     writeFileSync(manifestPath(), JSON.stringify(manifest));
     const fe = await manifestTableFor("fe");
     expect(featuresForFiles(["src/features/tasks/a.ts"], fe!.table, "fe")).toEqual(["tasks"]);
+    expect(fe!.apiBackend).toBe(false);
     const be = await manifestTableFor("be");
     expect(featuresForFiles(["src/services/taskService.ts"], be!.table, "be")).toEqual(["tasks"]);
+    expect(be!.apiBackend).toBe(true);
   });
 
   test("null for a repo id no configured project declares", async () => {
@@ -130,5 +142,7 @@ describe("manifestTableFor (CTD-271, ledger S-27)", () => {
     expect(owner).not.toBeNull();
     expect(owner!.manifest.app).toBe("citadel");
     expect(featuresForFiles(["infra/sweep/loop.sh"], owner!.table, "citadel-repo")).toEqual(["sweep"]);
+    // no apiSpec declared for this area, so no repo of this project gates route inversion
+    expect(owner!.apiBackend).toBe(false);
   });
 });

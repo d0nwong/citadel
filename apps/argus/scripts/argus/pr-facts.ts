@@ -20,9 +20,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { type FeatureFileEntry, featureFiles, featuresForFiles, loadManifest, type Manifest } from "./manifest.ts";
 import { root } from "./paths.ts";
-import { allAreas, loadProjects } from "./projects.ts";
+import { allAreas, loadProjects, type ProjectRepo } from "./projects.ts";
 
-/** alden-portal's own two repos; pulling and reconciling a third project's repos is out of scope until tickets 8 and 9 generalize this */
+/** alden-portal's own two repos; reconciling and reading a third project's repos is out of scope until tickets 9 and 10 generalize those */
 export type RepoKind = "fe" | "be";
 
 const expand = (p: string) => p.replace(/^~/, homedir());
@@ -34,8 +34,21 @@ export const REPOS = {
   be: { slug: "aldenstudios/alden-connect-portal-be", ref: "origin/dev" },
 } as const;
 
-export type Repo = { kind: RepoKind; path: string; slug: string; ref: string };
-export const repoOf = (kind: RepoKind, path = repoPath(kind)): Repo => ({ kind, path, ...REPOS[kind] });
+/** a repo pulled or read as data: any id a project declares, not only alden-portal's "fe"/"be" (CTD-272) */
+export type Repo = { id: string; path: string; slug: string; ref: string };
+export const repoOf = (kind: RepoKind, path = repoPath(kind)): Repo => ({ id: kind, path, ...REPOS[kind] });
+
+/** "owner/repo" parsed from a clone URL, https or ssh, with or without a trailing `.git` */
+export function slugFromUrl(url: string): string {
+  const m = url.match(/[/:]([^/]+\/[^/]+?)(?:\.git)?$/);
+  if (!m) throw new Error(`pr-facts: cannot read a slug from ${url}`);
+  return m[1]!;
+}
+
+/** a `Repo` straight from a project's own `projects.json` entry — the path, slug and base branch a second project declares (CTD-272) */
+export function repoFor(pr: ProjectRepo): Repo {
+  return { id: pr.id, path: expand(pr.path), slug: slugFromUrl(pr.cloneUrl), ref: `origin/${pr.baseBranch}` };
+}
 
 const TICKET_RE = /\b([A-Z][A-Z0-9]{1,9}-\d{1,6})\b/g;
 /** bitbucket writes `Merged in <branch> (pull request #N)` as the merge subject */
@@ -49,8 +62,9 @@ export async function git(repo: Repo, ...args: string[]): Promise<string> {
   return p.stdout.toString().trimEnd();
 }
 
-export const fetchOrigin = (repo: Repo) =>
-  Bun.spawnSync(["git", "-C", repo.path, "fetch", "--quiet", "origin"], { stdout: "ignore", stderr: "ignore" });
+/** fetches `origin` into the checkout; the exit code, so a caller can tell a failed fetch from a stale-but-readable one (CTD-272) */
+export const fetchOrigin = (repo: Repo): number =>
+  Bun.spawnSync(["git", "-C", repo.path, "fetch", "--quiet", "origin"], { stdout: "ignore", stderr: "ignore" }).exitCode;
 
 const lines = (s: string) => (s ? s.split("\n") : []);
 
@@ -58,7 +72,7 @@ export const ticketKeysIn = (text: string) =>
   [...new Set([...text.toUpperCase().matchAll(TICKET_RE)].map((x) => x[1]!))].filter((t) => !NOT_A_TICKET.test(t));
 
 export type Landing = {
-  repo: RepoKind;
+  repo: string;
   /** `fe#417`, or `fe@ac1caffd6` for a commit pushed straight at the branch */
   ref: string;
   number: number | null;
@@ -83,8 +97,7 @@ export type Landing = {
 export const LOG_FORMAT = "--format=%H%x1f%cI%x1f%cd%x1f%an%x1f%s%x1f%b%x1e";
 
 /** parse one `git log --first-parent` output in LOG_FORMAT into landings without files or features */
-export function parseLandings(kind: RepoKind, log: string): Omit<Landing, "files" | "features" | "routes">[] {
-  const slug = REPOS[kind].slug;
+export function parseLandings(repo: Repo, log: string): Omit<Landing, "files" | "features" | "routes">[] {
   return log
     .split("\x1e")
     .map((r) => r.replace(/^\n/, ""))
@@ -96,15 +109,15 @@ export function parseLandings(kind: RepoKind, log: string): Omit<Landing, "files
       const branch = m?.[1] ?? null;
       const title = ((m ? (body ?? "").split("\n").find(Boolean) : subject) ?? subject!).trim();
       return {
-        repo: kind,
-        ref: number ? `${kind}#${number}` : `${kind}@${sha!.slice(0, 9)}`,
+        repo: repo.id,
+        ref: number ? `${repo.id}#${number}` : `${repo.id}@${sha!.slice(0, 9)}`,
         number,
         sha: sha!,
         short: sha!.slice(0, 9),
         at: at!,
         date: date!,
         by: by!,
-        url: number ? `https://bitbucket.org/${slug}/pull-requests/${number}` : null,
+        url: number ? `https://bitbucket.org/${repo.slug}/pull-requests/${number}` : null,
         branch,
         title,
         ticketKeys: ticketKeysIn(`${branch ?? ""}\n${title}\n${subject}`),
@@ -156,21 +169,21 @@ export async function changedRoutes(repo: Repo, sha: string, files: string[]): P
 /**
  * The project that declares `repoId`, its own manifest, and the file→feature table keyed
  * by that project's own repo ids — `area.repo` is the "fe" side (the repo its route tree
- * comes from), the project's other repo is the "be" side. Null when no configured project
- * declares the repo (CTD-271, ledger S-27): today `repoId` is always alden-portal's "fe" or
- * "be", so this always resolves, from the default config, to exactly what `loadManifest()`
- * and `featureFiles(manifest)` gave before this feature. Exported so a test can prove the
- * resolution for a repo id a second project declares, ahead of a second project's landings
- * actually being pulled (ticket 8).
+ * comes from), the project's other repo is the "be" side. `apiBackend` is true exactly when
+ * the project's area declares an API spec and `repoId` is that "be" side — the condition
+ * that used to be the literal `repo.kind === "be"` (CTD-272). Null when no configured project
+ * declares the repo (CTD-271, ledger S-27). Exported so a test can prove the resolution for a
+ * repo id a second project declares, ahead of a second project's landings actually being
+ * pulled (ticket 8).
  */
-export async function manifestTableFor(repoId: string): Promise<{ manifest: Manifest; table: FeatureFileEntry[] } | null> {
+export async function manifestTableFor(repoId: string): Promise<{ manifest: Manifest; table: FeatureFileEntry[]; apiBackend: boolean } | null> {
   const config = await loadProjects();
   const project = config.projects.find((p) => p.repos.some((r) => r.id === repoId));
   const area = project && allAreas(config).find((a) => a.project === project.id);
   if (!project || !area) return null;
   const manifest = await loadManifest(area.dir);
   const be = project.repos.find((r) => r.id !== area.repo)?.id;
-  return { manifest, table: featureFiles(manifest, { fe: area.repo, ...(be ? { be } : {}) }) };
+  return { manifest, table: featureFiles(manifest, { fe: area.repo, ...(be ? { be } : {}) }), apiBackend: !!area.apiSpec && repoId === be };
 }
 
 /** the accio index's route → feature-ids map, when the index exists; ids are manifest ids, mapped to dirs by the caller */
@@ -187,14 +200,14 @@ async function routeOwners(): Promise<Map<string, string[]> | null> {
 export async function landingsSince(repo: Repo, from: string): Promise<Landing[]> {
   const since = /^\d{4}-\d{2}-\d{2}$/.test(from) ? `${from} 00:00` : from;
   const log = await git(repo, "log", "--first-parent", `--since=${since}`, LOG_FORMAT, "--date=short", repo.ref);
-  const owner = await manifestTableFor(repo.kind);
+  const owner = await manifestTableFor(repo.id);
   const idToDir = new Map((owner?.manifest.features ?? []).map((f) => [f.id, owner!.table.find((t) => t.name === f.name)!.dir]));
-  const owners = repo.kind === "be" ? await routeOwners() : null;
+  const owners = owner?.apiBackend ? await routeOwners() : null;
   const out: Landing[] = [];
-  for (const l of parseLandings(repo.kind, log)) {
+  for (const l of parseLandings(repo, log)) {
     const files = await filesOf(repo, l.sha);
-    const features = owner ? featuresForFiles(files, owner.table, repo.kind) : [];
-    const routes = repo.kind === "be" ? await changedRoutes(repo, l.sha, files) : [];
+    const features = owner ? featuresForFiles(files, owner.table, repo.id) : [];
+    const routes = owner?.apiBackend ? await changedRoutes(repo, l.sha, files) : [];
     if (owners) {
       const norm = (u: string) => u.replace(/\{[^}]*\}/g, "{p}").replace(/\/+$/, "");
       for (const r of routes) for (const id of owners.get(norm(r)) ?? []) {
@@ -210,11 +223,11 @@ export async function landingsSince(repo: Repo, from: string): Promise<Landing[]
 /** the landing that carried a PR number */
 export async function landingOfPr(repo: Repo, pr: number): Promise<Landing | null> {
   const log = await git(repo, "log", "--first-parent", LOG_FORMAT, "--date=short", "-n", "2000", repo.ref);
-  const hit = parseLandings(repo.kind, log).find((l) => l.number === pr);
+  const hit = parseLandings(repo, log).find((l) => l.number === pr);
   if (!hit) return null;
   const files = await filesOf(repo, hit.sha);
-  const owner = await manifestTableFor(repo.kind);
-  return { ...hit, files, features: owner ? featuresForFiles(files, owner.table, repo.kind) : [], routes: repo.kind === "be" ? await changedRoutes(repo, hit.sha, files) : [] };
+  const owner = await manifestTableFor(repo.id);
+  return { ...hit, files, features: owner ? featuresForFiles(files, owner.table, repo.id) : [], routes: owner?.apiBackend ? await changedRoutes(repo, hit.sha, files) : [] };
 }
 
 if (import.meta.main) {

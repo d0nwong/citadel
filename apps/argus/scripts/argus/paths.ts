@@ -46,10 +46,14 @@ export const batchesDir = () => join(stateDir(), "batches");
  * tick finished still owing — dirty on its own list, not some other change. `tickMarkerPath`
  * is what a terminal `/sweep` writes in place of the `ARGUS_SWEEP_TICK` env var `loop.sh`
  * exports around a service tick, since a terminal session's tool calls are each a fresh shell.
+ * `tickUnreachablePath` is the repo ids `loop.sh`'s per-tick clone/fetch and `argus pull`'s
+ * own fetch could not reach this tick (CTD-272), so the docs step can skip their areas;
+ * `loop.sh` overwrites it fresh at the start of every tick, `argus pull` only adds to it.
  */
 export const tickStartPath = (cwd = root()) => join(cwd, ".git", "sweep-tick-start.json");
 export const tickLeftoverPath = (cwd = root()) => join(cwd, ".git", "sweep-tick-leftover.json");
 export const tickMarkerPath = (cwd = root()) => join(cwd, ".git", "sweep-tick-marker");
+export const tickUnreachablePath = (cwd = root()) => join(cwd, ".git", "sweep-tick-unreachable.json");
 
 const exists = (p: string) => stat(p).then(() => true, () => false);
 

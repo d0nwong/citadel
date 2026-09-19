@@ -64,25 +64,33 @@ setup() {
 
 # Every repo projects.json names (CTD-269): clone one that's missing, and fetch every one a
 # record-job project's own `argus pull` doesn't already fetch itself (pull.ts's
-# defaultSources, via pr-facts.ts's ALDEN_FE_REPO/ALDEN_BE_REPO). Read straight from the
-# loader argus/projects.ts already exports, the way status() above already shells out to bun
-# for JSON work, rather than a script of its own. Runs at the start of every tick, so a repo
-# or project added to projects.json is picked up by the next one, with no code, image or
-# compose change.
+# defaultSources, via pr-facts.ts's repoFor). Read straight from the loader argus/projects.ts
+# already exports, the way status() above already shells out to bun for JSON work, rather than
+# a script of its own. Runs at the start of every tick, so a repo or project added to
+# projects.json is picked up by the next one, with no code, image or compose change.
+#
+# A repo whose clone or fetch fails here is recorded by id to sweep-tick-unreachable.json,
+# fresh every tick (CTD-272): the docs step reads it and skips that repo's areas this tick,
+# rather than refreshing docs against a stale or missing checkout. `argus pull` (inside the
+# tick proper) adds its own runtime failures to the same file, for the repos left to it.
 sync_repos() {
-  while IFS=$'\t' read -r url path pulled; do
+  local unreachable=()
+  while IFS=$'\t' read -r id url path pulled; do
     [ -z "$url" ] && continue
     if [ -z "$path" ]; then say "no local path configured for $url; skipping"; continue; fi
     path="${path/#\~/$HOME}"
-    clone "$url" "$path" || continue
+    if ! clone "$url" "$path"; then unreachable+=("$id"); continue; fi
     [ "$pulled" = "1" ] && continue
-    git -C "$path" fetch --quiet origin || say "fetch failed for $path; the next tick retries"
+    if ! git -C "$path" fetch --quiet origin; then say "fetch failed for $path; the next tick retries"; unreachable+=("$id"); fi
   done < <(bun -e '
     const { loadProjects } = await import("./scripts/argus/projects.ts");
     const config = await loadProjects();
     for (const p of config.projects) for (const r of p.repos)
-      console.log([r.cloneUrl, r.path, p.jobs.includes("record") ? "1" : "0"].join("\t"));
+      console.log([r.id, r.cloneUrl, r.path, p.jobs.includes("record") ? "1" : "0"].join("\t"));
   ' || true)
+  bun -e '
+    await Bun.write(process.argv[1], JSON.stringify(process.argv.slice(2)) + "\n");
+  ' "$DATA/.git/sweep-tick-unreachable.json" "${unreachable[@]+"${unreachable[@]}"}"
 }
 
 tick() {

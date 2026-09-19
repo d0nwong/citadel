@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_APP, projectsPath } from "./paths.ts";
-import { allAreas, defaultProjectsConfig, loadProjects, missingForGenerate, parseProjectsConfig, type ProjectsConfig, recordAreas, recordFeatures, unheldFeatures, validateProjectsConfig } from "./projects.ts";
+import { allAreas, defaultProjectsConfig, loadProjects, missingForGenerate, parseProjectsConfig, type ProjectsConfig, recordAreas, recordFeatures, recordRepos, unheldFeatures, validateProjectsConfig } from "./projects.ts";
 
 let ws: string;
 
@@ -230,6 +230,26 @@ describe("recordAreas (CTD-271, ledger S-27)", () => {
 
   test("the default config's one area, unchanged", () => {
     expect(recordAreas(defaultProjectsConfig()).map((a) => a.id)).toEqual(["alden-portal"]);
+  });
+});
+
+describe("recordRepos (CTD-272, ledger S-27)", () => {
+  test("only alden-portal's repos when the second project has no record job (a docs-only project contributes none)", () => {
+    const repos = recordRepos(validConfig());
+    expect(repos.map((r) => r.id)).toEqual(["fe", "be"]);
+  });
+
+  test("both projects' repos once the second also has the record job, each still carrying its own project id", () => {
+    const repos = recordRepos(twoRecordProjectsConfig());
+    expect(repos.map((r) => ({ id: r.id, project: r.project }))).toEqual([
+      { id: "fe", project: "alden-portal" },
+      { id: "be", project: "alden-portal" },
+      { id: "citadel-repo", project: "citadel" },
+    ]);
+  });
+
+  test("the default config's fe and be, unchanged", () => {
+    expect(recordRepos(defaultProjectsConfig()).map((r) => r.id)).toEqual(["fe", "be"]);
   });
 });
 
