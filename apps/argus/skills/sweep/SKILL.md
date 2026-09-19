@@ -46,7 +46,8 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
 6. **Docs.** `accio stale`; for each listed feature, the `feature-docs` skill.
 7. **Validate and commit.** `argus validate`, then `argus commit -m "<the first On-you
    line, else the first revision reconcile moved, else: quiet run>"`. A failing feature is printed and left alone; the rest commits.
-   The cursor is promoted after the commit, so a crashed run replays rather than skips.
+   In a tick, `argus commit` prefixes that message `sweep: ` and authors it "argus sweep" itself;
+   the cursor is promoted only after that commit, so a crashed run replays rather than skips.
 
 ## Rules
 
@@ -71,7 +72,8 @@ Tickets are proposals on the ledger; a person files them. The sweep reads Slack 
 writes nothing there.
 
 ### The commit message is the first Needs-me line
-Or "quiet run" when nothing changed.
+Or "quiet run" when nothing changed. `argus commit` prefixes it `sweep: ` itself, from the tick
+marker `loop.sh` sets; this skill's `-m` never spells that prefix out.
 
 ## Red Flags
 

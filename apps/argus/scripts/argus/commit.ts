@@ -1,13 +1,15 @@
 /**
  * `argus commit`: the run's one lasting side effect. Stages every ledger, the committed
- * state files (threads, unplaced, deploys) and the arch docs, commits when anything is
- * staged, and only then promotes the Slack cursor, so a run that dies before its commit
- * replays the channel rather than skipping it. Never pushes.
+ * state files (threads, unplaced, deploys) and the arch docs, and commits when anything
+ * is staged. Never pushes.
  *
  * `commitPaths` is the stage-and-commit primitive both `commitRun` and `saveRun` (`argus
  * save`) sit on: it commits only the paths it is given (`git commit --only`), never
  * whatever else happens to be staged, and retries past a lock another git process is
- * briefly holding.
+ * briefly holding. `commitRun` never promotes the Slack cursor itself — only the `commit`
+ * verb does, through `promoteCursor`, and only once its own commit has succeeded (or found
+ * nothing to commit), so a shared helper future write verbs call mid-tick can never advance
+ * it early.
  */
 
 import { rename, stat } from "node:fs/promises";
@@ -53,6 +55,15 @@ async function statusOf(paths: string[], cwd: string): Promise<Map<string, strin
 /** Pensieve's own container image is the one place `PENSIEVE_RUNNER=container` is set (its Dockerfile) */
 export const inContainer = () => process.env.PENSIEVE_RUNNER?.trim() === "container";
 
+/** `loop.sh` exports this around the `claude -p "/sweep"` run it marks as a tick; every shell call inside it inherits it */
+export const inTick = () => !!process.env.ARGUS_SWEEP_TICK?.trim();
+
+/** the sweep's git identity for a tick's commit; `SWEEP_GIT_NAME`/`SWEEP_GIT_EMAIL` override it (`argus/ledger` S-15) */
+export const sweepAuthor = () => ({
+  name: process.env.SWEEP_GIT_NAME?.trim() || "argus sweep",
+  email: process.env.SWEEP_GIT_EMAIL?.trim() || "sweep@citadel.local",
+});
+
 const INDEX_LOCK_RETRIES = 20;
 const INDEX_LOCK_DELAY_MS = 100;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -80,19 +91,28 @@ async function commitPaths(paths: string[], message: string, opts: { cwd: string
   return { sha: (await git(["rev-parse", "--short", "HEAD"], opts.cwd)).out.trim() };
 }
 
-export type CommitResult = { committed: boolean; sha?: string; files: number; cursor: "promoted" | "unchanged" | "none" };
+export type CommitResult = { committed: boolean; sha?: string; files: number };
 
-export async function commitRun(message: string, opts: { dryRun?: boolean; cwd?: string } = {}): Promise<CommitResult> {
+export async function commitRun(
+  message: string,
+  opts: { dryRun?: boolean; cwd?: string; author?: { name: string; email: string } } = {},
+): Promise<CommitResult> {
   const cwd = opts.cwd ?? root();
   const files = await changed(cwd);
   let sha: string | undefined;
-  if (files.length && !opts.dryRun) sha = (await commitPaths(files, message, { cwd })).sha;
-  let cursor: CommitResult["cursor"] = "none";
+  if (files.length && !opts.dryRun) sha = (await commitPaths(files, message, { cwd, author: opts.author })).sha;
+  return { committed: !!sha, sha, files: files.length };
+}
+
+export type CursorResult = "promoted" | "unchanged" | "none";
+
+/** promotes `state/cursor.next.json` to `state/cursor.json`, once the tick's own commit has succeeded or found nothing to commit */
+export async function promoteCursor(opts: { dryRun?: boolean } = {}): Promise<CursorResult> {
   if (await exists(cursorNextPath())) {
     if (!opts.dryRun) await rename(cursorNextPath(), cursorPath());
-    cursor = "promoted";
-  } else if (await exists(cursorPath())) cursor = "unchanged";
-  return { committed: !!sha, sha, files: files.length, cursor };
+    return "promoted";
+  }
+  return (await exists(cursorPath())) ? "unchanged" : "none";
 }
 
 export type SaveResult = { committed: boolean; sha?: string; files: number };

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { COMMITTABLE, commitRun, saveRun } from "./commit.ts";
+import { COMMITTABLE, commitRun, inTick, promoteCursor, saveRun, sweepAuthor } from "./commit.ts";
 
 let ws: string;
 const sh = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: ws, stdout: "pipe", stderr: "pipe" }).stdout.toString().trim();
@@ -20,21 +20,18 @@ afterEach(() => {
 });
 
 describe("commitRun", () => {
-  test("commits ledgers and state, promotes the cursor only after the commit, and is a no-op when clean", async () => {
+  test("commits ledgers and state, and is a no-op when clean", async () => {
     writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
     writeFileSync(join(ws, "state/threads.json"), "{}\n");
-    writeFileSync(join(ws, "state/cursor.next.json"), '{"last_ts":"1"}\n');
     writeFileSync(join(ws, "state/batches-are-not-committed.txt"), "x");
     Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
     Bun.spawnSync(["git", "config", "user.name", "t"], { cwd: ws });
     const r = await commitRun("sweep: test", { cwd: ws });
-    expect(r).toMatchObject({ committed: true, files: 2, cursor: "promoted" });
+    expect(r).toMatchObject({ committed: true, files: 2 });
     expect(sh(["git", "log", "-1", "--format=%s"])).toBe("sweep: test");
     expect(sh(["git", "show", "--stat", "--format=", "HEAD"])).not.toContain("batches-are-not-committed");
-    expect(await Bun.file(join(ws, "state/cursor.json")).exists()).toBe(true);
-    expect(await Bun.file(join(ws, "state/cursor.next.json")).exists()).toBe(false);
     const again = await commitRun("sweep: nothing", { cwd: ws });
-    expect(again).toMatchObject({ committed: false, files: 0, cursor: "unchanged" });
+    expect(again).toMatchObject({ committed: false, files: 0 });
   });
   test("a modified tracked ledger, whose status line starts with a space, is staged whole", async () => {
     writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
@@ -47,12 +44,57 @@ describe("commitRun", () => {
     expect(r).toMatchObject({ committed: true, files: 1 });
     expect(sh(["git", "show", "--stat", "--format=", "HEAD"])).toContain("tasks/ledger.json");
   });
-  test("dry run stages nothing for keeps and leaves the cursor", async () => {
+  test("dry run stages nothing for keeps", async () => {
     writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
-    writeFileSync(join(ws, "state/cursor.next.json"), "{}\n");
     const r = await commitRun("x", { cwd: ws, dryRun: true });
-    expect(r).toMatchObject({ committed: false, files: 1, cursor: "promoted" });
+    expect(r).toMatchObject({ committed: false, files: 1 });
+    expect(sh(["git", "status", "--porcelain", "--untracked-files=all"])).toContain("tasks/ledger.json");
+  });
+  test("an author commits under that identity, not git's own configured one", async () => {
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), "{}\n");
+    Bun.spawnSync(["git", "config", "user.email", "t@t"], { cwd: ws });
+    Bun.spawnSync(["git", "config", "user.name", "t"], { cwd: ws });
+    const r = await commitRun("sweep: authored", { cwd: ws, author: { name: "argus sweep", email: "sweep@citadel.local" } });
+    expect(r).toMatchObject({ committed: true, files: 1 });
+    expect(sh(["git", "log", "-1", "--format=%an <%ae>"])).toBe("argus sweep <sweep@citadel.local>");
+  });
+});
+
+describe("promoteCursor", () => {
+  test("promotes cursor.next.json to cursor.json, is unchanged once there, and none with neither", async () => {
+    expect(await promoteCursor()).toBe("none");
+    writeFileSync(join(ws, "state/cursor.next.json"), '{"last_ts":"1"}\n');
+    expect(await promoteCursor()).toBe("promoted");
+    expect(await Bun.file(join(ws, "state/cursor.json")).exists()).toBe(true);
+    expect(await Bun.file(join(ws, "state/cursor.next.json")).exists()).toBe(false);
+    expect(await promoteCursor()).toBe("unchanged");
+  });
+  test("a dry run reports what would happen and leaves the files alone", async () => {
+    writeFileSync(join(ws, "state/cursor.next.json"), "{}\n");
+    expect(await promoteCursor({ dryRun: true })).toBe("promoted");
     expect(await Bun.file(join(ws, "state/cursor.next.json")).exists()).toBe(true);
+  });
+});
+
+describe("inTick and sweepAuthor", () => {
+  const saved = process.env.ARGUS_SWEEP_TICK;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.ARGUS_SWEEP_TICK;
+    else process.env.ARGUS_SWEEP_TICK = saved;
+    delete process.env.SWEEP_GIT_NAME;
+    delete process.env.SWEEP_GIT_EMAIL;
+  });
+  test("inTick reads the marker loop.sh exports around a claude run", () => {
+    delete process.env.ARGUS_SWEEP_TICK;
+    expect(inTick()).toBe(false);
+    process.env.ARGUS_SWEEP_TICK = "1";
+    expect(inTick()).toBe(true);
+  });
+  test("sweepAuthor defaults to argus sweep, overridden by SWEEP_GIT_NAME/SWEEP_GIT_EMAIL", () => {
+    expect(sweepAuthor()).toEqual({ name: "argus sweep", email: "sweep@citadel.local" });
+    process.env.SWEEP_GIT_NAME = "Custom Sweep";
+    process.env.SWEEP_GIT_EMAIL = "custom@sweep.local";
+    expect(sweepAuthor()).toEqual({ name: "Custom Sweep", email: "custom@sweep.local" });
   });
 });
 
