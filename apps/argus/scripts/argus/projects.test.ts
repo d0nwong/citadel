@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_APP, projectsPath } from "./paths.ts";
-import { allAreas, defaultProjectsConfig, loadProjects, parseProjectsConfig, type ProjectsConfig, unheldFeatures, validateProjectsConfig } from "./projects.ts";
+import { allAreas, defaultProjectsConfig, loadProjects, missingForGenerate, parseProjectsConfig, type ProjectsConfig, unheldFeatures, validateProjectsConfig } from "./projects.ts";
 
 let ws: string;
 
@@ -62,7 +62,10 @@ describe("loadProjects", () => {
   test("with no file, answers alden-portal's own values: one area at DEFAULT_APP, unchanged", async () => {
     const config = await loadProjects();
     expect(config).toEqual(defaultProjectsConfig());
-    expect(allAreas(config)).toEqual([{ id: "alden-portal", repo: "fe", dir: DEFAULT_APP, project: "alden-portal" }]);
+    expect(allAreas(config)).toEqual([{
+      id: "alden-portal", repo: "fe", dir: DEFAULT_APP, project: "alden-portal",
+      routeTree: "src/routes", apiSpec: "https://dev-alden-portal.uc.r.appspot.com/api-docs/",
+    }]);
   });
 
   test("with a file, parses and returns it typed", async () => {
@@ -172,6 +175,21 @@ describe("validateProjectsConfig", () => {
     c.projects[1]!.trackers[0]!.prefixes = ["ZZZ"];
     const problems = await validateProjectsConfig(c);
     expect(problems.some((p) => p.rule.includes('no ticket provider owns the prefix "ZZZ"'))).toBe(true);
+  });
+});
+
+describe("missingForGenerate (CTD-267: what map/sync need before they can generate an area)", () => {
+  test("alden-portal's default area declares both, so nothing is missing", () => {
+    expect(missingForGenerate(defaultProjectsConfig().projects[0]!.areas[0]!)).toEqual([]);
+  });
+
+  test("names both when a citadel-shaped area declares neither", () => {
+    expect(missingForGenerate(validConfig().projects[1]!.areas[0]!)).toEqual(["route tree", "API spec"]);
+  });
+
+  test("names only what is missing when one of the two is declared", () => {
+    expect(missingForGenerate({ id: "x", repo: "fe", dir: "x", routeTree: "src/routes" })).toEqual(["API spec"]);
+    expect(missingForGenerate({ id: "x", repo: "fe", dir: "x", apiSpec: "https://example.com/" })).toEqual(["route tree"]);
   });
 });
 

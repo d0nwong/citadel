@@ -34,8 +34,8 @@ const HELP = `accio — summon the API surface
   accio <subject> --in <feature>        scope to one feature (put the PLACE here, not the query)
   accio <endpoint> --endpoints          reverse: which feature calls this endpoint?
   accio list [--in <feature>]           mapped features / one feature's components
-  accio map [--dry]                     derive/refresh the feature manifest
-  accio sync [--offline|--check|--feature <id>]
+  accio map [--dry] [--area <id>]       derive/refresh the feature manifest
+  accio sync [--offline|--check|--feature <id>|--area <id>]
   accio audit [--area <id>]
   accio stale [--json] [--all] [--area <id>]   which features' docs drifted (tiers / fe-core / be-handlers / journal)
 
