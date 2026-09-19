@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { orvalName, extractSwaggerDoc, flatten, indexOps, fingerprintOf, diffSpec, normPath } from "./accio/spec.ts";
 import type { Manifest } from "./accio/manifest.ts";
+import type { Analysis } from "./accio/analyze.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 /** argus's data (OpenAPI cache, accio index, arch docs) lives where ARGUS_ROOT points */
@@ -249,10 +250,13 @@ describe("computeStale (CTD-266: reads the area's own repo, tags reports with it
       features: [{ id: "tasks", name: "Tasks", type: "feature", status: "done", entry_routes: [], core_files: ["src/pages/tasks"], aliases: [] }],
     };
     const { computeStale } = await import("./accio/stale.ts");
-    const reports = await computeStale(manifest, { area: "citadel-argus", featuresDir, fe: { path: repo, ref: "HEAD" } });
+    const reports = await computeStale(manifest, { area: "citadel-argus", featuresDir, fe: { path: repo, ref: "HEAD", baseBranch: "main" } });
 
     expect(reports).toHaveLength(1);
     expect(reports[0]!.area).toBe("citadel-argus");
+    expect(reports[0]!.checkout).toBe(repo);
+    expect(reports[0]!.baseBranch).toBe("main");
+    expect(reports[0]!.stamp).toEqual({ rev: `main@${sha1}`, sha: sha1, date: undefined });
     expect(reports[0]!.reasons).toEqual([{ kind: "fe-core", detail: expect.stringContaining("1 core file") }]);
     rmSync(repo, { recursive: true, force: true });
     rmSync(work, { recursive: true, force: true });
@@ -272,7 +276,7 @@ describe("computeStale (CTD-266: reads the area's own repo, tags reports with it
       features: [{ id: "tasks", name: "Tasks", type: "feature", status: "done", entry_routes: [], core_files: ["src/pages/tasks"], be_files: ["handler.ts"], aliases: [] }],
     };
     const { computeStale } = await import("./accio/stale.ts");
-    const reports = await computeStale(manifest, { area: "citadel-argus", featuresDir, fe: { path: repo, ref: "HEAD" } });
+    const reports = await computeStale(manifest, { area: "citadel-argus", featuresDir, fe: { path: repo, ref: "HEAD", baseBranch: "main" } });
 
     expect(reports[0]!.reasons.every(r => r.kind !== "be-handlers")).toBe(true);
     rmSync(repo, { recursive: true, force: true });
@@ -319,5 +323,56 @@ describe("auditManifestDocs (CTD-266: the single-repo shape)", () => {
     const problems = await auditManifestDocs(manifest, { dir: join(dir, "features"), repoPath: repo });
     expect(problems.some(p => p.includes("missing.ts") && p.includes("does not exist"))).toBe(true);
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// ---------------------------------------------------------------- CTD-267: gated on route tree + API spec
+
+describe("deriveManifest (CTD-267: app comes from the project, not a hardcoded 'alden-portal')", () => {
+  test("writes the given app id and fe_repo, for any project", async () => {
+    const { deriveManifest } = await import("./accio/map.ts");
+    const a: Analysis = { files: new Map(), routes: [{ path: "/tasks", file: "src/routes/tasks.tsx" }], fileCount: 1 };
+    const m = await deriveManifest(a, "citadel", "some/fe/path");
+    expect(m.app).toBe("citadel");
+    expect(m.fe_repo).toBe("some/fe/path");
+  });
+
+  test("alden-portal itself still resolves to 'alden-portal' (S-11: unchanged for the real project)", async () => {
+    const { deriveManifest } = await import("./accio/map.ts");
+    const a: Analysis = { files: new Map(), routes: [], fileCount: 0 };
+    const m = await deriveManifest(a, "alden-portal", "~/git/alden-portal-fe");
+    expect(m.app).toBe("alden-portal");
+  });
+});
+
+describe("accio map/sync gate on the area's route tree + API spec (CTD-267, S-10)", () => {
+  const gatedConfig = () => JSON.stringify({
+    projects: [{
+      id: "citadel", repos: [], trackers: [], jobs: ["docs"],
+      areas: [{ id: "docsonly", repo: "citadel", dir: "docsonly" }],
+    }],
+    channels: [],
+  });
+
+  test("accio map refuses an area with no route tree or API spec, names what is missing, writes nothing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "accio-gate-"));
+    await Bun.write(join(root, "projects.json"), gatedConfig());
+    const out = await $`bun ${ROOT}/scripts/accio.ts map --area docsonly`.env({ ...process.env, ARGUS_ROOT: root }).nothrow().quiet();
+    expect(out.exitCode).toBe(1);
+    expect(out.stderr.toString()).toContain("route tree");
+    expect(out.stderr.toString()).toContain("API spec");
+    expect(existsSync(join(root, "docsonly", ".doc-workspace", "feature-manifest.json"))).toBe(false);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("accio sync skips such an area, names it as skipped, writes nothing, exits 0", async () => {
+    const root = mkdtempSync(join(tmpdir(), "accio-gate-"));
+    await Bun.write(join(root, "projects.json"), gatedConfig());
+    const out = await $`bun ${ROOT}/scripts/accio.ts sync --area docsonly`.env({ ...process.env, ARGUS_ROOT: root }).nothrow().quiet();
+    expect(out.exitCode).toBe(0);
+    expect(out.stdout.toString()).toContain("skip docsonly");
+    expect(existsSync(join(root, "docsonly", ".doc-workspace", "feature-manifest.json"))).toBe(false);
+    expect(existsSync(join(root, ".state"))).toBe(false);
+    rmSync(root, { recursive: true, force: true });
   });
 });

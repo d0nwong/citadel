@@ -206,7 +206,13 @@ export function defaultProjectsConfig(): ProjectsConfig {
           { provider: "linear", key: "ALD", prefixes: ["ALD"] },
         ],
         jobs: ["docs", "record"],
-        areas: [{ id: "alden-portal", repo: "fe", dir: DEFAULT_APP }],
+        areas: [{
+          id: "alden-portal", repo: "fe", dir: DEFAULT_APP,
+          // alden-portal's own: a TanStack file-based route tree, and its team's published
+          // OpenAPI doc (scraped — see accio/spec.ts) — the two things map/sync need (S-10).
+          routeTree: "src/routes",
+          apiSpec: "https://dev-alden-portal.uc.r.appspot.com/api-docs/",
+        }],
       },
     ],
     channels: [{ id: "C07KG06L601", projects: ["alden-portal"] }],
@@ -227,6 +233,19 @@ const exists = (p: string) => stat(p).then(() => true, () => false);
 /** every doc area across every project, each carrying its owning project's id */
 export function allAreas(config: ProjectsConfig): (DocArea & { project: string })[] {
   return config.projects.flatMap((p) => p.areas.map((a) => ({ ...a, project: p.id })));
+}
+
+/**
+ * What an area needs before `accio map`/`accio sync` can generate anything for it
+ * (CTD-267, spec S-10): a route tree to derive a manifest from, and an API spec to join
+ * it to. Empty when the area declares both; citadel's areas declare neither, so this
+ * names both.
+ */
+export function missingForGenerate(area: DocArea): string[] {
+  const missing: string[] = [];
+  if (!area.routeTree) missing.push("route tree");
+  if (!area.apiSpec) missing.push("API spec");
+  return missing;
 }
 
 function duplicates<T>(items: T[], key: (t: T) => string): string[] {

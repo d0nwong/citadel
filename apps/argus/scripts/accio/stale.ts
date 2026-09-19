@@ -16,6 +16,9 @@
  * configured repo(s) and base branch; `--area <id>` limits the run to one. A single-repo
  * area (one repo, no second to diff `be_files` against) only ever reports `fe-core`.
  *
+ * `--json` names, per feature, its area, FE checkout, base branch and doc stamp (CTD-267,
+ * S-9) — enough for a doc to be refreshed from that one entry, with no other lookup.
+ *
  *   accio stale [--json] [--all] [--area <id>] [--fe-ref origin/staging] [--be-ref origin/dev]
  */
 
@@ -23,12 +26,19 @@ import { join } from "node:path";
 import {
   loadManifest, expand, featureDir, allCoreFiles, manifestPathFor, featuresDirFor, type Manifest,
 } from "./manifest.ts";
-import { readStamp, gitDiffNames } from "./stamps.ts";
+import { readStamp, gitDiffNames, type Stamp } from "./stamps.ts";
 import { loadProjects, allAreas, type DocArea, type Project } from "../argus/projects.ts";
 
 export type StaleReason = { kind: "fe-core" | "be-handlers"; detail: string };
-export type StaleReport = { area: string; id: string; dir: string; reasons: StaleReason[] };
-export type RepoRef = { path: string; ref: string };
+/**
+ * `checkout`, `baseBranch` and `stamp` (CTD-267, S-9) are the FE repo's own — enough to
+ * refresh this feature's doc from this entry alone, with no other lookup.
+ */
+export type StaleReport = {
+  area: string; id: string; dir: string; checkout: string; baseBranch: string; stamp: Stamp;
+  reasons: StaleReason[];
+};
+export type RepoRef = { path: string; ref: string; baseBranch: string };
 
 export async function computeStale(m: Manifest, opts: {
   area: string; featuresDir: string; fe: RepoRef; be?: RepoRef;
@@ -55,7 +65,11 @@ export async function computeStale(m: Manifest, opts: {
       }
     }
 
-    out.push({ area: opts.area, id: f.id, dir: fdir, reasons });
+    out.push({
+      area: opts.area, id: f.id, dir: fdir,
+      checkout: opts.fe.path, baseBranch: opts.fe.baseBranch, stamp: ps,
+      reasons,
+    });
   }
   return out;
 }
@@ -90,8 +104,8 @@ if (import.meta.main) {
     reports.push(...await computeStale(m, {
       area: area.id,
       featuresDir: featuresDirFor(area.dir),
-      fe: { path: expand(feRepo.path), ref: opt("--fe-ref") ?? `origin/${feRepo.baseBranch}` },
-      be: be ? { path: expand(be.path), ref: opt("--be-ref") ?? `origin/${be.baseBranch}` } : undefined,
+      fe: { path: expand(feRepo.path), ref: opt("--fe-ref") ?? `origin/${feRepo.baseBranch}`, baseBranch: feRepo.baseBranch },
+      be: be ? { path: expand(be.path), ref: opt("--be-ref") ?? `origin/${be.baseBranch}`, baseBranch: be.baseBranch } : undefined,
     }));
   }
 

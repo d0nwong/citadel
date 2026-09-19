@@ -6,23 +6,31 @@
  * Mechanical only — no AI, no judgment. Deciding what a spec diff *means* for a feature
  * is a session's job; this reports.
  *
+ * Runs over every doc area `projects.json` lists whose project declares a route tree and
+ * an API spec (CTD-267, S-10) — alden-portal today, the only project shaped for it. An
+ * area declaring neither is skipped and named as such; `--area <id>` limits the run to
+ * one area (still skipped if it lacks either). The OpenAPI cache, fingerprint and index
+ * stay one shared set under `.state/` until a second such area exists.
+ *
  *   accio sync                 full run
  *   accio sync --offline       cached spec, no network
  *   accio sync --check         report spec drift only, write nothing (exit 1 on drift)
  *   accio sync --feature <id>  regenerate one feature's doc (index still rebuilds whole)
+ *   accio sync --area <id>     limit the run to one configured area
  */
 
-import { join, relative, dirname } from "node:path";
+import { join, relative } from "node:path";
 import {
-  SPEC_JS_URL, SPEC_UI_URL, extractSwaggerDoc, flatten, indexOps,
+  extractSwaggerDoc, flatten, indexOps,
   fingerprintOf, diffSpec, type Op, type SpecDiff,
 } from "./spec.ts";
 import { analyzeRepo } from "./analyze.ts";
 import { buildIndex, ATTR_DEPTH, type AccioIndex } from "./index-store.ts";
 import { renderArchDoc, readAliases, type DocMeta } from "./docs.ts";
-import { loadManifest, saveManifest, expand, archDocPath, STATE, FEATURES_DIR, MANIFEST_PATH, DATA_ROOT, DEFAULT_ALDEN_FE_REPO } from "./manifest.ts";
+import { loadManifest, saveManifest, expand, manifestPathFor, featuresDirFor, featureDir, STATE, DATA_ROOT, DEFAULT_ALDEN_FE_REPO } from "./manifest.ts";
 import { readStamp, restamp, decideArchStamp, gitDiffNames, gitIsAncestor, gitShortSha, type StampReason } from "./stamps.ts";
 import { auditDocs } from "./audit.ts";
+import { loadProjects, allAreas, missingForGenerate, type DocArea, type Project } from "../argus/projects.ts";
 
 const CACHE = join(STATE, "openapi.json");
 const FINGERPRINT = join(STATE, "openapi-fingerprint.json");
@@ -36,6 +44,7 @@ const opt = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i +
 const OFFLINE = has("--offline");
 const CHECK = has("--check");
 const ONLY = opt("--feature");
+const AREA = opt("--area");
 
 const fail = (msg: string): never => { console.error(`error: ${msg}`); process.exit(1); };
 const rel = (p: string) => relative(DATA_ROOT, p);
@@ -54,14 +63,14 @@ async function repoRev(repo: string): Promise<string> {
   } catch { return "unknown"; }
 }
 
-async function loadSpec(): Promise<{ doc: any; fresh: boolean }> {
+async function loadSpec(specJsUrl: string): Promise<{ doc: any; fresh: boolean }> {
   if (OFFLINE) {
     const f = Bun.file(CACHE);
     if (!(await f.exists())) fail(`--offline but no cache at ${rel(CACHE)} — run once online first`);
     return { doc: await f.json(), fresh: false };
   }
-  const res = await fetch(SPEC_JS_URL, { signal: AbortSignal.timeout(60_000) });
-  if (!res.ok) throw new Error(`GET ${SPEC_JS_URL} → ${res.status}`);
+  const res = await fetch(specJsUrl, { signal: AbortSignal.timeout(60_000) });
+  if (!res.ok) throw new Error(`GET ${specJsUrl} → ${res.status}`);
   return { doc: extractSwaggerDoc(await res.text()), fresh: true };
 }
 
@@ -94,12 +103,18 @@ function renderReport(d: SpecDiff, index: AccioIndex, doc: any, prevAt: string |
   return L.join("\n");
 }
 
-if (import.meta.main) {
-  const manifest = await loadManifest();
-  if (!manifest) fail(`no manifest at ${rel(MANIFEST_PATH)} — run \`accio map\` first`);
+/** The whole sync pipeline for one gated area (CTD-267) — unchanged behaviour, parameterized by area/project instead of the hardcoded alden-portal paths. */
+async function syncArea(area: DocArea & { project: string }, project: Project): Promise<void> {
+  const manifestPath = manifestPathFor(area.dir);
+  const featuresDir = featuresDirFor(area.dir);
+  const specUiUrl = area.apiSpec!;
+  const specJsUrl = specUiUrl + "swagger-ui-init.js";
+
+  const manifest = await loadManifest(manifestPath);
+  if (!manifest) fail(`no manifest for area "${area.id}" at ${rel(manifestPath)} — run \`accio map\` first`);
   const m = manifest!;
 
-  const { doc, fresh } = await loadSpec();
+  const { doc, fresh } = await loadSpec(specJsUrl);
   const ops = flatten(doc);
   const fetchedAt = today();
   const prevFp: Record<string, string> | null = await Bun.file(FINGERPRINT).exists()
@@ -128,12 +143,12 @@ if (import.meta.main) {
   // aliases can be edited in either place — union doc frontmatter back into the manifest
   let manifestDirty = false;
   for (const f of m.features) {
-    const existing = await Bun.file(archDocPath(f)).text().catch(() => null);
+    const existing = await Bun.file(join(featuresDir, featureDir(f), "docs/arch.md")).text().catch(() => null);
     if (!existing) continue;
     for (const a of readAliases(existing))
       if (!f.aliases.includes(a)) { f.aliases.push(a); manifestDirty = true; }
   }
-  if (manifestDirty) await saveManifest(m);
+  if (manifestDirty) await saveManifest(m, manifestPath);
 
   const index = buildIndex(analysis, m, ops, feRev, doc.info?.version ?? "?");
   await Bun.write(INDEX_PATH, JSON.stringify(index));
@@ -144,12 +159,12 @@ if (import.meta.main) {
     for (const o of ops) currFp[o.key] = fingerprintOf(o);
     await Bun.write(FINGERPRINT, JSON.stringify(currFp));
     await Bun.write(META, JSON.stringify({
-      source: SPEC_UI_URL, title: doc.info?.title, version: doc.info?.version,
+      source: specUiUrl, title: doc.info?.title, version: doc.info?.version,
       fetchedAt, operations: ops.length, previousFetchedAt: prevMeta?.fetchedAt ?? null,
     }, null, 2));
   }
 
-  const meta: DocMeta = { feRev, date: fetchedAt, specVersion: doc.info?.version ?? "?", specUrl: SPEC_UI_URL };
+  const meta: DocMeta = { feRev, date: fetchedAt, specVersion: doc.info?.version ?? "?", specUrl: specUiUrl };
   const opsByKey = new Map(ops.map(o => [o.key, o]));
 
   // Which features own an operation the spec changed this sync — their arch surface moved
@@ -166,8 +181,8 @@ if (import.meta.main) {
   for (const f of index.features) {
     if (ONLY && f.id !== ONLY) continue;
     matched++;
-    const docPath = join(FEATURES_DIR, f.dir, "docs/arch.md");
-    const productPath = join(FEATURES_DIR, f.dir, "docs/product.md");
+    const docPath = join(featuresDir, f.dir, "docs/arch.md");
+    const productPath = join(featuresDir, f.dir, "docs/product.md");
     const existing = await Bun.file(docPath).text().catch(() => null);
     const product = await Bun.file(productPath).text().catch(() => null);
 
@@ -216,13 +231,33 @@ if (import.meta.main) {
 
   if (!ONLY) await Bun.write(REPORT, renderReport(diff, index, doc, prevMeta?.fetchedAt ?? null, fetchedAt));
 
-  const problems = await auditDocs(index);
+  const problems = await auditDocs(index, featuresDir);
   if (problems.length) {
     console.log(`\n⚠ audit — docs claim things the code or spec no longer backs:`);
     for (const p of problems.slice(0, 12)) console.log(`   ${p}`);
     if (problems.length > 12) console.log(`   …and ${problems.length - 12} more (accio audit)`);
   } else console.log("audit: docs clean");
 
-  console.log(`\nrewrote ${wrote} of ${matched} arch doc${matched === 1 ? "" : "s"} → ${rel(FEATURES_DIR)}/**/docs/arch.md` +
+  console.log(`\nrewrote ${wrote} of ${matched} arch doc${matched === 1 ? "" : "s"} → ${rel(featuresDir)}/**/docs/arch.md` +
     `${ONLY ? " (scoped — report not rewritten)" : ` · ${rel(REPORT)} · index ${rel(INDEX_PATH)}`}`);
+}
+
+if (import.meta.main) {
+  const config = await loadProjects();
+  const areas = allAreas(config);
+  const targets = AREA ? areas.filter(a => a.id === AREA) : areas;
+  if (AREA && !targets.length) fail(`no area "${AREA}" in projects.json`);
+
+  let ran = 0;
+  for (const area of targets) {
+    const missing = missingForGenerate(area);
+    if (missing.length) {
+      console.log(`skip ${area.id}: declares no ${missing.join(" or ")} — nothing to sync`);
+      continue;
+    }
+    const project = config.projects.find(p => p.id === area.project)!;
+    ran++;
+    await syncArea(area, project);
+  }
+  if (!ran) console.log("sync: no configured area declares a route tree and an API spec — nothing to do");
 }

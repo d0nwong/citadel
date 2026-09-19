@@ -6,16 +6,24 @@
  * URL in createFileRoute("/…"), and its imports name the page directories. Features are
  * route groups; shared modules are the top-level src dirs everything imports from.
  *
- *   accio map            propose/refresh the manifest (curated fields survive, see merge)
- *   accio map --dry      print what would change, write nothing
+ * Targets one doc area (CTD-267): `--area <id>`, else whichever configured area holds
+ * `alden/alden-portal`. Refuses, naming what is missing and writing nothing, when that
+ * area's project declares no route tree or API spec (`projects.json`) — the shape this
+ * verb assumes throughout.
+ *
+ *   accio map              propose/refresh the manifest (curated fields survive, see merge)
+ *   accio map --dry        print what would change, write nothing
+ *   accio map --area <id>  target a different configured area
  */
 
 import { flatten, indexOps } from "./spec.ts";
 import { analyzeRepo, type Analysis } from "./analyze.ts";
 import {
-  loadManifest, saveManifest, merge, humanize, expand,
-  MANIFEST_PATH, STATE, DEFAULT_ALDEN_FE_REPO, DEFAULT_ALDEN_BE_REPO, type Manifest, type Feature,
+  loadManifest, saveManifest, merge, humanize, expand, manifestPathFor,
+  STATE, DEFAULT_ALDEN_FE_REPO, DEFAULT_ALDEN_BE_REPO, type Manifest, type Feature,
 } from "./manifest.ts";
+import { loadProjects, allAreas, missingForGenerate } from "../argus/projects.ts";
+import { DEFAULT_APP } from "../argus/paths.ts";
 import { join, relative } from "node:path";
 
 const DRY = process.argv.includes("--dry");
@@ -63,7 +71,7 @@ const SHARED_DIRS: [id: string, dir: string, name: string][] = [
   ["shared-context", "src/context", "App Context"],
 ];
 
-export async function deriveManifest(a: Analysis, feRepo: string): Promise<Manifest> {
+export async function deriveManifest(a: Analysis, app: string, feRepo: string): Promise<Manifest> {
   const groups = new Map<string, { routes: Set<string>; files: Set<string> }>();
   for (const r of a.routes) {
     const segs = segmentsOf(r.path);
@@ -113,18 +121,36 @@ export async function deriveManifest(a: Analysis, feRepo: string): Promise<Manif
       entry_routes: [], core_files: [dir], aliases: [],
     });
   }
-  return { app: "alden-portal", fe_repo: feRepo, features };
+  return { app, fe_repo: feRepo, features };
 }
 
 if (import.meta.main) {
-  const existing = await loadManifest();
-  const feRepo = existing?.fe_repo ?? DEFAULT_ALDEN_FE_REPO;
+  const args = process.argv.slice(2);
+  const opt = (k: string) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
+  const areaId = opt("--area");
+
+  const config = await loadProjects();
+  const areas = allAreas(config);
+  const area = areaId ? areas.find(a => a.id === areaId) : areas.find(a => a.dir === DEFAULT_APP);
+  if (!area) { console.error(`error: no doc area "${areaId ?? DEFAULT_APP}" in projects.json`); process.exit(1); }
+  const missing = missingForGenerate(area);
+  if (missing.length) {
+    console.error(`error: ${area.id} declares no ${missing.join(" or ")} — refusing to map`);
+    process.exit(1);
+  }
+  const project = config.projects.find(p => p.id === area.project)!;
+  const areaRepo = project.repos.find(r => r.id === area.repo)!;
+  const beRepo = project.repos.find(r => r.id !== area.repo);
+  const manifestPath = manifestPathFor(area.dir);
+
+  const existing = await loadManifest(manifestPath);
+  const feRepo = existing?.fe_repo || areaRepo.path || DEFAULT_ALDEN_FE_REPO;
   const doc = await Bun.file(join(STATE, "openapi.json")).json()
     .catch(() => { console.error("error: no cached spec — run `accio sync` once first"); process.exit(1); });
   const idx = indexOps(doc, flatten(doc));
   const a = await analyzeRepo(expand(feRepo), idx);
-  const derived = await deriveManifest(a, feRepo);
-  derived.be_repo = existing?.be_repo ?? DEFAULT_ALDEN_BE_REPO;
+  const derived = await deriveManifest(a, project.id, feRepo);
+  derived.be_repo = existing?.be_repo || beRepo?.path || DEFAULT_ALDEN_BE_REPO;
   const merged = merge(existing, derived);
 
   const oldIds = new Set(existing?.features.map(f => f.id) ?? []);
@@ -136,6 +162,6 @@ if (import.meta.main) {
     console.log(`  ${f.id.padEnd(26)} ${String(f.entry_routes.length).padStart(2)} routes  ${f.core_files.length} seed paths${oldIds.size && !oldIds.has(f.id) ? "  (new)" : ""}`);
   if (orphaned.length) console.log(`⚠ orphaned (routes gone): ${orphaned.map(f => f.id).join(", ")}`);
   if (DRY) { console.log("\n--dry: nothing written"); process.exit(0); }
-  await saveManifest(merged);
-  console.log(`\nwrote ${relative(process.cwd(), MANIFEST_PATH)}${added.length ? ` (+${added.length} new)` : ""}`);
+  await saveManifest(merged, manifestPath);
+  console.log(`\nwrote ${relative(process.cwd(), manifestPath)}${added.length ? ` (+${added.length} new)` : ""}`);
 }
