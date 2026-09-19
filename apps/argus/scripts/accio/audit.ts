@@ -127,7 +127,9 @@ if (import.meta.main) {
       const m = await loadManifest(manifestPathFor(area.dir));
       if (!m) { console.error(`error: no manifest for area "${area.id}"`); process.exit(1); }
       const repo = project.repos.find(r => r.id === area.repo)!;
-      problems.push(...(await auditManifestDocs(m, { dir: featuresDirFor(area.dir), repoPath: expand(repo.path) })).map(p => `${area.id}: ${p}`));
+      // same repo-relative base as `accio stale` (CTD-276): a single-repo manifest's `repo`
+      // field, when set, is where its core files are written relative to
+      problems.push(...(await auditManifestDocs(m, { dir: featuresDirFor(area.dir), repoPath: expand(m.repo ?? repo.path) })).map(p => `${area.id}: ${p}`));
     }
   }
 

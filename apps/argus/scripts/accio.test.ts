@@ -284,6 +284,101 @@ describe("computeStale (CTD-266: reads the area's own repo, tags reports with it
   });
 });
 
+describe("accio stale/audit CLI (CTD-276: a single-repo manifest diffs from its own `repo`, not the project repo's checkout root)", () => {
+  const gitRepo = async () => {
+    const repo = mkdtempSync(join(tmpdir(), "accio-stale-citadel-"));
+    await $`git init -q -b main ${repo}`.quiet();
+    await $`git -C ${repo} config user.email a@b.c`.quiet();
+    await $`git -C ${repo} config user.name test`.quiet();
+    return repo;
+  };
+  const commit = async (repo: string, file: string, contents: string) => {
+    await Bun.write(join(repo, file), contents);
+    await $`git -C ${repo} add -A`.quiet();
+    await $`git -C ${repo} commit -q -m change`.quiet();
+    return (await $`git -C ${repo} rev-parse --short HEAD`.text()).trim();
+  };
+  const dataRootFor = async (citadel: string) => {
+    const dataRoot = mkdtempSync(join(tmpdir(), "accio-stale-data-"));
+    await Bun.write(join(dataRoot, "projects.json"), JSON.stringify({
+      projects: [{
+        id: "citadel",
+        repos: [{ id: "citadel", cloneUrl: "x", path: citadel, baseBranch: "main", host: "github", deploy: { kind: "live" } }],
+        trackers: [], jobs: ["docs"],
+        areas: [{ id: "pensieve-hosting", repo: "citadel", dir: "pensieve-hosting" }],
+      }],
+      channels: [],
+    }));
+    await Bun.write(join(dataRoot, "pensieve-hosting/.doc-workspace/feature-manifest.json"), JSON.stringify({
+      app: "citadel", repo: join(citadel, "apps/pensieve"),
+      features: [{
+        id: "hosting", name: "Hosting", type: "feature", status: "done", entry_routes: [],
+        core_files: ["server.ts", "../../justfile"], aliases: [],
+      }],
+    }));
+    return dataRoot;
+  };
+
+  test("AC1/AC2: a doc whose app-relative core file and whose ../../justfile both moved is reported stale, never 'could not diff'", async () => {
+    const citadel = await gitRepo();
+    mkdirSync(join(citadel, "apps/pensieve"), { recursive: true });
+    const sha1 = await commit(citadel, "apps/pensieve/server.ts", "1");
+    await commit(citadel, "apps/pensieve/server.ts", "2");
+    await commit(citadel, "justfile", "root justfile");
+
+    const dataRoot = await dataRootFor(citadel);
+    await Bun.write(join(dataRoot, "pensieve-hosting/features/hosting/docs/arch.md"),
+      `---\nid: hosting\nlast_verified: main@${sha1}\n---\n# Hosting\n## Component Map\n## Interfaces & Contracts\n`);
+
+    const out = await $`bun ${ROOT}/scripts/accio.ts stale --area pensieve-hosting --fe-ref HEAD --json`
+      .env({ ...process.env, ARGUS_ROOT: dataRoot }).nothrow().text();
+    const reports = JSON.parse(out);
+    expect(reports).toHaveLength(1);
+    expect(reports[0].reasons).toEqual([{ kind: "fe-core", detail: expect.stringContaining("2 core files") }]);
+    expect(reports[0].reasons.every((r: { detail: string }) => !r.detail.includes("could not diff"))).toBe(true);
+
+    rmSync(citadel, { recursive: true, force: true });
+    rmSync(dataRoot, { recursive: true, force: true });
+  });
+
+  test("AC3: a doc whose core files did not move (relative to the manifest's own repo) is not reported stale", async () => {
+    const citadel = await gitRepo();
+    mkdirSync(join(citadel, "apps/pensieve"), { recursive: true });
+    const sha1 = await commit(citadel, "apps/pensieve/server.ts", "1");
+    await commit(citadel, "apps/other/unrelated.ts", "changed, but owned by nothing here");
+
+    const dataRoot = await dataRootFor(citadel);
+    await Bun.write(join(dataRoot, "pensieve-hosting/features/hosting/docs/arch.md"),
+      `---\nid: hosting\nlast_verified: main@${sha1}\n---\n# Hosting\n## Component Map\n## Interfaces & Contracts\n`);
+
+    const out = await $`bun ${ROOT}/scripts/accio.ts stale --area pensieve-hosting --fe-ref HEAD --json`
+      .env({ ...process.env, ARGUS_ROOT: dataRoot }).nothrow().text();
+    expect(JSON.parse(out)).toEqual([]);
+
+    rmSync(citadel, { recursive: true, force: true });
+    rmSync(dataRoot, { recursive: true, force: true });
+  });
+
+  test("accio audit checks a manifest-relative core path (../../justfile) against the manifest's own `repo`, not the project repo root", async () => {
+    const citadel = await gitRepo();
+    mkdirSync(join(citadel, "apps/pensieve"), { recursive: true });
+    const sha1 = await commit(citadel, "apps/pensieve/server.ts", "1");
+    await commit(citadel, "justfile", "root justfile");
+
+    const dataRoot = await dataRootFor(citadel);
+    await Bun.write(join(dataRoot, "pensieve-hosting/features/hosting/docs/arch.md"),
+      `---\nid: hosting\nlast_verified: main@${sha1}\n---\n# Hosting\n## Component Map\n## Interfaces & Contracts\n`);
+
+    const out = await $`bun ${ROOT}/scripts/accio.ts audit --area pensieve-hosting`
+      .env({ ...process.env, ARGUS_ROOT: dataRoot }).nothrow().text();
+    expect(out).not.toContain("core path `../../justfile` does not exist");
+    expect(out).not.toContain("core path `server.ts` does not exist");
+
+    rmSync(citadel, { recursive: true, force: true });
+    rmSync(dataRoot, { recursive: true, force: true });
+  });
+});
+
 describe("auditManifestDocs (CTD-266: the single-repo shape)", () => {
   test("a doc with one stamp, core files relative to the area's repo, and an unchecked endpoint in prose passes", async () => {
     const dir = mkdtempSync(join(tmpdir(), "accio-audit-manifest-"));
