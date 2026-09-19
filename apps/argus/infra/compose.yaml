@@ -52,6 +52,12 @@ services:
     environment:
       ARGUS_ROOT: /argus-data
       MCP_GATEWAY_URL: http://mcp:9090
+      # Both under the sweep-product volume below, which is the checkouts directory for every
+      # repo projects.json names, not just these two — loop.sh (CTD-269) clones a repo whose
+      # config path is `~/git/<name>` straight into it, so a repo (citadel's included) added
+      # to projects.json needs no change here. These two env vars stay only because
+      # pr-facts.ts reads them directly, until a later ticket generalises argus pull itself
+      # past alden-portal's own two repos.
       ALDEN_FE_REPO: /home/bun/git/alden-portal-fe
       ALDEN_BE_REPO: /home/bun/git/alden-connect-portal-be
       # The model reads Slack and can see every variable here, so it is only what the sweep
