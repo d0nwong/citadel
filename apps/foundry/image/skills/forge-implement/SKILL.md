@@ -25,6 +25,8 @@ Run the spec's test command once: the failures must match the red list, same nam
 
 ## Step 2: One slice at a time
 
+When the task carries a Context section, a `` ### `path` `` block there is that file at the base commit — read before the checkout and trusted over any line number the task itself cites — and a path the section does not carry is read from the checkout as before.
+
 For each slice: implement the smallest complete piece, the obviously-correct version first; run that slice's test files only (`bun test path/to/file.test.ts`); keep the build compilable by fixing every caller of a changed type here, found by reading the callers the plan named; move on. After each slice ask: fewer lines? an abstraction earning its keep? would the neighbouring code's author say "why didn't you just…"? Three similar lines beat a premature abstraction.
 
 ```
@@ -50,7 +52,7 @@ Run the three commands from `~/spec.md` once each and fix what they find; a comm
 
 ## Finish
 
-End with the criteria implemented by slice; the three commands and results, one line each; every deviation and every test changed under Step 3, with the reason; `Noticed, not touched`; anything left red. Every sentence is a statement; nobody answers a question.
+End with the criteria implemented by slice; the three commands and results, one line each; every deviation and every test changed under Step 3, with the reason; `Noticed, not touched`; anything left red; and, when the task's Context lists one, a path under `### Missing at the base commit` or `### Not included`, named with its reason rather than searched for. Every sentence is a statement; nobody answers a question.
 
 ## Common Rationalizations
 

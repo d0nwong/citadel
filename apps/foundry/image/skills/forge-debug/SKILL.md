@@ -39,6 +39,8 @@ If it does not fail: run it under the rest of the suite and alone (leaked state,
 
 ## Step 2: Localise
 
+When the task carries a Context section, a `` ### `path` `` block there is that file at the base commit — read before the checkout and trusted over any line number the task itself cites — and a path the section does not carry is read from the checkout as before.
+
 Read the failing assertion and the stack, then the code it names, outward until the wrong value has a source. For a regression, `git -C /work log --oneline -- <files>`, then `git bisect` with the repro command, then `git bisect reset`. Check the test before trusting it; a wrong test is changed only when the spec or ticket confirms it is wrong.
 
 ```
@@ -90,7 +92,7 @@ Only reached once Step 1 actually reproduced the failure; a flaky verdict from S
 
 ## Finish
 
-Spec mode: the root cause sentence, the reduced command, `Criteria → code` and `Not doing` — or the `## Blocked` text. Standalone: the root cause, the commit subject, the guard's name and whether it went red, the four command results — or, on a flaky verdict, the test named, the runs tried and that `/work/.git/FLAKY.md` was written with nothing else changed. Every sentence is a statement; nobody answers a question.
+Spec mode: the root cause sentence, the reduced command, `Criteria → code` and `Not doing` — or the `## Blocked` text. Standalone: the root cause, the commit subject, the guard's name and whether it went red, the four command results — or, on a flaky verdict, the test named, the runs tried and that `/work/.git/FLAKY.md` was written with nothing else changed. Either way, when the task's Context lists one, a path under `### Missing at the base commit` or `### Not included` is named with its reason rather than searched for. Every sentence is a statement; nobody answers a question.
 
 ## Common Rationalizations
 
