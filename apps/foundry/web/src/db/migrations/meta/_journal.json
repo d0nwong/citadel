@@ -197,6 +197,20 @@
       "when": 1789731394006,
       "tag": "0027_job_idempotency_key_excludes_cancelled",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1789906047456,
+      "tag": "0028_spec_driven_restore",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789906456152,
+      "tag": "0029_spec_step_opus_high",
+      "breakpoints": true
     }
   ]
 }
