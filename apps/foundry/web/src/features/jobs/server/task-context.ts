@@ -7,11 +7,13 @@
  * stays verbatim; only what the container is handed grows.
  *
  * A ticket cut from a revision (CTD-195) also brings that revision's spec and
- * the arch doc of every feature it names, read from citadel-data
- * (`ARGUS_DATA_DIR`) here on the host; the container never sees citadel-data.
- * Only `revisions/<KEY>/revision.json`, its `specs/`, a feature's
- * `docs/arch.md` and each app's `.doc-workspace/feature-manifest.json` are
- * read — never a ledger.
+ * the feature's arch doc, read from citadel-data (`ARGUS_DATA_DIR`) here on
+ * the host; the container never sees citadel-data. Which features those are
+ * is narrowed to the ones the task's named paths belong to (CTD-281), and a
+ * ticket with no filed revision to read falls back to those features'
+ * published docs instead. Only `revisions/<KEY>/revision.json`, its `specs/`,
+ * a feature's `docs/spec.md` and `docs/arch.md`, and each app's
+ * `.doc-workspace/feature-manifest.json` are read — never a ledger.
  *
  * Never fails a job: a path that is not there is listed as missing, a ticket
  * that cannot be fetched is listed with the reason and an `err` line.
@@ -320,62 +322,126 @@ export function featureOwning(file: string, owned: Array<Owned>): string | null 
 }
 
 interface RevisionSource {
-  blocks: Array<Block>
+  specs: Array<Block>
+  archs: Array<Block>
   skipped: Array<string>
   /** One `sys` line saying what was found, or why nothing was; empty when the task is about no ticket. */
   note: string
 }
 
-const nothing = (note: string): RevisionSource => ({ blocks: [], note, skipped: [] })
+const nothing = (note: string): RevisionSource => ({ archs: [], note, skipped: [], specs: [] })
+const listFeatures = (fs: Array<string>): string => fs.join(', ')
+
+/** The features a task's named paths belong to (CTD-280's `featureOwning`), deduplicated. */
+async function ownedFeatures(dataDir: string, namedPaths: Array<string>): Promise<Array<string>> {
+  if (namedPaths.length === 0) {
+    // Nothing to map: skip the walk over every app's manifest.
+    return []
+  }
+  const { owned } = await featureManifests(dataDir)
+  const features = namedPaths.map((p) => featureOwning(p, owned)).filter((f): f is string => f !== null)
+  return [...new Set(features)]
+}
+
+/** A feature's spec and arch doc, read from `dir` (a revision's `specs/` and a feature's docs directory) or from a feature's published docs — the one shape `### Spec:`/`### Arch:` mean either way. */
+async function specAndArch(
+  feature: string,
+  spec: string | null,
+  archDir: string | null,
+  specMissingReason: string,
+): Promise<{ specs: Array<Block>; archs: Array<Block>; skipped: Array<string> }> {
+  const specs: Array<Block> = []
+  const archs: Array<Block> = []
+  const skipped: Array<string> = []
+  if (spec === null) {
+    skipped.push(`Spec: ${feature} — ${specMissingReason}`)
+  } else {
+    specs.push({ kind: 'spec', label: `Spec: ${feature}`, text: `### Spec: ${feature}\n${fenced(spec, 'md')}` })
+  }
+  const arch = archDir === null ? null : await readIf(path.join(archDir, 'docs', 'arch.md'))
+  if (arch === null) {
+    skipped.push(`Arch: ${feature} — no arch doc`)
+  } else {
+    archs.push({ kind: 'arch', label: `Arch: ${feature}`, text: `### Arch: ${feature}\n${fenced(arch, 'md')}` })
+  }
+  return { archs, skipped, specs }
+}
+
+/**
+ * A feature's published `docs/spec.md` and `docs/arch.md` in citadel-data,
+ * for the features a task's named paths belong to (S-54) — the fallback for
+ * a ticket with no parent, or whose parent has no filed revision. A feature
+ * with no published spec is carried as its arch doc alone; no named path
+ * mapping to a feature carries neither, with one `sys` line saying so.
+ */
+async function publishedSource(dataDir: string, namedPaths: Array<string>, reason: string): Promise<RevisionSource> {
+  const features = await ownedFeatures(dataDir, namedPaths)
+  if (features.length === 0) {
+    return nothing(`${reason}; no named file maps to a feature`)
+  }
+  const specs: Array<Block> = []
+  const archs: Array<Block> = []
+  const skipped: Array<string> = []
+  for (const f of features) {
+    const fdir = await featureDir(dataDir, f)
+    const spec = fdir === null ? null : await readIf(path.join(fdir, 'docs', 'spec.md'))
+    const built = await specAndArch(f, spec, fdir, 'no published spec')
+    specs.push(...built.specs)
+    archs.push(...built.archs)
+    skipped.push(...built.skipped)
+  }
+  return { archs, note: `published docs — ${listFeatures(features)}`, skipped, specs }
+}
 
 /**
  * The filed revision under `revisions/<parentKey>/`: every feature's spec,
- * then every feature's arch doc. Specs come first because a cut at the cap
- * should cost the reference before it costs the reviewed spec.
+ * then every feature's arch doc, narrowed to the features `namedPaths`
+ * belong to (S-35) — an empty intersection keeps every feature the revision
+ * names, as before. Falls back to `publishedSource` when there is no filed
+ * revision to read (S-54).
  */
-export async function revisionBlocks(parentKey: string, dataDir: string): Promise<RevisionSource> {
+export async function revisionBlocks(parentKey: string, dataDir: string, namedPaths: Array<string>): Promise<RevisionSource> {
   if (!TICKET_KEY.test(parentKey)) {
-    return nothing(`no revision — ${parentKey} is not a ticket key`)
-  }
-  if (!(await exists(dataDir))) {
-    return nothing(`no revision — no citadel-data at ${dataDir}`)
+    return publishedSource(dataDir, namedPaths, `no revision — ${parentKey} is not a ticket key`)
   }
   const dir = path.join(dataDir, 'revisions', parentKey)
   let rev: { status?: unknown; features?: unknown }
   try {
     rev = JSON.parse(await readFile(path.join(dir, 'revision.json'), 'utf8'))
   } catch (e) {
-    return (e as { code?: string }).code === 'ENOENT'
-      ? nothing(`no revision for ${parentKey}`)
-      : nothing(`no revision — revisions/${parentKey}/revision.json unreadable: ${message(e)}`)
+    const reason =
+      (e as { code?: string }).code === 'ENOENT'
+        ? `no revision for ${parentKey}`
+        : `no revision — revisions/${parentKey}/revision.json unreadable: ${message(e)}`
+    return publishedSource(dataDir, namedPaths, reason)
   }
   if (rev.status !== 'filed') {
-    return nothing(`no revision — revisions/${parentKey} is ${String(rev.status)}, not filed`)
+    return publishedSource(dataDir, namedPaths, `no revision — revisions/${parentKey} is ${String(rev.status)}, not filed`)
   }
   const features = Array.isArray(rev.features) ? rev.features.filter((f): f is string => typeof f === 'string') : []
+  const owning = await ownedFeatures(dataDir, namedPaths)
+  const matched = features.filter((f) => owning.includes(f))
+  const kept = matched.length > 0 ? matched : features
   const specs: Array<Block> = []
   const archs: Array<Block> = []
   const skipped: Array<string> = []
-  for (const f of features) {
+  for (const f of kept) {
     if (!f.split('/').every((s) => SEGMENT.test(s))) {
       skipped.push(`\`${f}\` — not a feature key`)
       continue
     }
     const spec = await readIf(path.join(dir, 'specs', `${f}.md`))
-    if (spec === null) {
-      skipped.push(`Spec: ${f} — revisions/${parentKey} has no spec for it`)
-    } else {
-      specs.push({ kind: 'spec', label: `Spec: ${f}`, text: `### Spec: ${f}\n${fenced(spec, 'md')}` })
-    }
     const fdir = await featureDir(dataDir, f)
-    const arch = fdir === null ? null : await readIf(path.join(fdir, 'docs', 'arch.md'))
-    if (arch === null) {
-      skipped.push(`Arch: ${f} — no arch doc`)
-    } else {
-      archs.push({ kind: 'arch', label: `Arch: ${f}`, text: `### Arch: ${f}\n${fenced(arch, 'md')}` })
-    }
+    const built = await specAndArch(f, spec, fdir, `revisions/${parentKey} has no spec for it`)
+    specs.push(...built.specs)
+    archs.push(...built.archs)
+    skipped.push(...built.skipped)
   }
-  return { blocks: [...specs, ...archs], note: `revisions/${parentKey} — ${features.length} feature(s)`, skipped }
+  const narrowed = matched.length > 0 && matched.length < features.length
+  const note = narrowed
+    ? `revisions/${parentKey} — narrowed to ${listFeatures(kept)} of ${features.length} feature(s): ${listFeatures(features)}`
+    : `revisions/${parentKey} — ${features.length} feature(s): ${listFeatures(features)}`
+  return { archs, note, skipped, specs }
 }
 
 /**
@@ -388,6 +454,7 @@ async function revisionSource(
   ids: Array<string>,
   known: Map<string, Ticket>,
   deps: ContextDeps,
+  namedPaths: Array<string>,
 ): Promise<RevisionSource> {
   const id = own ?? ids.find((i) => known.has(i))
   if (id === undefined) {
@@ -407,13 +474,16 @@ async function revisionSource(
       return nothing(`revision not checked — no such ticket ${id}`)
     }
   }
-  if (!subject.parentKey) {
-    return nothing(`no revision — ${id} has no parent`)
-  }
   if (!deps.dataDir) {
     return nothing('no revision — no ARGUS_DATA_DIR on the host')
   }
-  return revisionBlocks(subject.parentKey, deps.dataDir)
+  if (!(await exists(deps.dataDir))) {
+    return nothing(`no revision — no citadel-data at ${deps.dataDir}`)
+  }
+  if (!subject.parentKey) {
+    return publishedSource(deps.dataDir, namedPaths, `no revision — ${id} has no parent`)
+  }
+  return revisionBlocks(subject.parentKey, deps.dataDir, namedPaths)
 }
 
 async function fileBlock(work: string, file: string): Promise<Block | { skip: string }> {
@@ -491,10 +561,13 @@ async function fileBlocks(
 
 /**
  * `task` with a `## Context` section appended, or unchanged when it names
- * nothing that resolves. Issues come first, then a revision's specs and arch
- * docs, then files in the order the task names them; each is carried whole
- * until the next would pass the cap (`CONTEXT_CAP`, less for a long task),
- * and everything from there on is listed as cut, never truncated mid-file.
+ * nothing that resolves. Issues come first, then a revision's (or a
+ * published) spec, then files in the order the task names them, then a
+ * revision's (or a published) arch docs — so a named file is never cut while
+ * an arch doc is carried, and the spec is never cut before a later block.
+ * Each block is carried whole until the next would pass the cap
+ * (`CONTEXT_CAP`, less for a long task), and everything from there on is
+ * listed as cut, never truncated mid-file.
  */
 export async function hydrateTask(task: string, work: string, deps: ContextDeps): Promise<HydratedTask> {
   const log: HydratedTask['log'] = []
@@ -506,7 +579,7 @@ export async function hydrateTask(task: string, work: string, deps: ContextDeps)
   }
 
   const issues = await issueBlocks(ids, deps, log)
-  const revision = await revisionSource(own, ids, issues.known, deps)
+  const revision = await revisionSource(own, ids, issues.known, deps, tokens.paths)
   if (revision.note !== '') {
     log.push({ stream: 'sys', text: `context: ${revision.note}` })
   }
@@ -517,7 +590,7 @@ export async function hydrateTask(task: string, work: string, deps: ContextDeps)
   const kept: Array<Block> = []
   let used = 0
   let cut = false
-  for (const block of [...issues.blocks, ...revision.blocks, ...files.blocks]) {
+  for (const block of [...issues.blocks, ...revision.specs, ...files.blocks, ...revision.archs]) {
     const size = Buffer.byteLength(block.text) + 2
     cut ||= used + size > cap
     if (cut) {
