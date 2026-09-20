@@ -33,6 +33,8 @@ const FILES: Record<string, string | Buffer> = {
   'scripts/build': '#!/usr/bin/env bash\necho build\n',
   'apps/one/lib/dup.ts': 'export const one = 1\n',
   'apps/two/lib/dup.ts': 'export const two = 2\n',
+  'apps/argus/scripts/argus/sweep.ts': `// sweep\n${'a'.repeat(10 * 1024)}\n`,
+  'apps/argus/scripts/argus/pull.ts': `// pull\n${'b'.repeat(8 * 1024 + 386)}\n`,
 }
 
 beforeAll(async () => {
@@ -288,20 +290,20 @@ describe('the revision source', () => {
   })
   const brief = (id: string, body = `Fix \`${MAPPER}\`.`) => `${id}: title\nhttps://linear.app/acme/issue/${id}/slug\n\n${body}`
 
-  test('AC1: a brief whose parent has a filed revision gets its specs, then its arch docs, before the files', async () => {
+  test('C4: a brief whose parent has a filed revision gets its specs, then its files, then its arch docs', async () => {
     const calls: Array<string> = []
     const out = await hydrateTask(brief('CTD-901'), work, deps({ 'CTD-901': 'CTD-900' }, {}, calls))
     expect(calls).toEqual(['CTD-901'])
     const spec = out.task.indexOf(`### Spec: foundry/jobs\n\`\`\`md\n${SPEC}\`\`\``)
-    const arch = out.task.indexOf(`### Arch: foundry/jobs\n\`\`\`md\n${ARCH}\`\`\``)
     const file = out.task.indexOf(`### \`${MAPPER}\``)
+    const arch = out.task.indexOf(`### Arch: foundry/jobs\n\`\`\`md\n${ARCH}\`\`\``)
     expect(spec).toBeGreaterThan(0)
-    expect(arch).toBeGreaterThan(spec)
-    expect(file).toBeGreaterThan(arch)
+    expect(file).toBeGreaterThan(spec)
+    expect(arch).toBeGreaterThan(file)
     expect(out.task).toContain('- Spec: foundry/ghost — revisions/CTD-900 has no spec for it')
     expect(out.task).toContain('- Arch: foundry/ghost — no arch doc')
     expect(out.log[0]?.text).toContain('0 issue(s), 1 spec(s), 1 arch doc(s) and 1 file(s) added')
-    expect(out.log).toContainEqual({ stream: 'sys', text: 'context: revisions/CTD-900 — 2 feature(s)' })
+    expect(out.log).toContainEqual({ stream: 'sys', text: 'context: revisions/CTD-900 — 2 feature(s): foundry/jobs, foundry/ghost' })
   })
 
   test('AC1: a task that links the ticket takes its parent from the issue already fetched', async () => {
@@ -322,13 +324,17 @@ describe('the revision source', () => {
     expect(out.task).not.toContain('### AP-207:')
   })
 
-  test('AC2: no parent, no revision, a draft, no data dir, no key, a failed fetch: nothing added, one sys line says which', async () => {
+  test('C3: no parent, no revision, a draft, whose named files map to no feature: nothing added, one sys line says which, and the job runs', async () => {
     const plain = (id: string) => brief(id, 'No files named.')
     const cases: Array<[string, ContextDeps, string]> = [
-      ['CTD-902', deps({ 'CTD-902': undefined }), 'context: no revision — CTD-902 has no parent'],
-      ['AP-208', deps({ 'AP-208': undefined }), 'context: no revision — AP-208 has no parent'],
-      ['CTD-903', deps({ 'CTD-903': 'CTD-999' }), 'context: no revision for CTD-999'],
-      ['CTD-801', deps({ 'CTD-801': 'CTD-800' }), 'context: no revision — revisions/CTD-800 is draft, not filed'],
+      ['CTD-902', deps({ 'CTD-902': undefined }), 'context: no revision — CTD-902 has no parent; no named file maps to a feature'],
+      ['AP-208', deps({ 'AP-208': undefined }), 'context: no revision — AP-208 has no parent; no named file maps to a feature'],
+      ['CTD-903', deps({ 'CTD-903': 'CTD-999' }), 'context: no revision for CTD-999; no named file maps to a feature'],
+      [
+        'CTD-801',
+        deps({ 'CTD-801': 'CTD-800' }),
+        'context: no revision — revisions/CTD-800 is draft, not filed; no named file maps to a feature',
+      ],
       ['CTD-901', deps({ 'CTD-901': 'CTD-900' }, { dataDir: '/nowhere/citadel-data' }), 'context: no revision — no citadel-data at /nowhere/citadel-data'],
       ['CTD-901', deps({ 'CTD-901': 'CTD-900' }, { dataDir: undefined }), 'context: no revision — no ARGUS_DATA_DIR on the host'],
       [
@@ -364,6 +370,204 @@ describe('the revision source', () => {
     expect(out.task).not.toContain('s'.repeat(1000))
     expect(out.task).toContain('- Spec: foundry/jobs — cut at the 64.0 KB context cap')
     expect(out.task).toContain('- Arch: foundry/jobs — cut at the 64.0 KB context cap')
+  })
+})
+
+/**
+ * Narrowing a revision to the features a task's named files belong to
+ * (CTD-281): a revision naming several features is narrowed to the ones its
+ * named files' `core_files` declare; an empty intersection keeps every
+ * feature the revision names, as before.
+ */
+describe('narrowing a revision to the features its named files own', () => {
+  let data = ''
+  const FEATURES = ['argus/accio', 'argus/ingest', 'argus/sweep', 'argus/reconcile', 'argus/ledger']
+  /**
+   * A revision's specs are sized as CTD-281 measured them — five argus
+   * features come to about 28.6 KB of specs — so that carrying all five
+   * leaves the 18.4 KB of code no room under the 64 KB cap, and narrowing to
+   * one is what buys it. A test passing on tiny fixtures would prove nothing.
+   */
+  const specOf = (f: string) => `# Spec: ${f}\n\n## Criteria\n- S-1 — a job runs.\n${'s'.repeat(10 * 1024)}\n`
+  const put = async (rel: string, body: string) => {
+    await mkdir(path.dirname(path.join(data, rel)), { recursive: true })
+    await writeFile(path.join(data, rel), body)
+  }
+
+  beforeAll(async () => {
+    data = await mkdtemp(path.join(tmpdir(), 'foundry-narrow-'))
+    await put('revisions/CTD-950/revision.json', JSON.stringify({ features: FEATURES, key: 'CTD-950', slug: 'ctd-950', status: 'filed', tickets: [] }))
+    for (const f of FEATURES) {
+      await put(`revisions/CTD-950/specs/${f}.md`, specOf(f))
+      await put(`argus/features/${f.split('/')[1]}/docs/arch.md`, `# ${f} — Architecture\n`)
+    }
+    await put(
+      'argus/.doc-workspace/feature-manifest.json',
+      JSON.stringify({
+        app: 'argus',
+        features: FEATURES.map((f) => {
+          const id = f.split('/')[1]
+          return { core_files: id === 'sweep' ? ['scripts/argus/sweep.ts', 'scripts/argus/pull.ts'] : [`scripts/argus/${id}.ts`], id, type: 'feature' }
+        }),
+        repo: '/home/dev/git/citadel/apps/argus',
+      }),
+    )
+  })
+  afterAll(async () => {
+    await rm(data, { force: true, recursive: true })
+  })
+
+  const deps = (parentKey: string | undefined): ContextDeps => ({
+    dataDir: data,
+    tickets: { get: async (id) => ({ ...issue(id), ...(parentKey ? { parentKey } : {}) }) },
+  })
+  const brief = (id: string, body: string) => `${id}: title\nhttps://linear.app/acme/issue/${id}/slug\n\n${body}`
+
+  test('C1: a named file narrows the revision to the one feature that owns it', async () => {
+    const out = await hydrateTask(brief('CTD-951', 'Fix `apps/argus/scripts/argus/sweep.ts`.'), work, deps('CTD-950'))
+    expect(out.task).toContain('### Spec: argus/sweep')
+    expect(out.task).toContain('### Arch: argus/sweep')
+    for (const f of ['argus/accio', 'argus/ingest', 'argus/reconcile', 'argus/ledger']) {
+      expect(out.task).not.toContain(`### Spec: ${f}`)
+      expect(out.task).not.toContain(`### Arch: ${f}`)
+    }
+    const note = out.log.find((l) => l.text.startsWith('context: revisions/CTD-950'))?.text ?? ''
+    expect(note).toContain('argus/sweep')
+    expect(note).toContain('narrowed')
+  })
+
+  test('C1: a named file mapping to no feature keeps every feature the revision names', async () => {
+    const out = await hydrateTask(brief('CTD-952', 'Fix `docs/notes.md`.'), work, deps('CTD-950'))
+    for (const f of FEATURES) {
+      expect(out.task).toContain(`### Spec: ${f}`)
+      expect(out.task).toContain(`### Arch: ${f}`)
+    }
+    expect(out.log).toContainEqual({
+      stream: 'sys',
+      text: `context: revisions/CTD-950 — 5 feature(s): ${FEATURES.join(', ')}`,
+    })
+  })
+
+  test('C5: 18.4 KB of named files whose revision narrows to one feature are all carried, and the file count is non-zero', async () => {
+    const named = ['apps/argus/scripts/argus/sweep.ts', 'apps/argus/scripts/argus/pull.ts']
+    // The ticket's case: 18.4 KB of code, which only fits once the revision is narrowed.
+    expect(named.reduce((n, f) => n + Buffer.byteLength(FILES[f] as string), 0)).toBeGreaterThan(18 * 1024)
+    const out = await hydrateTask(brief('CTD-953', `Ship \`${named[0]}\` and \`${named[1]}\`.`), work, deps('CTD-950'))
+    for (const f of named) {
+      expect(out.task).toContain(FILES[f] as string)
+    }
+    expect(out.task).not.toContain('### Not included')
+    expect(out.log[0]?.text).toContain(`and ${named.length} file(s) added`)
+  })
+})
+
+/**
+ * The published-docs fallback (S-54): a ticket with no parent, or whose
+ * parent has no filed revision, is handed a feature's published spec and
+ * arch doc for the features its named files belong to, read the same way a
+ * revision's blocks are.
+ */
+describe('the published-docs fallback', () => {
+  let data = ''
+  const SPEC = '# Spec: Jobs\n\n## Criteria\n- S-1 — a job runs.\n'
+  const ARCH = '# Jobs — Architecture\n'
+  const USAGE_ARCH = '# Usage — Architecture\n'
+  const put = async (rel: string, body: string) => {
+    await mkdir(path.dirname(path.join(data, rel)), { recursive: true })
+    await writeFile(path.join(data, rel), body)
+  }
+
+  beforeAll(async () => {
+    data = await mkdtemp(path.join(tmpdir(), 'foundry-published-'))
+    await put(
+      'foundry/.doc-workspace/feature-manifest.json',
+      JSON.stringify({
+        app: 'foundry',
+        features: [
+          { core_files: ['web/src/features/jobs'], id: 'jobs', type: 'feature' },
+          { core_files: ['web/src/features/usage'], id: 'usage', type: 'feature' },
+        ],
+        repo: '/home/dev/git/citadel/apps/foundry',
+      }),
+    )
+    await put('foundry/features/jobs/docs/spec.md', SPEC)
+    await put('foundry/features/jobs/docs/arch.md', ARCH)
+    await put('foundry/features/usage/docs/arch.md', USAGE_ARCH)
+  })
+  afterAll(async () => {
+    await rm(data, { force: true, recursive: true })
+  })
+
+  const deps = (parentKey: string | undefined): ContextDeps => ({
+    dataDir: data,
+    tickets: { get: async (id) => ({ ...issue(id), ...(parentKey ? { parentKey } : {}) }) },
+  })
+  const brief = (id: string, body: string) => `${id}: title\nhttps://linear.app/acme/issue/${id}/slug\n\n${body}`
+
+  test('C2: no parent, a named file that belongs to a feature gets its published spec and arch doc', async () => {
+    const out = await hydrateTask(brief('CTD-970', 'Fix `apps/foundry/web/src/features/jobs/server/task-context.ts`.'), work, deps(undefined))
+    expect(out.task).toContain(`### Spec: foundry/jobs\n\`\`\`md\n${SPEC}\`\`\``)
+    expect(out.task).toContain(`### Arch: foundry/jobs\n\`\`\`md\n${ARCH}\`\`\``)
+    expect(out.log).toContainEqual({ stream: 'sys', text: 'context: published docs — foundry/jobs' })
+  })
+
+  test('C2: a feature with an arch doc and no published spec is carried as its arch doc alone', async () => {
+    const out = await hydrateTask(brief('CTD-971', 'Fix `apps/foundry/web/src/features/usage/lib/x.ts`.'), work, deps(undefined))
+    expect(out.task).toContain(`### Arch: foundry/usage\n\`\`\`md\n${USAGE_ARCH}\`\`\``)
+    expect(out.task).not.toContain('### Spec: foundry/usage')
+    expect(out.task).toContain('- Spec: foundry/usage — no published spec')
+  })
+
+  test('C2: a parent whose revision is not filed still falls back to the published docs', async () => {
+    const out = await hydrateTask(brief('CTD-972', 'Fix `apps/foundry/web/src/features/jobs/server/x.ts`.'), work, deps('CTD-999-no-such-revision'))
+    expect(out.task).toContain('### Spec: foundry/jobs')
+    expect(out.task).toContain('### Arch: foundry/jobs')
+  })
+})
+
+/**
+ * What the cap cuts first (CTD-281, S-55): with a cap too small for
+ * everything, the spec and the named files are carried and the arch doc is
+ * the block that goes, listed under `### Not included` and never truncated.
+ */
+describe('what the cap cuts first', () => {
+  let data = ''
+  const SPEC = `# Spec: Sweep\n${'s'.repeat(1024)}\n`
+  const ARCH = `# Sweep — Architecture\n${'h'.repeat(55 * 1024)}\n`
+  const put = async (rel: string, body: string) => {
+    await mkdir(path.dirname(path.join(data, rel)), { recursive: true })
+    await writeFile(path.join(data, rel), body)
+  }
+
+  beforeAll(async () => {
+    data = await mkdtemp(path.join(tmpdir(), 'foundry-cap-'))
+    await put(
+      'argus/.doc-workspace/feature-manifest.json',
+      JSON.stringify({
+        app: 'argus',
+        features: [{ core_files: ['scripts/argus/sweep.ts', 'scripts/argus/pull.ts'], id: 'sweep', type: 'feature' }],
+        repo: '/home/dev/git/citadel/apps/argus',
+      }),
+    )
+    await put('argus/features/sweep/docs/spec.md', SPEC)
+    await put('argus/features/sweep/docs/arch.md', ARCH)
+  })
+  afterAll(async () => {
+    await rm(data, { force: true, recursive: true })
+  })
+
+  test('C4: the spec and the named files are carried, and the arch doc is what the cap cuts', async () => {
+    const task =
+      'CTD-960: title\nhttps://linear.app/acme/issue/CTD-960/slug\n\n' +
+      'Fix `apps/argus/scripts/argus/sweep.ts` and `apps/argus/scripts/argus/pull.ts`.'
+    const out = await hydrateTask(task, work, { dataDir: data, tickets: { get: async (id) => issue(id) } })
+    expect(out.task).toContain(`### Spec: argus/sweep\n\`\`\`md\n${SPEC}\`\`\``)
+    expect(out.task).toContain(FILES['apps/argus/scripts/argus/sweep.ts'] as string)
+    expect(out.task).toContain(FILES['apps/argus/scripts/argus/pull.ts'] as string)
+    // the arch doc is named as cut, and none of its body came through.
+    expect(out.task).toContain('- Arch: argus/sweep — cut at the 64.0 KB context cap')
+    expect(out.task).not.toContain('h'.repeat(1024))
+    expect(out.log[0]?.text).toContain('1 spec(s), 0 arch doc(s) and 2 file(s) added')
   })
 })
 
