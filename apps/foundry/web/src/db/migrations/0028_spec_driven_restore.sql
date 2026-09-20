@@ -2,11 +2,12 @@
 --
 -- CTD-283 routes every ticket-driven job here, so a row that had run 11 times
 -- in 90 days now carries the ~76 that "Plan → Execute" and the bare `"none"`
--- job used to. It was worth reading before that traffic arrived, and it had
--- drifted from its seed in two ways, both recorded as `user` revisions:
+-- job used to. It was worth reading before that traffic arrived.
 --
---   spec  · fable/high  ->  opus, no effort
---   build · lost the clause 0020 added for CTD-186
+-- The build step has never carried the clause 0020 added for CTD-186: that
+-- migration was authored 2026-09-13 07:19 and this row already had a `user`
+-- revision from 05:51 the same day, so its guard skipped it and has skipped it
+-- ever since. The clause was never lost here; it never arrived.
 --
 -- That clause is the one with a measurement behind it: job 918fa9d9's build
 -- step spent its first 3½ minutes re-reading the runner and the files the spec
