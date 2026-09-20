@@ -237,8 +237,13 @@ Bitbucket origins.
 **From a ticket alone.** `instructions` may be omitted when `ticketId` is given (LIA-92) —
 `repo` stays required, the caller says where the work lands. The host fetches the Linear
 issue with its own `LINEAR_API_KEY` and composes the brief from its body: `<KEY>:
-<title>`, the issue URL, a blank line, then the description with every section. Either way
-the ticket is then **claimed in Linear** — assigned to the key's user and moved to the
+<title>`, the issue URL, a blank line, then the description with every section. A
+`ticketId` with no `blueprintId` runs the seeded "Spec → QA" instead of "Plan → Execute"
+(CTD-283) — falling back to "Plan → Execute" and then a bare job as either row is
+missing — since a bare planning prompt never reads the ticket's acceptance criteria the
+way "Spec → QA"'s steps do; an explicit `blueprintId`, `"none"` included, is honoured
+ahead of this default. Either way the ticket is then **claimed in Linear** — assigned to
+the key's user and moved to the
 team's started state (the one named "In Progress" when there are several) — in claim
 order: the row insert first (the unique `ticket_id` index is the claim, hence the
 `409`; it excludes cancelled rows, so cancelling a job frees its ticket), the Linear
