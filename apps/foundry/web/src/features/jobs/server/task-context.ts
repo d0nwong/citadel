@@ -9,14 +9,15 @@
  * A ticket cut from a revision (CTD-195) also brings that revision's spec and
  * the arch doc of every feature it names, read from citadel-data
  * (`ARGUS_DATA_DIR`) here on the host; the container never sees citadel-data.
- * Only `revisions/<KEY>/revision.json`, its `specs/` and a feature's
- * `docs/arch.md` are read — never a ledger.
+ * Only `revisions/<KEY>/revision.json`, its `specs/`, a feature's
+ * `docs/arch.md` and each app's `.doc-workspace/feature-manifest.json` are
+ * read — never a ledger.
  *
  * Never fails a job: a path that is not there is listed as missing, a ticket
  * that cannot be fetched is listed with the reason and an `err` line.
  */
 import { execFile } from 'node:child_process'
-import { lstat, readFile, stat } from 'node:fs/promises'
+import { lstat, readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { MissingCredentialError } from '@citadel/tickets'
@@ -57,6 +58,9 @@ const BINARY_PROBE = 8000
 const TICKET_KEY = /^[A-Z][A-Z0-9]*-\d+$/
 /** One segment of a feature key — `foundry`, `alden-portal`, `admin` — never `..` or empty. */
 const SEGMENT = /^[a-z0-9][a-z0-9-]*$/
+/** The manifest id prefixes `featureDirOf` strips: `shared-hooks` → `shared/hooks`, `admin-usage` → `admin/usage`. */
+const SHARED_PREFIX = /^shared-/
+const ADMIN_PREFIX = /^admin-/
 
 const HEADER =
   '## Context\n\nResolved by the host before this run from what the task above names: linked tickets as their tracker has them now, the reviewed spec and arch doc of a revision the ticket belongs to, files as they stand at the base commit. The task is verbatim; where its line numbers disagree with a file here, the file is current.'
@@ -174,6 +178,145 @@ async function featureDir(dataDir: string, feature: string): Promise<string | nu
     }
   }
   return null
+}
+
+/** Where a feature manifest lives under an app's directory. */
+const MANIFEST = '.doc-workspace/feature-manifest.json'
+/** citadel's own top-level workspace directories; a manifest's `repo` names its place under
+ * one of them (`~/git/citadel/apps/foundry`), while a ticket names a path from there down
+ * (`apps/foundry/...`). A `repo` naming neither — `alden-portal`'s `fe_repo`/`be_repo` point
+ * outside this checkout entirely — owns nothing a ticket can name. */
+const WORKSPACE_ROOTS = new Set(['apps', 'packages'])
+
+interface ManifestFeature {
+  id: string
+  dir?: string
+  type?: string
+  core_files?: unknown
+  core_files_extra?: unknown
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+const isManifestFeature = (v: unknown): v is ManifestFeature => isObj(v) && typeof v.id === 'string'
+
+/** A feature's docs directory, the same derivation the manifest tooling (`accio`, argus) uses: the curated `dir` wins, else it comes from the id. */
+const featureDirOf = (f: ManifestFeature): string =>
+  f.dir ?? (f.type === 'shared' ? `shared/${f.id.replace(SHARED_PREFIX, '')}` : f.id.replace(ADMIN_PREFIX, 'admin/'))
+
+/** The rightmost `apps/…` or `packages/…` tail of an absolute `repo` path, or null when it names neither. */
+function repoTail(repo: string): string | null {
+  const segs = repo.split('/')
+  const fromEnd = [...segs].reverse().findIndex((s) => WORKSPACE_ROOTS.has(s))
+  return fromEnd < 0 ? null : segs.slice(segs.length - 1 - fromEnd).join('/')
+}
+
+/** Every app directory under citadel-data holding a feature manifest — one level down (`foundry`), or two (`alden/alden-portal`). */
+async function manifestApps(dataDir: string): Promise<Array<string>> {
+  const dirs = async (p: string) =>
+    (await readdir(p, { withFileTypes: true }).catch(() => []))
+      .filter((d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules')
+      .map((d) => d.name)
+  const apps: Array<string> = []
+  for (const a of await dirs(dataDir)) {
+    if (await exists(path.join(dataDir, a, MANIFEST))) {
+      apps.push(a)
+      continue
+    }
+    for (const b of await dirs(path.join(dataDir, a))) {
+      if (await exists(path.join(dataDir, a, b, MANIFEST))) {
+        apps.push(`${a}/${b}`)
+      }
+    }
+  }
+  return apps
+}
+
+interface Owned {
+  /** `<app>/<feature dir>` — the key `featureDir` and a revision's features use. */
+  feature: string
+  /** A `core_files` entry resolved to a monorepo-relative path or directory. */
+  path: string
+}
+
+/** `declared` is a file or a directory `path` names, or is above: the same rule `core_files` uses to claim a file on disk, carried across the boundary between the monorepo root and the manifest's own `repo`. */
+const owns = (declared: string, file: string) => file === declared || file.startsWith(`${declared}/`)
+
+/** `core_files` plus the curated `core_files_extra` — the manifest tooling's own combined list (argus's `allCoreFiles`). */
+function coreFilesOf(f: ManifestFeature): Array<string> {
+  const raw = [...(Array.isArray(f.core_files) ? f.core_files : []), ...(Array.isArray(f.core_files_extra) ? f.core_files_extra : [])]
+  return raw.filter((c): c is string => typeof c === 'string')
+}
+
+/** One manifest's features, each `core_files` entry resolved to a monorepo path from `tail`; a feature whose derived directory is not a valid key segment is left out. */
+function ownedFrom(app: string, tail: string, features: Array<unknown>): Array<Owned> {
+  const owned: Array<Owned> = []
+  for (const f of features) {
+    if (!isManifestFeature(f)) {
+      continue
+    }
+    const feature = featureDirOf(f)
+    if (!feature.split('/').every((s) => SEGMENT.test(s))) {
+      continue
+    }
+    for (const c of coreFilesOf(f)) {
+      owned.push({ feature: `${app}/${feature}`, path: path.join(tail, c) })
+    }
+  }
+  return owned
+}
+
+/** One app's manifest, read and resolved: its owned entries, or the one line saying why it has none. A manifest with no monorepo `repo` — `alden-portal`'s two external repos — owns nothing here, quietly: `trouble` is only ever an unreadable or malformed file. */
+async function readManifest(dataDir: string, app: string): Promise<{ owned: Array<Owned>; trouble: string | null }> {
+  const raw = await readIf(path.join(dataDir, app, MANIFEST))
+  if (raw === null) {
+    return { owned: [], trouble: `${app} — unreadable` }
+  }
+  let manifest: unknown
+  try {
+    manifest = JSON.parse(raw)
+  } catch (e) {
+    return { owned: [], trouble: `${app} — malformed: ${message(e)}` }
+  }
+  if (!isObj(manifest) || typeof manifest.repo !== 'string' || !Array.isArray(manifest.features)) {
+    return { owned: [], trouble: null }
+  }
+  const tail = repoTail(manifest.repo)
+  return { owned: tail === null ? [] : ownedFrom(app, tail, manifest.features), trouble: null }
+}
+
+/**
+ * Every app's feature manifest under citadel-data, flattened to what each
+ * feature's `core_files` resolve to from the monorepo root. Tolerates an
+ * absent, unreadable or malformed manifest.
+ */
+export async function featureManifests(dataDir: string): Promise<{ owned: Array<Owned>; note: string }> {
+  if (!(await exists(dataDir))) {
+    return { owned: [], note: `no feature manifests — no citadel-data at ${dataDir}` }
+  }
+  const apps = await manifestApps(dataDir)
+  const owned: Array<Owned> = []
+  const trouble: Array<string> = []
+  for (const app of apps) {
+    const read = await readManifest(dataDir, app)
+    owned.push(...read.owned)
+    if (read.trouble !== null) {
+      trouble.push(read.trouble)
+    }
+  }
+  const note = `feature manifests — ${apps.length} app(s), ${owned.length} core file(s)${trouble.length > 0 ? `; ${trouble.join('; ')}` : ''}`
+  return { owned, note }
+}
+
+/**
+ * The single `<app>/<feature>` a monorepo-relative path belongs to, by whose
+ * `core_files` declare it — or null when nothing declares it, or when more
+ * than one feature does (AC2): a claim shared by two features says nothing
+ * about which owns the file, so it is carried as neither.
+ */
+export function featureOwning(file: string, owned: Array<Owned>): string | null {
+  const features = new Set(owned.filter((o) => owns(o.path, file)).map((o) => o.feature))
+  const [only] = features
+  return features.size === 1 ? only : null
 }
 
 interface RevisionSource {

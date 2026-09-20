@@ -12,7 +12,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { MissingCredentialError } from '@citadel/tickets'
 import type { Ticket } from '@citadel/tickets'
-import { ARG_BUDGET, CONTEXT_CAP, hydrateTask, linkedIssueIds, namedFiles } from './task-context'
+import { ARG_BUDGET, CONTEXT_CAP, featureManifests, featureOwning, hydrateTask, linkedIssueIds, namedFiles } from './task-context'
 import type { ContextDeps } from './task-context'
 
 const exec = promisify(execFile)
@@ -364,5 +364,92 @@ describe('the revision source', () => {
     expect(out.task).not.toContain('s'.repeat(1000))
     expect(out.task).toContain('- Spec: foundry/jobs — cut at the 64.0 KB context cap')
     expect(out.task).toContain('- Arch: foundry/jobs — cut at the 64.0 KB context cap')
+  })
+})
+
+/**
+ * The feature that owns a named file (CTD-280), against a temp citadel-data
+ * holding each app's own `.doc-workspace/feature-manifest.json`: `core_files`
+ * resolve to a monorepo path by the manifest's own `repo`, a file two
+ * features' `core_files` both declare maps to neither, and a manifest that
+ * is missing, unreadable or malformed contributes nothing and raises nothing.
+ */
+describe('the feature that owns a file', () => {
+  let data = ''
+  const put = async (rel: string, body: string) => {
+    await mkdir(path.dirname(path.join(data, rel)), { recursive: true })
+    await writeFile(path.join(data, rel), body)
+  }
+  const manifest = (repo: string, features: Array<Record<string, unknown>>) => JSON.stringify({ app: 'x', features, repo })
+
+  beforeAll(async () => {
+    data = await mkdtemp(path.join(tmpdir(), 'foundry-manifests-'))
+    // argus: one feature declaring two files by name, another declaring a whole directory.
+    await put(
+      'argus/.doc-workspace/feature-manifest.json',
+      manifest('/home/dev/git/citadel/apps/argus', [
+        { core_files: ['scripts/argus/blockers.ts', 'scripts/argus/pull.ts'], id: 'sweep', type: 'feature' },
+        { core_files: ['scripts/accio'], id: 'accio', type: 'feature' },
+      ]),
+    )
+    // foundry and foundry-admin: two citadel-data apps sharing one repo, one's directory nested inside the other's — AC2.
+    await put(
+      'foundry/.doc-workspace/feature-manifest.json',
+      manifest('/home/dev/git/citadel/apps/foundry', [{ core_files: ['web/src/features/jobs'], id: 'jobs', type: 'feature' }]),
+    )
+    await put(
+      'foundry-admin/.doc-workspace/feature-manifest.json',
+      manifest('/home/dev/git/citadel/apps/foundry', [
+        { core_files: ['web/src/features/jobs/server/task-context.ts'], id: 'misc', type: 'feature' },
+      ]),
+    )
+    // alden-portal: a two-repo area (fe_repo/be_repo, no `repo`), nested two levels down — owns nothing here, quietly.
+    await put(
+      'alden/alden-portal/.doc-workspace/feature-manifest.json',
+      JSON.stringify({
+        app: 'alden-portal',
+        be_repo: '~/git/alden-connect-portal-be',
+        features: [{ core_files: ['src/pages/admin/usage'], id: 'admin-usage', type: 'feature' }],
+        fe_repo: '~/git/alden-portal-fe',
+      }),
+    )
+    // broken: not JSON at all.
+    await put('broken/.doc-workspace/feature-manifest.json', '{ not json')
+    // ghost: the manifest path is a directory, not a file — unreadable, not missing.
+    await mkdir(path.join(data, 'ghost/.doc-workspace/feature-manifest.json'), { recursive: true })
+  })
+
+  afterAll(async () => {
+    await rm(data, { force: true, recursive: true })
+  })
+
+  test('AC1: a named path maps to the feature whose core_files declare it; one no feature declares maps to nothing', async () => {
+    const { note, owned } = await featureManifests(data)
+    expect(featureOwning('apps/argus/scripts/argus/blockers.ts', owned)).toBe('argus/sweep')
+    expect(featureOwning('apps/argus/scripts/accio/manifest.ts', owned)).toBe('argus/accio')
+    expect(featureOwning('apps/argus/scripts/argus/nope.ts', owned)).toBeNull()
+    expect(note).toContain('feature manifests — 6 app(s)')
+  })
+
+  test('AC2: a path two features declare, across two apps sharing one repo, maps to nothing rather than to either', async () => {
+    const { owned } = await featureManifests(data)
+    expect(featureOwning('apps/foundry/web/src/features/jobs/server/task-context.ts', owned)).toBeNull()
+    // the same directory, one level up, only one feature claims — no ambiguity there.
+    expect(featureOwning('apps/foundry/web/src/features/jobs/routes.ts', owned)).toBe('foundry/jobs')
+  })
+
+  test('AC3: a missing citadel-data directory yields no mapping, one sys-style line, and raises nothing', async () => {
+    const out = await featureManifests('/nowhere/citadel-data')
+    expect(out).toEqual({ note: 'no feature manifests — no citadel-data at /nowhere/citadel-data', owned: [] })
+  })
+
+  test('AC3: an unreadable or malformed manifest contributes nothing, named in one line with no newline, raising nothing', async () => {
+    const { note, owned } = await featureManifests(data)
+    expect(note.includes('\n')).toBe(false)
+    expect(note).toContain('broken — malformed:')
+    expect(note).toContain('ghost — unreadable')
+    // the two-repo area's manifest is read without error and simply owns nothing.
+    expect(owned.some((o) => o.feature.startsWith('alden'))).toBe(false)
+    expect(owned.some((o) => o.feature === 'argus/sweep')).toBe(true)
   })
 })
