@@ -127,13 +127,15 @@ export function RepoField({
 
 /**
  * Which blueprint the job runs, as the Send form asks it: a select over what
- * `GET /api/blueprints` answered, on top of "none", which is not a blueprint but the
- * absence of one — one bare step on the forge's default model.
+ * `GET /api/blueprints` answered, on top of two choices that are not blueprints — the empty
+ * string, Foundry's own default for a ticket (the seeded "Spec → QA"), and "none", the
+ * absence of one, one bare step on the forge's default model.
  *
- * "none" is where it starts, and it is what Send has always done (a ticket filed from here
- * carries its plan in its Technical Notes, so a planning step re-derives what the body
- * states). A Foundry that could not answer with a list leaves the field out altogether
- * rather than offering a choice of one: the send still goes, as a plain job.
+ * The empty choice is where it starts (CTD-284): Foundry maps a ticket-driven job with no
+ * `blueprintId` to its own default rather than a bare step, so nobody choosing is nobody
+ * choosing, not "none" picked on their behalf. A Foundry that could not answer with a list
+ * leaves the field out altogether rather than offering a choice of one: the send still goes,
+ * carrying whatever `value` already was.
  */
 export function BlueprintField({
   blueprints,
@@ -166,6 +168,7 @@ export function BlueprintField({
           onChange={(e) => onChange(e.target.value)}
           value={value}
         >
+          <option value="">Foundry's default for the ticket</option>
           <option value={NO_BLUEPRINT}>
             none — one step, the forge's default model
           </option>

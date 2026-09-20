@@ -10,7 +10,7 @@
 import type { UIMessage } from "@tanstack/ai";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { isSendable, NO_BLUEPRINT, REPO_REQUIRED } from "#/lib/send";
+import { isSendable, REPO_REQUIRED } from "#/lib/send";
 import type {
   AskStatus,
   Conversation,
@@ -790,9 +790,10 @@ export const sendReady = createServerFn({ method: "POST" })
       repo: string;
       blueprintId?: string;
     }) => ({
-      // Unset is `"none"`, not an omitted key: `createJob` always sends one, and a caller
-      // that predates the picker means what Send has always done — a plain job.
-      blueprintId: trimmed(input.blueprintId ?? "") || NO_BLUEPRINT,
+      // Unset stays unset (CTD-284): `createJob` omits the key rather than sending
+      // `NO_BLUEPRINT`, so Foundry maps the ticket to its own default. A caller that picked
+      // `"none"` from the list still means it — that value passes through unchanged.
+      blueprintId: trimmed(input.blueprintId ?? ""),
       dir: trimmed(input.dir),
       repo: trimmed(input.repo),
       ticket: trimmed(input.ticket),

@@ -23,8 +23,10 @@ export const isSendable = (stateType?: string): boolean =>
 /**
  * What `blueprintId` says when a job is to run as one bare step rather than through a
  * blueprint. Foundry's own literal — it is the absence of a blueprint, so it is never a row
- * in `GET /api/blueprints`, and the picker offers it as its own option, where it is also
- * the default: the choice every send from here has made since it started sending one.
+ * in `GET /api/blueprints`, and the picker offers it as its own option, alongside a first
+ * option for choosing none at all (CTD-284): that first option is the picker's default and
+ * omits `blueprintId` from the wire entirely, so Foundry maps a ticket to its own default —
+ * `"none"` here stays a person's explicit choice, never Send's own.
  *
  * Here rather than in `server/foundry.ts` for the reason the ids are: the picker needs it,
  * and nothing node-only is imported in this file.
