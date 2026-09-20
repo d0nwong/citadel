@@ -46,6 +46,16 @@ const h2s = (md: string) =>
     .filter((line) => line.startsWith('## '))
     .map((line) => line.slice(3).trim())
 
+/** The text of one `## <heading>` section, up to (not including) the next `## ` heading. */
+const section = (md: string, heading: string): string => {
+  const lines = md.split('\n')
+  const start = lines.indexOf(`## ${heading}`)
+  if (start < 0) return ''
+  const rest = lines.slice(start + 1)
+  const end = rest.findIndex((l) => l.startsWith('## '))
+  return rest.slice(0, end < 0 ? undefined : end).join('\n')
+}
+
 describe('every skill', () => {
   test('there is at least the /work skill', () => {
     expect(skillDirs).toContain('work')
@@ -145,4 +155,54 @@ describe('seeded blueprints invoke skills that exist', () => {
       for (const slash of invoked) expect(existsSync(path.join(SKILLS, slash.slice(1), 'SKILL.md')), slash).toBe(true)
     })
   }
+})
+
+describe('the host-carried ## Context is read, not re-hunted (CTD-286)', () => {
+  /** The step each role first reads code in — where the host's `## Context` is used before the checkout. */
+  const CONTEXT_STEP: Record<string, string> = {
+    'forge-test': 'Step 1: Find the runner before writing a line',
+    'forge-implement': 'Step 2: One slice at a time',
+    'forge-plan': 'Step 1: Read the code each criterion touches',
+    'forge-verify': 'Step 3: Review the code on five axes, six when the diff touches a contract',
+    'forge-debug': 'Step 2: Localise',
+    'forge-simplify': 'Step 1: Understand before touching',
+  }
+
+  for (const [dir, step] of Object.entries(CONTEXT_STEP)) {
+    test(`C1: ${dir}'s reading step says a carried \`### \`path\`\` block is that file at the base commit`, () => {
+      const text = section(readSkill(dir), step)
+      expect(text).toContain('Context section')
+      expect(text).toMatch(/block there is that file at the base commit/)
+    })
+
+    test(`C5: ${dir}'s reading step trusts a carried block over a line number the task cites`, () => {
+      const text = section(readSkill(dir), step)
+      expect(text).toMatch(/trusted over any line number the task itself cites/)
+    })
+
+    test(`C3: ${dir}'s reading step still reads a path the Context does not carry from the checkout`, () => {
+      const text = section(readSkill(dir), step)
+      expect(text).toMatch(/a path the section does not carry is read from the checkout as before/)
+    })
+
+    test(`C4: ${dir}'s Context additions are conditioned on the task carrying one`, () => {
+      expect(section(readSkill(dir), step)).toMatch(/^When the task carries a Context section/m)
+      // The Finish clause is the second addition, and is conditioned too: without this a job
+      // whose task has no Context section would be told to report a list it never received.
+      expect(section(readSkill(dir), 'Finish')).toMatch(/the task's Context lists one/)
+    })
+
+    test(`C2: ${dir}'s Finish names a missing or not-included path rather than hunting for it`, () => {
+      const finish = section(readSkill(dir), 'Finish')
+      expect(finish).toContain('### Missing at the base commit')
+      expect(finish).toContain('### Not included')
+      expect(finish).toMatch(/named with its reason rather than searched for/)
+    })
+  }
+
+  test('every skill outside this scope names none of this: CTD-286 touched only the six roles above', () => {
+    for (const dir of skillDirs.filter((d) => !(d in CONTEXT_STEP))) {
+      expect(readSkill(dir), dir).not.toMatch(/named with its reason rather than searched for/)
+    }
+  })
 })

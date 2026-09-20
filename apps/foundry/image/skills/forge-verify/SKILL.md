@@ -38,6 +38,8 @@ For every test this run touched: does it name its criterion and assert what the 
 
 ## Step 3: Review the code on five axes, six when the diff touches a contract
 
+When the task carries a Context section, a `` ### `path` `` block there is that file at the base commit — read before the checkout and trusted over any line number the task itself cites — and a path the section does not carry is read from the checkout as before.
+
 Label every finding: **Critical:** (must not merge), unlabelled (required before merge), **Nit:** (may ignore), **FYI:** (no action).
 
 1. **Correctness** — each criterion, on the error paths and boundaries the spec named; off-by-one, a race, state left inconsistent
@@ -78,7 +80,7 @@ Run test, typecheck and lint from `~/spec.md` once each, after the last edit; ag
 
 ## Finish
 
-End with the commit subject, the report's table and Commands line, the findings left for the reader with labels, and the verdict in one line: ready for review, or not, and why. Every sentence is a statement; nobody answers a question.
+End with the commit subject, the report's table and Commands line, the findings left for the reader with labels, and the verdict in one line: ready for review, or not, and why. When the task's Context lists one, a path under `### Missing at the base commit` or `### Not included` is named with its reason rather than searched for. Every sentence is a statement; nobody answers a question.
 
 ## Common Rationalizations
 

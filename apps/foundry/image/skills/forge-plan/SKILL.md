@@ -21,6 +21,8 @@ Reads `~/spec.md` and the repo. Stops with no edits on a `## Blocked` section, r
 
 ## Step 1: Read the code each criterion touches
 
+When the task carries a Context section, a `` ### `path` `` block there is that file at the base commit — read before the checkout and trusted over any line number the task itself cites — and a path the section does not carry is read from the checkout as before.
+
 Open the place the spec names and read outward until the shape of the change is known: types crossed, callers affected, the test beside it, the convention the neighbours follow. Every line of the plan points at something read here. Collect on the way:
 
 - The existing helper or component that already does most of it — new code beside a fit is the first thing Step 4 rejects
@@ -73,7 +75,7 @@ One pass as a reviewer who did not write it, looking for, in order: a claim with
 
 ## Finish
 
-End with the `Change` paragraph, `Criteria → code` verbatim, and the Assumptions. Every sentence is a statement; nobody answers a question.
+End with the `Change` paragraph, `Criteria → code` verbatim, and the Assumptions — including, when the task's Context lists one, a path under `### Missing at the base commit` or `### Not included`, named with its reason rather than searched for. Every sentence is a statement; nobody answers a question.
 
 ## Common Rationalizations
 

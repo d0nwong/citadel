@@ -21,6 +21,8 @@ Reads `~/spec.md` (Criteria, Commands, the base state under Assumptions) and the
 
 ## Step 1: Understand before touching
 
+When the task carries a Context section, a `` ### `path` `` block there is that file at the base commit — read before the checkout and trusted over any line number the task itself cites — and a path the section does not carry is read from the checkout as before.
+
 For each named simplification, before any edit: what is this code's responsibility, what calls it and what does it call, which edge and error paths exist, which tests define it, and why was it written this way (`git -C /work log --oneline -- <file>`, the comments that say why). A fence whose reason is unknown stays up: that simplification goes under `Not doing` with what was not understood. So does any named change that alters what the code returns, throws or does for some input, however the ticket words it: an acceptance criterion cannot make a behaviour change a simplification. Under `Not doing` with the input that would differ, and the Finish says so.
 
 ## Step 2: Write ~/plan.md
@@ -59,7 +61,7 @@ Run test, typecheck and lint from `~/spec.md` once each. The pass count equals t
 
 ## Finish
 
-End with each simplification made, keyed to its criterion; each left unmade and why; the suite count against the base; the three commands and results. Every sentence is a statement; nobody answers a question.
+End with each simplification made, keyed to its criterion; each left unmade and why; the suite count against the base; the three commands and results; and, when the task's Context lists one, a path under `### Missing at the base commit` or `### Not included`, named with its reason rather than searched for. Every sentence is a statement; nobody answers a question.
 
 ## Common Rationalizations
 

@@ -21,6 +21,8 @@ Reads `~/spec.md` (Criteria, Commands, Assumptions) and `~/plan.md` when there i
 
 ## Step 1: Find the runner before writing a line
 
+When the task carries a Context section, a `` ### `path` `` block there is that file at the base commit — read before the checkout and trusted over any line number the task itself cites — and a path the section does not carry is read from the checkout as before.
+
 The spec's Commands names the runner; the test nearest the code each criterion touches shows the layout, assertion style, helpers and how the suite gets a database or a port. Match it exactly. No new framework, assertion library, directory or style; a repo with no tests gets the runner its package manager ships, one file beside the code, and a line in the Finish.
 
 ```
@@ -56,7 +58,7 @@ Run the spec's test command once. Each new test fails for the right reason: the 
 
 ## Finish
 
-End with the tests keyed by criterion (`C2 → queries.test.ts › "C2: …"`), each marked red / does-not-compile-yet / already-passing; which are CI-run; any criterion without a test and why; the exact command. Every sentence is a statement; nobody answers a question.
+End with the tests keyed by criterion (`C2 → queries.test.ts › "C2: …"`), each marked red / does-not-compile-yet / already-passing; which are CI-run; any criterion without a test and why; the exact command; and, when the task's Context lists one, a path under `### Missing at the base commit` or `### Not included`, named with its reason rather than searched for. Every sentence is a statement; nobody answers a question.
 
 ## Common Rationalizations
 
