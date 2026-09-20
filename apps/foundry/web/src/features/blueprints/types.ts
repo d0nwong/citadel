@@ -18,9 +18,12 @@ export const TASK_PLACEHOLDER = '{{task}}'
 /**
  * "Plan → Execute", seeded by migration 0007 — what the ignite dialog starts on,
  * because planning first is the right default for a task nobody is watching.
- * Matched by id, not by name: the row is the user's to rename or rewrite, and
- * only deleting it should change what a fresh job defaults to (then: no
- * blueprint, one bare step).
+ * Its two inline prose prompts were pointed at the forge's own skills by 0030
+ * (CTD-285): `forge-plan` and `forge-implement`, both of which plan and
+ * implement from the task text alone when no ticket gave them a `~/spec.md` —
+ * exactly the case CTD-283 routes here. Matched by id, not by name: the row
+ * is the user's to rename or rewrite, and only deleting it should change what
+ * a fresh job defaults to (then: no blueprint, one bare step).
  */
 export const DEFAULT_BLUEPRINT_ID = '5eeded00-0000-4000-8000-000000000001'
 

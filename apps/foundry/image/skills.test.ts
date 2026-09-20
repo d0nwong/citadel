@@ -206,3 +206,54 @@ describe('the host-carried ## Context is read, not re-hunted (CTD-286)', () => {
     }
   })
 })
+
+describe('the no-spec path for Plan → Execute (CTD-285)', () => {
+  test('C2: forge-plan is offered a task with no ~/spec.md, not just refused one', () => {
+    const md = readSkill('forge-plan')
+    expect(section(md, 'When to Use')).toContain('no `~/spec.md` exists at all: plan from the task text directly')
+    // The old refusal line named no ~/spec.md as a reason to stop; it no longer does.
+    expect(md).not.toContain('**When NOT to use:** no `~/spec.md`;')
+  })
+
+  test('C2: forge-plan reads the task text in place of a spec, rather than stopping for one', () => {
+    expect(readSkill('forge-plan')).toContain('Reads `~/spec.md` when it exists, and the task text in its place when it does not')
+  })
+
+  test("C2: forge-implement's Order stands in for the red list with no ~/spec.md", () => {
+    const md = readSkill('forge-implement')
+    expect(section(md, 'When to Use')).toContain('`~/plan.md` exists with no `~/spec.md` behind it')
+    // The old refusal line named no ~/spec.md as a reason to stop; it no longer does.
+    expect(md).not.toContain('**When NOT to use:** no `~/spec.md`;')
+    expect(section(md, 'Step 1: Start from the red list')).toContain(
+      "With no `~/spec.md` and so no red list, there is nothing to run first: the plan's `Order` alone says where to start",
+    )
+  })
+
+  test("C3: forge-plan's Finish states no approved criteria governed a spec-less run, as forge-verify states a missing spec", () => {
+    const finish = section(readSkill('forge-plan'), 'Finish')
+    expect(finish).toContain('with no `~/spec.md`, a line stating that no approved criteria governed this run')
+  })
+
+  test("C3: forge-implement's Finish states no approved criteria governed a spec-less run, as forge-verify states a missing spec", () => {
+    const finish = section(readSkill('forge-implement'), 'Finish')
+    expect(finish).toContain("with no `~/spec.md`, the plan's `Order` implemented step by step and a line stating that no approved criteria governed this run")
+  })
+
+  test('C4: a run that has ~/spec.md is unchanged — both skills still read it first, ahead of the task-text fallback', () => {
+    expect(readSkill('forge-plan')).toContain('Reads `~/spec.md` when it exists')
+    expect(readSkill('forge-implement')).toContain('`~/spec.md` (Commands, Assumptions) when it exists')
+    // The template shape ~/plan.md is written to, and the criteria-driven slicing, are untouched.
+    expect(readSkill('forge-plan')).toContain('## Criteria → code\n- C1 — <file, symbol: what changes there. The helper reused, if any.>')
+    expect(readSkill('forge-implement')).toContain("Run the spec's test command once: the failures must match the red list, same names, same reasons.")
+    // Lint still comes from the spec's Commands whenever there is a spec to name it.
+    expect(readSkill('forge-implement')).toContain("as the spec's Commands names it when there is one")
+  })
+
+  test('C4: with a ~/spec.md, forge-implement still refuses a run with nothing red — the Order stands in only when there is no spec', () => {
+    // The no-spec escape hatch is scoped: were it unconditional, a spec-driven run whose
+    // tests are all green but whose ~/plan.md survives would implement instead of stopping.
+    expect(section(readSkill('forge-implement'), 'When to Use')).toContain(
+      "**When NOT to use:** no red and no does-not-compile-yet tests — unless there is no `~/spec.md` and `~/plan.md`'s `Order` stands in for them",
+    )
+  })
+})

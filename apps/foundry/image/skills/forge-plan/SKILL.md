@@ -1,6 +1,6 @@
 ---
 name: forge-plan
-description: Plans the change for every criterion in ~/spec.md and reviews the plan as a sceptical stranger before anything is written, producing ~/plan.md with files, symbols, order and assumptions. Use when ~/spec.md has criteria and ~/plan.md does not exist.
+description: Plans the change for every criterion in ~/spec.md — or, with none, for the task text alone — and reviews the plan as a sceptical stranger before anything is written, producing ~/plan.md with files, symbols, order and assumptions. Use when ~/spec.md has criteria and ~/plan.md does not exist, or when the task has no ~/spec.md at all.
 ---
 
 # forge-plan — a plan for the spec, doubted before it is followed
@@ -12,18 +12,19 @@ Map each criterion to the code that satisfies it, in the order the dependencies 
 ## When to Use
 
 - `~/spec.md` exists with criteria and `~/plan.md` does not
+- no `~/spec.md` exists at all: plan from the task text directly, with no approved criterion to bind to
 
-**When NOT to use:** no `~/spec.md`; a change so small every criterion is met in one function — write that paragraph to `~/plan.md` and stop.
+**When NOT to use:** a change so small every criterion is met in one function — write that paragraph to `~/plan.md` and stop.
 
 ## Handoff
 
-Reads `~/spec.md` and the repo. Stops with no edits on a `## Blocked` section, repeating its reason. Writes exactly one file, `~/plan.md`. Never edits `/work`, and never enters plan mode: nobody approves.
+Reads `~/spec.md` when it exists, and the task text in its place when it does not, and the repo either way. Stops with no edits on a `## Blocked` section, repeating its reason. Writes exactly one file, `~/plan.md`. Never edits `/work`, and never enters plan mode: nobody approves.
 
 ## Step 1: Read the code each criterion touches
 
 When the task carries a Context section, a `` ### `path` `` block there is that file at the base commit — read before the checkout and trusted over any line number the task itself cites — and a path the section does not carry is read from the checkout as before.
 
-Open the place the spec names and read outward until the shape of the change is known: types crossed, callers affected, the test beside it, the convention the neighbours follow. Every line of the plan points at something read here. Collect on the way:
+Open the place the spec names — or, with no `~/spec.md`, the place the task text names or implies — and read outward until the shape of the change is known: types crossed, callers affected, the test beside it, the convention the neighbours follow. Every line of the plan points at something read here. Collect on the way:
 
 - The existing helper or component that already does most of it — new code beside a fit is the first thing Step 4 rejects
 - When a criterion touches UI — a component, a route's rendered output, a stylesheet or token file, a story — the lens at `~/.claude/skills/forge-ui/SKILL.md`: the repo's component inventory and design doc are what the plan builds with, and Assumptions carries its one line
@@ -42,7 +43,7 @@ C2 (filter survives reload)
   routes/jobs.tsx reads the filter from search params   ← depends on C1's select
 ```
 
-A criterion nothing read in Step 1 can satisfy as worded is not planned around: it goes under Assumptions with the closest change that can be made.
+A criterion nothing read in Step 1 can satisfy as worded is not planned around: it goes under Assumptions with the closest change that can be made. With no `~/spec.md`, there is one slice: the task as a whole, ordered by what Step 1's reading found to depend on what.
 
 ## Step 3: Write ~/plan.md
 
@@ -69,13 +70,15 @@ A criterion nothing read in Step 1 can satisfy as worded is not planned around: 
 - <the adjacent cleanup, the refactor — named so the implement step does not drift into it>
 ```
 
+With no `~/spec.md`, `Criteria → code` has one line — the task, as written, mapped to the same file-and-symbol shape — and `Commands` is copied from `~/baseline.md`'s install and test entries, typecheck the same way, and lint the repo's own script over the changed files: the derivation `~/spec.md` would otherwise have made.
+
 ## Step 4: Doubt it
 
-One pass as a reviewer who did not write it, looking for, in order: a claim with no reading behind it; a criterion met by mechanism only (the query changes, but is the route wired?); reuse missed; a repo convention broken; a slice that leaves the build red; anything the spec's Criteria and Out of scope do not require. Fix each finding in the plan; where the fix is a trade-off, record it under Assumptions. One pass only: a plan still producing findings on a second read is information about the spec, and the Finish says so.
+One pass as a reviewer who did not write it, looking for, in order: a claim with no reading behind it; a criterion met by mechanism only (the query changes, but is the route wired?); reuse missed; a repo convention broken; a slice that leaves the build red; anything the spec's Criteria and Out of scope do not require. Fix each finding in the plan; where the fix is a trade-off, record it under Assumptions. One pass only: a plan still producing findings on a second read is information about the spec, and the Finish says so. A plan built from the task text alone is doubted the same way; nothing here is skipped for it.
 
 ## Finish
 
-End with the `Change` paragraph, `Criteria → code` verbatim, and the Assumptions — including, when the task's Context lists one, a path under `### Missing at the base commit` or `### Not included`, named with its reason rather than searched for. Every sentence is a statement; nobody answers a question.
+End with the `Change` paragraph, `Criteria → code` verbatim, and the Assumptions — including, when the task's Context lists one, a path under `### Missing at the base commit` or `### Not included`, named with its reason rather than searched for, and, with no `~/spec.md`, a line stating that no approved criteria governed this run and the plan follows the task text alone. Every sentence is a statement; nobody answers a question.
 
 ## Common Rationalizations
 
