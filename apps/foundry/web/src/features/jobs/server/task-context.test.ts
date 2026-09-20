@@ -30,6 +30,9 @@ const FILES: Record<string, string | Buffer> = {
   'src/big/two.ts': `// two\n${'b'.repeat(30 * 1024)}\n`,
   'src/big/three.ts': `// three\n${'c'.repeat(30 * 1024)}\n`,
   'src/huge.ts': 'x'.repeat(CONTEXT_CAP + 1),
+  'scripts/build': '#!/usr/bin/env bash\necho build\n',
+  'apps/one/lib/dup.ts': 'export const one = 1\n',
+  'apps/two/lib/dup.ts': 'export const two = 2\n',
 }
 
 beforeAll(async () => {
@@ -89,6 +92,23 @@ describe('namedFiles', () => {
     ].join(' ')
     expect(namedFiles(task)).toEqual({ names: [], paths: [] })
   })
+
+  test('AC1: strips a comma-separated list of references and ranges, en dash and hyphen', () => {
+    const task = [
+      '`apps/argus/scripts/argus/blockers.ts:36,47,72,86-87`',
+      '`apps/argus/scripts/argus/pull.ts:65-73,88-98`',
+      '`z/w.sh:74–76,80`',
+    ].join(' ')
+    expect(namedFiles(task)).toEqual({
+      names: [],
+      paths: ['apps/argus/scripts/argus/blockers.ts', 'apps/argus/scripts/argus/pull.ts', 'z/w.sh'],
+    })
+  })
+
+  test('AC3: a time, a ratio and a bare id with a colon are not paths and add nothing', () => {
+    const task = '`10:30` `3:1` `node:20` `1:23:45`'
+    expect(namedFiles(task)).toEqual({ names: [], paths: [] })
+  })
 })
 
 describe('linkedIssueIds', () => {
@@ -116,9 +136,32 @@ describe('hydrateTask', () => {
     expect(out.log[0]).toEqual({ stream: 'sys', text: expect.stringContaining('0 issue(s), 0 spec(s), 0 arch doc(s) and 1 file(s) added') })
   })
 
+  test('AC1: a comma-separated list of references and ranges resolves the file whole, same as one reference', async () => {
+    const out = await hydrateTask(`Fix \`${MAPPER}:36,47,72,86-87\`.`, work, linear())
+    expect(out.task).toContain(`### \`${MAPPER}\`\n\`\`\`ts\n${FILES[MAPPER]}\`\`\``)
+    expect(out.task).not.toContain('Missing at the base commit')
+    expect(out.task).not.toContain('Not included')
+  })
+
   test('AC2: a named path absent at the base is listed as missing', async () => {
     const out = await hydrateTask('Start from `src/features/usage/lib/gone.ts:12`.', work, linear())
     expect(out.task).toContain('### Missing at the base commit\n- `src/features/usage/lib/gone.ts`')
+  })
+
+  test('AC2: an extensionless path resolves when tracked, and is listed as missing when not', async () => {
+    const out = await hydrateTask('Run `scripts/build` after editing `apps/argus/scripts/argus`.', work, linear())
+    expect(out.task).toContain('### `scripts/build`')
+    expect(out.task).toContain('### Missing at the base commit\n- `apps/argus/scripts/argus`')
+  })
+
+  test('AC2: a path matching several tracked files is listed under Not included, with the count', async () => {
+    const out = await hydrateTask('See `lib/dup.ts`.', work, linear())
+    expect(out.task).toContain('### Not included\n- `lib/dup.ts` — matches 2 files')
+  })
+
+  test('AC3: a version-shaped bare token is not carried, and adds nothing to the output', async () => {
+    const out = await hydrateTask('Bump to `v1.2.3` from `1.2.3`.', work, linear())
+    expect(out.task).toBe('Bump to `v1.2.3` from `1.2.3`.')
   })
 
   test('a partial path or bare name is taken when one tracked file matches, and an ambiguous bare name is dropped quietly', async () => {

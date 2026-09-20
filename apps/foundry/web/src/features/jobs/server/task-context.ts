@@ -39,10 +39,13 @@ export const ARG_BUDGET = 120 * 1024
 
 /** A backticked token with no whitespace in it: a path, a name, an id. */
 const BACKTICKED = /`([^`\s]+)`/g
-/** The line reference a ticket hangs on a path: `:78`, `:74–76`, `:74-76`. */
-const LINE_REF = /:\d+(?:[–-]\d+)?$/
+/**
+ * The line reference a ticket hangs on a path: `:78`, `:74–76`, `:74-76`,
+ * or a comma-separated list of either — `:36,47,72,86-87`.
+ */
+const LINE_REF = /:\d+(?:[–-]\d+)?(?:,\d+(?:[–-]\d+)?)*,?$/
 const DOT_SLASH = /^\.\//
-/** A file, not a directory or an image tag: it ends in an extension. */
+/** A bare name reads as a file, not a directory or an id, when it ends in an extension; also supplies a fence's language. */
 const EXTENSION = /\.([A-Za-z0-9]+)$/
 /** A glob, a placeholder or a template: a pattern, never one file. */
 const PATTERN = /[*?{}<>$|]/
@@ -84,17 +87,21 @@ const readIf = (p: string) => readFile(p, 'utf8').catch(() => null)
 const message = (e: unknown) => trim1(e instanceof Error ? e.message : String(e), 200)
 
 /**
- * Repo files a task names in backticks. `paths` carry a directory and are
- * listed as missing when nothing matches; `names` are bare file names, taken
- * only when exactly one tracked file has that name, and dropped quietly
- * otherwise, since a bare `index.ts` names nothing in particular.
+ * Repo files a task names in backticks, its line reference (if any) stripped.
+ * `paths` carry a slash and are reported whatever they resolve to — carried,
+ * listed as missing, or listed as ambiguous — since a path-shaped token is
+ * never dropped silently. `names` are bare file names, taken only when
+ * exactly one tracked file has that name, and dropped quietly otherwise,
+ * since a bare `index.ts` names nothing in particular.
  */
 export function namedFiles(task: string): { paths: Array<string>; names: Array<string> } {
   const paths = new Set<string>()
   const names = new Set<string>()
   for (const [, raw] of task.matchAll(BACKTICKED)) {
     const token = raw.replace(LINE_REF, '').replace(DOT_SLASH, '')
-    if (!EXTENSION.test(token) || PATTERN.test(token) || token.includes('://')) {
+    // A colon surviving the line-reference strip, or a trailing slash, means
+    // this was never a path: an image tag, a clock reading, a version, a dir.
+    if (PATTERN.test(token) || token.includes(':') || token.endsWith('/')) {
       continue
     }
     if (token.startsWith('/') || token.startsWith('~') || token.split('/').includes('..')) {
@@ -102,7 +109,7 @@ export function namedFiles(task: string): { paths: Array<string>; names: Array<s
     }
     if (token.includes('/')) {
       paths.add(token)
-    } else {
+    } else if (EXTENSION.test(token)) {
       names.add(token)
     }
   }
