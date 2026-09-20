@@ -32,7 +32,7 @@ import path from 'node:path'
 import { MissingCredentialError } from '@citadel/tickets'
 import type { Ticket } from '@citadel/tickets'
 import { z } from 'zod'
-import { DEFAULT_BLUEPRINT_ID, STEP_EFFORTS, STEP_MODELS, stepsSummary } from '@/features/blueprints/types'
+import { DEFAULT_BLUEPRINT_ID, QA_BLUEPRINT_ID, STEP_EFFORTS, STEP_MODELS, stepsSummary } from '@/features/blueprints/types'
 import { getBlueprintRow, listBlueprints } from '@/features/blueprints/server/blueprint-store'
 import { defaultBranchOf, trackedRepos } from '@/features/repos/server/repo-scan'
 import { tilde } from '@/features/repos/types'
@@ -49,6 +49,13 @@ export interface ApiDeps {
   token: () => Promise<string | undefined>
   tickets: HostTickets
   ignite: (jobId: string) => Promise<void>
+  /**
+   * Whether a blueprint row still exists — `getBlueprintRow`, or a stub. A
+   * seam for AC3 (CTD-283): the tests share the dev database, and deleting a
+   * seeded row there would take its revision history with it, so the
+   * "row is gone" cases fake this instead of the row.
+   */
+  blueprintExists?: (id: string) => Promise<boolean>
 }
 
 const realDeps = (): ApiDeps => ({
@@ -58,6 +65,7 @@ const realDeps = (): ApiDeps => ({
     const { startJob } = await import('./job-runner')
     return startJob(id)
   },
+  blueprintExists: async (id) => Boolean(await getBlueprintRow(id)),
 })
 
 /**
@@ -146,7 +154,7 @@ export const TriggerPayloadSchema = z
         "Default: the base of this repo's last job, else origin's default branch.",
       ),
       blueprintId: optionalString('blueprintId').describe(
-        'A blueprint id, or `"none"` for one bare step. Default: the seeded "Plan → Execute" (a bare job if that row is gone).',
+        'A blueprint id, or `"none"` for one bare step. Default: with a `ticketId`, the seeded "Spec → QA", falling back to "Plan → Execute" and then a bare job as each is missing; without one, the seeded "Plan → Execute" (a bare job if that row is gone).',
       ),
       ticketId: optionalString('ticketId', (s) => s.max(64, 'ticketId is too long')).describe(
         'A Linear issue identifier (`LIA-52`). Claims the ticket: the row is the claim (a second trigger for it is a `409` naming the holder, unless that holder was cancelled — a cancelled job releases the ticket), and once it exists the issue is assigned to the host key\'s user and moved to In Progress. Without `instructions`, the brief is composed from the issue.',
@@ -308,25 +316,40 @@ export async function resolveRepo(ref: string): Promise<{ id: string; path: stri
 }
 
 /**
+ * The blueprint a payload with no `blueprintId` resolves to (CTD-283, S-56):
+ * a ticket-driven job runs the seeded "Spec → QA", whose steps bind the
+ * ticket's acceptance criteria, rather than "Plan → Execute"'s bare prompts,
+ * which never read them. Each candidate that is missing degrades to the
+ * next rather than a 400, ending at no blueprint at all.
+ */
+async function defaultBlueprintId(ticketId: string | undefined, exists: (id: string) => Promise<boolean>): Promise<string | undefined> {
+  const candidates = ticketId ? [QA_BLUEPRINT_ID, DEFAULT_BLUEPRINT_ID] : [DEFAULT_BLUEPRINT_ID]
+  for (const id of candidates) {
+    if (await exists(id)) return id
+  }
+  return undefined
+}
+
+/**
  * The payload turned into what the store takes, defaults filled the way the
  * ignite dialog fills them — everything but `task`, which the handler fills
  * in after this: the instructions when the caller sent them, the composed
  * ticket brief otherwise. Resolving here first means an untracked repo or a
  * bad blueprint is a 400 before any Linear round trip.
  */
-async function toInput(p: TriggerPayload, idempotency?: NewJobInput['idempotency']): Promise<Omit<NewJobInput, 'task'>> {
+async function toInput(p: TriggerPayload, deps: ApiDeps, idempotency?: NewJobInput['idempotency']): Promise<Omit<NewJobInput, 'task'>> {
   const repo = await resolveRepo(p.repo)
 
   const baseBranch = p.baseBranch ?? (await store.lastBaseBranchByRepo()).get(repo.id) ?? (await defaultBranchOf(repo.path))
 
+  const exists = deps.blueprintExists ?? (async (id: string) => Boolean(await getBlueprintRow(id)))
   let blueprintId: string | undefined
   if (p.blueprintId === 'none') blueprintId = undefined
   else if (p.blueprintId) {
-    if (!(await getBlueprintRow(p.blueprintId))) throw new BadRequest(`blueprint ${p.blueprintId} does not exist`)
+    if (!(await exists(p.blueprintId))) throw new BadRequest(`blueprint ${p.blueprintId} does not exist`)
     blueprintId = p.blueprintId
   } else {
-    // A deleted default degrades to a bare job rather than a 400.
-    blueprintId = (await getBlueprintRow(DEFAULT_BLUEPRINT_ID)) ? DEFAULT_BLUEPRINT_ID : undefined
+    blueprintId = await defaultBlueprintId(p.ticketId, exists)
   }
 
   return {
@@ -386,7 +409,7 @@ export async function handleTriggerJob(request: Request, deps: ApiDeps = realDep
   let base: Omit<NewJobInput, 'task'>
   try {
     payload = parsePayload(body)
-    base = await toInput(payload, idempotency)
+    base = await toInput(payload, deps, idempotency)
   } catch (e) {
     if (e instanceof BadRequest) return json(400, { error: e.message })
     throw e

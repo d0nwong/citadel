@@ -412,7 +412,10 @@ A ticket becomes a job through the same `POST /api/jobs` above — send a `ticke
 and no `instructions` and foundry fetches the issue with the host's `LINEAR_API_KEY`,
 composes the brief from its body (key, title, URL, every section), claims the ticket
 in Linear by assigning it to you and moving it to In Progress, then ignites the
-pipeline the UI uses.
+pipeline the UI uses. A `ticketId` with no `blueprintId` runs the seeded "Spec → QA"
+rather than "Plan → Execute" — its steps bind the ticket's acceptance criteria, which
+a bare planning prompt never reads — falling back to "Plan → Execute" and then a bare
+job as either row is gone; naming a `blueprintId`, `"none"` included, still wins.
 
 **The deciding happens elsewhere.** Foundry never scans Linear and never judges
 whether a ticket is ready — it has no opinion about labels, status or assignee. A

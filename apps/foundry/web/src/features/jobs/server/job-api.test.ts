@@ -13,7 +13,7 @@ import { eq, like } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { dbAfterAll, dbBeforeAll, dbTest } from '@/db/test-db'
 import { jobs, repos } from '@/db/schema'
-import { DEFAULT_BLUEPRINT_ID } from '@/features/blueprints/types'
+import { DEFAULT_BLUEPRINT_ID, QA_BLUEPRINT_ID } from '@/features/blueprints/types'
 import { getBlueprintRow } from '@/features/blueprints/server/blueprint-store'
 import { deleteLogs } from './job-logs'
 import { handleGetJob, handleListBlueprints, handleListRepos, handleTriggerJob, IDEMPOTENCY_HEADER, IDEMPOTENCY_KEY_MAX, ticketBrief } from './job-api'
@@ -77,6 +77,16 @@ const noLinear: ApiDeps = {
   ...deps,
   tickets: { ...deps.tickets, get: async () => { throw new MissingCredentialError('LINEAR_API_KEY') } },
 }
+
+/**
+ * The same deps with the named blueprint ids treated as deleted — for
+ * CTD-283 AC3, without touching the shared dev database's seeded rows (and
+ * their revision history).
+ */
+const without = (...ids: Array<string>): ApiDeps => ({
+  ...deps,
+  blueprintExists: async (id) => (ids.includes(id) ? false : Boolean(await getBlueprintRow(id))),
+})
 
 const logsOf = async (id: string) =>
   ((await (await handleGetJob(id, get(id, '?logs=1'), deps)).json()) as { logs: Array<LogLine> }).logs
@@ -356,6 +366,47 @@ dbTest('LIA-92 AC6 — a claim that fails after the insert leaves the job queued
   } finally {
     claimFails = false
   }
+})
+
+/* ------------------------------------------------------------------ */
+/* CTD-283 — a ticket-driven job maps to Spec → QA                     */
+/* ------------------------------------------------------------------ */
+
+dbTest('CTD-283 AC1: ticketId and no blueprintId → the seeded "Spec → QA"', async () => {
+  const ticketId = `TEST-${rand}-283-1`
+  const res = await handleTriggerJob(post(valid({ ticketId })), deps)
+  expect(res.status).toBe(202)
+  const job = (await res.json()) as Job
+  const seeded = await getBlueprintRow(QA_BLUEPRINT_ID)
+  expect(job.blueprint?.id).toBe(QA_BLUEPRINT_ID)
+  expect(job.blueprint?.name).toBe(seeded?.name)
+})
+
+dbTest('CTD-283 AC2: instructions and no ticketId still default to "Plan → Execute"; an explicit blueprintId is unchanged either way', async () => {
+  // No ticketId — today's default, unchanged.
+  const plain = (await (await handleTriggerJob(post(valid()), deps)).json()) as Job
+  expect(plain.blueprint?.id).toBe(DEFAULT_BLUEPRINT_ID)
+
+  // A ticketId with an explicit blueprintId honours it, "none" included.
+  const ticketId = `TEST-${rand}-283-2`
+  const none = (await (await handleTriggerJob(post(valid({ ticketId, blueprintId: 'none' })), deps)).json()) as Job
+  expect(none.blueprint).toBeUndefined()
+
+  const ticketId2 = `TEST-${rand}-283-2b`
+  const explicit = (await (await handleTriggerJob(post(valid({ ticketId: ticketId2, blueprintId: DEFAULT_BLUEPRINT_ID })), deps)).json()) as Job
+  expect(explicit.blueprint?.id).toBe(DEFAULT_BLUEPRINT_ID)
+})
+
+dbTest('CTD-283 AC3: with "Spec → QA" gone, a ticket-driven job falls back to "Plan → Execute", and to a bare job when that is gone too', async () => {
+  const ticketId = `TEST-${rand}-283-3a`
+  const fallback = (await (await handleTriggerJob(post(valid({ ticketId })), without(QA_BLUEPRINT_ID))).json()) as Job
+  expect(fallback.blueprint?.id).toBe(DEFAULT_BLUEPRINT_ID)
+
+  const ticketId2 = `TEST-${rand}-283-3b`
+  const bareRes = await handleTriggerJob(post(valid({ ticketId: ticketId2 })), without(QA_BLUEPRINT_ID, DEFAULT_BLUEPRINT_ID))
+  expect(bareRes.status).toBe(202)
+  const bare = (await bareRes.json()) as Job
+  expect(bare.blueprint).toBeUndefined()
 })
 
 dbTest('AC1 — a replay with the same key and body answers 200 with the first job, ignited once', async () => {
