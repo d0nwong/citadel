@@ -1,10 +1,13 @@
 /**
- * The seeded skill blueprints — "Spec → QA" (migration 0013, v2 in 0019, v3 in 0020), "Bug → Fix"
- * (0014), "Simplify" (0016), "Fix failing check" (0018) and "Merge base into branch" (0022) — against the real database: each is there under its fixed id, its
- * steps are ones the editor would accept, its history starts with a `seed`
- * revision, and seeding them did not move the ignite default. Needs the local
- * Postgres from `just up postgres`, migrated (`just migrate`). Reads only;
- * nothing here to sweep.
+ * The seeded skill blueprints — "Plan → Execute" (migration 0007, its steps
+ * pointed at the forge's own skills by 0030 (CTD-285)), "Spec → QA" (migration
+ * 0013, v2 in 0019, v3 in 0020), "Bug → Fix" (0014), "Simplify" (0016), "Fix
+ * failing check" (0018) and "Merge base into branch" (0022) — against the
+ * real database: each is there under its fixed id, its steps are ones the
+ * editor would accept, its history starts with a `seed` revision, and
+ * seeding them did not move the ignite default. Needs the local Postgres
+ * from `just up postgres`, migrated (`just migrate`). Reads only; nothing
+ * here to sweep.
  */
 import { describe, expect } from 'bun:test'
 import { dbTest } from '@/db/test-db'
@@ -23,6 +26,7 @@ import { getBlueprintRow, listRevisions, validate } from './blueprint-store'
 const SLASH_SKILL = /^\/forge-[a-z]+\b/
 
 const SEEDED = [
+  { id: DEFAULT_BLUEPRINT_ID, name: 'Plan → Execute', steps: ['plan', 'implement'] },
   { id: QA_BLUEPRINT_ID, name: 'Spec → QA', steps: ['spec', 'build', 'verify'] },
   { id: BUG_BLUEPRINT_ID, name: 'Bug → Fix', steps: ['spec', 'debug', 'test', 'implement', 'verify'] },
   { id: SIMPLIFY_BLUEPRINT_ID, name: 'Simplify', steps: ['spec', 'simplify', 'verify'] },
@@ -67,6 +71,12 @@ describe.each(SEEDED)('the seeded "$name" blueprint', ({ id, name, steps }) => {
     expect(first?.source).toBe('seed')
     expect(revisions[0]?.version).toBe(row.version)
   })
+})
+
+dbTest('C1: "Plan → Execute" runs the forge\'s own skills instead of two inline prose prompts (CTD-285)', async () => {
+  const row = await getBlueprintRow(DEFAULT_BLUEPRINT_ID)
+  expect(row?.steps[0].prompt).toBe('/forge-plan {{task}}')
+  expect(row?.steps[1].prompt).toBe('/forge-implement the plan at ~/plan.md')
 })
 
 dbTest('the bug blueprint runs spec in bug mode, so the reproduction is the criterion', async () => {

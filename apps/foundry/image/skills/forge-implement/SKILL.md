@@ -1,6 +1,6 @@
 ---
 name: forge-implement
-description: Implements ~/plan.md — or, with none, ~/spec.md's criteria — one slice at a time until every red test is green, then runs the suite, typecheck and lint once each. Use when the tests for ~/spec.md's criteria are red.
+description: Implements ~/plan.md — or, with none, ~/spec.md's criteria, or with neither a spec nor a test, the plan's Order alone — one slice at a time until every red test is green, then runs the suite, typecheck and lint once each. Use when the tests for ~/spec.md's criteria are red, or ~/plan.md exists with no ~/spec.md behind it.
 ---
 
 # forge-implement — the plan, to green
@@ -12,16 +12,17 @@ The spec says what, the plan says where, the tests say when it is done. Write th
 ## When to Use
 
 - The tests for `~/spec.md`'s criteria are red; `~/plan.md`, when there is one, says where and in what order
+- `~/plan.md` exists with no `~/spec.md` behind it: there is no red list, so its `Order` alone says where to start
 
-**When NOT to use:** no `~/spec.md`; no red and no does-not-compile-yet tests (nothing to implement — say so and stop).
+**When NOT to use:** no red and no does-not-compile-yet tests — unless there is no `~/spec.md` and `~/plan.md`'s `Order` stands in for them (otherwise nothing to implement — say so and stop).
 
 ## Handoff
 
-Reads `~/plan.md` when there is one (`Change`, `Criteria → code`, `Order`, `Not doing`), `~/spec.md` (Commands, Assumptions) and the red list in the previous step's final message when this session has one. Stops with no edits on a `## Blocked` section. Writes production code; changes a test only under Step 3, never deletes, skips or weakens one.
+Reads `~/plan.md` when there is one (`Change`, `Criteria → code`, `Order`, `Not doing`), `~/spec.md` (Commands, Assumptions) when it exists, `~/baseline.md`'s commands in its place when it does not, and the red list in the previous step's final message when this session has one. Stops with no edits on a `## Blocked` section. Writes production code; changes a test only under Step 3, never deletes, skips or weakens one.
 
 ## Step 1: Start from the red list
 
-Run the spec's test command once: the failures must match the red list, same names, same reasons. A test red for another reason, or not on the list, is understood first and recorded in the Finish. Then follow the plan's `Order`; do not re-plan. With no plan, the criteria in order and the files their tests exercise stand in for it wherever this skill says "the plan".
+Run the spec's test command once: the failures must match the red list, same names, same reasons. A test red for another reason, or not on the list, is understood first and recorded in the Finish. Then follow the plan's `Order`; do not re-plan. With no plan, the criteria in order and the files their tests exercise stand in for it wherever this skill says "the plan". With no `~/spec.md` and so no red list, there is nothing to run first: the plan's `Order` alone says where to start and in what sequence, one slice at a time exactly as Step 2 describes.
 
 ## Step 2: One slice at a time
 
@@ -48,11 +49,11 @@ A red test goes green by changing the code, with one exception: it asserts somet
 
 ## Step 4: The whole suite, typecheck and lint, once each
 
-Run the three commands from `~/spec.md` once each and fix what they find; a command runs again only after a fix it forced. Whether a test or typecheck failure is pre-existing is under the spec's Assumptions, from `~/baseline.md`: read it, never stash and rerun. Lint runs over the changed files only, as the spec's Commands names it, so every line it reports is this run's to fix; no count against the base. A full-suite failure in a file the diff does not touch gets exactly one rerun: a rerun that passes makes it a flake, named in the Finish with both results so the next step carries it into the report, and the suite does not run a third time for it; a rerun that fails again is not a flake and is handled as any failure. A lint that auto-fixes runs when the repo's own scripts do. Then read `git diff` once as a reviewer: every changed file is one the plan named or a compile error forced; no debug line, no leftover fixture.
+Run the three commands — from `~/spec.md` when it exists, else `~/baseline.md`'s install and test entries and the repo's own lint script over the changed files — once each and fix what they find; a command runs again only after a fix it forced. Whether a test or typecheck failure is pre-existing comes from `~/baseline.md` — via the spec's Assumptions when there is a `~/spec.md`, read directly when there is not — never stash and rerun. Lint runs over the changed files only, as the spec's Commands names it when there is one, so every line it reports is this run's to fix; no count against the base. A full-suite failure in a file the diff does not touch gets exactly one rerun: a rerun that passes makes it a flake, named in the Finish with both results so the next step carries it into the report, and the suite does not run a third time for it; a rerun that fails again is not a flake and is handled as any failure. A lint that auto-fixes runs when the repo's own scripts do. Then read `git diff` once as a reviewer: every changed file is one the plan named or a compile error forced; no debug line, no leftover fixture.
 
 ## Finish
 
-End with the criteria implemented by slice; the three commands and results, one line each; every deviation and every test changed under Step 3, with the reason; `Noticed, not touched`; anything left red; and, when the task's Context lists one, a path under `### Missing at the base commit` or `### Not included`, named with its reason rather than searched for. Every sentence is a statement; nobody answers a question.
+End with the criteria implemented by slice — or, with no `~/spec.md`, the plan's `Order` implemented step by step and a line stating that no approved criteria governed this run; the three commands and results, one line each; every deviation and every test changed under Step 3, with the reason; `Noticed, not touched`; anything left red; and, when the task's Context lists one, a path under `### Missing at the base commit` or `### Not included`, named with its reason rather than searched for. Every sentence is a statement; nobody answers a question.
 
 ## Common Rationalizations
 

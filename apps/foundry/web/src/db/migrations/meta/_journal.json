@@ -211,6 +211,13 @@
       "when": 1789906456152,
       "tag": "0029_spec_step_opus_high",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789906456200,
+      "tag": "0030_plan_execute_skills",
+      "breakpoints": true
     }
   ]
 }
