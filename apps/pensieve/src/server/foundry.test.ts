@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { NO_BLUEPRINT } from "#/lib/send";
 
 // The token is read fresh per call and the URL at module load; both are pinned before the
 // import so this machine's own .env plays no part.
@@ -88,10 +89,9 @@ describe("AC3 — one POST /api/jobs with ticketId, repo, no instructions, Idemp
     expect(seen).toHaveLength(1);
     expect(seen[0].url).toBe("http://foundry.test/api/jobs");
     expect(seen[0].init.method).toBe("POST");
+    // C1 (CTD-284, S-25): no blueprint was chosen, so the key is omitted rather than
+    // carrying "none" — Foundry maps the omission to its own default for a ticket.
     expect(JSON.parse(String(seen[0].init.body))).toEqual({
-      // "none" runs the ticket as a plain job; omitting it would resolve Foundry's
-      // default blueprint instead, so the literal is part of the contract.
-      blueprintId: "none",
       repo: "alden-portal-fe",
       ticketId: "LIA-86",
     });
@@ -257,7 +257,7 @@ describe("LIA-120 — GET /api/repos, the set Send offers", () => {
 });
 
 describe("the blueprint a send picks", () => {
-  test("a chosen blueprint travels as `blueprintId`, in the same key order", async () => {
+  test("C2/C3 (CTD-284, S-25): a chosen blueprint travels as `blueprintId`, in the same key order", async () => {
     const seen: Seen[] = [];
     await createJob(
       {
@@ -273,14 +273,46 @@ describe("the blueprint a send picks", () => {
     );
   });
 
-  test("no blueprint chosen is still `none` on the wire, never an omitted key", async () => {
+  test("C2 (CTD-284, S-25): picking \"none\" still sends `blueprintId: \"none\"`, never dropped", async () => {
     const seen: Seen[] = [];
     await createJob(
-      { idempotencyKey: "send/ctd-250", repo: "citadel", ticketId: "CTD-250" },
+      {
+        blueprintId: NO_BLUEPRINT,
+        idempotencyKey: "send/ctd-250",
+        repo: "citadel",
+        ticketId: "CTD-250",
+      },
       fake(202, job, seen)
     );
     expect(JSON.parse(String(seen[0].init.body)).blueprintId).toBe("none");
   });
+
+  // Both the unset cases: the key absent, and the empty string the Send form and
+  // `sendReady`'s validator actually produce when nobody picked. Either must leave the key
+  // off the wire — an empty `blueprintId` would change the bytes Foundry fingerprints.
+  test.each([
+    ["the key absent", undefined],
+    ["the empty string the form sends", ""],
+  ])(
+    "C1/C3 (CTD-284, S-25): no blueprint chosen omits the key — %s",
+    async (_case, blueprintId) => {
+      const seen: Seen[] = [];
+      await createJob(
+        {
+          blueprintId,
+          idempotencyKey: "send/ctd-250",
+          repo: "citadel",
+          ticketId: "CTD-250",
+        },
+        fake(202, job, seen)
+      );
+      const parsed = JSON.parse(String(seen[0].init.body));
+      expect(Object.hasOwn(parsed, "blueprintId")).toBe(false);
+      expect(String(seen[0].init.body)).toBe(
+        '{"repo":"citadel","ticketId":"CTD-250"}'
+      );
+    }
+  );
 
   test("the list is asked for at /api/blueprints, and a row missing an id is dropped", async () => {
     const seen: Seen[] = [];

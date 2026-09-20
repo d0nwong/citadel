@@ -41,7 +41,7 @@ import {
   sendReady,
 } from "#/lib/api";
 import type { Unplaced } from "#/lib/ledger";
-import { NO_BLUEPRINT, pickRepo } from "#/lib/send";
+import { pickRepo } from "#/lib/send";
 import type { FoundryBlueprint, FoundryRepo } from "#/server/foundry";
 import type { HomeAsk, HomeFiledTicket, HomeTicket } from "#/server/ledger";
 import { FeatureName, Status } from "./bits";
@@ -323,7 +323,9 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
   // tracks now, so a repo it has since dropped opens the field empty rather than preloaded
   // with a send it would refuse.
   const [repo, setRepo] = useState(() => pickRepo(send.repos, row.repo));
-  const [blueprintId, setBlueprintId] = useState(NO_BLUEPRINT);
+  // No blueprint chosen: the default (CTD-284) is an empty choice, not `NO_BLUEPRINT`, so
+  // `blueprintId` is omitted from the body and Foundry maps the ticket to its own default.
+  const [blueprintId, setBlueprintId] = useState("");
   const { busy, commit, error } = useCommit<SendReadyResult>();
   const [job, setJob] = useState<{ id: string; url: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);

@@ -18,8 +18,6 @@
  * load so a value set after this module was pulled in still counts.
  */
 
-import { NO_BLUEPRINT } from "#/lib/send";
-
 export const FOUNDRY_URL = (
   process.env.FOUNDRY_URL || "http://localhost:3777"
 ).replace(/\/+$/, "");
@@ -174,14 +172,12 @@ export async function createJob(
   // Key order and spacing are fixed here on purpose: Foundry fingerprints the raw bytes,
   // so the same point must always serialise to the same body for a replay to match.
   //
-  // `blueprintId` is always sent, never omitted: Foundry reads `"none"` as "no blueprint"
-  // — a plain job, one agent step on the forge's default model — while omitting the key
-  // resolves DEFAULT_BLUEPRINT_ID instead. `"none"` is the default the form offers, since a
-  // ticket filed from here already carries its plan in its Technical Notes and a planning
-  // step re-derives what the body states; anything else is a blueprint the sender picked
-  // from `GET /api/blueprints`.
+  // `blueprintId` travels only when a person picked one — `"none"` included, since that is
+  // its own explicit choice from `GET /api/blueprints`. Nobody picking one omits the key
+  // entirely (CTD-284): Foundry then maps a ticket-driven job to its own default, the
+  // seeded "Spec → QA", rather than the plain single-step job `"none"` runs.
   const body = JSON.stringify({
-    blueprintId: input.blueprintId || NO_BLUEPRINT,
+    ...(input.blueprintId ? { blueprintId: input.blueprintId } : {}),
     repo: input.repo,
     ticketId: input.ticketId,
   });
