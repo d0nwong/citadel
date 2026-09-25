@@ -153,6 +153,8 @@ export interface Unplaced {
   candidates: string[];
   id: string;
   kind: "message" | "landing";
+  /** Jev's guess at where this belongs; unset until that writer lands (CTD-290) */
+  suggestion?: { feature: string | null; confidence: number; model: string };
   text: string;
   thread?: string;
   url: string;

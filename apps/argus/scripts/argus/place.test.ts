@@ -164,6 +164,30 @@ describe("place (on disk)", () => {
     expect(again).toEqual(placed);
     expect((await readUnplaced()).map((u) => u.id)).toEqual(["1"]);
   });
+  test("C4: an existing unplaced entry's suggestion survives a placing that does not touch it", async () => {
+    await writeUnplaced([
+      {
+        id: "0.9",
+        kind: "message",
+        by: "x",
+        at: "2026-09-10",
+        text: "old root",
+        url: "u",
+        candidates: [],
+        batch: "old",
+        suggestion: { feature: "tasks", confidence: 0.7, model: "jev-v1" },
+      },
+    ]);
+    const b = flat([msg("1", "hello", "1")]);
+    const path = join(ws, "state/batches", `${b.id}.json`);
+    await Bun.write(path, JSON.stringify(b));
+    await place(b.id, { now: NOW, deployed: waiting });
+    expect((await readUnplaced()).find((u) => u.id === "0.9")?.suggestion).toEqual({
+      feature: "tasks",
+      confidence: 0.7,
+      model: "jev-v1",
+    });
+  });
   test("a slice's landings go onto the ledger, once", async () => {
     const b = flat([], [landing("fe", 431, ["admin/invoicing"])]);
     const path = join(ws, "state/batches", `${b.id}.json`);

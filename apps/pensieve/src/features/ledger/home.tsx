@@ -415,6 +415,38 @@ function TicketRow({ row, send }: { row: HomeTicket; send: SendOptions }) {
   );
 }
 
+/**
+ * The picker's starting feature: the suggestion's own feature when it names one, else
+ * empty — a "nothing" suggestion or no suggestion at all leaves the picker for the reader
+ * to fill (board S-26, S-27, S-28).
+ */
+export function suggestedDir(item: Unplaced): string {
+  return item.suggestion?.feature ?? "";
+}
+
+/**
+ * The picker's options: the candidates and the ledger's own features, plus the suggested
+ * feature itself — which can miss both when it had no ledger and was not active in its
+ * batch (place.ts, S-9/S-10).
+ */
+export function suggestedOptions(item: Unplaced, features: string[]): string[] {
+  const suggested = item.suggestion?.feature;
+  return [
+    ...new Set([...item.candidates, ...features, ...(suggested ? [suggested] : [])]),
+  ];
+}
+
+/** the suggestion line's own words: the feature or "nothing", and the confidence as a whole percentage */
+export function suggestionLine(
+  item: Unplaced
+): { label: string; pct: number } | null {
+  if (!item.suggestion) {
+    return null;
+  }
+  const { confidence, feature } = item.suggestion;
+  return { label: feature ?? "nothing", pct: Math.round(100 * confidence) };
+}
+
 function UnplacedRow({
   item,
   features,
@@ -422,12 +454,13 @@ function UnplacedRow({
   item: Unplaced;
   features: string[];
 }) {
-  const [dir, setDir] = useState("");
+  const [dir, setDir] = useState(() => suggestedDir(item));
   const { busy, commit, error } = useCommit<PlaceWrite>();
   const nothing = useCommit<DismissWrite>();
   const place = () =>
     commit(() => placeUnplaced({ data: { dir, id: item.id } }));
-  const options = [...new Set([...item.candidates, ...features])];
+  const options = suggestedOptions(item, features);
+  const suggestion = suggestionLine(item);
   return (
     <li className="border-border border-b py-3 last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-muted-foreground text-xs">
@@ -435,6 +468,11 @@ function UnplacedRow({
         <span>
           {item.by}, {item.at}
         </span>
+        {suggestion && (
+          <span>
+            suggested {suggestion.label}, {suggestion.pct}%
+          </span>
+        )}
         {item.thread && <span>reply in a thread</span>}
         {item.url && (
           <a
