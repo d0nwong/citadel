@@ -5,6 +5,14 @@
  * list; the reader runs `skills/sweep/reader.md` on Opus per feature slice and writes
  * through `writeLedger` (actor model), retrying once with the validator's problems. Every
  * call's tokens and cost are recorded.
+ *
+ * Task 289 adds `opts.readers = false` (AC1, S-22): the reader loop is skipped, so ledgers
+ * stay at the state they were seeded with and never feed a later day's attribution prompt —
+ * attribution itself (`attribute`) is unchanged. `opts.suggest` (AC2, S-23) asks Jev's Choice
+ * once per thread that still has an unplaced message after attribution, the thread being the
+ * one `place.ts` decided so huddle notes stand on their own; a thread's latest answer
+ * overwrites its earlier one, so a thread that gains a message on a later day is asked again
+ * and rescored with the new answer for every message it ever held.
  */
 
 import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
@@ -14,13 +22,15 @@ import type { Batch, Slice } from "../scripts/argus/batch.ts";
 import { applyPatch, parsePatch } from "../scripts/argus/patch.ts";
 import { featureDirOf, loadManifest } from "../scripts/argus/manifest.ts";
 import { placeBatch } from "../scripts/argus/place.ts";
-import { archExcerpt, attributePrompt, ledgerForReader, readerPrompt, renderMessages, renderSlice } from "../scripts/argus/reader.ts";
+import { archExcerpt, attributePrompt, featureOptions, ledgerForReader, readerPrompt, renderMessages, renderSlice } from "../scripts/argus/reader.ts";
 export { archExcerpt, ledgerForReader, renderMessages, renderSlice };
 import { DEFAULT_APP, listFeatures, ledgerPath, root } from "../scripts/argus/paths.ts";
 import type { Ledger } from "../scripts/argus/schema.ts";
 import { flatten, type Msg } from "../scripts/argus/slack-pull.ts";
 import type { ThreadMap, Unplaced } from "../scripts/argus/state.ts";
 import { SchemaError } from "../scripts/argus/schema.ts";
+import { type ChoiceOption, suggestFeature, type SuggestResult } from "../scripts/argus/suggest.ts";
+export type { SuggestResult } from "../scripts/argus/suggest.ts";
 import { ValidationError } from "../scripts/argus/validate.ts";
 import { readLedger, writeLedger } from "../scripts/argus/write.ts";
 
@@ -80,12 +90,12 @@ export function splitByDay(b: Batch): Batch[] {
 // ---------------------------------------------------------------- the two steps
 
 
-export async function attribute(unplaced: Unplaced[], features: string[], day: string, calls: Call[], allMessages: Msg[]): Promise<Record<string, string[]>> {
+export async function attribute(unplaced: Unplaced[], features: string[], day: string, calls: Call[], allMessages: Msg[], askFn: typeof ask = ask): Promise<Record<string, string[]>> {
   if (!unplaced.length) return {};
   const batch: Batch = { id: day, pulled_at: `${day}T00:00:00Z`, since: { slack: null, fe: null, be: null }, slack: { since: "0", now: "", newTopLevel: allMessages, threads: [], noiseDropped: 0, expiredThreads: [], next: { last_ts: "0", watched_threads: {} } }, landings: [] };
   const prompt = await attributePrompt(unplaced, features.map((feature) => ({ app: DEFAULT_APP, feature })), batch);
   try {
-    const r = await ask(ATTRIBUTE_MODEL, prompt, { label: `attribute ${day}` });
+    const r = await askFn(ATTRIBUTE_MODEL, prompt, { label: `attribute ${day}` });
     const j = extractJson(r.text) as Record<string, { feature: string | string[] | null }>;
     calls.push({ step: "attribute", day, model: ATTRIBUTE_MODEL, input: r.input, output: r.output, cost: r.cost, seconds: r.seconds, ok: true });
     const out: Record<string, string[]> = {};
@@ -105,7 +115,7 @@ export async function attribute(unplaced: Unplaced[], features: string[], day: s
 
 export const RAW_DIR = join(REPO, "evals/last-run");
 
-export async function read(feature: string, slice: Slice, day: string, calls: Call[]): Promise<{ ok: boolean; diff: string[]; note?: string; notes?: string[] }> {
+export async function read(feature: string, slice: Slice, day: string, calls: Call[], askFn: typeof ask = ask): Promise<{ ok: boolean; diff: string[]; note?: string; notes?: string[] }> {
   const before = await readLedger(feature);
   if (!before) return { ok: false, diff: [], note: "no ledger" };
   // code knows the landings; put them on the ledger first, the model only links them
@@ -118,7 +128,7 @@ export async function read(feature: string, slice: Slice, day: string, calls: Ca
   for (let attempt = 0; attempt < 2; attempt++) {
     let r;
     try {
-      r = await ask(READER_MODEL, prompt, { label: `read ${feature} ${day}` });
+      r = await askFn(READER_MODEL, prompt, { label: `read ${feature} ${day}` });
     } catch (e) {
       calls.push({ step: "read", feature, day, model: READER_MODEL, input: 0, output: 0, cost: 0, seconds: 0, ok: false, note: String((e as Error).message).slice(0, 200) });
       return { ok: false, diff: [], note: (e as Error).message };
@@ -141,6 +151,49 @@ export async function read(feature: string, slice: Slice, day: string, calls: Ca
   return { ok: false, diff: [] };
 }
 
+export type SuggestCall = { thread: string; day: string; model: string; ok: boolean; note?: string };
+
+/**
+ * One Choice question per thread that still has an unplaced message today (AC2, S-23), the
+ * thread being the one `place.ts` decided: an unplaced entry's own `thread`, else its id.
+ * That is what makes huddle notes their own thread rather than a reply under Slackbot's
+ * "huddle started" message, and it is the key the scorer joins on, so both sides agree.
+ * A thread whose call fails is logged and left out of the answers — the caller keeps
+ * whatever it already had for that thread, as a later day's success would replace it.
+ */
+export async function suggestDay(
+  stillUnplaced: Unplaced[],
+  allMessages: Msg[],
+  featureList: { app: string; feature: string }[],
+  day: string,
+  calls: SuggestCall[],
+  suggestFn: typeof suggestFeature = suggestFeature,
+  opts: { fetch?: typeof fetch; apiKey?: string | null } = {},
+): Promise<Map<string, SuggestResult>> {
+  const out = new Map<string, SuggestResult>();
+  const messages = stillUnplaced.filter((u) => u.kind === "message");
+  if (!messages.length) return out;
+  const options: ChoiceOption[] = await featureOptions(featureList);
+  const byId = new Map(allMessages.map((m) => [m.ts, m]));
+  const groups = new Map<string, Msg[]>();
+  for (const u of messages) {
+    const m = byId.get(u.id);
+    if (!m) continue;
+    const thread = u.thread ?? u.id;
+    groups.set(thread, [...(groups.get(thread) ?? []), m]);
+  }
+  for (const [thread, msgs] of groups) {
+    try {
+      const r = await suggestFn(renderMessages(msgs), options, opts);
+      out.set(thread, r);
+      calls.push({ thread, day, model: r.model, ok: true });
+    } catch (e) {
+      calls.push({ thread, day, model: "", ok: false, note: String((e as Error).message).slice(0, 200) });
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- the run
 
 export type ModelRun = {
@@ -150,9 +203,28 @@ export type ModelRun = {
   calls: Call[];
   ledgers: Record<string, Ledger>;
   workspace: string;
+  /** every message id attribution still leaves unplaced → its thread root; filled only when `opts.suggest` runs */
+  declinedThread: Map<string, string>;
+  /** thread root → Jev's latest answer for it; filled only when `opts.suggest` runs */
+  suggestions: Map<string, SuggestResult>;
+  suggestCalls: SuggestCall[];
 };
 
-export async function runModel(batches: Batch[], opts: { features: string[]; days?: number; keep?: boolean; log?: (s: string) => void }): Promise<ModelRun> {
+export async function runModel(
+  batches: Batch[],
+  opts: {
+    features: string[];
+    days?: number;
+    keep?: boolean;
+    log?: (s: string) => void;
+    /** claude -p, injectable so a test never shells out for real */
+    ask?: typeof ask;
+    /** run the reader after attribution; false leaves ledgers at their seeded state (AC1, S-22) */
+    readers?: boolean;
+    /** score Jev's Choice against the messages attribution leaves unplaced */
+    suggest?: { fetch?: typeof fetch; apiKey?: string | null; suggestFn?: typeof suggestFeature };
+  },
+): Promise<ModelRun> {
   const log = opts.log ?? (() => {});
   const ws = mkdtempSync(join(tmpdir(), "argus-replay-"));
   for (const f of await listFeatures()) {
@@ -169,11 +241,16 @@ export async function runModel(batches: Batch[], opts: { features: string[]; day
   const prevRoot = process.env.ARGUS_ROOT;
   process.env.ARGUS_ROOT = ws;
   try {
+    const askFn = opts.ask ?? ask;
+    const readers = opts.readers ?? true;
     const features = await listFeatures();
     const calls: Call[] = [];
     const got = new Map<string, string[]>();
     const add = (id: string, f: string) => got.set(id, [...new Set([...(got.get(id) ?? []), f])]);
     let threads: ThreadMap = {};
+    const declinedThread = new Map<string, string>();
+    const suggestions = new Map<string, SuggestResult>();
+    const suggestCalls: SuggestCall[] = [];
     const days = batches.flatMap(splitByDay).slice(0, opts.days ?? Infinity);
     for (const b of days) {
       const day = b.id.slice(-10);
@@ -185,7 +262,7 @@ export async function runModel(batches: Batch[], opts: { features: string[]; day
       const p = placeBatch(b, ledgers, threads, features, new Date(b.pulled_at));
       threads = { ...threads, ...p.threads };
       const all = b.slack ? flatten(b.slack) : [];
-      const chosen = await attribute(p.unplaced, features, day, calls, all);
+      const chosen = await attribute(p.unplaced, features, day, calls, all, askFn);
       // apply the model's placements: message → slice(s), thread → learned (first feature); a second feature also sees it
       const also: Record<string, string> = {};
       const put = (f: string, m: Msg) => {
@@ -215,11 +292,21 @@ export async function runModel(batches: Batch[], opts: { features: string[]; day
         for (const l of s.landings) add(l.ref, s.feature);
       }
       log(`${day}: ${all.length} msgs, ${b.landings.length} landings; ${p.unplaced.length} unplaced → ${Object.values(chosen).filter((f) => f.length).length} placed by the model`);
-      for (const f of opts.features) {
-        const s = p.slices.get(f);
-        if (!s || (!s.messages.length && !s.landings.length)) continue;
-        const r = await read(f, s, day, calls);
-        log(`  read ${f}: ${r.ok ? r.diff.join(" · ") || "unchanged" : `FAILED ${r.note?.split("\n")[0]}`}${r.notes?.length ? `\n    notes: ${r.notes.join(" | ")}` : ""}`);
+      // AC2 (S-23): suggest runs after attribute, over whatever it still leaves unplaced today
+      if (opts.suggest) {
+        const stillUnplaced = p.unplaced.filter((u) => u.kind === "message" && !got.has(u.id));
+        for (const u of stillUnplaced) declinedThread.set(u.id, u.thread ?? u.id);
+        const answers = await suggestDay(stillUnplaced, all, features.map((feature) => ({ app: DEFAULT_APP, feature })), day, suggestCalls, opts.suggest.suggestFn, opts.suggest);
+        for (const [thread, r] of answers) suggestions.set(thread, r); // a later day's answer overwrites an earlier one
+      }
+      // AC1 (S-22): with readers off, ledgers stay at their seeded state for every day's attribution prompt
+      if (readers) {
+        for (const f of opts.features) {
+          const s = p.slices.get(f);
+          if (!s || (!s.messages.length && !s.landings.length)) continue;
+          const r = await read(f, s, day, calls, askFn);
+          log(`  read ${f}: ${r.ok ? r.diff.join(" · ") || "unchanged" : `FAILED ${r.note?.split("\n")[0]}`}${r.notes?.length ? `\n    notes: ${r.notes.join(" | ")}` : ""}`);
+        }
       }
     }
     const ledgers: Record<string, Ledger> = {};
@@ -227,7 +314,7 @@ export async function runModel(batches: Batch[], opts: { features: string[]; day
       const l = await readLedger(f);
       if (l) ledgers[f] = l;
     }
-    return { got, calls, ledgers, workspace: ws, days: days.map((b) => b.id.slice(-10)) };
+    return { got, calls, ledgers, workspace: ws, days: days.map((b) => b.id.slice(-10)), declinedThread, suggestions, suggestCalls };
   } finally {
     if (prevRoot === undefined) delete process.env.ARGUS_ROOT;
     else process.env.ARGUS_ROOT = prevRoot;

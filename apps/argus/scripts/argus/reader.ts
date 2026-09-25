@@ -75,30 +75,46 @@ export function ledgerForReader(l: Ledger): string {
   });
 }
 
-/** one line per feature: name, routes, a few aliases, the ledger's summary and open asks */
-export async function featureSummaries(features: { app: string; feature: string }[]): Promise<string> {
+/** a cache of one app's manifest, loaded at most once per call site */
+function manifestCache(): (app: string) => Promise<Manifest | null> {
   const manifests = new Map<string, Manifest | null>();
-  const manifestFor = async (app: string) => {
+  return async (app: string) => {
     if (!manifests.has(app)) manifests.set(app, await loadManifest(app).catch(() => null));
     return manifests.get(app)!;
   };
+}
+
+/** one feature's summary: name, routes, a few aliases, the ledger's summary and open asks — no leading bullet */
+async function summaryLine(app: string, feature: string, manifestFor: (app: string) => Promise<Manifest | null>): Promise<string> {
+  const manifest = await manifestFor(app);
+  const byDir = new Map(manifest?.features.map((mf) => [featureDirOf(mf), mf]) ?? []);
+  const m = byDir.get(feature);
+  const l = await readLedger(feature, app);
+  const head = [
+    m?.name,
+    m?.entry_routes.length ? `routes ${m.entry_routes.slice(0, 3).join(" ")}` : "",
+    m?.aliases.length ? `also called: ${m.aliases.slice(0, 8).join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+  const asks = (l?.asks ?? []).filter((a) => a.status !== "closed" && a.status !== "dropped").map((a) => `    - open: ${a.text}`);
+  return `${feature}${head ? ` - ${head}` : ""}${l?.summary ? `\n    ${l.summary}` : ""}${asks.length ? `\n${asks.join("\n")}` : ""}`;
+}
+
+/** one line per feature: name, routes, a few aliases, the ledger's summary and open asks */
+export async function featureSummaries(features: { app: string; feature: string }[]): Promise<string> {
+  const manifestFor = manifestCache();
   const out: string[] = [];
-  for (const { app, feature: f } of features) {
-    const manifest = await manifestFor(app);
-    const byDir = new Map(manifest?.features.map((mf) => [featureDirOf(mf), mf]) ?? []);
-    const m = byDir.get(f);
-    const l = await readLedger(f, app);
-    const head = [
-      m?.name,
-      m?.entry_routes.length ? `routes ${m.entry_routes.slice(0, 3).join(" ")}` : "",
-      m?.aliases.length ? `also called: ${m.aliases.slice(0, 8).join(", ")}` : "",
-    ]
-      .filter(Boolean)
-      .join("; ");
-    const asks = (l?.asks ?? []).filter((a) => a.status !== "closed" && a.status !== "dropped").map((a) => `    - open: ${a.text}`);
-    out.push(`- ${f}${head ? ` - ${head}` : ""}${l?.summary ? `\n    ${l.summary}` : ""}${asks.length ? `\n${asks.join("\n")}` : ""}`);
-  }
+  for (const { app, feature } of features) out.push(`- ${await summaryLine(app, feature, manifestFor)}`);
   return out.join("\n");
+}
+
+/** the same per-feature summaries, structured as a suggestion Choice's options (AC2, CTD-289) */
+export async function featureOptions(features: { app: string; feature: string }[]): Promise<{ feature: string; description: string }[]> {
+  const manifestFor = manifestCache();
+  const out: { feature: string; description: string }[] = [];
+  for (const { app, feature } of features) out.push({ feature, description: await summaryLine(app, feature, manifestFor) });
+  return out;
 }
 
 /**
