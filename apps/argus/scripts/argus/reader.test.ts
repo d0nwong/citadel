@@ -11,7 +11,7 @@ import type { Slice } from "./batch.ts";
 import type { Check } from "./deploy.ts";
 import { manifestPath } from "./paths.ts";
 import type { Landing } from "./pr-facts.ts";
-import { attributePrompt, deploysFor, featureSummaries, renderSlice } from "./reader.ts";
+import { attributePrompt, deploysFor, featureOptions, featureSummaries, renderSlice } from "./reader.ts";
 import type { Unplaced } from "./state.ts";
 
 const landing = (n: number, sha: string): Landing => ({
@@ -88,6 +88,18 @@ describe("featureSummaries (CTD-271, ledger S-27)", () => {
     writeFileSync(join(ws, "argus/features/sweep/ledger.json"), JSON.stringify(emptyLedger("sweep", "no manifest here")));
     const out = await featureSummaries([{ app: "argus", feature: "sweep" }]);
     expect(out).toBe("- sweep\n    no manifest here");
+  });
+
+  test("C2: featureOptions carries the same per-feature summary as featureSummaries, structured for a Choice option", async () => {
+    mkdirSync(join(ws, "alden/alden-portal/.doc-workspace"), { recursive: true });
+    writeFileSync(manifestPath(), JSON.stringify({ app: "alden-portal", fe_repo: "~/x", features: [{ id: "tasks", name: "Tasks", type: "feature", entry_routes: ["/tasks"], core_files: [], aliases: [] }] }));
+    mkdirSync(join(ws, "alden/alden-portal/features/tasks"), { recursive: true });
+    writeFileSync(join(ws, "alden/alden-portal/features/tasks/ledger.json"), JSON.stringify(emptyLedger("tasks", "alden's own summary")));
+
+    const options = await featureOptions([{ app: "alden/alden-portal", feature: "tasks" }]);
+    expect(options).toEqual([{ feature: "tasks", description: "tasks - Tasks; routes /tasks\n    alden's own summary" }]);
+    const summaries = await featureSummaries([{ app: "alden/alden-portal", feature: "tasks" }]);
+    expect(summaries).toBe(`- ${options[0]!.description}`);
   });
 });
 
