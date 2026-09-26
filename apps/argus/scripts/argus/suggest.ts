@@ -16,8 +16,35 @@ export const JEV_API_URL = "https://api.typesafe.ai/v1/systemone";
 /** the version asked for; `SuggestResult.model` is the version that actually answered */
 export const JEV_MODEL = "jev-1.13.0";
 export const NOTHING = "nothing";
-export const NOTHING_DESCRIPTION = "chat, thanks, logistics or tooling";
+export const NOTHING_DESCRIPTION = "chat, thanks, logistics or tooling that is not part of a conversation about one of the features";
+export const QUESTION_ID = "feature";
 export const QUESTION = "Which feature does this thread belong to, or nothing if it is chat, thanks, logistics or tooling?";
+/**
+ * With the channel's earlier messages in the state: a short reply posted straight into the
+ * channel ("haha, ok", "thank you sir") belongs to the conversation it answers, which the
+ * thread alone cannot show. Jev reads questions literally, so the rule is spelled out.
+ */
+export const QUESTION_WITH_CONTEXT =
+  "Which feature is `thread` about? When `thread` alone does not name one, it belongs to the feature that `earlier_messages` were discussing just before it, if they were; nothing if it is chat, thanks, logistics or tooling outside any feature conversation.";
+/** how much of the channel before a thread Jev sees: at most this many messages, from at most this long before */
+export const CONTEXT_MESSAGES = 8;
+export const CONTEXT_WINDOW_MS = 3 * 60 * 60 * 1000;
+
+/** what Jev evaluates: the thread alone, or the thread and the channel just before it */
+export type SuggestState = string | { earlier_messages: string; thread: string };
+
+/**
+ * The channel's messages just before `first`: same channel, other threads, within the
+ * window, newest `CONTEXT_MESSAGES`, oldest first. Replies inside other threads are left
+ * out; only what was said in the channel itself sets the conversation.
+ */
+export function earlierMessages<M extends { ts: string; channel: string; thread: string }>(first: M, history: M[]): M[] {
+  const at = Number(first.ts) * 1000;
+  return history
+    .filter((m) => m.channel === first.channel && m.thread === m.ts && m.thread !== first.thread && Number(m.ts) < Number(first.ts) && at - Number(m.ts) * 1000 <= CONTEXT_WINDOW_MS)
+    .sort((a, b) => Number(a.ts) - Number(b.ts))
+    .slice(-CONTEXT_MESSAGES);
+}
 
 /** one try, then at most two retries: three attempts total */
 const MAX_ATTEMPTS = 3;
@@ -32,22 +59,21 @@ const backoff = (attempt: number) => 250 * 2 ** attempt;
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** one thread's Choice question against Jev; `state` is the thread's messages as rendered for attribution */
-export async function suggestFeature(state: string, options: ChoiceOption[], opts: SuggestOptions = {}): Promise<SuggestResult> {
+export async function suggestFeature(state: SuggestState, options: ChoiceOption[], opts: SuggestOptions = {}): Promise<SuggestResult> {
   const apiKey = keyOf(opts);
   if (!apiKey) throw new Error("jev: no TYPESAFE_API_KEY");
   const f = opts.fetch ?? fetch;
   const sleep = opts.sleep ?? defaultSleep;
   const timeoutMs = opts.timeoutMs ?? 10_000;
+  // the API's shape (docs.typesafe.ai/api): questions and answers are maps keyed by an id we
+  // choose; a Choice carries `instructions` and `criteria`, option → description
+  const criteria: Record<string, string> = {};
+  for (const o of options) criteria[o.feature] = o.description;
+  criteria[NOTHING] = NOTHING_DESCRIPTION;
   const body = {
     model: JEV_MODEL,
     state,
-    questions: [
-      {
-        type: "choice",
-        text: QUESTION,
-        options: [...options.map((o) => ({ id: o.feature, description: o.description })), { id: NOTHING, description: NOTHING_DESCRIPTION }],
-      },
-    ],
+    questions: { [QUESTION_ID]: { type: "choice", instructions: typeof state === "string" ? QUESTION : QUESTION_WITH_CONTEXT, criteria } },
   };
 
   for (let attempt = 0; ; attempt++) {
@@ -59,10 +85,10 @@ export async function suggestFeature(state: string, options: ChoiceOption[], opt
       if (RETRY_STATUSES.has(res.status)) {
         retryReason = `${res.status}`;
       } else if (!res.ok) {
-        throw new Error(`jev: ${res.status}`);
+        throw new Error(`jev: ${res.status} ${(await res.text().catch(() => "")).slice(0, 300)}`.trim());
       } else {
-        const json = (await res.json()) as { model: string; answers?: { choice: string; probabilities: Record<string, number>; confidence: number }[] };
-        const answer = json.answers?.[0];
+        const json = (await res.json()) as { model: string; answers?: Record<string, { choice: string; probabilities: Record<string, number>; confidence: number }> };
+        const answer = json.answers?.[QUESTION_ID];
         if (!answer) throw new Error("jev: no answer in reply");
         return { choice: answer.choice, probabilities: answer.probabilities, confidence: answer.confidence, model: json.model };
       }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { JEV_API_URL, JEV_MODEL, NOTHING, NOTHING_DESCRIPTION, suggestFeature } from "./suggest.ts";
+import { JEV_API_URL, JEV_MODEL, NOTHING, NOTHING_DESCRIPTION, QUESTION, QUESTION_ID, QUESTION_WITH_CONTEXT, earlierMessages, suggestFeature } from "./suggest.ts";
 
 const options = [
   { feature: "tasks", description: "Tasks - routes /tasks" },
@@ -9,7 +9,7 @@ const options = [
 /** a reply body: the version that answered at the top level, the Choice's answer under it */
 const answer = (model = "jev-1.13.1") => ({
   model,
-  answers: [{ choice: "tasks", probabilities: { tasks: 0.8, sweep: 0.1, nothing: 0.1 }, confidence: 0.8 }],
+  answers: { [QUESTION_ID]: { type: "choice", choice: "tasks", probabilities: { tasks: 0.8, sweep: 0.1, nothing: 0.1 }, confidence: 0.8 } },
 });
 
 describe("suggestFeature (AC2)", () => {
@@ -24,10 +24,10 @@ describe("suggestFeature (AC2)", () => {
     expect(seen!.auth).toBe("Bearer k");
     expect(seen!.body.model).toBe(JEV_MODEL);
     expect(seen!.body.state).toBe("thread state here");
-    const opts = seen!.body.questions[0].options;
-    expect(opts).toContainEqual({ id: "tasks", description: "Tasks - routes /tasks" });
-    expect(opts).toContainEqual({ id: "sweep", description: "Sweep" });
-    expect(opts).toContainEqual({ id: NOTHING, description: NOTHING_DESCRIPTION });
+    // the API's shape: a map of questions by id, each Choice with instructions and criteria
+    expect(seen!.body.questions).toEqual({
+      [QUESTION_ID]: { type: "choice", instructions: QUESTION, criteria: { tasks: "Tasks - routes /tasks", sweep: "Sweep", [NOTHING]: NOTHING_DESCRIPTION } },
+    });
   });
 
   test("C2: the version reported is the response's own model, not the pinned constant", async () => {
@@ -101,5 +101,27 @@ describe("suggestFeature (AC2)", () => {
     const f = (async () => { asked++; return new Response("{}"); }) as unknown as typeof fetch;
     await expect(suggestFeature("s", options, { fetch: f, apiKey: null })).rejects.toThrow(/TYPESAFE_API_KEY/);
     expect(asked).toBe(0);
+  });
+});
+
+describe("earlierMessages and the context question", () => {
+  const m = (ts: number, thread = ts, channel = "C1") => ({ ts: String(ts), thread: String(thread), channel });
+  test("the channel's own messages just before, newest eight, oldest first; other channels, replies, later and stale messages left out", () => {
+    const first = m(100_000);
+    const history = [m(90_000), ...Array.from({ length: 10 }, (_, i) => m(99_000 + i)), m(99_500, 99_000), m(99_600, 99_600, "C2"), m(100_500), first];
+    const got = earlierMessages(first, history).map((x) => x.ts);
+    expect(got).toEqual(["99002", "99003", "99004", "99005", "99006", "99007", "99008", "99009"]);
+  });
+  test("an object state asks the context question; a string state the plain one", async () => {
+    const bodies: any[] = [];
+    const f = (async (_u: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify(answer()), { status: 200 });
+    }) as unknown as typeof fetch;
+    await suggestFeature({ earlier_messages: "e", thread: "t" }, options, { fetch: f, apiKey: "k" });
+    await suggestFeature("t", options, { fetch: f, apiKey: "k" });
+    expect(bodies[0].questions[QUESTION_ID].instructions).toBe(QUESTION_WITH_CONTEXT);
+    expect(bodies[0].state).toEqual({ earlier_messages: "e", thread: "t" });
+    expect(bodies[1].questions[QUESTION_ID].instructions).toBe(QUESTION);
   });
 });

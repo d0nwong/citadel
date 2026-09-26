@@ -29,7 +29,7 @@ import type { Ledger } from "../scripts/argus/schema.ts";
 import { flatten, type Msg } from "../scripts/argus/slack-pull.ts";
 import type { ThreadMap, Unplaced } from "../scripts/argus/state.ts";
 import { SchemaError } from "../scripts/argus/schema.ts";
-import { type ChoiceOption, suggestFeature, type SuggestResult } from "../scripts/argus/suggest.ts";
+import { type ChoiceOption, earlierMessages, suggestFeature, type SuggestResult, type SuggestState } from "../scripts/argus/suggest.ts";
 export type { SuggestResult } from "../scripts/argus/suggest.ts";
 import { ValidationError } from "../scripts/argus/validate.ts";
 import { readLedger, writeLedger } from "../scripts/argus/write.ts";
@@ -169,6 +169,8 @@ export async function suggestDay(
   calls: SuggestCall[],
   suggestFn: typeof suggestFeature = suggestFeature,
   opts: { fetch?: typeof fetch; apiKey?: string | null } = {},
+  /** every message seen so far, earlier days included: the channel context before each thread */
+  history: Msg[] = allMessages,
 ): Promise<Map<string, SuggestResult>> {
   const out = new Map<string, SuggestResult>();
   const messages = stillUnplaced.filter((u) => u.kind === "message");
@@ -184,7 +186,9 @@ export async function suggestDay(
   }
   for (const [thread, msgs] of groups) {
     try {
-      const r = await suggestFn(renderMessages(msgs), options, opts);
+      const earlier = earlierMessages(msgs[0]!, history);
+      const state: SuggestState = earlier.length ? { earlier_messages: renderMessages(earlier), thread: renderMessages(msgs) } : renderMessages(msgs);
+      const r = await suggestFn(state, options, opts);
       out.set(thread, r);
       calls.push({ thread, day, model: r.model, ok: true });
     } catch (e) {
@@ -251,6 +255,7 @@ export async function runModel(
     const declinedThread = new Map<string, string>();
     const suggestions = new Map<string, SuggestResult>();
     const suggestCalls: SuggestCall[] = [];
+    const history: Msg[] = [];
     const days = batches.flatMap(splitByDay).slice(0, opts.days ?? Infinity);
     for (const b of days) {
       const day = b.id.slice(-10);
@@ -296,7 +301,8 @@ export async function runModel(
       if (opts.suggest) {
         const stillUnplaced = p.unplaced.filter((u) => u.kind === "message" && !got.has(u.id));
         for (const u of stillUnplaced) declinedThread.set(u.id, u.thread ?? u.id);
-        const answers = await suggestDay(stillUnplaced, all, features.map((feature) => ({ app: DEFAULT_APP, feature })), day, suggestCalls, opts.suggest.suggestFn, opts.suggest);
+        history.push(...all);
+        const answers = await suggestDay(stillUnplaced, all, features.map((feature) => ({ app: DEFAULT_APP, feature })), day, suggestCalls, opts.suggest.suggestFn, opts.suggest, history);
         for (const [thread, r] of answers) suggestions.set(thread, r); // a later day's answer overwrites an earlier one
       }
       // AC1 (S-22): with readers off, ledgers stay at their seeded state for every day's attribution prompt
