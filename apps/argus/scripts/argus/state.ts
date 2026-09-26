@@ -30,8 +30,6 @@ export type Unplaced = {
   /** what the joins and the sweep considered, for the reader */
   candidates: string[];
   batch: string;
-  /** Jev's guess at where this belongs, attached after the joins and the sweep gave up; unset until that writer lands */
-  suggestion?: { feature: string | null; confidence: number; model: string };
 };
 
 async function readJson<T>(path: string, empty: T): Promise<T> {

@@ -206,38 +206,6 @@ describe("home", () => {
     expect(h.unplaced).toHaveLength(1);
     expect(await readUnplaced(join(root, "missing.json"))).toEqual([]);
   });
-  test("C4: readUnplaced carries a suggestion through untouched; an entry with none is unaffected", async () => {
-    await put("state/unplaced.json", [
-      {
-        at: "2026-09-11",
-        batch: "b",
-        by: "Sam O",
-        candidates: ["tasks"],
-        id: "1",
-        kind: "message",
-        suggestion: { confidence: 0.82, feature: "tasks", model: "jev-v1" },
-        text: "x",
-        url: "u",
-      },
-      {
-        at: "2026-09-11",
-        batch: "b",
-        by: "Sam O",
-        candidates: ["tasks"],
-        id: "2",
-        kind: "message",
-        text: "y",
-        url: "u",
-      },
-    ]);
-    const list = await readUnplaced(join(root, "state/unplaced.json"));
-    expect(list[0]?.suggestion).toEqual({
-      confidence: 0.82,
-      feature: "tasks",
-      model: "jev-v1",
-    });
-    expect(list[1]?.suggestion).toBeUndefined();
-  });
   test("tickets filed from Ask with no ledger are listed, unless a ledger already has the key", async () => {
     const row = (identifier: string) => ({
       at: "2026-09-14T00:00:00.000Z",
