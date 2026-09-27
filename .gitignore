@@ -6,3 +6,6 @@ dist
 .DS_Store
 .foundry-dev.log
 .pensieve.log
+
+# argus state lives in the data repo (ARGUS_ROOT); a run without it would write here
+apps/argus/state/
