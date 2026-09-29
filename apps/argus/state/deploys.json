@@ -4,5 +4,17 @@
     "at": "2026-09-16T10:02:11.721018761Z",
     "build": 2142,
     "url": "https://bitbucket.org/aldenstudios/alden-connect-portal-be/addon/pipelines/home#!/results/2142"
+  },
+  "be@480779bf": {
+    "result": "SUCCESSFUL",
+    "at": "2026-09-25T10:20:36.158641744Z",
+    "build": 2186,
+    "url": "https://bitbucket.org/aldenstudios/alden-connect-portal-be/addon/pipelines/home#!/results/2186"
+  },
+  "be@f42da1de": {
+    "result": "SUCCESSFUL",
+    "at": "2026-09-29T06:51:33.328511619Z",
+    "build": 2194,
+    "url": "https://bitbucket.org/aldenstudios/alden-connect-portal-be/addon/pipelines/home#!/results/2194"
   }
 }
