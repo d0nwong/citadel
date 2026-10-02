@@ -1,6 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { MissingCredentialError } from "./errors.ts";
 import {
+  slackSourceOf,
   TRELLO_BOARD_ID,
   TRELLO_CHECKLIST_NAME,
   TRELLO_PIPELINE_LIST,
@@ -12,6 +13,7 @@ import {
   trelloLink,
   trelloListOpen,
   trelloMembers,
+  trelloSlackSources,
   trelloTicketStates,
   trelloUpdate,
   trelloViewerId,
@@ -69,6 +71,34 @@ function fakeFetch(board: { cards: unknown[]; lists: unknown[]; checklists?: unk
     return new Response("not found", { status: 404 });
   }) as unknown as typeof fetch;
 }
+
+describe("trelloSlackSources", () => {
+  const BOT_DESC = (link: string) => `**Slack Source:** #alden-portal\n**Posted by:** @sam (Sam O)\n**Link:** ${link}\n\n**Details:**\nadd overageValuePerCredit`;
+
+  test("a card the Slack bot made answers its key, name, link and the message it names; a card without a link is left out", async () => {
+    const cards = [
+      card("c298", 298, "L-new", { name: "Similar thing but on billing", desc: BOT_DESC("https://slack.com/archives/C07KG06L601/p1790912300700989") }),
+      card("c266", 266, "L-pipe", { desc: "## Summary\nfiled by argus" }),
+      card("c299", null, "L-new", { url: "https://trello.com/c/c299/299-x", desc: BOT_DESC("https://alden-studios.slack.com/archives/C07KG06L601/p1790912668041349?thread_ts=1790912600.000100&cid=C07KG06L601") }),
+    ];
+    const out = await trelloSlackSources({ fetch: fakeFetch({ cards, lists: TEN_LISTS }), trelloKey: "k", trelloToken: "t" });
+    expect(out).toEqual([
+      { key: "AP-298", title: "Similar thing but on billing", url: "https://trello.com/c/c298", channel: "C07KG06L601", ts: "1790912300.700989" },
+      { key: "AP-299", title: "card c299", url: "https://trello.com/c/c299", channel: "C07KG06L601", ts: "1790912668.041349" },
+    ]);
+  });
+
+  test("no credential answers none, without asking the board", async () => {
+    const calls: string[] = [];
+    expect(await trelloSlackSources({ fetch: fakeFetch({ cards: [], lists: [] }, calls), trelloKey: null, trelloToken: "t" })).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  test("slackSourceOf reads nothing from a description with no link", () => {
+    expect(slackSourceOf(null)).toBeNull();
+    expect(slackSourceOf("see https://slack.com/archives/C1/p1790912300700989")).toBeNull();
+  });
+});
 
 describe("trelloTicketStates", () => {
   test("each of the board's ten lists maps to its state, by name; a card number the board does not have is unknown", async () => {

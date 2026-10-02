@@ -38,17 +38,19 @@ one by hand) or when asked. Never two at once: the run holds a lock in the data 
    subagent with `model: "opus"` whose whole prompt is `argus prompt reader <feature>
    <batch>`. Save its reply to a file and `argus patch <feature> <file>`. A refusal names
    the path; hand it back to the subagent once with that text, then give up on it.
-   **Ground.** `argus prompt ground` lists each proposal whose Technical Notes name no
-   file. For each one, one general-purpose subagent with `model: "opus"` gets
-   `argus prompt ground <feature> <P-n>` as its whole prompt. It reads the code and
-   returns the body. Save the reply and `argus patch` it. A refusal is handed back once,
-   then the proposal stays ungrounded for the next run.
 6. **Reconcile.** `argus reconcile`. Backend landings still waiting are checked again.
    Landing blockers clear once their landing is live — merged on the frontend, deployed
    per Bitbucket on the backend; ticket blockers when their asks closed. An open ticket settles when
    Linear says Done (closes its asks) or Canceled (drops them), or, with no asks, when a
    landing carrying its key is live. A filed revision whose parent is Done folds into its
-   features' `docs/spec.md`; Canceled archives it.
+   features' `docs/spec.md`; Canceled archives it. First, an open ask whose Slack message
+   already has a Trello card — the ticket bot's, its description's `Link:` naming that
+   message — takes the card as its ticket, and its proposal goes.
+   **Ground.** `argus prompt ground` lists each proposal whose Technical Notes name no
+   file. For each one, one general-purpose subagent with `model: "opus"` gets
+   `argus prompt ground <feature> <P-n>` as its whole prompt. It reads the code and
+   returns the body. Save the reply and `argus patch` it. A refusal is handed back once,
+   then the proposal stays ungrounded for the next run.
 7. **Docs.** First check `$ARGUS_ROOT/.git/sweep-tick-unreachable.json`, if it exists: the
    repo ids `loop.sh`'s clone/fetch and step 2's `argus pull` could not reach this tick. Then
    `accio stale`, across every project with the `docs` job — every configured doc area,
