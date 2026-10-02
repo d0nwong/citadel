@@ -289,6 +289,42 @@ export async function trelloTicketStates(keys: string[], opts: TrelloOptions = {
   return answer;
 }
 
+/** a card the Slack ticket bot made: its key and name, and the message its `**Link:**` names */
+export type SlackSourcedCard = { key: string; title: string; url: string; channel: string; ts: string };
+
+const SLACK_LINK = /\*\*Link:\*\*\s*https:\/\/[^/\s]*slack\.com\/archives\/([A-Z0-9]+)\/p(\d{10})(\d{6})/;
+
+/** the Slack message a card's description links as its source (`**Link:** …/archives/<channel>/p<ts>`), or null */
+export function slackSourceOf(desc: string | null): { channel: string; ts: string } | null {
+  const m = SLACK_LINK.exec(desc ?? "");
+  return m ? { channel: m[1]!, ts: `${m[2]}.${m[3]}` } : null;
+}
+
+/**
+ * Every card on the Alden board whose description links the Slack message it was filed
+ * from — the shape the "SWE Slack To Trello" bot writes when someone reacts :ticket:. Cards
+ * argus filed itself carry no link and are left out. A missing credential answers none,
+ * silently — `trelloTicketStates`, read in the same run, already names it; a board that
+ * could not be read answers none, named on stderr.
+ */
+export async function trelloSlackSources(opts: TrelloOptions = {}): Promise<SlackSourcedCard[]> {
+  const key = keyOf(opts);
+  const token = tokenOf(opts);
+  if (missingCredential(key, token)) return [];
+  try {
+    const out: SlackSourcedCard[] = [];
+    for (const c of await boardCards(opts, key!, token!)) {
+      const n = cardNumber(c);
+      const src = slackSourceOf(c.desc);
+      if (n !== null && src) out.push({ key: `AP-${n}`, title: c.name, url: c.shortUrl, ...src });
+    }
+    return out;
+  } catch (e) {
+    console.error(`trello: could not read the board — ${e instanceof Error ? e.message : String(e)}`);
+    return [];
+  }
+}
+
 /** the shortLink out of a card's `shortUrl` (`https://trello.com/c/<shortLink>`), for matching a checklist item that just links the card */
 const shortLinkOf = (shortUrl: string) => /\/c\/([^/]+)/.exec(shortUrl)?.[1];
 

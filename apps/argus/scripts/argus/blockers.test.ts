@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { needsReconcile, reconcileAll, reconcileLedger, recordDeploys, type RepoConfig } from "./blockers.ts";
+import { linkSlackTickets, needsReconcile, reconcileAll, reconcileLedger, recordDeploys, type RepoConfig } from "./blockers.ts";
 import type { Deploy, DeployCache, PipelineRepo } from "./deploy.ts";
 import { deployCheck, pipelineFor } from "./deploy.ts";
 import type { TicketState, TicketStates } from "./linear.ts";
@@ -48,6 +48,46 @@ describe("reconcileLedger", () => {
     const r = await reconcileLedger(l, async () => null, ALDEN_REPOS, new Date("2026-09-11T10:00:00Z"));
     expect(r.cleared).toEqual(["ALD-41: ALD-40 is done"]);
     expect(r.ledger.tickets[0]!.blockers[2]!.cleared).toEqual({ at: "2026-09-11", evidence: [{ kind: "ticket", key: "ALD-40" }] });
+  });
+});
+
+describe("linkSlackTickets: a card the Slack ticket bot made", () => {
+  // the fixture's A-2 is open, has no ticket, came from p1788927279211770, and P-1 proposes a ticket for it
+  const bot = (key: string, ts: string) => ({ key, title: `card ${key}`, url: `https://trello.com/c/${key}`, channel: "C07KG06L601", ts });
+  test("an open ask raised by the card's message gets the card as its ticket; its proposal goes; validates", async () => {
+    const l = await valid();
+    const lines = linkSlackTickets(l, [bot("AP-298", "1788927279.211770"), bot("AP-1", "1788927279.211769")]);
+    expect(lines).toEqual(["AP-298: A-2 filed from Slack by the ticket bot, linked", "P-1: dropped, its asks already have a card"]);
+    expect(l.asks[1]!.ticket).toBe("AP-298");
+    expect(l.tickets.find((t) => t.key === "AP-298")).toEqual({ key: "AP-298", title: "card AP-298", asks: ["A-2"], blockers: [], ready: true });
+    // A-1 is closed, so the card naming its message is not its ticket
+    expect(l.tickets.some((t) => t.key === "AP-1")).toBe(false);
+    expect(l.proposals).toEqual([]);
+    expect(validateLedger(l)).toEqual([]);
+    // twice changes nothing
+    expect(linkSlackTickets(l, [bot("AP-298", "1788927279.211770")])).toEqual([]);
+  });
+  test("a reply's Slack evidence counts too, whatever the host and query; two asks on one card are one ticket; open blockers ride along", async () => {
+    const l = await valid();
+    l.asks[1]!.blockers = [{ kind: "answer", from: "Sam", question: "which field?", cleared: null }];
+    l.asks.push({ ...structuredClone(l.asks[1]!), id: "A-3", origin: { kind: "slack", url: "https://alden-studios.slack.com/archives/C07KG06L601/p1788927279299999", thread: "1788927279.299999" },
+      history: [{ at: "2026-09-10", status: "asked", evidence: [{ kind: "slack", url: "https://alden-studios.slack.com/archives/C07KG06L601/p1788927279211770?thread_ts=1788927279.211770&cid=C07KG06L601" }] }] });
+    l.proposals[0]!.asks = ["A-2", "A-3"];
+    linkSlackTickets(l, [bot("AP-299", "1788927279.211770")]);
+    const t = l.tickets.find((x) => x.key === "AP-299")!;
+    expect(t.asks).toEqual(["A-2", "A-3"]);
+    expect(t.ready).toBe(false);
+    expect(t.blockers).toHaveLength(1);
+    expect(l.proposals).toEqual([]);
+  });
+  test("a proposal that serves another ask too keeps that ask; a key already on the ledger is only pointed at", async () => {
+    const l = await valid();
+    l.asks.push({ ...structuredClone(l.asks[1]!), id: "A-3", origin: { kind: "huddle", url: "https://alden-studios.slack.com/archives/C07KG06L601/p1788927279255555", thread: "1788927279.255555" } });
+    l.proposals[0]!.asks = ["A-2", "A-3"];
+    l.tickets.push({ key: "AP-300", title: "already here", asks: [], blockers: [], ready: true });
+    expect(linkSlackTickets(l, [bot("AP-300", "1788927279.211770")])).toEqual(["AP-300: A-2 filed from Slack by the ticket bot, linked"]);
+    expect(l.tickets.find((x) => x.key === "AP-300")).toMatchObject({ title: "already here", asks: ["A-2"] });
+    expect(l.proposals[0]!.asks).toEqual(["A-3"]);
   });
 });
 
@@ -305,6 +345,18 @@ describe("reconcileAll", () => {
     expect((await readLedger("core", "widget"))!.asks[1]!.ready).toBe(true);
     // a second run clears nothing further on either project's ledger
     expect(await reconcileAll({ deployed: async () => live })).toEqual([]);
+  });
+  test("a card the Slack ticket bot made is linked and settled in the same run", async () => {
+    const r = await reconcileAll({
+      deployed: async () => null,
+      sources: async () => [{ key: "AP-298", title: "overage per credit", url: "https://trello.com/c/x", channel: "C07KG06L601", ts: "1788927279.211770" }],
+      states: async () => (k) => (k === "AP-298" ? { state: "done", at: "2026-09-11T09:00:00Z", name: "Deployed", url: "https://trello.com/c/x", provider: "trello" } : { state: "unknown" }),
+      now: new Date("2026-09-11T10:00:00Z"),
+    });
+    expect(r[0]!.cleared.slice(0, 3)).toEqual(["AP-298: A-2 filed from Slack by the ticket bot, linked", "P-1: dropped, its asks already have a card", "AP-298: Deployed in Trello, done"]);
+    const after = (await readLedger("admin/invoicing"))!;
+    expect(after.asks[1]!.status).toBe("closed");
+    expect(validateLedger(after)).toEqual([]);
   });
   test("an AP ticket, with no Trello credential set, is left exactly as it was (CTD-199 AC2)", async () => {
     delete process.env.TRELLO_API_KEY;

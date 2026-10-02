@@ -47,8 +47,10 @@ export {
   trelloListOpen,
   trelloMembers,
   trelloProvider,
+  slackSourceOf,
+  trelloSlackSources,
   trelloTicketStates,
   trelloUpdate,
   trelloViewerId,
 } from "./trello.ts";
-export type { TrelloMember, TrelloOptions } from "./trello.ts";
+export type { SlackSourcedCard, TrelloMember, TrelloOptions } from "./trello.ts";

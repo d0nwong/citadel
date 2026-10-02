@@ -25,9 +25,15 @@
  *   live; on one read by pipeline (alden-portal's `be`, `dev`), once the pipeline succeeded.
  *   A ticket that serves no ask (filed from a gap, not a message) has nothing to close, so
  *   the same live landing settles the ticket itself.
+ *
+ * Before either, a card the Slack ticket bot already made. Someone reacts :ticket: on a
+ * message and the "SWE Slack To Trello" bot files a card whose description links that
+ * message; an open ask with no ticket, raised by that message (its origin or a Slack
+ * evidence url, matched on channel and ts), gets the card as its ticket, and its proposal
+ * goes — the card is the ticket, so nothing is left to file twice (`linkSlackTickets`).
  */
 
-import { providerLabel, ticketStates, type TicketStates } from "@citadel/tickets";
+import { providerLabel, ticketStates, trelloSlackSources, type SlackSourcedCard, type TicketStates } from "@citadel/tickets";
 import type { Deploy } from "./deploy.ts";
 import { deployedAt, pipelineRepo } from "./deploy.ts";
 import { ticketKeysIn } from "./pr-facts.ts";
@@ -82,6 +88,65 @@ export async function recordDeploys(l: Ledger, deployed: DeployedOf, repos: Repo
     ld.deployed = { ...d, told: ld.at < recent };
     const branch = repos[ld.repo]?.baseBranch ?? ld.repo;
     out.push(d.result === "SUCCESSFUL" ? `${ld.ref}: deployed to ${branch} (${day(d.at)}, build ${d.build})` : `${ld.ref}: ${branch} pipeline ${d.result.toLowerCase()} (build ${d.build})`);
+  }
+  return out;
+}
+
+/** `<channel>/<ts>` out of a Slack permalink, whatever its host or query; null for anything else */
+export function slackMessageOf(url: string): string | null {
+  const m = /\/archives\/([A-Z0-9]+)\/p(\d{10})(\d{6})/.exec(url);
+  return m ? `${m[1]}/${m[2]}.${m[3]}` : null;
+}
+
+/**
+ * Mutates `l`: every open ask with no ticket whose Slack message a card names gets that
+ * card as its ticket — one ticket per card, however many asks it raised — and leaves every
+ * proposal; a proposal it was the last ask of is dropped. One line per card linked.
+ */
+export function linkSlackTickets(l: Ledger, sources: SlackSourcedCard[]): string[] {
+  if (!sources.length) return [];
+  const byMessage = new Map(sources.map((c) => [`${c.channel}/${c.ts}`, c]));
+  const linked = new Map<string, { card: SlackSourcedCard; asks: string[] }>();
+  for (const a of l.asks) {
+    if (a.ticket || a.status === "closed" || a.status === "dropped") continue;
+    const urls = [
+      ...("url" in a.origin ? [a.origin.url] : []),
+      ...a.history.flatMap((h) => h.evidence.flatMap((e) => (e.kind === "slack" ? [e.url] : []))),
+    ];
+    const card = urls.map((u) => byMessage.get(slackMessageOf(u) ?? "")).find((c) => c);
+    if (!card) continue;
+    a.ticket = card.key;
+    const entry = linked.get(card.key) ?? { card, asks: [] };
+    entry.asks.push(a.id);
+    linked.set(card.key, entry);
+  }
+  const out: string[] = [];
+  for (const { card, asks } of linked.values()) {
+    const t = l.tickets.find((x) => x.key === card.key);
+    if (t) {
+      t.asks = [...new Set([...t.asks, ...asks])];
+    } else {
+      const seen = new Set<string>();
+      const blockers = l.asks
+        .filter((a) => asks.includes(a.id))
+        .flatMap((a) => (a.blockers ?? []).filter((b) => !b.cleared))
+        .filter((b) => !seen.has(JSON.stringify(b)) && !!seen.add(JSON.stringify(b)))
+        .map((b) => structuredClone(b));
+      l.tickets.push({ key: card.key, title: card.title, asks, blockers, ready: blockers.length === 0 });
+    }
+    out.push(`${card.key}: ${asks.join(", ")} filed from Slack by the ticket bot, linked`);
+  }
+  const all = [...linked.values()].flatMap((x) => x.asks);
+  if (all.length) {
+    l.proposals = l.proposals.flatMap((p) => {
+      if (!p.asks.some((id) => all.includes(id))) return [p];
+      const asks = p.asks.filter((id) => !all.includes(id));
+      if (!asks.length) {
+        out.push(`${p.id}: dropped, its asks already have a card`);
+        return [];
+      }
+      return [{ ...p, asks }];
+    });
   }
   return out;
 }
@@ -195,6 +260,8 @@ export type ReconcileOptions = {
   repos?: RepoConfig;
   /** the tickets router; default asks each ticket's provider once for every open ticket across the run */
   states?: (keys: string[]) => Promise<TicketStates>;
+  /** the cards the Slack ticket bot made; default reads them off the Alden Trello board once per run */
+  sources?: () => Promise<SlackSourcedCard[]>;
   dryRun?: boolean;
   now?: Date;
   features?: string[];
@@ -220,10 +287,19 @@ export async function reconcileAll(opts: ReconcileOptions = {}): Promise<Reconci
   // named features are the caller's own (DEFAULT_APP, as `argus reconcile <feature>...` takes them); with none
   // named, every project with the record job, each on its own area (ledger S-27)
   const targets = opts.features ? opts.features.map((feature) => ({ app: undefined, feature })) : await recordFeatures(config);
+  /** read once, and only when some ledger has an ask a card could be the ticket of */
+  let sources: SlackSourcedCard[] | undefined;
+  const sourcesFor = async (l: Ledger) =>
+    l.asks.some((a) => !a.ticket && a.status !== "closed" && a.status !== "dropped") ? (sources ??= await (opts.sources ?? (() => trelloSlackSources()))()) : [];
   const ledgers: [string, string | undefined, Ledger][] = [];
+  /** the lines linking a bot's card wrote, by feature — they go out with that ledger's reconcile */
+  const linkedLines = new Map<string, string[]>();
   for (const { app, feature } of targets) {
     const l = await readLedger(feature, app);
-    if (l && needsReconcile(l, repos)) ledgers.push([feature, app, l]);
+    if (!l) continue;
+    const linked = linkSlackTickets(l, await sourcesFor(l));
+    if (linked.length) linkedLines.set(`${app ?? ""}:${feature}`, linked);
+    if (linked.length || needsReconcile(l, repos)) ledgers.push([feature, app, l]);
   }
   // the filed revisions, whose parents settle them — only on a whole run, never one scoped to named features
   const filed = opts.features ? [] : (await listRevisions()).filter((r) => !r.archived && r.rev.status === "filed" && r.rev.key);
@@ -234,6 +310,7 @@ export async function reconcileAll(opts: ReconcileOptions = {}): Promise<Reconci
   const out: ReconcileResult[] = [];
   for (const [feature, app, l] of ledgers) {
     const r = await reconcileLedger(l, deployed, repos, opts.now, states);
+    r.cleared.unshift(...(linkedLines.get(`${app ?? ""}:${feature}`) ?? []));
     if (!r.cleared.length) continue;
     const write = await writeLedger(feature, r.ledger, { actor: "model", now: opts.now, dryRun: opts.dryRun, app });
     out.push({ feature, cleared: r.cleared, write });
